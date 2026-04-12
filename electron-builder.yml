@@ -1,0 +1,27 @@
+appId: com.wraeclastledger.app
+productName: WraeclastLedger
+
+publish:
+  provider: github
+  owner: gund0lf
+  repo: wraeclastledger_react
+  private: true
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+
+nsis:
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+  deleteAppDataOnUninstall: false
+
+files:
+  - out/**/*
+  - "!out/**/*.map"
+
+directories:
+  output: dist
+  buildResources: resources

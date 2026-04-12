@@ -1,0 +1,36 @@
+/* ── FlexLayout tab style overrides ──────────────────────────────────────── */
+
+/* Round the tab buttons */
+.flexlayout__tab_button {
+  border-radius: 6px 6px 0 0 !important;
+  margin-right: 2px !important;
+}
+
+.flexlayout__tab_button--selected {
+  border-radius: 6px 6px 0 0 !important;
+}
+
+/* Soften the tabset toolbar */
+.flexlayout__tabset_header {
+  border-radius: 6px 6px 0 0 !important;
+}
+
+/* Tab content area — subtle inset */
+.flexlayout__tab {
+  background-color: #1a1b1e !important;
+}
+
+/* Tabset border soften */
+.flexlayout__tabset {
+  border-radius: 6px !important;
+}
+
+/* Splitter (divider between panels) — thinner and darker */
+.flexlayout__splitter {
+  background-color: #2c2e33 !important;
+}
+.flexlayout__splitter:hover {
+  background-color: #4dabf7 !important;
+}
+
+.flexlayout__tabset--selected { border: 1px solid rgba(150, 150, 150, 0.25) !important; }
