@@ -1,19 +1,32 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
-// Custom APIs for renderer
+type TradeParams = {
+  league:      string;
+  minIIQ:      number;
+  minPack:     number;
+  minIIR:      number;
+  minCurrency: number;
+  minScarabs:  number;
+  minMaps:     number;
+  mapType:     'any' | 'regular' | '8mod' | 'nightmare' | 'originator';
+  empowered:   boolean;
+  minDelirious:    number;
+  deliRewardTypes: string[];
+  brickExclusions: string[];
+};
+
 const api = {
   onClipboardCapture: (callback: (text: string) => void): void => {
     ipcRenderer.on('on-clipboard-capture', (_event, text) => callback(text))
   },
   removeClipboardListener: (): void => {
     ipcRenderer.removeAllListeners('on-clipboard-capture')
-  }
+  },
+  searchMapsOnTrade: (params: TradeParams): Promise<{ url: string | null; error: string | null }> =>
+    ipcRenderer.invoke('trade:search-maps', params),
 }
 
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
@@ -22,8 +35,8 @@ if (process.contextIsolated) {
     console.error(error)
   }
 } else {
-  // @ts-ignore (define in dts)
+  // @ts-ignore
   window.electron = electronAPI
-  // @ts-ignore (define in dts)
+  // @ts-ignore
   window.api = api
 }

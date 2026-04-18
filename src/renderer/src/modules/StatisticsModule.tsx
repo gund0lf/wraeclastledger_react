@@ -1,4 +1,4 @@
-import { Card, Text, Grid, Stack, Group, Divider, Badge, Tooltip } from '@mantine/core';
+import { Card, Text, Stack, Group, Divider, Badge } from '@mantine/core';
 import { useSessionStore } from '../store/useSessionStore';
 import { useMemo } from 'react';
 import { QUALITY_STAT_EFFECTS, CHISEL_TYPES } from '../utils/constants';
@@ -34,115 +34,125 @@ export const StatisticsModule = () => {
       if (effect && map.quality > 0)
         totalQualityBonuses[effect.statKey] = (totalQualityBonuses[effect.statKey] ?? 0) + map.quality * effect.multiplier;
     }
-    const chiselInfo = settings.chiselUsed ? CHISEL_TYPES[settings.chiselType] : null;
+    const chiselInfo = settings.chiselType ? CHISEL_TYPES[settings.chiselType] : null;
     const chiselExpected: Record<string, number> = {};
-    if (chiselInfo) {
+    if (chiselInfo && settings.chiselPrice > 0) {
       const unChiseled = maps.filter((m) => m.quality === 0).length;
       if (unChiseled > 0) chiselExpected[chiselInfo.statKey] = (unChiseled / count) * chiselInfo.bonusAt20;
     }
     const result: Record<string, { avg: number; proj: number; hasChisel: boolean }> = {};
     for (const key of STAT_KEYS) {
-      const avg      = maps.reduce((acc, m) => acc + ((m[key] as number) ?? 0), 0) / count;
+      const avg       = maps.reduce((acc, m) => acc + ((m[key] as number) ?? 0), 0) / count;
       const qualBonus = ((totalQualityBonuses[key as string] ?? 0) / count) + (chiselExpected[key as string] ?? 0);
-      const proj     = (avg - qualBonus) * multiplier + qualBonus;
+      const proj      = (avg - qualBonus) * multiplier + qualBonus;
       result[key as string] = { avg, proj, hasChisel: !!(chiselInfo?.statKey === key as string) };
     }
-    return { count, multiplier, stats: result, fragmentEffect, smallNodeEffect, mountBonus, effectiveMods };
+    return { count, multiplier, stats: result, effectiveMods, mountBonus };
   }, [maps, settings]);
 
   const profit = useMemo(() => {
-    const chiselCost = settings.chiselUsed ? settings.chiselPrice : 0;
+    const chiselCost = settings.chiselType && settings.chiselPrice > 0 ? settings.chiselPrice : 0;
     const scarabCost = settings.scarabs.reduce((acc, s) => acc + (s.cost || 0), 0);
     const mapCount   = stats?.count ?? 0;
     let perMap = settings.baseMapCost + chiselCost + scarabCost;
-    if (settings.isSplitSession) perMap = (settings.baseMapCost + chiselCost) / 2 + scarabCost;
+    if (settings.advSplitPrice > 0) {
+      perMap = (settings.baseMapCost + chiselCost + settings.advSplitPrice) / 2 + scarabCost;
+    }
     const totalInvestment = perMap * mapCount + settings.rollingCostPerMap;
-
-    const rawReturn  = lootItems.filter((l) => !l.excluded).reduce((a, b) => a + b.total, 0);
-    const hasReturn  = lootItems.length > 0;
+    const rawReturn   = lootItems.filter((l) => !l.excluded).reduce((a, b) => a + b.total, 0);
+    const hasReturn   = lootItems.length > 0;
     const hasBaseline = baselineTotal > 0 && hasReturn;
-
-    // KEY FIX: only subtract baseline when a RETURN csv has also been loaded.
-    // Importing only a baseline should never put you in negative profit —
-    // it's just a reference point waiting for the return CSV.
-    const lootGain = hasReturn
-      ? (hasBaseline ? rawReturn - baselineTotal : rawReturn)
-      : 0;
-
-    const netProfit  = lootGain - totalInvestment;
-    const divPrice   = settings.divinePrice || 1;
-
+    const lootGain    = hasReturn ? (hasBaseline ? rawReturn - baselineTotal : rawReturn) : 0;
+    const netProfit   = lootGain - totalInvestment;
+    const divPrice    = settings.divinePrice || 1;
     return {
       totalInvestment, rawReturn, lootGain, netProfit,
       divPerMap: mapCount > 0 ? (netProfit / divPrice) / mapCount : 0,
       chaosPerMap: mapCount > 0 ? netProfit / mapCount : 0,
-      divPrice, hasReturn, hasBaseline,
-      baselineTotal,
+      divPrice, hasReturn, hasBaseline, baselineTotal,
     };
   }, [stats, settings, lootItems, baselineTotal]);
 
   if (!stats) {
     return (
-      <Card shadow="sm" padding="md" radius="md" withBorder h="100%">
+      <Card shadow="sm" padding="sm" radius="md" withBorder h="100%"
+        style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
         <Text size="sm" c="dimmed">No maps loaded.</Text>
-        <Text size="xs" c="dimmed" mt={4}>Enable Live and Ctrl+C over a map, or use Paste.</Text>
+        <Text size="xs" c="dimmed" mt={4}>Enable Live and Ctrl+C, or use Paste.</Text>
       </Card>
     );
   }
 
   return (
     <Card shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ overflow: 'auto' }}>
-      <Group justify="space-between" mb={6}>
+
+      {/* ── Header ── */}
+      <Group justify="space-between" mb={4}>
         <Text fw={700} size="sm">Statistics</Text>
         <Group gap={4}>
-          <Badge variant="light">{stats.count} maps</Badge>
-          <Badge color="blue" variant="outline">{stats.multiplier.toFixed(3)}×</Badge>
+          <Badge variant="light" size="sm">{stats.count} maps</Badge>
+          <Badge color="blue" variant="outline" size="sm">{stats.multiplier.toFixed(3)}×</Badge>
         </Group>
       </Group>
 
-      <Text size="xs" c="dimmed" mb={8}>
-        Base → Projected
-        {settings.mountingModifiers && <Text span c="orange"> · {stats.effectiveMods} mods mounting</Text>}
-        {settings.chiselUsed && <Text span c="yellow"> · 🪨 {settings.chiselType}</Text>}
-      </Text>
+      {/* ── Active modifier pills ── */}
+      <Group gap={4} mb={8} wrap="wrap">
+        <Text size="xs" c="dimmed">Base → Projected</Text>
+        {settings.mountingModifiers && (
+          <Badge size="xs" color="orange" variant="light">{stats.effectiveMods} mods ×2%</Badge>
+        )}
+        {settings.chiselType && (
+          <Badge size="xs" color="yellow" variant="light">🪨 {settings.chiselType}</Badge>
+        )}
+      </Group>
 
-      <Grid gutter={6} mb={8}>
+      {/* ── Stat table: Label | Base | → | Projected ── */}
+      <Stack gap={0} mb={10}>
         {STAT_KEYS.map((key) => {
           const data = stats.stats[key as string];
           if (!data || (data.avg === 0 && data.proj === 0)) return null;
           return (
-            <Grid.Col key={key as string} span={4}>
-              <Stack gap={0}>
-                <Text size="xs" c="dimmed" lh={1.2}>{STAT_LABELS[key as string]}</Text>
-                <Text fw={700} size="md" lh={1.1}>{data.avg.toFixed(1)}%</Text>
-                <Text size="xs" c={data.hasChisel ? 'yellow' : 'blue'} lh={1.2}>
-                  → {data.proj.toFixed(1)}%{data.hasChisel ? ' 🪨' : ''}
-                </Text>
-              </Stack>
-            </Grid.Col>
+            <Group key={key as string} gap={0} wrap="nowrap"
+              style={{ paddingTop: 4, paddingBottom: 4, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+              {/* Label */}
+              <Text size="xs" c="dimmed" style={{ width: 58, flexShrink: 0 }}>
+                {STAT_LABELS[key as string]}
+              </Text>
+              {/* Base */}
+              <Text size="xs" style={{ width: 50, textAlign: 'right', flexShrink: 0, color: '#868e96' }}>
+                {data.avg.toFixed(1)}%
+              </Text>
+              {/* Arrow */}
+              <Text size="xs" c="dimmed" style={{ width: 24, textAlign: 'center', flexShrink: 0 }}>→</Text>
+              {/* Projected — prominent */}
+              <Text size="sm" fw={700}
+                style={{ flex: 1, color: data.hasChisel ? '#ffd43b' : '#74c0fc' }}>
+                {data.proj.toFixed(1)}%{data.hasChisel ? ' 🪨' : ''}
+              </Text>
+            </Group>
           );
         })}
-      </Grid>
+      </Stack>
 
+      {/* ── Profit section ── */}
       <Divider mb={6} />
-
       <Stack gap={4}>
+
         <Group justify="space-between">
           <Text size="xs" c="dimmed">Investment</Text>
-          <Text size="xs">{profit.totalInvestment.toFixed(1)}c</Text>
+          <Text size="xs">{profit.totalInvestment.toFixed(0)}c</Text>
         </Group>
 
-        {/* Only show loot/baseline rows when a return CSV is loaded */}
         {profit.hasReturn && profit.hasBaseline && (
           <>
             <Group justify="space-between">
-              <Text size="xs" c="dimmed">Return CSV</Text>
-              <Text size="xs" c="dimmed">{profit.rawReturn.toFixed(1)}c</Text>
+              <Text size="xs" c="dimmed">Return</Text>
+              <Text size="xs">{profit.rawReturn.toFixed(0)}c</Text>
             </Group>
             <Group justify="space-between">
               <Text size="xs" c="dimmed">− Baseline ({profit.baselineTotal.toFixed(0)}c)</Text>
               <Text size="xs" c={profit.lootGain >= 0 ? 'teal' : 'red'}>
-                {profit.lootGain >= 0 ? '+' : ''}{profit.lootGain.toFixed(1)}c
+                {profit.lootGain >= 0 ? '+' : ''}{profit.lootGain.toFixed(0)}c
               </Text>
             </Group>
           </>
@@ -150,32 +160,41 @@ export const StatisticsModule = () => {
         {profit.hasReturn && !profit.hasBaseline && (
           <Group justify="space-between">
             <Text size="xs" c="dimmed">Loot</Text>
-            <Text size="xs" c="teal">{profit.rawReturn.toFixed(1)}c</Text>
+            <Text size="xs" c="teal">{profit.rawReturn.toFixed(0)}c</Text>
           </Group>
         )}
         {!profit.hasReturn && (
-          <Text size="xs" c="dimmed" fs="italic">No return CSV loaded — loot not included in profit.</Text>
+          <Text size="xs" c="dimmed" fs="italic">No return CSV — loot not in profit</Text>
         )}
 
         <Divider my={2} />
+
+        {/* Net Profit */}
         <Group justify="space-between" align="flex-end">
-          <Text size="sm" fw={700}>Net Profit</Text>
+          <Text size="xs" c="dimmed" fw={600}>Net Profit</Text>
           <Stack gap={0} align="flex-end">
-            <Text size="xl" fw={800} lh={1} c={profit.netProfit >= 0 ? 'green' : 'red'}>
-              {profit.netProfit >= 0 ? '+' : ''}{profit.netProfit.toFixed(1)}c
+            <Text fw={800} lh={1}
+              style={{ fontSize: 20, color: profit.netProfit >= 0 ? '#51cf66' : '#ff6b6b', fontVariantNumeric: 'tabular-nums' }}>
+              {profit.netProfit >= 0 ? '+' : ''}{profit.netProfit.toFixed(0)}c
             </Text>
             <Text size="xs" c="dimmed">{(profit.netProfit / profit.divPrice).toFixed(2)}d</Text>
           </Stack>
         </Group>
-        <Group justify="space-between" align="flex-end">
+
+        {/* Per Map */}
+        <Group justify="space-between" align="center"
+          style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 6, padding: '4px 8px' }}>
           <Text size="xs" c="dimmed">Per Map</Text>
-          <Stack gap={0} align="flex-end">
-            <Text size="md" fw={700} c={profit.chaosPerMap >= 0 ? 'teal' : 'red'}>
-              {profit.chaosPerMap >= 0 ? '+' : ''}{profit.chaosPerMap.toFixed(1)}c
+          <Group gap={8}>
+            <Text size="sm" fw={700}
+              c={profit.chaosPerMap >= 0 ? 'teal' : 'red'}
+              style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {profit.chaosPerMap >= 0 ? '+' : ''}{profit.chaosPerMap.toFixed(0)}c
             </Text>
-            <Text size="xs" c="dimmed">{profit.divPerMap.toFixed(3)} div/map</Text>
-          </Stack>
+            <Text size="xs" c="dimmed">{profit.divPerMap.toFixed(3)}d</Text>
+          </Group>
         </Group>
+
       </Stack>
     </Card>
   );

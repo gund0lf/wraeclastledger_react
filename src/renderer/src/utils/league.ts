@@ -11,33 +11,9 @@ let cachedLeague: string | null = null;
 let cachedFetchPromise: Promise<string> | null = null;
 
 async function detect(): Promise<string> {
-  // Strategy 1: poe.ninja index state — try several known response shapes
-  try {
-    const res = await fetch('https://poe.ninja/api/data/getindexstate');
-    if (res.ok) {
-      const data = await res.json();
-
-      // Shape A: { economyLeagues: [{name, url, display}] }
-      const fromEconomy: string[] = (data.economyLeagues ?? []).map((l: any) => l.name);
-      // Shape B: { leagues: [{name}] }
-      const fromLeagues: string[] = (data.leagues ?? []).map((l: any) => l.name);
-
-      const all = [...fromEconomy, ...fromLeagues];
-      const challenge = all.find(
-        (n) =>
-          n &&
-          !n.toLowerCase().includes('standard') &&
-          !n.toLowerCase().includes('hardcore') &&
-          !n.toLowerCase().includes('solo') &&
-          !n.toLowerCase().includes('ruthless') &&
-          !n.toLowerCase().includes('poe2') &&
-          !n.toLowerCase().includes('dawn')
-      );
-      if (challenge) return challenge;
-    }
-  } catch { /* fall through */ }
-
-  // Strategy 2: probe known recent league names by hitting the API directly
+  // Probe known recent league names — most recent first.
+  // poe.ninja's getindexstate endpoint was removed; direct probing is reliable.
+  // Update this list each new league.
   // If poe.ninja returns lines[] with data, that league is active.
   // Order = most recent first — update this list each patch.
   const probes = [

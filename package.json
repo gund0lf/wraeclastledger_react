@@ -1,7 +1,7 @@
 {
-  "name": "map-tracker-pro",
-  "version": "1.0.0",
-  "description": "WraeclastLedger — PoE Map Tracker",
+  "name": "WraeclastLedger",
+  "version": "1.0.30",
+  "description": "WraeclastLedger",
   "main": "./out/main/index.js",
   "author": "gund0lf",
   "homepage": "https://github.com/gund0lf/wraeclastledger_react",

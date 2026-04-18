@@ -3,36 +3,38 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { MapData, SessionSettings, LootItem, SavedSession, ScarabSlot, ScarabPreset, RegexSet } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { fetchDivinePrice } from '../utils/priceUtils';
+import { getCurrentLeague } from '../utils/league';
 
-const STORE_VERSION = 12;
+const STORE_VERSION = 14;
 
 const DEFAULT_SETTINGS: SessionSettings = {
   divinePrice: 0,
-  chiselUsed: false, chiselType: 'Avarice', chiselPrice: 0,
+  chiselUsed: false, chiselType: '', chiselPrice: 0,
   mapType: '6-mod', isSplitSession: false,
   fragmentsUsed: 0, smallNodesAllocated: 0, mountingModifiers: false,
   baseMapCost: 0, rollingCostPerMap: 0,
   scarabs: Array(5).fill(null).map(() => ({ name: '', cost: 0 })),
+  atlasBonus: true,   // Atlas Bonus: +25% flat IIQ on all maps
+  leagueName: '',      // auto-populated on startup via poe.ninja
+  atlasDetectedTags: [],
   advChaos: 0,
   advExalt: 0, advExaltPrice: 0,
   advScour: 0, advScourPrice: 0,
   advAlch: 0, advAlchPrice: 0,
   advDeliOrbType: '', advDeliOrbQtyPerMap: 0, advDeliOrbPriceEach: 0,
+  advSplitPrice: 0,
   advAstrolabeType: '', advAstrolabePrice: 0, advAstrolabeCount: 0,
+  advGemCount: 0, advGemBuyPrice: 0, advGemSellPrice: 0, advGemName: '',
+  regexExclusions: ['vola', 'eche', 'tab', 'wb', '% of e', 'reg', 'get'],
   regexSets: [],
   atlasTreeUrl: 'https://pathofpathing.com',
 };
 
-/**
- * Rolling cost = all orb totals + per-map costs × mapCount.
- * Astrolabe: price × count = total session cost. Per-map = (price × count) / mapCount.
- * Deli orbs: qty per map × price each × mapCount.
- * Other orbs: just their total purchase cost (already a session total).
- */
 function calcAdvTotal(s: SessionSettings, mapCount: number): number {
   const n              = mapCount || 1;
   const deliTotal      = s.advDeliOrbQtyPerMap * s.advDeliOrbPriceEach * n;
   const astrolabeTotal = s.advAstrolabePrice * s.advAstrolabeCount;
+  // NOTE: gems are intentionally excluded — gem leveling is side income, not map investment
   return s.advChaos
     + s.advExaltPrice
     + s.advScourPrice
@@ -48,9 +50,13 @@ function migrateState(persisted: any): any {
   for (const key of Object.keys(defaults)) {
     if (merged[key] === undefined) merged[key] = defaults[key];
   }
-  // Remove deprecated fields from older versions
   delete merged['advAstrolabeTotalCost'];
   delete merged['advAstrolabeTotalCount'];
+  // v13→v14: mirageBonus renamed to atlasBonus — carry the old value over if present
+  if (merged['mirageBonus'] !== undefined && merged['atlasBonus'] === undefined) {
+    merged['atlasBonus'] = merged['mirageBonus'];
+  }
+  delete merged['mirageBonus'];
 
   const savedSessions: Record<string, any> = persisted?.savedSessions ?? {};
   for (const id of Object.keys(savedSessions)) {
@@ -61,6 +67,11 @@ function migrateState(persisted: any): any {
     }
     delete mergedSs['advAstrolabeTotalCost'];
     delete mergedSs['advAstrolabeTotalCount'];
+    // v13→v14: carry mirageBonus → atlasBonus for saved sessions too
+    if (mergedSs['mirageBonus'] !== undefined && mergedSs['atlasBonus'] === undefined) {
+      mergedSs['atlasBonus'] = mergedSs['mirageBonus'];
+    }
+    delete mergedSs['mirageBonus'];
     savedSessions[id] = { ...savedSessions[id], settings: mergedSs };
   }
 
@@ -78,6 +89,7 @@ interface SessionState {
   activeSessionId: string | null;
   activeSessionName: string | null;
   scarabPresets: ScarabPreset[];
+  sessionNotes: string; // per-session, saved/loaded with session, cleared on new session
 
   addMap: (map: Omit<MapData, 'id'>) => void;
   removeMap: (id: string) => void;
@@ -106,6 +118,7 @@ interface SessionState {
   deleteScarabPreset: (id: string) => void;
   saveRegexSet: (set: Omit<RegexSet, 'id'>) => void;
   deleteRegexSet: (id: string) => void;
+  setSessionNotes: (notes: string) => void;
 }
 
 export const useSessionStore = create<SessionState>()(
@@ -115,6 +128,7 @@ export const useSessionStore = create<SessionState>()(
       settings: { ...DEFAULT_SETTINGS },
       isWatching: false, savedSessions: {},
       activeSessionId: null, activeSessionName: null, scarabPresets: [],
+      sessionNotes: '',
 
       addMap: (m) => set((s) => ({ maps: [...s.maps, { ...m, id: uuidv4() }] })),
       removeMap: (id) => set((s) => ({ maps: s.maps.filter((m) => m.id !== id) })),
@@ -131,6 +145,8 @@ export const useSessionStore = create<SessionState>()(
           const ns = { ...s.settings, [key]: value };
           const mapCount = s.maps.length || 1;
           ns.rollingCostPerMap = parseFloat(calcAdvTotal(ns, mapCount).toFixed(2));
+          // Sync isSplitSession from advSplitPrice
+          ns.isSplitSession = ns.advSplitPrice > 0;
           return { settings: ns };
         }),
 
@@ -140,7 +156,6 @@ export const useSessionStore = create<SessionState>()(
           sc[index] = { ...sc[index], [field]: value };
           return { settings: { ...s.settings, scarabs: sc } };
         }),
-
       clearScarab: (index) =>
         set((s) => {
           const sc = [...s.settings.scarabs];
@@ -148,7 +163,14 @@ export const useSessionStore = create<SessionState>()(
           return { settings: { ...s.settings, scarabs: sc } };
         }),
 
-      setLootItems: (items) => set({ lootItems: items }),
+      setLootItems: (items) => {
+        // Auto-exclude gems if a gem name is configured
+        const gemName = get().settings.advGemName?.trim().toLowerCase();
+        const processed = gemName
+          ? items.map((i) => ({ ...i, excluded: i.excluded || i.name.toLowerCase().includes(gemName) }))
+          : items;
+        set({ lootItems: processed });
+      },
       setBaselineItems: (items) => set({
         baselineItems: items,
         baselineTotal: items.reduce((a, b) => a + b.total, 0),
@@ -161,54 +183,60 @@ export const useSessionStore = create<SessionState>()(
       initDivinePrice: async () => {
         const current = get().settings.divinePrice;
         if (current !== 0 && current !== 200) return;
-        const price = await fetchDivinePrice();
-        if (price && price > 0)
-          set((s) => ({ settings: { ...s.settings, divinePrice: Math.round(price) } }));
+        // Fetch league and price in parallel — both use poe.ninja
+        const [league, price] = await Promise.all([getCurrentLeague(), fetchDivinePrice()]);
+        set((s) => ({
+          settings: {
+            ...s.settings,
+            ...(price && price > 0 ? { divinePrice: Math.round(price) } : {}),
+            ...(league ? { leagueName: league } : {}),
+          },
+        }));
       },
 
       saveAsNewSession: (name) => {
-        const { maps, lootItems, baselineItems, baselineTotal, settings } = get();
+        const { maps, lootItems, baselineItems, baselineTotal, settings, sessionNotes } = get();
         const id = new Date().toISOString();
         set((s) => ({
-          savedSessions: {
-            ...s.savedSessions,
-            [id]: { id, name, createdAt: id, maps: [...maps], lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, settings: { ...settings } },
-          },
+          savedSessions: { ...s.savedSessions, [id]: { id, name, createdAt: id, maps: [...maps], lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, settings: { ...settings }, notes: sessionNotes } },
           activeSessionId: id, activeSessionName: name,
         }));
       },
       updateCurrentSession: () => {
-        const { maps, lootItems, baselineItems, baselineTotal, settings, activeSessionId, activeSessionName, savedSessions } = get();
+        const { maps, lootItems, baselineItems, baselineTotal, settings, sessionNotes, activeSessionId, activeSessionName, savedSessions } = get();
         if (!activeSessionId || !savedSessions[activeSessionId]) return;
         set((s) => ({
-          savedSessions: {
-            ...s.savedSessions,
-            [activeSessionId]: { ...s.savedSessions[activeSessionId], name: activeSessionName ?? s.savedSessions[activeSessionId].name, maps: [...maps], lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, settings: { ...settings } },
-          },
+          savedSessions: { ...s.savedSessions, [activeSessionId]: { ...s.savedSessions[activeSessionId], name: activeSessionName ?? s.savedSessions[activeSessionId].name, maps: [...maps], lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, settings: { ...settings }, notes: sessionNotes } },
         }));
       },
       loadSession: (id) => {
         const session = get().savedSessions[id];
         if (!session) return;
-        set({
-          maps: [...session.maps], lootItems: [...session.lootItems],
-          baselineItems: [...(session.baselineItems ?? [])], baselineTotal: session.baselineTotal ?? 0,
-          settings: { ...DEFAULT_SETTINGS, ...session.settings },
-          activeSessionId: id, activeSessionName: session.name, isWatching: false,
+        const maps = session.maps.map((m) => {
+          // Re-detect subtype flags from rawText when they weren't set at parse time
+          // (sessions saved before 1.0.9 have all flags as false/undefined)
+          const raw = m.rawText ?? '';
+          const needsRedetect = !m.isOriginator && !m.isEmpoweredMirage && !m.isNightmare && raw.length > 0;
+          return {
+            isOriginator: false, isEmpoweredMirage: false,
+            isNightmare: false,  isCorrupted: false,
+            ...m,
+            ...(needsRedetect ? {
+              isOriginator:     raw.includes("Originator's Memories"),
+              isEmpoweredMirage: raw.includes('Empowered Mirage which covers the entire Map'),
+              isNightmare:      raw.includes('Nightmare Map'),
+              isCorrupted:      /\bCorrupted\b/.test(raw),
+            } : {}),
+          };
         });
+        set({ maps, lootItems: [...session.lootItems], baselineItems: [...(session.baselineItems ?? [])], baselineTotal: session.baselineTotal ?? 0, settings: { ...DEFAULT_SETTINGS, ...session.settings }, sessionNotes: session.notes ?? '', activeSessionId: id, activeSessionName: session.name, isWatching: false });
       },
       deleteSession: (id) =>
-        set((s) => {
-          const { [id]: _, ...rest } = s.savedSessions;
-          return { savedSessions: rest, activeSessionId: s.activeSessionId === id ? null : s.activeSessionId, activeSessionName: s.activeSessionId === id ? null : s.activeSessionName };
-        }),
+        set((s) => { const { [id]: _, ...rest } = s.savedSessions; return { savedSessions: rest, activeSessionId: s.activeSessionId === id ? null : s.activeSessionId, activeSessionName: s.activeSessionId === id ? null : s.activeSessionName }; }),
       renameSession: (id, newName) =>
-        set((s) => ({
-          savedSessions: { ...s.savedSessions, [id]: { ...s.savedSessions[id], name: newName } },
-          activeSessionName: s.activeSessionId === id ? newName : s.activeSessionName,
-        })),
+        set((s) => ({ savedSessions: { ...s.savedSessions, [id]: { ...s.savedSessions[id], name: newName } }, activeSessionName: s.activeSessionId === id ? newName : s.activeSessionName })),
       newSession: () =>
-        set({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, settings: { ...DEFAULT_SETTINGS }, activeSessionId: null, activeSessionName: null, isWatching: false }),
+        set({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, sessionNotes: '', settings: { ...DEFAULT_SETTINGS }, activeSessionId: null, activeSessionName: null, isWatching: false }),
 
       saveScarabPreset: (name) => {
         const p: ScarabPreset = { id: uuidv4(), name, scarabs: get().settings.scarabs.map((s) => ({ ...s })) };
@@ -221,19 +249,14 @@ export const useSessionStore = create<SessionState>()(
       },
       deleteScarabPreset: (id) =>
         set((s) => ({ scarabPresets: s.scarabPresets.filter((p) => p.id !== id) })),
-
       saveRegexSet: (regexSet) => {
         const ns: RegexSet = { ...regexSet, id: uuidv4() };
         set((s) => ({ settings: { ...s.settings, regexSets: [...(s.settings.regexSets ?? []), ns] } }));
       },
       deleteRegexSet: (id) =>
         set((s) => ({ settings: { ...s.settings, regexSets: (s.settings.regexSets ?? []).filter((r) => r.id !== id) } })),
+      setSessionNotes: (notes) => set({ sessionNotes: notes }),
     }),
-    {
-      name: 'map-tracker-storage',
-      version: STORE_VERSION,
-      migrate: migrateState,
-      storage: createJSONStorage(() => localStorage),
-    }
+    { name: 'map-tracker-storage', version: STORE_VERSION, migrate: migrateState, storage: createJSONStorage(() => localStorage) }
   )
 );

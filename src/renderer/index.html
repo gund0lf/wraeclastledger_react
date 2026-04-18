@@ -2,14 +2,23 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>Electron</title>
-    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
-    <meta 
-      http-equiv="Content-Security-Policy" 
-      content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: https:; frame-src *; style-src 'self' 'unsafe-inline';" 
+    <title>WraeclastLedger</title>
+    <!--
+      CSP notes:
+      - connect-src is set explicitly so http:// strategy servers work alongside https:
+      - frame-src * allows the Atlas Tree webview (pathofpathing.com)
+      - unsafe-inline / unsafe-eval are required by Vite's dev HMR and Mantine
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src   'self' 'unsafe-inline' 'unsafe-eval' data: https:;
+        connect-src   'self' https: http:;
+        frame-src     *;
+        style-src     'self' 'unsafe-inline';
+      "
     />
   </head>
-
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>

@@ -5,9 +5,9 @@ export const parsePriceInput = (raw: string, divinePrice: number): number => {
   if (!s) return 0;
   if (s.startsWith('.')) s = '0' + s;
   const dMatch = s.match(/^(\d+\.?\d*)\s*d$/);
-  if (dMatch) return parseFloat(dMatch[1]) * divinePrice;
+  if (dMatch) return parseFloat((parseFloat(dMatch[1]) * divinePrice).toFixed(2));
   const cMatch = s.match(/^(\d+\.?\d*)\s*c?$/);
-  if (cMatch) return parseFloat(cMatch[1]);
+  if (cMatch) return parseFloat(parseFloat(cMatch[1]).toFixed(2));
   return 0;
 };
 
@@ -18,7 +18,6 @@ export const formatChaos = (chaos: number, divinePrice: number): string => {
 
 /**
  * Trimmed mean: removes 1 outlier from each end when n > 4.
- * Prevents a single freak map from skewing the regex threshold badly.
  */
 export function trimmedMean(values: number[]): number {
   if (values.length === 0) return 0;
@@ -28,16 +27,12 @@ export function trimmedMean(values: number[]): number {
   return trimmed.reduce((a, b) => a + b, 0) / trimmed.length;
 }
 
-// ─── Regex pattern helpers ────────────────────────────────────────────────────
-// Correct PoE stash search patterns:
-//   [3-9].   matches 30–99  (tens digit + any char for ones)
-//   \d..     matches 100+   (digit + any + any = 3-char number)
+// ─── Regex helpers ────────────────────────────────────────────────────────────
 function thresholdPat(floor: number): string {
-  if (floor <= 0)   return '\\d..';
-  if (floor >= 100) return '\\d..';
+  if (floor <= 0 || floor >= 100) return '\\d..';
   const tens = Math.floor(floor / 10);
-  if (tens <= 0)    return '[1-9].|\\d..';
-  if (tens >= 9)    return `9.|\\d..`;
+  if (tens <= 0) return '[1-9].|\\d..';
+  if (tens >= 9) return `9.|\\d..`;
   return `[${tens}-9].|\\d..`;
 }
 
@@ -46,12 +41,9 @@ interface MapAverages {
   avgRarity: number; avgScarabs: number;
 }
 
-/**
- * Generate run regex. Uses the trimmed average as the floor so the regex
- * targets maps AT or ABOVE the session median, not below it.
- */
-export const generateRunRegex = (avg: MapAverages): string => {
-  const parts: string[] = ['"!vola|eche|tab|wb|% of e|reg|get"'];
+export const generateRunRegex = (avg: MapAverages, exclusions?: string[]): string => {
+  const excl = exclusions && exclusions.length > 0 ? exclusions.join('|') : 'vola|eche|tab|wb|% of e|reg|get';
+  const parts: string[] = [`"!${excl}"`];
   const currFloor  = Math.max(Math.floor(avg.avgCurr  / 10) * 10, 40);
   const packFloor  = Math.max(Math.floor(avg.avgPack  / 10) * 10, 20);
   parts.push(`"(urr.*(${thresholdPat(currFloor)})%|ack.*(${thresholdPat(packFloor)})%)"`);
@@ -66,8 +58,9 @@ export const generateRunRegex = (avg: MapAverages): string => {
   return parts.join(' ');
 };
 
-export const generateSlamRegex = (avg: MapAverages): string => {
-  const parts: string[] = ['"!vola|eche|tab|wb|% of e|reg|get"'];
+export const generateSlamRegex = (avg: MapAverages, exclusions?: string[]): string => {
+  const excl = exclusions && exclusions.length > 0 ? exclusions.join('|') : 'vola|eche|tab|wb|% of e|reg|get';
+  const parts: string[] = [`"!${excl}"`];
   const currFloor = Math.max(Math.floor(avg.avgCurr * 0.75 / 10) * 10, 30);
   const packFloor = Math.max(Math.floor(avg.avgPack * 0.75 / 10) * 10, 15);
   parts.push(`"(urr.*(${thresholdPat(currFloor)})%|ack.*(${thresholdPat(packFloor)})%)"`);

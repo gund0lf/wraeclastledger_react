@@ -20,7 +20,6 @@ If git push asks for credentials: use your GitHub username and your Classic PAT 
 ## Step 2: Publish a release (every time you want to push an update)
 
 ```powershell
-$env:GH_TOKEN="your_classic_pat_token_here"
 npm run publish:win
 ```
 

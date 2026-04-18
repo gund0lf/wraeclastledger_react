@@ -88,7 +88,7 @@ export interface ModAnalysis {
   goodSuffixes: UberMod[];
   prefixScore: number;
   suffixScore: number;
-  recommendation: 'sinistral-3' | 'sinistral-2' | 'dextral-3' | 'dextral-2' | 'both-2' | 'neither';
+  recommendation: 'excellent' | 'good' | 'decent' | 'standard';
   chiselRec: 'Avarice' | 'Proliferation' | 'none';
   chiselReason: string;
 }
@@ -108,25 +108,34 @@ export function analyzeMap(text: string): ModAnalysis {
   const prefixScore  = prefixes.reduce((a, m) => a + TIER_SCORE[m.tier], 0);
   const suffixScore  = suffixes.reduce((a, m) => a + TIER_SCORE[m.tier], 0);
 
+  const totalGood = goodPrefixes.length + goodSuffixes.length;
   let recommendation: ModAnalysis['recommendation'];
-  if      (goodPrefixes.length >= 3 && prefixScore >= suffixScore) recommendation = 'sinistral-3';
-  else if (goodSuffixes.length >= 3 && suffixScore > prefixScore)  recommendation = 'dextral-3';
-  else if (goodPrefixes.length >= 2 && goodSuffixes.length >= 2)   recommendation = 'both-2';
-  else if (goodPrefixes.length >= 2)                               recommendation = 'sinistral-2';
-  else if (goodSuffixes.length >= 2)                               recommendation = 'dextral-2';
-  else                                                              recommendation = 'neither';
+  if      (totalGood >= 4) recommendation = 'excellent';
+  else if (totalGood >= 2) recommendation = 'good';
+  else if (totalGood >= 1) recommendation = 'decent';
+  else                     recommendation = 'standard';
 
-  // Chisel: Avarice unless map already has a currency mod AND lacks pack, then Proliferation
+  // ── Chisel recommendation ───────────────────────────────────────────────
+  // Avarice at 20% quality: +50% more Currency (multiplier on all currency drops)
+  // Proliferation at 20% quality: +10% pack size additive
+  // Math: at pack P%, Proliferation adds 10/(100+P)% more monsters:
+  //   P=40 → +7.1%, P=20 → +8.3%, P=0 → +10%
+  // Avarice: +50% of currency ≈ +17% total value (if currency = 35% of drops)
+  // → Avarice wins at any realistic pack size. Having a currency mod makes it even better.
   const hasCurrencyMod = text.includes('More Currency:');
-  const packMatch = text.match(/Monster Pack Size: \+(\d+)%/);
-  const packVal = packMatch ? parseInt(packMatch[1]) : 0;
+  const currMatch       = text.match(/More Currency: \+(\d+)%/);
+  const currVal         = currMatch ? parseInt(currMatch[1]) : 0;
+  const packMatch       = text.match(/Monster Pack Size: \+(\d+)%/);
+  const packVal         = packMatch ? parseInt(packMatch[1]) : 0;
   let chiselRec: ModAnalysis['chiselRec'] = 'Avarice';
-  let chiselReason = 'No currency mod — Avarice adds flat +50% more Currency';
-  if (hasCurrencyMod && packVal < 40) {
+  let chiselReason: string;
+  if (hasCurrencyMod) {
+    chiselReason = `Currency mod present (${currVal}%) — Avarice adds flat +50% on top (atlas multiplies the map mod, not the chisel bonus)`;
+  } else if (packVal < 15) {
     chiselRec = 'Proliferation';
-    chiselReason = `Currency mod present but Pack Size only ${packVal}% — Proliferation adds +10% pack`;
-  } else if (hasCurrencyMod) {
-    chiselReason = `Currency mod present (${text.match(/More Currency: \+(\d+)%/)?.[1]}%) — Avarice still adds flat +50% on top`;
+    chiselReason = `Very low pack (${packVal}%) — Proliferation +10% flat pack gives the biggest relative gain here`;
+  } else {
+    chiselReason = `Avarice flat +50% currency ≈ +17% total value; Proliferation flat +10% pack ≈ +${(10 / (100 + packVal) * 100).toFixed(1)}% monsters (both additive after atlas) — Avarice wins`;
   }
 
   return { detected, prefixes, suffixes, goodPrefixes, goodSuffixes, prefixScore, suffixScore, recommendation, chiselRec, chiselReason };

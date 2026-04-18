@@ -4,3 +4,10 @@ out
 .DS_Store
 .eslintcache
 *.log*
+BUILD.md
+
+# Server-side code — not part of the public client repo
+traceuer-server-side/
+
+# Lock file — regenerated on install, no need to track
+package-lock.json

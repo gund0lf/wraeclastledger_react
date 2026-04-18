@@ -1,285 +1,292 @@
 import {
-  Card, Text, Textarea, Button, Group, Stack, Badge, Divider,
-  ScrollArea, Alert, SegmentedControl, Tooltip,
+  Card, Text, Button, Group, Stack, Badge,
+  ScrollArea, Alert, Tooltip, Select,
 } from '@mantine/core';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { analyzeMap } from '../utils/uberMapMods';
-import { parseMapClipboard } from '../utils/mapParser';
+import { analyzeRegularMap } from '../utils/regularMapMods';
 import { useSessionStore } from '../store/useSessionStore';
 
-const COLS      = 12;
-const ROWS      = 6;
-const TOTAL     = COLS * ROWS;
-const CELL_SIZE = 44;
+type TabLayout = 'map-tab' | 'regular' | 'quad' | 'map-device';
 
-const REC = {
-  sinistral:    { color: '#9c6fc5', label: '🟣 SINISTRAL',   bg: '#2d1f3d' },
-  dextral:      { color: '#4dabf7', label: '🔵 DEXTRAL',     bg: '#1a2a3d' },
-  'both-viable':{ color: '#ffd700', label: '🟡 BOTH VIABLE', bg: '#2d2a10' },
-  neither:      { color: '#868e96', label: '⚪ NEITHER',      bg: '#1e1f22' },
-} as const;
-type RecKey = keyof typeof REC;
-
-// ─── Paste Analyzer ───────────────────────────────────────────────────────────
-const PasteAnalyzer = () => {
-  const [clipText, setClipText] = useState('');
-  const [result,   setResult]   = useState<ReturnType<typeof analyzeMap> | null>(null);
-  const [parsed,   setParsed]   = useState<ReturnType<typeof parseMapClipboard> | null>(null);
-
-  const run = (text: string) => {
-    setClipText(text);
-    if (text.trim()) {
-      setResult(analyzeMap(text));
-      setParsed(parseMapClipboard(text));
-    } else {
-      setResult(null);
-      setParsed(null);
-    }
-  };
-
-  const handlePaste = async () => {
-    try { run(await navigator.clipboard.readText()); } catch { /* ignore */ }
-  };
-
-  const rec = result ? (REC[result.recommendation as RecKey] ?? REC.neither) : null;
-
-  return (
-    <ScrollArea style={{ flex: 1 }} offsetScrollbars>
-      <Stack gap="sm" pb="md">
-        <Group gap="xs">
-          <Button size="xs" variant="default" onClick={handlePaste}>Paste from clipboard</Button>
-          <Button size="xs" variant="subtle" color="gray"
-            onClick={() => run('')}>Clear</Button>
-        </Group>
-
-        {/* Auto-analyzes on change — no separate Analyze button needed */}
-        <Textarea size="xs" placeholder="Paste a Tier 16.5 Originator map tooltip — auto-analyzes as you type..."
-          value={clipText}
-          onChange={(e) => run(e.currentTarget.value)}
-          autosize minRows={3} maxRows={8}
-          styles={{ input: { fontFamily: 'monospace', fontSize: 11 } }} />
-
-        {result && rec && (
-          <Stack gap="xs">
-            {parsed && (
-              <Group gap={4} wrap="wrap">
-                {parsed.quantity     > 0 && <Badge color="blue"   variant="light">Q: {parsed.quantity}%</Badge>}
-                {parsed.rarity       > 0 && <Badge color="violet" variant="light">R: {parsed.rarity}%</Badge>}
-                {parsed.packSize     > 0 && <Badge color="teal"   variant="light">P: {parsed.packSize}%</Badge>}
-                {parsed.moreCurrency > 0 && <Badge color="yellow" variant="light">Curr: +{parsed.moreCurrency}%</Badge>}
-                {parsed.moreMaps     > 0 && <Badge color="cyan"   variant="light">Maps: +{parsed.moreMaps}%</Badge>}
-                {parsed.moreScarabs  > 0 && <Badge color="orange" variant="light">Scarabs: +{parsed.moreScarabs}%</Badge>}
-              </Group>
-            )}
-            <Divider label="Recommendation" labelPosition="left" />
-            <div style={{ background: rec.bg, border: `1px solid ${rec.color}`, borderRadius: 6, padding: '8px 12px' }}>
-              <Text size="sm" fw={800} style={{ color: rec.color }}>{rec.label}</Text>
-              <Text size="xs" c="dimmed" mt={2}>
-                Prefix score: {result.prefixScore} ({result.goodPrefixes.length} good) ·
-                Suffix score: {result.suffixScore} ({result.goodSuffixes.length} good)
-              </Text>
-            </div>
-            <Group gap="xs" align="flex-start">
-              <Badge color="yellow" variant="light" size="sm">Chisel: {result.chiselRec}</Badge>
-              <Text size="xs" c="dimmed" style={{ flex: 1 }}>{result.chiselReason}</Text>
-            </Group>
-            {result.prefixes.length > 0 && (
-              <Stack gap={3}>
-                <Text size="xs" fw={700} c="violet">Prefixes ({result.prefixes.length}) — {result.goodPrefixes.length} good for Sinistral</Text>
-                {result.prefixes.map((m) => (
-                  <Group key={m.name} gap={4} wrap="nowrap">
-                    <Badge color={{ S: 'red', A: 'orange', B: 'gray' }[m.tier]} size="xs" variant="filled">{m.tier}</Badge>
-                    <Text size="xs" fw={600}>{m.name}</Text>
-                    {m.bonus && <Text size="xs" c="teal">({m.bonus})</Text>}
-                  </Group>
-                ))}
-              </Stack>
-            )}
-            {result.suffixes.length > 0 && (
-              <Stack gap={3}>
-                <Text size="xs" fw={700} c="cyan">Suffixes ({result.suffixes.length}) — {result.goodSuffixes.length} good for Dextral</Text>
-                {result.suffixes.map((m) => (
-                  <Group key={m.name} gap={4} wrap="nowrap">
-                    <Badge color={{ S: 'red', A: 'orange', B: 'gray' }[m.tier]} size="xs" variant="filled">{m.tier}</Badge>
-                    <Text size="xs" fw={600}>{m.name}</Text>
-                    {m.bonus && <Text size="xs" c="teal">({m.bonus})</Text>}
-                  </Group>
-                ))}
-              </Stack>
-            )}
-            {result.detected.length === 0 && (
-              <Text size="xs" c="dimmed">No uber mods detected. Is this a T16.5 Originator map?</Text>
-            )}
-            <Divider />
-            <Text size="xs" c="dimmed">
-              <Text span fw={600} c="violet">Sinistral</Text> doubles prefix effects, voids suffixes.
-              <Text span fw={600} c="cyan"> Dextral</Text> doubles suffix effects, voids prefixes.
-            </Text>
-          </Stack>
-        )}
-        {!result && (
-          <Alert color="blue" variant="light" p="xs">
-            <Text size="xs">Paste a map tooltip — recommendation appears instantly.</Text>
-          </Alert>
-        )}
-      </Stack>
-    </ScrollArea>
-  );
+const LAYOUTS: Record<TabLayout, { label: string; cols: number; rows: number; cellSize: number; desc: string }> = {
+  'map-tab':    { label: 'Map Tab (6×12)',      cols: 12, rows: 6,  cellSize: 44, desc: '72 slots'  },
+  'regular':    { label: 'Regular Tab (12×12)', cols: 12, rows: 12, cellSize: 28, desc: '144 slots' },
+  'quad':       { label: 'Quad Tab (24×24)',     cols: 24, rows: 24, cellSize: 16, desc: '576 slots' },
+  'map-device': { label: 'Map Device (4×5)',     cols: 4,  rows: 5,  cellSize: 56, desc: '20 slots'  },
 };
 
-// ─── Stash Grid ───────────────────────────────────────────────────────────────
-const StashGrid = () => {
-  const { maps } = useSessionStore();
-  const [hovered, setHovered] = useState<number | null>(null);
+// ─── Quality tiers (based on combined S+A mod count) ─────────────────────────
+const QUAL = {
+  excellent: { color: '#ffd700', label: 'Excellent (4+ top mods)', bg: '#2d2a10' },
+  good:      { color: '#51cf66', label: 'Good (2 top mods)',       bg: '#1a2d1a' },
+  decent:    { color: '#74c0fc', label: 'Decent (1 top mod)',      bg: '#1a2a3d' },
+  standard:  { color: '#555',    label: 'Standard',                bg: '#1a1b1e' },
+} as const;
+type QualKey = keyof typeof QUAL;
 
+// ─── Stash Grid ───────────────────────────────────────────────────────────────
+const StashGrid = ({ layout }: { layout: TabLayout }) => {
+  const { maps } = useSessionStore();
+  const [hovered,    setHovered]    = useState<number | null>(null);
+  const [currentTab, setCurrentTab] = useState(0);
+
+  const { cols, rows, cellSize } = LAYOUTS[layout];
+  const total    = cols * rows;
+  const maxTabs  = Math.max(1, Math.ceil(maps.length / total));
+  const tabOffset = Math.min(currentTab, maxTabs - 1) * total;
+
+  // Reset to first tab when layout changes
+  useEffect(() => { setCurrentTab(0); setHovered(null); }, [total]);
+  // Clamp currentTab if maps shrink
+  useEffect(() => {
+    if (currentTab >= maxTabs) { setCurrentTab(0); setHovered(null); }
+  }, [maxTabs, currentTab]);
+
+  // Full analyses array — computed once for ALL maps
   const analyses = useMemo(() =>
-    maps.map((m) => m.rawText ? analyzeMap(m.rawText) : null),
+    maps.map((m) => m.rawText
+      ? (m.isOriginator ? analyzeMap(m.rawText) : analyzeRegularMap(m.rawText))
+      : null),
   [maps]);
 
-  const hoveredMap      = hovered !== null && hovered < maps.length ? maps[hovered] : null;
-  const hoveredAnalysis = hovered !== null ? analyses[hovered] : null;
-  const hoveredRec      = hoveredAnalysis ? (REC[hoveredAnalysis.recommendation as RecKey] ?? REC.neither) : null;
+  // Hovered map uses tab offset so slot indices map to the right global map
+  const hoveredMapIdx  = hovered !== null ? tabOffset + hovered : null;
+  const hoveredMap     = hoveredMapIdx !== null && hoveredMapIdx < maps.length    ? maps[hoveredMapIdx]     : null;
+  const hoveredAnalysis= hoveredMapIdx !== null && hoveredMapIdx < analyses.length ? analyses[hoveredMapIdx] : null;
+  const hoveredQual    = hoveredAnalysis ? (QUAL[hoveredAnalysis.recommendation as QualKey] ?? QUAL.standard) : null;
 
-  // Column-first grid: slot i → row = i % ROWS, col = floor(i / ROWS)
+  // Column-first grid layout (slot indices within this tab's page)
   const gridCells = useMemo(() => {
     const cells: { slotIndex: number }[][] = [];
-    for (let r = 0; r < ROWS; r++) {
+    for (let r = 0; r < rows; r++) {
       cells[r] = [];
-      for (let c = 0; c < COLS; c++) {
-        cells[r][c] = { slotIndex: c * ROWS + r };
+      for (let c = 0; c < cols; c++) {
+        cells[r][c] = { slotIndex: c * rows + r };
       }
     }
     return cells;
-  }, []);
+  }, [cols, rows]);
+
+  const isCompact = cellSize <= 20;
 
   return (
     <Stack gap="xs" style={{ flex: 1, minHeight: 0 }}>
-      <Group justify="space-between">
-        <Text size="xs" c="dimmed">
-          Parse order: top→bottom per column, left→right.{' '}
-          <Text span fw={600}>{maps.length}/{TOTAL}</Text> parsed.
+
+      {/* Header: count + tab selector */}
+      <Group justify="space-between" align="center" style={{ flexShrink: 0 }}>
+        <Text size="xs" c="dimmed" style={{ flex: 1, textAlign: 'center' }}>
+          Column-first fill ·{' '}
+          <Text span fw={600}>{maps.length}</Text>
+          {maxTabs > 1 && <Text span c="dimmed"> maps across {maxTabs} tabs</Text>}
+          {maxTabs === 1 && <Text span c="dimmed">/{total} parsed</Text>}
         </Text>
       </Group>
 
-      <Group gap={6} wrap="wrap">
-        {(Object.entries(REC) as [RecKey, typeof REC[RecKey]][]).map(([key, val]) => (
-          <Group key={key} gap={3}>
+      {/* Tab selector — only shown when maps overflow a single tab */}
+      {maxTabs > 1 && (
+        <Group gap={4} justify="center" style={{ flexShrink: 0 }}>
+          {Array.from({ length: maxTabs }, (_, i) => {
+            const tabStart = i * total;
+            const tabEnd   = Math.min((i + 1) * total, maps.length);
+            const count    = tabEnd - tabStart;
+            return (
+              <Button
+                key={i}
+                size="xs"
+                variant={currentTab === i ? 'filled' : 'default'}
+                color={currentTab === i ? 'orange' : 'gray'}
+                onClick={() => { setCurrentTab(i); setHovered(null); }}
+                style={{ minWidth: 70 }}
+              >
+                Tab {i + 1} ({count})
+              </Button>
+            );
+          })}
+        </Group>
+      )}
+
+      {/* Legend */}
+      <Group gap={8} wrap="wrap" justify="center" style={{ flexShrink: 0 }}>
+        {(Object.entries(QUAL) as [QualKey, typeof QUAL[QualKey]][]).map(([key, val]) => (
+          <Group key={key} gap={4}>
             <div style={{ width: 8, height: 8, borderRadius: 2, background: val.color }} />
             <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>{val.label}</Text>
           </Group>
         ))}
+        <Group gap={4}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ffd700' }} />
+          <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>Avarice chisel</Text>
+        </Group>
+        <Group gap={4}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#74c0fc' }} />
+          <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>Proliferation chisel</Text>
+        </Group>
       </Group>
 
+      {/* Grid */}
       <ScrollArea style={{ flex: 1 }} offsetScrollbars>
-        <div style={{ display: 'inline-block', paddingBottom: 4 }}>
-          <table style={{ borderCollapse: 'separate', borderSpacing: 3 }}>
-            <tbody>
-              {gridCells.map((row, rIdx) => (
-                <tr key={rIdx}>
-                  {row.map(({ slotIndex }, cIdx) => {
-                    const map      = slotIndex < maps.length ? maps[slotIndex] : null;
-                    const analysis = slotIndex < analyses.length ? analyses[slotIndex] : null;
-                    const rec      = analysis ? (REC[analysis.recommendation as RecKey] ?? REC.neither) : null;
-                    const isHov    = hovered === slotIndex;
-                    return (
-                      <td key={cIdx} style={{ padding: 0 }}>
-                        <Tooltip withinPortal disabled={!map} position="top"
-                          label={map ? (
-                            <Stack gap={2} p={2}>
-                              <Text size="xs" fw={700}>{map.name}</Text>
-                              <Group gap={4}>
-                                <Text size="xs">{map.quantity}%Q</Text>
-                                <Text size="xs">{map.rarity}%R</Text>
-                                <Text size="xs">{map.packSize}%P</Text>
-                                {map.moreCurrency > 0 && <Text size="xs" c="yellow">+{map.moreCurrency}% Curr</Text>}
-                              </Group>
-                              {analysis && <Text size="xs" style={{ color: rec?.color }}>{rec?.label} · Chisel: {analysis.chiselRec}</Text>}
-                              <Text size="xs" c="dimmed">Slot #{slotIndex + 1}</Text>
-                            </Stack>
-                          ) : ''}>
-                          <div
-                            onMouseEnter={() => setHovered(slotIndex)}
-                            onMouseLeave={() => setHovered(null)}
-                            style={{
-                              width: CELL_SIZE, height: CELL_SIZE, borderRadius: 4,
-                              background: rec ? rec.bg : (map ? '#1e1f22' : '#16171a'),
-                              border: `2px solid ${isHov ? '#fff' : (rec ? rec.color : '#333')}`,
-                              display: 'flex', flexDirection: 'column',
-                              alignItems: 'center', justifyContent: 'center',
-                              cursor: map ? 'pointer' : 'default',
-                              opacity: map ? 1 : 0.3, flexShrink: 0, position: 'relative',
-                            }}>
-                            {map ? (
-                              <>
-                                <Text style={{ color: rec?.color ?? '#aaa', fontSize: 9, lineHeight: 1, fontWeight: 700 }}>XVI</Text>
-                                <Text style={{ color: '#888', fontSize: 8, lineHeight: 1, marginTop: 2 }}>{map.quantity}%</Text>
-                                {analysis && analysis.chiselRec !== 'none' && (
-                                  <div style={{ position: 'absolute', bottom: 2, right: 2, width: 5, height: 5, borderRadius: '50%', background: analysis.chiselRec === 'Avarice' ? '#ffd700' : '#4dabf7' }} />
+        <div style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
+          <div style={{ display: 'inline-block' }}>
+            <table style={{ borderCollapse: 'separate', borderSpacing: isCompact ? 1 : 3 }}>
+              <tbody>
+                {gridCells.map((row, rIdx) => (
+                  <tr key={rIdx}>
+                    {row.map(({ slotIndex }, cIdx) => {
+                      const globalIdx = tabOffset + slotIndex;
+                      const map       = globalIdx < maps.length     ? maps[globalIdx]     : null;
+                      const analysis  = globalIdx < analyses.length ? analyses[globalIdx] : null;
+                      const qual      = analysis ? (QUAL[analysis.recommendation as QualKey] ?? QUAL.standard) : null;
+                      const isHov     = hovered === slotIndex;
+                      return (
+                        <td key={cIdx} style={{ padding: 0 }}>
+                          <Tooltip withinPortal disabled={!map || isCompact} position="top"
+                            styles={{ tooltip: { background: '#0e0f11', border: '1px solid #2a2b2e' } }}
+                            label={map ? (
+                              <Stack gap={2} p={2}>
+                                <Group gap={4}>
+                                  <Text size="xs" fw={700}>{map.name}</Text>
+                                  <Badge size="xs" color={map.isOriginator ? 'orange' : 'blue'} variant="dot" style={{ fontSize: 7 }}>
+                                    {map.isOriginator ? 'Orig' : 'T16'}
+                                  </Badge>
+                                </Group>
+                                <Group gap={4}>
+                                  <Text size="xs">{map.quantity}%Q</Text>
+                                  <Text size="xs">{map.rarity}%R</Text>
+                                  <Text size="xs">{map.packSize}%P</Text>
+                                  {map.moreCurrency > 0 && (
+                                    <Text size="xs" style={{ color: '#fbbf24', fontWeight: 600 }}>
+                                      +{map.moreCurrency}% Curr
+                                    </Text>
+                                  )}
+                                </Group>
+                                {analysis && (
+                                  <Group gap={4}>
+                                    <Text size="xs" style={{ color: qual?.color }}>{qual?.label}</Text>
+                                    <Text size="xs" c="dimmed">· Chisel: {analysis.chiselRec}</Text>
+                                  </Group>
                                 )}
-                              </>
-                            ) : (
-                              <Text style={{ fontSize: 8, color: '#444' }}>{slotIndex + 1}</Text>
-                            )}
-                          </div>
-                        </Tooltip>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                                <Text size="xs" c="dimmed">Slot #{globalIdx + 1}</Text>
+                              </Stack>
+                            ) : ''}>
+                            <div
+                              onMouseEnter={() => setHovered(slotIndex)}
+                              onMouseLeave={() => setHovered(null)}
+                              style={{
+                                width: cellSize, height: cellSize, borderRadius: isCompact ? 2 : 4,
+                                background: qual ? qual.bg : (map ? '#1e1f22' : '#16171a'),
+                                border: `${isCompact ? 1 : 2}px solid ${isHov ? '#fff' : (qual ? qual.color : '#333')}`,
+                                display: 'flex', flexDirection: 'column',
+                                alignItems: 'center', justifyContent: 'center',
+                                cursor: map ? 'pointer' : 'default',
+                                opacity: map ? 1 : 0.3, flexShrink: 0, position: 'relative',
+                              }}>
+                              {map && !isCompact ? (
+                                <>
+                                  <Text style={{ color: qual?.color ?? '#aaa', fontSize: 9, lineHeight: 1, fontWeight: 700 }}>XVI</Text>
+                                  <Text style={{ color: '#888', fontSize: 8, lineHeight: 1, marginTop: 2 }}>{map.quantity}%Q</Text>
+                                  {analysis && analysis.chiselRec !== 'none' && (
+                                    <div style={{
+                                      position: 'absolute', bottom: 2, right: 2, width: 5, height: 5,
+                                      borderRadius: '50%',
+                                      background: analysis.chiselRec === 'Avarice' ? '#ffd700' : '#74c0fc',
+                                    }} />
+                                  )}
+                                </>
+                              ) : map && isCompact ? (
+                                <div style={{ width: cellSize - 4, height: cellSize - 4, borderRadius: 1, background: qual?.color ?? '#888', opacity: 0.7 }} />
+                              ) : !isCompact ? (
+                                <Text style={{ fontSize: 8, color: '#444' }}>{globalIdx + 1}</Text>
+                              ) : null}
+                            </div>
+                          </Tooltip>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </ScrollArea>
 
-      {/* Fixed-height detail bar */}
+      {/* Detail bar */}
       <div style={{
         flexShrink: 0, minHeight: 60,
-        background: hoveredRec ? hoveredRec.bg : '#1a1b1e',
-        border: `1px solid ${hoveredRec ? hoveredRec.color : '#333'}`,
+        background: hoveredQual ? hoveredQual.bg : '#1a1b1e',
+        border: `1px solid ${hoveredQual ? hoveredQual.color : '#333'}`,
         borderRadius: 6, padding: '8px 10px',
       }}>
-        {hoveredMap && hoveredAnalysis && hoveredRec ? (
+        {hoveredMap && hoveredAnalysis && hoveredQual ? (
           <>
             <Group justify="space-between" align="flex-start">
               <Stack gap={2}>
-                <Text size="xs" fw={700}>{hoveredMap.name}</Text>
+                <Group gap={6}>
+                  <Text size="xs" fw={700}>{hoveredMap.name}</Text>
+                  <Badge size="xs" color={hoveredMap.isOriginator ? 'orange' : 'blue'} variant="dot">
+                    {hoveredMap.isOriginator ? 'Originator' : 'Regular T16'}
+                  </Badge>
+                </Group>
                 <Group gap={4} wrap="wrap">
                   <Badge size="xs" variant="light" color="blue">Q: {hoveredMap.quantity}%</Badge>
                   <Badge size="xs" variant="light" color="violet">R: {hoveredMap.rarity}%</Badge>
                   <Badge size="xs" variant="light" color="teal">P: {hoveredMap.packSize}%</Badge>
-                  {hoveredMap.moreCurrency > 0 && <Badge size="xs" variant="light" color="yellow">+{hoveredMap.moreCurrency}% Curr</Badge>}
+                  {hoveredMap.moreCurrency > 0 && (
+                    <Badge size="xs" variant="light" color="green">+{hoveredMap.moreCurrency}% Curr</Badge>
+                  )}
                 </Group>
               </Stack>
               <Stack gap={2} align="flex-end">
-                <Text size="xs" fw={700} style={{ color: hoveredRec.color }}>{hoveredRec.label}</Text>
-                <Text size="xs" c="dimmed">Chisel: {hoveredAnalysis.chiselRec}</Text>
+                <Text size="xs" fw={700} style={{ color: hoveredQual.color }}>{hoveredQual.label}</Text>
+                <Text size="xs" c="dimmed">Chisel: {hoveredAnalysis.chiselRec} — {hoveredAnalysis.chiselReason}</Text>
               </Stack>
             </Group>
             <Group gap="xs" mt={4} wrap="wrap">
-              {hoveredAnalysis.goodPrefixes.length > 0 && <Text size="xs" c="violet">Pfx: {hoveredAnalysis.goodPrefixes.map((m) => m.name).join(', ')}</Text>}
-              {hoveredAnalysis.goodSuffixes.length > 0 && <Text size="xs" c="cyan">Sfx: {hoveredAnalysis.goodSuffixes.map((m) => m.name).join(', ')}</Text>}
+              {hoveredAnalysis.goodPrefixes.length > 0 && (
+                <Text size="xs" c="violet">
+                  Top pfx: {hoveredAnalysis.goodPrefixes.map((m) => `${m.name} [${m.tier}]`).join(', ')}
+                </Text>
+              )}
+              {hoveredAnalysis.goodSuffixes.length > 0 && (
+                <Text size="xs" c="cyan">
+                  Top sfx: {hoveredAnalysis.goodSuffixes.map((m) => `${m.name} [${m.tier}]`).join(', ')}
+                </Text>
+              )}
             </Group>
           </>
         ) : (
-          <Text size="xs" c="dimmed">Hover a parsed map for details</Text>
+          <Text size="xs" c="dimmed">Hover a parsed map for details · Dot = chisel rec (gold = Avarice, blue = Proliferation)</Text>
         )}
       </div>
 
+      {/* Summary badges — always show counts across ALL maps, not just current tab */}
       {maps.length > 0 && (
-        <Group gap="xs" wrap="wrap" style={{ flexShrink: 0 }}>
-          {(Object.entries(REC) as [RecKey, typeof REC[RecKey]][]).map(([key, val]) => {
+        <Group gap="xs" wrap="wrap" justify="center" style={{ flexShrink: 0 }}>
+          {(Object.entries(QUAL) as [QualKey, typeof QUAL[QualKey]][]).map(([key, val]) => {
             const count = analyses.filter((a) => a?.recommendation === key).length;
             if (count === 0) return null;
-            return <Badge key={key} size="sm" style={{ background: val.bg, color: val.color, border: `1px solid ${val.color}` }}>{val.label}: {count}</Badge>;
+            return (
+              <Badge key={key} size="sm" style={{ background: val.bg, color: val.color, border: `1px solid ${val.color}` }}>
+                {val.label.split(' (')[0]}: {count}
+              </Badge>
+            );
           })}
-          <Badge color="gray" variant="light" size="sm">No uber mods: {analyses.filter((a) => a && a.detected.length === 0).length}</Badge>
+          <Badge color="yellow" variant="light" size="sm">
+            Avarice: {analyses.filter((a) => a?.chiselRec === 'Avarice').length}
+          </Badge>
+          <Badge color="cyan" variant="light" size="sm">
+            Proliferation: {analyses.filter((a) => a?.chiselRec === 'Proliferation').length}
+          </Badge>
         </Group>
       )}
 
       {maps.length === 0 && (
         <Alert color="blue" variant="light" p="xs" style={{ flexShrink: 0 }}>
-          <Text size="xs">Enable <Text span fw={600}>Live</Text> in Map Log, Ctrl+C each map. Start top-left, go <Text span fw={600}>down</Text> each column, then right.</Text>
+          <Text size="xs">
+            Enable <Text span fw={600}>Live</Text> in Map Log, Ctrl+C each map.
+            Go <Text span fw={600}>down</Text> each column, then right.
+          </Text>
         </Alert>
       )}
     </Stack>
@@ -288,19 +295,44 @@ const StashGrid = () => {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export const MapAnalyzerModule = () => {
-  const [view, setView] = useState<'grid' | 'paste'>('grid');
+  const [layout, setLayout] = useState<TabLayout>('map-tab');
+  const { maps } = useSessionStore();
+
+  // Build layout options — disable Map Device when more than 20 maps are parsed
+  const layoutSelectData = useMemo(() =>
+    Object.entries(LAYOUTS).map(([k, v]) => ({
+      value: k,
+      label: k === 'map-device' && maps.length > 20
+        ? `${v.label} — ${v.desc} (max 20 maps)`
+        : `${v.label} — ${v.desc}`,
+      disabled: k === 'map-device' && maps.length > 20,
+    })),
+  [maps.length]);
+
+  // Auto-switch away from Map Device if maps exceed 20
+  useEffect(() => {
+    if (layout === 'map-device' && maps.length > 20) setLayout('map-tab');
+  }, [maps.length, layout]);
+
   return (
     <Card shadow="sm" padding="sm" radius="md" withBorder h="100%"
       style={{ display: 'flex', flexDirection: 'column' }}>
       <Group justify="space-between" mb="xs" style={{ flexShrink: 0 }}>
         <Text fw={700} size="sm">Map Analyzer</Text>
-        <Text size="xs" c="dimmed">Tier 16.5 Originator maps</Text>
+        <Text size="xs" c="dimmed">Map quality &amp; chisel guide</Text>
       </Group>
-      <SegmentedControl value={view} onChange={(v) => setView(v as any)}
-        data={[{ value: 'grid', label: '🗺 Stash Grid' }, { value: 'paste', label: '📋 Paste Analyzer' }]}
-        size="xs" mb="xs" fullWidth style={{ flexShrink: 0 }} />
-      {view === 'grid'  && <StashGrid />}
-      {view === 'paste' && <PasteAnalyzer />}
+
+      <Group gap="xs" mb="xs" style={{ flexShrink: 0 }}>
+        <Select
+          data={layoutSelectData}
+          value={layout}
+          onChange={(v) => setLayout((v ?? 'map-tab') as TabLayout)}
+          size="xs"
+          style={{ flex: 1 }}
+        />
+      </Group>
+
+      <StashGrid layout={layout} />
     </Card>
   );
 };
