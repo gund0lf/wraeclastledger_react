@@ -25,7 +25,7 @@ const DEFAULT_SETTINGS: SessionSettings = {
   advSplitPrice: 0,
   advAstrolabeType: '', advAstrolabePrice: 0, advAstrolabeCount: 0,
   advGemCount: 0, advGemBuyPrice: 0, advGemSellPrice: 0, advGemName: '',
-  regexExclusions: ['vola', 'eche', 'tab', 'wb', '% of e', 'reg', 'get'],
+  regexExclusions: [],
   regexSets: [],
   atlasTreeUrl: 'https://pathofpathing.com',
 };

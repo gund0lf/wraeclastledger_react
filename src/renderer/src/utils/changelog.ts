@@ -10,6 +10,28 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.31',
+    date: '2026-04-19',
+    changes: [
+      // Regex — Brick Exclusion overhaul
+      'Regex: Brick Exclusions now has a searchable mod picker (same full list as the Trade modal) — selecting a mod adds its short regex term to the chip list',
+      'Regex: picking mods from the list and the chip list are fully bidirectional — deselecting a mod removes its term, removing a chip deselects the mod',
+      'Regex: brick exclusion dropdown uses the same grouped data (Regular / Nightmare) as the Trade modal, computed once and shared',
+      'Regex: Open Trade button is now always visible, not hidden when no maps are parsed',
+      'Regex: new sessions start with empty brick exclusions — no pre-selected mods on a fresh session',
+      'Regex: reset button clears all exclusions instead of restoring old hardcoded defaults',
+      // Trade modal — brick exclusion sync
+      'Trade: opening the trade modal auto-selects mods whose regexTerm is already in your brick exclusions',
+      'Trade: → Sync to Regex Exclusions button pushes selected trade exclusions back as regex chip terms',
+      'Trade: brick exclusion dropdown deduped by stat ID — no more Mantine duplicate options crash',
+      // Map Analyzer tooltip
+      'Map Analyzer: hover tooltip text colour fixed — explicit colour override prevents near-black text on dark background',
+      // PoE Trade— mod list
+      'Trade: brick mod definitions now include regexTerm for each of ~95 regular and nightmare map mods',
+      'Trade: 8-mod map type now also excludes Originator maps (NOT originator implicit applied)',
+    ],
+  },
+  {
     version: '1.0.30',
     date: '2026-04-19',
     changes: [

@@ -141,7 +141,7 @@ const StashGrid = ({ layout }: { layout: TabLayout }) => {
                       return (
                         <td key={cIdx} style={{ padding: 0 }}>
                           <Tooltip withinPortal disabled={!map || isCompact} position="top"
-                            styles={{ tooltip: { background: '#0e0f11', border: '1px solid #2a2b2e' } }}
+                            styles={{ tooltip: { background: '#0e0f11', border: '1px solid #333', color: '#c9cace' } }}
                             label={map ? (
                               <Stack gap={2} p={2}>
                                 <Group gap={4}>
