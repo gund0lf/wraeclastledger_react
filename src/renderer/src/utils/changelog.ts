@@ -10,6 +10,35 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.39',
+    date: '2026-04-21',
+    changes: [
+      'Strategy Browser: column layout overhauled — uniform gap spacing between all columns, consistent alignment across header and rows',
+      'Strategy Browser: added Cost/map column showing per-map investment cost',
+      'Strategy Browser: renamed Invest → Total Invest, Profit → Total Profit',
+      'Strategy Browser: Author / Strategy header shortened to Author',
+      'Strategy Browser: number formatting strips trailing .0 from k-values (107.0kc → 107kc, 3.6kc stays 3.6kc)',
+      'Strategy Browser: Tags column widened to 140px with uniform 6px column gap for better 3-tag display',
+      'Strategy Browser: tag abbreviations limited to genuinely compound names only (emp+orig, deli, astrolabe variants, boss, mirage) — all others kept as full names',
+      'Strategy Browser: removed Harbinger and Metamorph from tag options (no longer in the game)',
+      'Strategy Browser: Profit/map falls back to net_profit ÷ divine_price ÷ map_count when server stored null',
+      'Strategy Browser: Discord export renamed Profit/map back to Div / Map to match server bot parser',
+      'App: panel layout now persists across restarts — panels remember their position, size and which are open',
+      'App: Reset layout to default option added to the + Add Panel menu',
+    ],
+  },
+  {
+    version: '1.0.38',
+    date: '2026-04-20',
+    changes: [
+      'App: panel layout now persists across restarts — resize, reorder, and close panels and your layout is remembered',
+      'App: “Reset layout to default” option added to the + Add Panel menu',
+      'Strategy Browser: Profit/map now falls back to computing from net_profit ÷ divine_price ÷ map_count when the server stored it as null (fixes Traceur’s missing —)',
+      'Strategy Browser: Tags column widened from 78px to 105px to comfortably show 3 tags',
+      'Strategy Browser: Mod column has left padding so it no longer runs directly against the tags',
+    ],
+  },
+  {
     version: '1.0.37',
     date: '2026-04-20',
     changes: [

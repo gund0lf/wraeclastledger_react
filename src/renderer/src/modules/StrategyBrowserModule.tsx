@@ -38,13 +38,11 @@ const TAG_OPTIONS = [
   { value: 'betrayal',    label: 'Betrayal' },
   { value: 'essence',     label: 'Essence' },
   { value: 'divination',  label: 'Divination' },
-  { value: 'harbinger',   label: 'Harbinger' },
   { value: 'titanic',     label: 'Titanic' },
   { value: 'torment',     label: 'Torment' },
   { value: 'ultimatum',   label: 'Ultimatum' },
   { value: 'kalguur',     label: 'Kalguur' },
   { value: 'heist',       label: 'Heist' },
-  { value: 'metamorph',   label: 'Metamorph' },
   { value: 'ambush',      label: 'Ambush' },
   { value: 'cartography', label: 'Cartography' },
   { value: 'boss-rush',   label: 'Boss Rush' },
@@ -207,7 +205,9 @@ const f1 = (v: number | null | undefined) => v != null ? v.toFixed(1) : null;
 const fc = (v: number | null | undefined, sign = false): string => {
   if (v == null) return '—';
   const abs = Math.abs(v);
-  const s = abs >= 1000 ? `${(abs / 1000).toFixed(1)}k` : `${abs.toFixed(0)}`;
+  const s = abs >= 1000
+    ? `${parseFloat((abs / 1000).toFixed(1))}k` // strips trailing .0 (107.0 → 107)
+    : `${Math.round(abs)}`;
   const prefix = sign ? (v >= 0 ? '+' : '-') : (v < 0 ? '-' : '');
   return `${prefix}${s}c`;
 };
@@ -234,20 +234,24 @@ const MAP_TYPE_LABELS: Record<string, string> = {
 };
 
 const TAG_SHORT: Record<string, string> = {
+  // Only shorten genuinely long/compound names
   'empowered-originator': 'emp+orig',
+  'empowered':            'emp',
+  'boss-rush':            'boss',
+  'mirage-rush':          'mirage',
+  'delirium':             'deli',
+  // Astrolabe variants
+  'astrolabe':            'astro',
+  'astrolabe-templar':    'a:templ',
   'astrolabe-enshrouded': 'a:enshr',
   'astrolabe-timeless':   'a:time',
   'astrolabe-grasping':   'a:grasp',
   'astrolabe-nameless':   'a:name',
-  'astrolabe-templar':    'a:templ',
   'astrolabe-runic':      'a:runic',
   'astrolabe-fruiting':   'a:fruit',
   'astrolabe-fungal':     'a:fung',
   'astrolabe-chaotic':    'a:chaos',
   'astrolabe-lightless':  'a:light',
-  'astrolabe':            'astro',
-  'boss-rush':            'boss',
-  'mirage-rush':          'mirage',
 };
 
 const TagStrip = ({ tagStr, maxVisible = 3 }: { tagStr?: string | null; maxVisible?: number }) => {
@@ -290,7 +294,11 @@ const StrategyCard = ({ strategy, onLoadBuild, showDate }: {
 }) => {
   const [open, setOpen] = useState(false);
   const date = (() => { try { return new Date(strategy.posted_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }); } catch { return '—'; } })();
-  const div        = strategy.div_per_map;
+  const div = strategy.div_per_map ??
+    // Fallback: compute from stored net_profit / divine_price / map_count when server didn't store div_per_map
+    (strategy.net_profit != null && strategy.divine_price != null && strategy.divine_price > 0 && strategy.map_count != null && strategy.map_count > 0
+      ? strategy.net_profit / strategy.divine_price / strategy.map_count
+      : null);
   const divColor   = div != null ? (div >= 8 ? '#51cf66' : div >= 4 ? '#74c0fc' : div >= 1 ? '#ffd43b' : '#868e96') : '#868e96';
   const score      = strategy.score ?? 0;
   const scoreColor = score > 0 ? '#51cf66' : score < 0 ? '#ff6b6b' : '#555';
@@ -302,7 +310,7 @@ const StrategyCard = ({ strategy, onLoadBuild, showDate }: {
       border: `1px solid ${score <= -3 ? 'rgba(255,107,107,0.2)' : 'rgba(255,255,255,0.07)'}`,
       borderRadius: 8, overflow: 'hidden',
     }}>
-      <Group gap={0} wrap="nowrap" onClick={() => setOpen((o) => !o)}
+      <Group gap={6} wrap="nowrap" onClick={() => setOpen((o) => !o)}
         style={{ cursor: 'pointer', padding: '7px 10px', userSelect: 'none' }}>
         <ActionIcon size={22} variant="transparent" c="dimmed" style={{ flexShrink: 0 }}>
           {open ? <FaChevronDown size={8} /> : <FaChevronRight size={8} />}
@@ -313,18 +321,21 @@ const StrategyCard = ({ strategy, onLoadBuild, showDate }: {
             <Text size="xs" c="dimmed" lineClamp={1} style={{ fontSize: 9 }}>{strategy.strategy_name}</Text>
           )}
         </Stack>
-        <div style={{ width: 78, flexShrink: 0, overflow: 'hidden' }}>
+        <div style={{ width: 140, flexShrink: 0, overflow: 'hidden' }}>
           <TagStrip tagStr={strategy.type_tag} maxVisible={3} />
         </div>
-        <Text size="xs" c="dimmed" style={{ width: 36, flexShrink: 0, fontSize: 10 }}>{strategy.map_type ?? '?'}</Text>
+        <Text size="xs" c="dimmed" style={{ width: 40, flexShrink: 0, fontSize: 10 }}>{strategy.map_type ?? '?'}</Text>
         <Text size="xs" c="dimmed" style={{ width: 26, flexShrink: 0 }}>{strategy.map_count != null ? strategy.map_count : '—'}</Text>
+        <Text size="xs" c="dimmed" style={{ width: 58, flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+          {strategy.per_map_cost != null ? `${Math.round(strategy.per_map_cost)}c` : '—'}
+        </Text>
         <Text size="xs" c="dimmed" style={{ width: 96, flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {fc(strategy.total_invest)}
           {strategy.total_invest != null && strategy.divine_price != null && strategy.divine_price > 0 && (
             <Text span style={{ color: '#555', fontSize: 9 }}> ({(strategy.total_invest / strategy.divine_price).toFixed(1)}d)</Text>
           )}
         </Text>
-        <Text size="xs" fw={600} style={{ width: 94, flexShrink: 0, fontVariantNumeric: 'tabular-nums', color: profitColor, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+        <Text size="xs" fw={600} style={{ width: 100, flexShrink: 0, fontVariantNumeric: 'tabular-nums', color: profitColor, whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {fc(strategy.net_profit, true)}
           {strategy.net_profit != null && strategy.divine_price != null && strategy.divine_price > 0 && (
             <Text span style={{ color: '#555', fontSize: 9 }}> ({strategy.net_profit >= 0 ? '+' : ''}{(strategy.net_profit / strategy.divine_price).toFixed(1)}d)</Text>
@@ -641,7 +652,7 @@ export const StrategyBrowserModule = () => {
       `📊 **Avg Quant:** ${avgQuant.toFixed(0)}% | **Avg Rarity:** ${avgRarity.toFixed(0)}% | **Avg Pack:** ${avgPack.toFixed(0)}% | **Avg Currency:** ${avgCurr.toFixed(0)}%`,
       `💰 **Per Map Cost:** ${perMap.toFixed(1)}c | **Total Invest:** ${totalInvestment.toFixed(1)}c`,
       `🎯 **Total Return:** ${totalReturn.toFixed(1)}c | **Net Profit:** ${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(1)}c`,
-      `📈 **Profit/map:** ${divPerMap.toFixed(3)}d | **Divine Price:** ${divPrice}c`,
+      `📈 **Div / Map:** ${divPerMap.toFixed(3)}d | **Divine Price:** ${divPrice}c`,
       ...(scarabLines ? ['🦂 **Scarabs:**\n' + scarabLines] : []),
       ...(deliLine  ? [deliLine]  : []),
       ...(astroLine ? [astroLine] : []),
@@ -938,14 +949,15 @@ export const StrategyBrowserModule = () => {
             value={sortBy} onChange={(v) => setSortBy(v ?? 'posted_at')} />
         </Group>
 
-        <Group gap={0} mb={3} style={{ flexShrink: 0, paddingLeft: 10, paddingRight: 10 }}>
+        <Group gap={6} mb={3} style={{ flexShrink: 0, paddingLeft: 10, paddingRight: 10 }}>
           <div style={{ width: 22, flexShrink: 0 }} />
-          <Text size="xs" c="dimmed" style={{ width: 88, flexShrink: 0, paddingLeft: 4, fontSize: 10 }}>Author / Strategy</Text>
-          <Text size="xs" c="dimmed" style={{ width: 78, flexShrink: 0, fontSize: 10 }}>Tags</Text>
-          <Text size="xs" c="dimmed" style={{ width: 36, flexShrink: 0, fontSize: 10 }}>Mod</Text>
+          <Text size="xs" c="dimmed" style={{ width: 88, flexShrink: 0, fontSize: 10 }}>Author</Text>
+          <Text size="xs" c="dimmed" style={{ width: 140, flexShrink: 0, fontSize: 10 }}>Tags</Text>
+          <Text size="xs" c="dimmed" style={{ width: 40, flexShrink: 0, fontSize: 10 }}>Mod</Text>
           <Text size="xs" c="dimmed" style={{ width: 26, flexShrink: 0, fontSize: 10 }}>Maps</Text>
-          <Text size="xs" c="dimmed" style={{ width: 96, flexShrink: 0, fontSize: 10 }}>Invest</Text>
-          <Text size="xs" c="dimmed" style={{ width: 94, flexShrink: 0, fontSize: 10 }}>Profit</Text>
+          <Text size="xs" c="dimmed" style={{ width: 58, flexShrink: 0, fontSize: 10 }}>Cost/map</Text>
+          <Text size="xs" c="dimmed" style={{ width: 96, flexShrink: 0, fontSize: 10 }}>Total Invest</Text>
+          <Text size="xs" c="dimmed" style={{ width: 100, flexShrink: 0, fontSize: 10 }}>Total Profit</Text>
           <Text size="xs" c="dimmed" style={{ width: 36, flexShrink: 0, fontSize: 10 }}>Score</Text>
           <Text size="xs" c="dimmed" style={{ flex: 1, textAlign: 'right', fontSize: 10 }}>Profit/map</Text>
           <Tooltip label={showDate ? 'Hide date column' : 'Show date column'} withArrow>

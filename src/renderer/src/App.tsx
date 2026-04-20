@@ -38,8 +38,16 @@ const ALL_PANELS = [
   { component: 'notes',            name: 'Notes' },
 ];
 
+const LAYOUT_STORAGE_KEY = 'wraeclast-layout-v1';
+
 function App(): JSX.Element {
-  const [model] = useState(() => Model.fromJson(defaultLayout));
+  const [model] = useState(() => {
+    try {
+      const saved = localStorage.getItem(LAYOUT_STORAGE_KEY);
+      if (saved) return Model.fromJson(JSON.parse(saved));
+    } catch { /* corrupt/old */ }
+    return Model.fromJson(defaultLayout);
+  });
   const [modelVersion, setModelVersion] = useState(0);
   const [checking, setChecking] = useState(false);
 
@@ -128,6 +136,11 @@ function App(): JSX.Element {
                 </Menu.Item>
               );
             })}
+            <Menu.Divider />
+            <Menu.Item color="red" onClick={() => {
+              localStorage.removeItem(LAYOUT_STORAGE_KEY);
+              window.location.reload();
+            }}>Reset layout to default</Menu.Item>
           </Menu.Dropdown>
         </Menu>
 
@@ -158,7 +171,12 @@ function App(): JSX.Element {
         <Layout
           model={model}
           factory={factory}
-          onModelChange={() => setModelVersion((v) => v + 1)}
+          onModelChange={() => {
+            setModelVersion((v) => v + 1);
+            try {
+              localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(model.toJson()));
+            } catch { /* quota */ }
+          }}
         />
       </Box>
 

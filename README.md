@@ -1,8 +1,23 @@
+<div align="center">
+
 # WraeclastLedger
 
-A Path of Exile map-running tracker built with Electron + React + TypeScript.
+<img src="resources/icon.png" alt="WraeclastLedger Logo" width="120" />
 
-Track your session profits, analyse your map stash, generate regex filters, browse strategies, and search PoE Trade — all in one place.
+**A Path of Exile map-running tracker built with Electron + React + TypeScript.**
+
+Track your session profits, analyse your map stash, generate regex filters, browse community strategies, and search PoE Trade — all in one place.
+
+---
+
+[![GitHub release](https://img.shields.io/github/v/release/gund0lf/wraeclastledger_react?style=flat-square&color=orange&label=latest)](https://github.com/gund0lf/wraeclastledger_react/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/gund0lf/wraeclastledger_react/total?style=flat-square&color=blue)](https://github.com/gund0lf/wraeclastledger_react/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows-informational?style=flat-square&logo=windows)](https://github.com/gund0lf/wraeclastledger_react/releases/latest)
+[![Electron](https://img.shields.io/badge/electron-latest-47848f?style=flat-square&logo=electron)](https://www.electronjs.org/)
+[![React](https://img.shields.io/badge/react-19-61dafb?style=flat-square&logo=react)](https://react.dev/)
+[![License](https://img.shields.io/github/license/gund0lf/wraeclastledger_react?style=flat-square)](LICENSE)
+
+</div>
 
 ---
 
@@ -12,12 +27,18 @@ Track your session profits, analyse your map stash, generate regex filters, brow
 - **Dashboard** — Session profit overview with investment baseline, loot tracker, per-map averages, and atlas multiplier breakdown.
 - **Atlas Calc** — Atlas multiplier calculator with scarab, node, and mounting inputs. Avarice chisel indicator.
 - **Investment Module** — Scarab and cost tracking with divine price, per-map cost, and gem leveling offset.
-- **Strategy Browser** — Community strategy feed with profit/map estimates, inline divine sub-values, and Discord export.
-- **Regex Module** — Auto-generates stash highlight regex from your session averages. Brick exclusion terms, save/load sets. PoE Trade integration opens a pre-built map search with IIQ, IIR, pack, pseudo currency/scarabs/maps, delirium %, reward type, map type (Regular/8-mod/Nightmare/Originator/Empowered), and corrupted filters.
-- **Map Analyzer** — Visual stash grid with quality tier colouring and chisel recommendation (Avarice vs Proliferation) per map. Supports both Originator/Uber mod pool and regular T16 mod pool. Multi-tab support for sessions beyond 72 maps.
+- **Strategy Browser** — Community strategy feed with profit/map estimates, inline divine sub-values, Cost/map column, and Discord export.
+- **Regex Module** — Auto-generates stash highlight regex from your session averages. Brick exclusion mod picker, persistent default preset, PoE Trade integration with IIQ/IIR/pack/pseudo stats/delirium/reward type/map type/tier filters.
+- **Map Analyzer** — Visual stash grid with quality tier colouring and chisel recommendation. Supports Originator/Uber and regular T16 mod pools. Multi-tab support.
 - **Atlas Tree** — Embedded pathofpathing.com atlas planner.
-- **Session Manager** — Save, load, import and export sessions. Share links.
+- **Session Manager** — Save, load, import and export sessions. Persistent panel layout.
 - **Auto-updater** — Checks GitHub releases on startup.
+
+---
+
+## Download
+
+Head to the [**Releases page**](https://github.com/gund0lf/wraeclastledger_react/releases/latest) and download the latest `.exe` installer.
 
 ---
 
@@ -56,8 +77,9 @@ npm run publish:win
 
 ## Tech Stack
 
-- [Electron](https://www.electronjs.org/) + [electron-vite](https://electron-vite.org/)
-- [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/)
-- [Mantine v8](https://mantine.dev/) UI
-- [Zustand](https://zustand-demo.pmnd.rs/) state management
-- [electron-updater](https://www.electron.build/auto-update) auto-updates via GitHub Releases
+[![Electron](https://img.shields.io/badge/Electron-47848f?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
+[![React](https://img.shields.io/badge/React_19-20232a?style=flat-square&logo=react&logoColor=61dafb)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178c6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Mantine](https://img.shields.io/badge/Mantine_v8-339af0?style=flat-square)](https://mantine.dev/)
+[![Zustand](https://img.shields.io/badge/Zustand-orange?style=flat-square)](https://zustand-demo.pmnd.rs/)
+[![electron-vite](https://img.shields.io/badge/electron--vite-646cff?style=flat-square&logo=vite&logoColor=white)](https://electron-vite.org/)
