@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button, Group, Text, Stack, List, Badge } from '@mantine/core';
 import { CHANGELOG } from './utils/changelog';
 
-export const APP_VERSION = '1.0.31';
+export const APP_VERSION = '1.0.37';
 const SEEN_KEY    = 'wraeclast-seen-version';
 
 export const UpdateBanner = () => {

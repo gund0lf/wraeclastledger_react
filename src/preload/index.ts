@@ -4,6 +4,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 type TradeParams = {
   league: string; minIIQ: number; minPack: number; minIIR: number;
   minCurrency: number; minScarabs: number; minMaps: number;
+  minTier: number; corruptedFilter: 'any' | 'yes' | 'no';
   mapType: 'any' | 'regular' | '8mod' | 'nightmare' | 'originator';
   empowered: boolean; minDelirious: number;
   deliRewardTypes: string[]; brickExclusions: string[];

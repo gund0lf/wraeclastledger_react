@@ -25,6 +25,7 @@ export interface RegexSet {
   label: string;
   type: 'run' | 'slam' | 'sinistral' | 'dextral' | 'other';
   lines: string[];
+  isDefault?: boolean; // pinned to top of saved sets, applied when loading strategies
 }
 
 export interface SessionSettings {

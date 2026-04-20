@@ -10,6 +10,48 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.37',
+    date: '2026-04-20',
+    changes: [
+      'Strategy Browser: 8-mod detection fixed — now uses the strategy\'s map_type field (6-mod/8-mod) instead of the content tag',
+      'Strategy Browser: restored missing fallback for strategies without raw_export but with a stored run_regex',
+      'Regex: paste preview field is now cleared automatically when switching sessions or loading a strategy',
+      'Regex: reset button removed — the mod picker dropdown X button serves the same purpose',
+      'Regex: Set Default button enlarged and renamed to “Set Default Preset” for clarity',
+      'Regex: “Their exclusions” button renamed to “Show their exclusions ↑”',
+    ],
+  },
+  {
+    version: '1.0.33',
+    date: '2026-04-19',
+    changes: [
+      'Trade: Instant Buyout fixed — status: available is the correct API value (confirmed via PoB URL inspection; online = In Person Online, available = Instant Buyout)',
+      'Trade: Brick exclusion mod list now includes all monster-type mods (Inhabited by X, Increased Variety) and missing nightmare combined mods',
+      'Regex: clearing the brick mod multiselect (X button) now clears ALL exclusions including custom terms',
+      'Regex: paste preview shows full mod names instead of short terms — purple for nightmare, yellow for regular',
+      'Strategy Browser: Load Build now populates a “Loaded from strategy” blue box in Regex with their averages and regex (with your exclusions applied)',
+      'Strategy Browser: “Show their exclusions” button pastes the author’s original regex into the preview field so you can see what they were excluding',
+      'Strategy Browser: Trade modal now pre-fills IIQ/IIR/Pack/Currency from the loaded strategy when no maps are parsed',
+    ],
+  },
+  {
+    version: '1.0.32',
+    date: '2026-04-19',
+    changes: [
+      'Regex: new sessions start with no exclusions and no hardcoded fallback — generated regex is clean by default',
+      'Regex: removed manual text entry field — replaced with regex paste preview that extracts exclusion terms and shows matched mods',
+      'Regex: pasted regex terms matched to brick mod list with tooltips; Apply button adds them to exclusions',
+      'Regex: brick exclusion ? tooltip reworded and fake mod examples removed',
+      'Regex: nightmare mods coloured purple in both the brick exclusion picker and trade modal',
+      'Strategy Browser: Load Build now saves the strategy run/slam regex as saved sets with your exclusions applied',
+      'Trade: Instant Buyout fixed — status: online in the API query now correctly opens with Instant Buyout on the trade site',
+      'Trade: Min Tier filter added (default 16) to exclude sub-T16 maps from results',
+      'Trade: Corrupted override added — explicitly set Yes/No/Any independent of map type',
+      'Trade: 0% delirium option added — requires the delirium enchant to be present at >=0%',
+      'Trade: button label updated to show Instant Buyout is active',
+    ],
+  },
+  {
     version: '1.0.31',
     date: '2026-04-19',
     changes: [

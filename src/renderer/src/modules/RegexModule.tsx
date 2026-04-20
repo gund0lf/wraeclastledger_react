@@ -14,65 +14,97 @@ const TYPE_COLORS: Record<string, string> = { run: 'green', slam: 'orange', othe
 const TYPE_LABELS: Record<string, string> = { run: 'Run', slam: 'Slam', other: 'Other' };
 
 type MapType = 'any' | 'regular' | '8mod' | 'nightmare' | 'originator';
+type CorruptedFilter = 'any' | 'yes' | 'no';
 
 const MAP_TYPE_OPTIONS: { value: MapType; label: string; description: string }[] = [
   { value: 'any',        label: 'Any',         description: 'No map type filter applied' },
-  { value: 'regular',    label: 'Regular',      description: 'Non-corrupted maps, standard mod pool. Pseudo stats (currency/scarabs/maps) left at 0 — regular maps have none of these.' },
-  { value: '8mod',       label: '8-mod',        description: 'Corrupted maps only, NOT Originator. High IIQ/pack filter narrows to quality 8-mod maps.' },
-  { value: 'nightmare',  label: 'Nightmare',    description: 'Has uber pseudo stats (currency/scarabs/maps > 0) and is NOT an Originator map. Set at least one pseudo min to identify them.' },
-  { value: 'originator', label: 'Originator',   description: 'Has Originator\'s Memories implicit. Includes all variants (corrupted or not).' },
+  { value: 'regular',    label: 'Regular',      description: 'Non-corrupted maps, standard mod pool. Pseudo stats left at 0.' },
+  { value: '8mod',       label: '8-mod',        description: 'Corrupted maps only, NOT Originator. High IIQ/pack narrows to quality 8-mod maps.' },
+  { value: 'nightmare',  label: 'Nightmare',    description: 'Has uber pseudo stats (currency/scarabs/maps > 0) and is NOT Originator. Set at least one pseudo min.' },
+  { value: 'originator', label: 'Originator',   description: 'Has Originator\'s Memories implicit. Includes all variants.' },
 ];
 
+const TAG_TO_MAP_TYPE: Record<string, MapType> = {
+  regular: 'regular', originator: 'originator', nightmare: 'nightmare',
+  '8mod': '8mod', 'empowered': 'any', 'empowered-originator': 'originator',
+};
+
+function parseExclusionsFromRegex(text: string): string[] {
+  const m = text.match(/"!([^"]+)"/);
+  if (!m) return [];
+  return m[1].split('|').map((t) => t.trim()).filter(Boolean);
+}
+
+// Word-based fuzzy filter — "boss life" finds "Boss More Life + AoE"
+const brickModFilter = ({ options, search }: { options: any[]; search: string }) => {
+  const words = (search ?? '').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return options;
+  const matchItem = (item: { value: string; label: string }) =>
+    words.every((word) => item.label.toLowerCase().includes(word.toLowerCase()));
+  return options
+    .map((opt) => {
+      if (opt.items) {
+        const filtered = opt.items.filter(matchItem);
+        return filtered.length > 0 ? { ...opt, items: filtered } : null;
+      }
+      return matchItem(opt) ? opt : null;
+    })
+    .filter(Boolean);
+};
+
 export const RegexModule = () => {
-  const { settings, updateSetting, saveRegexSet, deleteRegexSet, maps, initDivinePrice } = useSessionStore();
-  const [newOpen,   { open: openNew,   close: closeNew   }] = useDisclosure(false);
-  const [tradeOpen, { open: openTrade, close: closeTrade }] = useDisclosure(false);
+  const { settings, updateSetting, saveRegexSet, deleteRegexSet,
+    setDefaultPreset, defaultExclusionPreset,
+    maps, initDivinePrice, loadedStrategyInfo, activeSessionId,
+  } = useSessionStore();
 
-  const [newLabel,     setNewLabel]     = useState('');
-  const [newType,      setNewType]      = useState<string>('run');
-  const [newLine,      setNewLine]      = useState('');
-  const [newExclusion, setNewExclusion] = useState('');
+  const [saveAsOpen, { open: openSaveAs, close: closeSaveAs }] = useDisclosure(false);
+  const [tradeOpen,  { open: openTrade,  close: closeTrade  }] = useDisclosure(false);
 
-  // Trade modal state
-  const [tradeMapType,     setTradeMapType]     = useState<MapType>('any');
-  const [tradeEmpowered,   setTradeEmpowered]   = useState(false);
-  const [tradeMinDelirious, setTradeMinDelirious] = useState(0);
+  const [saveAsLabel,  setSaveAsLabel]  = useState('');
+  const [saveAsRegex,  setSaveAsRegex]  = useState(''); // the regex being saved, not editable
+  const [saveAsType,   setSaveAsType]   = useState<'run' | 'slam' | 'other'>('run');
+
+  const [parsedRegex,  setParsedRegex]  = useState('');
+  const [parsedTerms,  setParsedTerms]  = useState<string[]>([]);
+
+  const [tradeMapType,      setTradeMapType]      = useState<MapType>('any');
+  const [tradeEmpowered,    setTradeEmpowered]    = useState(false);
+  const [tradeMinDelirious, setTradeMinDelirious] = useState(-1);
   const [tradeDeliRewards,  setTradeDeliRewards]  = useState<string[]>([]);
-  const [tradeMinIIQ,      setTradeMinIIQ]      = useState(0);
-  const [tradeMinIIR,      setTradeMinIIR]      = useState(0);
-  const [tradeMinPack,     setTradeMinPack]      = useState(0);
-  const [tradeMinCurrency, setTradeMinCurrency] = useState(0);
-  const [tradeMinScarabs,  setTradeMinScarabs]  = useState(0);
-  const [tradeMinMaps,     setTradeMinMaps]     = useState(0);
-  const [tradeLoading,     setTradeLoading]     = useState(false);
-  const [tradeError,       setTradeError]       = useState<string | null>(null);
-  // Brick exclusions for trade NOT filter
-  const [brickMods,        setBrickMods]        = useState<{ label: string; statId: string; regexTerm: string; category: 'regular' | 'nightmare' }[]>([]);
-  const [tradeBrickExcl,   setTradeBrickExcl]   = useState<string[]>([]); // statIds
+  const [tradeMinIIQ,       setTradeMinIIQ]       = useState(0);
+  const [tradeMinIIR,       setTradeMinIIR]       = useState(0);
+  const [tradeMinPack,      setTradeMinPack]       = useState(0);
+  const [tradeMinCurrency,  setTradeMinCurrency]  = useState(0);
+  const [tradeMinScarabs,   setTradeMinScarabs]   = useState(0);
+  const [tradeMinMaps,      setTradeMinMaps]      = useState(0);
+  const [tradeMinTier,      setTradeMinTier]      = useState(16);
+  const [tradeCorrupted,    setTradeCorrupted]    = useState<CorruptedFilter>('any');
+  const [tradeLoading,      setTradeLoading]      = useState(false);
+  const [tradeError,        setTradeError]        = useState<string | null>(null);
+  const [brickMods,         setBrickMods]         = useState<{ label: string; statId: string; regexTerm: string; category: 'regular' | 'nightmare' }[]>([]);
+  const [tradeBrickExcl,    setTradeBrickExcl]    = useState<string[]>([]);
 
   const regexSets: RegexSet[] = settings.regexSets ?? [];
   const exclusions: string[]  = settings.regexExclusions ?? [];
 
-  const addExclusion = () => {
-    const term = newExclusion.trim();
-    if (!term || exclusions.includes(term)) return;
-    updateSetting('regexExclusions', [...exclusions, term]);
-    setNewExclusion('');
-  };
   const removeExclusion = (term: string) =>
     updateSetting('regexExclusions', exclusions.filter((e) => e !== term));
   const resetExclusions = () => updateSetting('regexExclusions', []);
 
   const is8Mod = maps.length > 0 && maps.every((m) => m.modCount > 6 || m.isNightmare);
 
-  // Load brick mod list from main process once on mount
+  // Clear paste preview on session change or strategy load
+  useEffect(() => {
+    setParsedRegex('');
+    setParsedTerms([]);
+  }, [activeSessionId, loadedStrategyInfo]);
+
   useEffect(() => {
     try {
       const fn = window.api?.getBrickMods;
-      if (typeof fn === 'function') {
-        fn().then(setBrickMods).catch(() => {});
-      }
-    } catch { /* preload not updated yet */ }
+      if (typeof fn === 'function') fn().then(setBrickMods).catch(() => {});
+    } catch { /* preload not ready */ }
   }, []);
 
   const generatedRegex = useMemo(() => {
@@ -91,7 +123,11 @@ export const RegexModule = () => {
     };
   }, [maps, exclusions, is8Mod]);
 
-  // Build grouped MultiSelect data for brick mods (used in both panels)
+  const nightmareStatIds = useMemo(
+    () => new Set(brickMods.filter((m) => m.category === 'nightmare').map((m) => m.statId)),
+    [brickMods]
+  );
+
   const brickModData = useMemo(() => {
     const regular   = brickMods.filter((m) => m.category === 'regular').map((m) => ({ value: m.statId, label: m.label }));
     const nightmare = brickMods.filter((m) => m.category === 'nightmare').map((m) => ({ value: m.statId, label: m.label }));
@@ -101,7 +137,12 @@ export const RegexModule = () => {
     return result;
   }, [brickMods]);
 
-  // Add a mod's regexTerm to the in-game brick exclusion chip list
+  const renderBrickOption = ({ option }: { option: { value: string; label: string } }) => (
+    <Text size="xs" style={{ color: nightmareStatIds.has(option.value) ? '#cc88ff' : undefined }}>
+      {option.label}
+    </Text>
+  );
+
   const addBrickModsToRegex = (statIds: string[]) => {
     const terms = statIds
       .map((id) => brickMods.find((m) => m.statId === id)?.regexTerm)
@@ -109,19 +150,37 @@ export const RegexModule = () => {
     if (terms.length > 0) updateSetting('regexExclusions', [...exclusions, ...terms]);
   };
 
-  // Pre-fill trade modal from session maps
+  // Add a single parsed term to current exclusions
+  const addSingleTerm = (term: string) => {
+    if (!exclusions.includes(term))
+      updateSetting('regexExclusions', [...exclusions, term]);
+  };
+
+  const openSaveAsModal = (regex: string, type: 'run' | 'slam' | 'other' = 'run') => {
+    setSaveAsRegex(regex);
+    setSaveAsType(type);
+    setSaveAsLabel('');
+    openSaveAs();
+  };
+
   const handleOpenTradeModal = () => {
-    if (generatedRegex) {
-      setTradeMinIIQ(Math.floor(generatedRegex.avg.avgQuant / 10) * 10);
-      setTradeMinIIR(Math.floor(generatedRegex.avg.avgRarity / 10) * 10);
-      setTradeMinPack(Math.floor(generatedRegex.avg.avgPack  / 10) * 10);
-      // Only pre-fill currency for non-regular maps (regular maps have no pseudo currency stats)
-      const avgCurr = generatedRegex.avg.avgCurr;
+    const src = generatedRegex ?? (loadedStrategyInfo ? {
+      avg: {
+        avgQuant:  loadedStrategyInfo.avgQuant,
+        avgRarity: loadedStrategyInfo.avgRarity,
+        avgPack:   loadedStrategyInfo.avgPack,
+        avgCurr:   loadedStrategyInfo.avgCurr,
+      }
+    } : null);
+    if (src) {
+      setTradeMinIIQ(Math.floor(src.avg.avgQuant / 10) * 10);
+      setTradeMinIIR(Math.floor(src.avg.avgRarity / 10) * 10);
+      setTradeMinPack(Math.floor(src.avg.avgPack  / 10) * 10);
+      const avgCurr = src.avg.avgCurr;
       setTradeMinCurrency(avgCurr > 0 ? Math.floor(avgCurr / 10) * 10 : 0);
-      setTradeMinScarabs(0);
-      setTradeMinMaps(0);
+      setTradeMinScarabs(0); setTradeMinMaps(0);
     }
-    // Auto-detect map type from session
+    // Map type from parsed maps
     if (maps.length > 0) {
       const hasOrig  = maps.some((m) => m.isOriginator);
       const hasEmp   = maps.some((m) => m.isEmpoweredMirage);
@@ -130,13 +189,20 @@ export const RegexModule = () => {
       if (hasOrig)        { setTradeMapType('originator'); setTradeEmpowered(hasEmp); }
       else if (hasNight)  { setTradeMapType('nightmare');  setTradeEmpowered(false); }
       else if (hasCorr)   { setTradeMapType('8mod');       setTradeEmpowered(hasEmp); }
-      else                { setTradeMapType('regular');    setTradeEmpowered(hasEmp); }
+      else                { setTradeMapType('regular');    setTradeEmpowered(false); }
+    } else if (loadedStrategyInfo?.mapType) {
+      // Map type from loaded strategy
+      const mt = TAG_TO_MAP_TYPE[loadedStrategyInfo.mapType] ?? 'any';
+      setTradeMapType(mt);
+      setTradeEmpowered(loadedStrategyInfo.mapType.includes('empowered'));
+    } else {
+      setTradeMapType('any');
+      setTradeEmpowered(false);
     }
+    setTradeCorrupted('any');
+    setTradeMinTier(16);
     setTradeError(null);
-    // Auto-select trade brick exclusions that match existing regex exclusion terms
-    const autoSelected = brickMods
-      .filter((m) => exclusions.includes(m.regexTerm))
-      .map((m) => m.statId);
+    const autoSelected = brickMods.filter((m) => exclusions.includes(m.regexTerm)).map((m) => m.statId);
     setTradeBrickExcl(autoSelected);
     openTrade();
   };
@@ -146,41 +212,20 @@ export const RegexModule = () => {
       await initDivinePrice();
       return useSessionStore.getState().settings.leagueName || 'Mirage';
     })();
-    setTradeLoading(true);
-    setTradeError(null);
+    setTradeLoading(true); setTradeError(null);
     try {
       const result = await window.api.searchMapsOnTrade({
-        league,
-        minIIQ:      tradeMinIIQ,
-        minIIR:      tradeMinIIR,
-        minPack:     tradeMinPack,
-        minCurrency: tradeMinCurrency,
-        minScarabs:  tradeMinScarabs,
-        minMaps:     tradeMinMaps,
-        mapType:     tradeMapType,
-        empowered:   tradeEmpowered,
-        minDelirious:     tradeMinDelirious,
-        deliRewardTypes:  tradeDeliRewards,
-        brickExclusions:  tradeBrickExcl,
+        league, minIIQ: tradeMinIIQ, minIIR: tradeMinIIR, minPack: tradeMinPack,
+        minCurrency: tradeMinCurrency, minScarabs: tradeMinScarabs, minMaps: tradeMinMaps,
+        minTier: tradeMinTier, corruptedFilter: tradeCorrupted,
+        mapType: tradeMapType, empowered: tradeEmpowered,
+        minDelirious: tradeMinDelirious, deliRewardTypes: tradeDeliRewards,
+        brickExclusions: tradeBrickExcl,
       });
-      if (result.url) {
-        window.open(result.url, '_blank');
-        closeTrade();
-      } else {
-        setTradeError(result.error ?? 'Failed to create trade search');
-      }
-    } catch (err: any) {
-      setTradeError(err.message ?? 'IPC error');
-    } finally {
-      setTradeLoading(false);
-    }
-  };
-
-  const handleSave = () => {
-    if (!newLabel.trim() || !newLine.trim()) return;
-    saveRegexSet({ label: newLabel.trim(), type: newType as any, lines: [newLine.trim()] });
-    setNewLabel(''); setNewLine('');
-    closeNew();
+      if (result.url) { window.open(result.url, '_blank'); closeTrade(); }
+      else setTradeError(result.error ?? 'Failed to create trade search');
+    } catch (err: any) { setTradeError(err.message ?? 'IPC error'); }
+    finally { setTradeLoading(false); }
   };
 
   const CopyLine = ({ value }: { value: string }) => (
@@ -193,11 +238,10 @@ export const RegexModule = () => {
     </CopyButton>
   );
 
-  const RegexLine = ({ value, label }: { value: string; label?: string }) => (
+  const RegexLine = ({ value }: { value: string }) => (
     <Group gap={4} wrap="nowrap">
       <CopyLine value={value} />
       <Code style={{ fontSize: 10, flex: 1, wordBreak: 'break-all' }}>{value}</Code>
-      {label && <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap', minWidth: 160 }}>{label}</Text>}
     </Group>
   );
 
@@ -205,70 +249,66 @@ export const RegexModule = () => {
 
   return (
     <>
-      {/* ── Save regex set modal ── */}
-      <Modal opened={newOpen} onClose={closeNew} title="Save Regex Set" size="md">
+      {/* ── Save As modal (name only, regex is pre-filled) ── */}
+      <Modal opened={saveAsOpen} onClose={closeSaveAs} title="Save Regex Set" size="sm">
         <Stack gap="sm">
-          <TextInput label="Label" value={newLabel} onChange={(e) => setNewLabel(e.currentTarget.value)} />
-          <Select label="Type"
-            data={[
-              { value: 'run',   label: '🟢 Run — run as-is' },
-              { value: 'slam',  label: '🟠 Slam — exalt first, open slot' },
-              { value: 'other', label: '⚪ Other' },
-            ]}
-            value={newType} onChange={(v) => setNewType(v ?? 'run')} />
-          <TextInput label="Regex" value={newLine} onChange={(e) => setNewLine(e.currentTarget.value)}
-            styles={{ input: { fontFamily: 'monospace', fontSize: 12 } }} />
-          <Button onClick={handleSave} disabled={!newLabel.trim() || !newLine.trim()}>Save</Button>
+          <TextInput label="Name" placeholder="e.g. My 8-mod setup" autoFocus
+            value={saveAsLabel} onChange={(e) => setSaveAsLabel(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && saveAsLabel.trim()) {
+                saveRegexSet({ label: saveAsLabel.trim(), type: saveAsType, lines: [saveAsRegex] });
+                closeSaveAs();
+              }
+            }} />
+          <Code style={{ fontSize: 9, wordBreak: 'break-all', color: '#888' }}>{saveAsRegex}</Code>
+          <Button onClick={() => {
+            if (!saveAsLabel.trim()) return;
+            saveRegexSet({ label: saveAsLabel.trim(), type: saveAsType, lines: [saveAsRegex] });
+            closeSaveAs();
+          }} disabled={!saveAsLabel.trim()}>Save</Button>
         </Stack>
       </Modal>
 
       {/* ── Trade search modal ── */}
-      <Modal opened={tradeOpen} onClose={closeTrade} title="PoE Trade Map Search" size="md">
+      <Modal opened={tradeOpen} onClose={closeTrade} title="PoE Trade Map Search" size="md" scrollAreaComponent={ScrollArea.Autosize}>
         <Stack gap="md">
           <Text size="xs" c="dimmed">
             League: <Text span fw={600} c="teal">{settings.leagueName || 'Mirage'}</Text>
-            {' · '}Any Non-Unique{' · '}Sort by price
+            {' · '}Any Non-Unique{' · '}<Text span c="green" fw={600}>Instant Buyout</Text>
           </Text>
 
-          {/* Map type */}
           <Stack gap={4}>
             <Text size="xs" fw={600}>Map type</Text>
-            <Select
-              size="xs"
+            <Select size="xs"
               data={MAP_TYPE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
               value={tradeMapType}
               onChange={(v) => {
                 const t = (v ?? 'any') as MapType;
                 setTradeMapType(t);
-                // Clear pseudo stats for types where they don't exist
                 if (t === 'regular' || t === '8mod') {
                   setTradeMinCurrency(0); setTradeMinScarabs(0); setTradeMinMaps(0);
                 }
-              }}
-            />
+              }} />
             {selectedMapTypeInfo && (
               <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>{selectedMapTypeInfo.description}</Text>
             )}
           </Stack>
 
-          {/* Empowered Mirage toggle — works on all types */}
           <Group justify="space-between" align="center">
             <Stack gap={0}>
               <Text size="xs" fw={600}>Empowered Mirage enchant</Text>
-              <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>Require "Empowered Mirage which covers the entire Map" enchant</Text>
+              <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>Require Empowered Mirage enchant</Text>
             </Stack>
             <Switch size="sm" checked={tradeEmpowered} onChange={(e) => setTradeEmpowered(e.currentTarget.checked)} />
           </Group>
 
-          {/* Delirium */}
           <Stack gap={4}>
             <Text size="xs" fw={600}>Delirium</Text>
             <Group gap="md" grow>
-              <Select
-                size="xs"
-                label="Min % Delirious"
+              <Select size="xs" label="Min % Delirious"
                 data={[
-                  { value: '0',   label: 'Any' },
+                  { value: '-1',  label: 'Any (no filter)' },
+                  { value: '0',   label: '0% (has delirium enchant)' },
                   { value: '20',  label: '20% (1 orb)' },
                   { value: '40',  label: '40% (2 orbs)' },
                   { value: '60',  label: '60% (3 orbs)' },
@@ -276,14 +316,9 @@ export const RegexModule = () => {
                   { value: '100', label: '100% (5 orbs)' },
                 ]}
                 value={String(tradeMinDelirious)}
-                onChange={(v) => setTradeMinDelirious(Number(v ?? '0'))}
-              />
-              <MultiSelect
-                size="xs"
-                label="Reward types (optional)"
-                placeholder="Any"
-                clearable
-                searchable
+                onChange={(v) => setTradeMinDelirious(Number(v ?? '-1'))} />
+              <MultiSelect size="xs" label="Reward types (optional)" placeholder="Any"
+                clearable searchable
                 data={[
                   { value: 'deli_currency',   label: 'Currency' },
                   { value: 'deli_scarabs',    label: 'Scarabs' },
@@ -307,42 +342,41 @@ export const RegexModule = () => {
                   { value: 'deli_catalysts',  label: 'Catalysts' },
                   { value: 'deli_talismans',  label: 'Talismans' },
                 ]}
-                value={tradeDeliRewards}
-                onChange={setTradeDeliRewards}
-                maxDropdownHeight={200}
-              />
+                value={tradeDeliRewards} onChange={setTradeDeliRewards} maxDropdownHeight={200} />
             </Group>
-            {tradeDeliRewards.length > 0 && (
-              <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>
-                Map must have ANY of the selected reward types (OR logic)
-              </Text>
-            )}
           </Stack>
 
           <Divider label="Map filters" labelPosition="left" />
-          <Group gap="md" grow>
-            <NumberInput size="xs" label="Min IIQ (%Q)" min={0} max={300} step={10}
-              value={tradeMinIIQ} onChange={(v) => setTradeMinIIQ(Number(v) || 0)} suffix="%" />
-            <NumberInput size="xs" label="Min IIR (%R)" min={0} max={300} step={10}
-              value={tradeMinIIR} onChange={(v) => setTradeMinIIR(Number(v) || 0)} suffix="%" />
-            <NumberInput size="xs" label="Min Pack size (%P)" min={0} max={200} step={10}
-              value={tradeMinPack} onChange={(v) => setTradeMinPack(Number(v) || 0)} suffix="%" />
+          <Group gap="xs" grow>
+            <NumberInput size="xs" label="Min IIQ" min={0} max={300} step={10} value={tradeMinIIQ} onChange={(v) => setTradeMinIIQ(Number(v) || 0)} suffix="%" />
+            <NumberInput size="xs" label="Min IIR" min={0} max={300} step={10} value={tradeMinIIR} onChange={(v) => setTradeMinIIR(Number(v) || 0)} suffix="%" />
+            <NumberInput size="xs" label="Min Pack" min={0} max={200} step={10} value={tradeMinPack} onChange={(v) => setTradeMinPack(Number(v) || 0)} suffix="%" />
+          </Group>
+          <Group gap="xs" grow>
+            <NumberInput size="xs" label="Min Tier" min={0} max={16} step={1} value={tradeMinTier} onChange={(v) => setTradeMinTier(Number(v) || 0)} />
+            <Select size="xs" label="Corrupted"
+              data={[
+                { value: 'any', label: 'Any (map type decides)' },
+                { value: 'yes', label: 'Corrupted only' },
+                { value: 'no',  label: 'Not corrupted' },
+              ]}
+              value={tradeCorrupted} onChange={(v) => setTradeCorrupted((v ?? 'any') as CorruptedFilter)} />
           </Group>
 
           <Divider label="Pseudo stat filters" labelPosition="left" />
           <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>
             {tradeMapType === 'regular' || tradeMapType === '8mod'
               ? 'Regular and 8-mod maps have no uber pseudo stats — keep these at 0.'
-              : 'These use pseudo stats that combine chisel quality + explicit mods. Setting any > 0 on Nightmare search identifies uber-mod maps.'}
+              : 'These combine chisel quality + explicit mods. Set >0 on Nightmare to identify uber-mod maps.'}
           </Text>
-          <Group gap="md" grow>
-            <NumberInput size="xs" label="Min Currency (%)" min={0} step={10}
+          <Group gap="xs" grow>
+            <NumberInput size="xs" label="Min Currency" min={0} step={10}
               disabled={tradeMapType === 'regular' || tradeMapType === '8mod'}
               value={tradeMinCurrency} onChange={(v) => setTradeMinCurrency(Number(v) || 0)} suffix="%" />
-            <NumberInput size="xs" label="Min Scarabs (%)" min={0} step={10}
+            <NumberInput size="xs" label="Min Scarabs" min={0} step={10}
               disabled={tradeMapType === 'regular' || tradeMapType === '8mod'}
               value={tradeMinScarabs} onChange={(v) => setTradeMinScarabs(Number(v) || 0)} suffix="%" />
-            <NumberInput size="xs" label="Min Maps (%)" min={0} step={10}
+            <NumberInput size="xs" label="Min Maps" min={0} step={10}
               disabled={tradeMapType === 'regular' || tradeMapType === '8mod'}
               value={tradeMinMaps} onChange={(v) => setTradeMinMaps(Number(v) || 0)} suffix="%" />
           </Group>
@@ -356,19 +390,14 @@ export const RegexModule = () => {
           <Divider label="Brick exclusions (NOT filter)" labelPosition="left" />
           <Stack gap={4}>
             <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>
-              Exclude maps with these mods. Full mod names from the PoE stats API — resolved at startup.
-              Multi-select stays open so you can pick several at once.
+              Exclude maps with these mods. <Text span style={{ color: '#cc88ff', fontSize: 10 }}>Purple = Nightmare mods.</Text>
             </Text>
-            <MultiSelect
-              size="xs"
+            <MultiSelect size="xs"
               placeholder={brickMods.length === 0 ? 'Loading…' : 'Search and select mods to exclude'}
-              searchable clearable
-              data={brickModData}
-              value={tradeBrickExcl}
-              onChange={setTradeBrickExcl}
-              maxDropdownHeight={240}
-              disabled={brickMods.length === 0}
-            />
+              searchable clearable filter={brickModFilter}
+              data={brickModData} value={tradeBrickExcl} onChange={setTradeBrickExcl}
+              renderOption={renderBrickOption}
+              maxDropdownHeight={240} disabled={brickMods.length === 0} />
             {tradeBrickExcl.length > 0 && (
               <Group gap={4} align="center">
                 <Text size="xs" c="red" style={{ fontSize: 10 }}>
@@ -384,16 +413,10 @@ export const RegexModule = () => {
           </Stack>
 
           {tradeError && <Text size="xs" c="red">{tradeError}</Text>}
-
-          <Button
-            color="orange" loading={tradeLoading}
-            leftSection={<FaExternalLinkAlt size={11} />}
-            onClick={handleSearch} fullWidth>
-            Search on PoE Trade
+          <Button color="orange" loading={tradeLoading}
+            leftSection={<FaExternalLinkAlt size={11} />} onClick={handleSearch} fullWidth>
+            Search on PoE Trade (Instant Buyout)
           </Button>
-          <Text size="xs" c="dimmed" ta="center" style={{ fontSize: 10 }}>
-            ⚠️ Switch to “Instant Buyout” in the dropdown top-right of the trade site after opening
-          </Text>
         </Stack>
       </Modal>
 
@@ -402,92 +425,179 @@ export const RegexModule = () => {
         style={{ display: 'flex', flexDirection: 'column' }}>
         <Group justify="space-between" mb="xs">
           <Text fw={700} size="sm">Regex Sets</Text>
-          <Button size="xs" variant="light" leftSection={<FaPlus size={10} />} onClick={openNew}>New</Button>
+          {defaultExclusionPreset.length > 0 && (
+            <Tooltip label={`Default preset: ${defaultExclusionPreset.map((t) => `!${t}`).join(' ')}`} withArrow>
+              <Badge size="xs" color="teal" variant="dot" style={{ cursor: 'default' }}>
+                ⭐ Default set
+              </Badge>
+            </Tooltip>
+          )}
         </Group>
 
         <ScrollArea style={{ flex: 1 }}>
           <Stack gap="xs">
 
+            {/* ── Brick Exclusions ── */}
             <Stack gap={4} p="xs" style={{ background: '#1e2018', borderRadius: 6, border: '1px solid #3a4020' }}>
               <Group justify="space-between">
                 <Group gap={4}>
                   <Text size="xs" fw={700} c="yellow">Brick Exclusions</Text>
-                  <Tooltip multiline w={280}
+                  <Tooltip multiline w={260}
                     label={
                       <Stack gap={2} p={2}>
-                        <Text size="xs" fw={700}>These terms are prepended as !term to every generated regex.</Text>
-                        <Text size="xs">Maps containing these mods are skipped entirely — too dangerous or annoying to run.</Text>
-                        <Text size="xs" c="dimmed" mt={2}>Examples: vola (Volatile Cores), eche (Cannot be Leeched), nsta (Unstable Tentacle Fiends), wb (Warrior Breach boss). Add any substring that appears in a mod you want to skip.</Text>
+                        <Text size="xs" fw={700}>Terms prepended as !term to every generated regex.</Text>
+                        <Text size="xs">Use the mod picker to select named mods. Click ⭐ Set Default to save these as your persistent default — they'll auto-apply whenever you load a strategy.</Text>
+                        <Text size="xs" c="dimmed" mt={2}>e.g. eche → Cannot Be Leeched From · nsta → Unstable Tentacle Fiends · vola → Volatile Cores</Text>
                       </Stack>
-                    }
-                    withArrow>
+                    } withArrow>
                     <Badge size="xs" color="gray" variant="outline" style={{ cursor: 'help' }}>?</Badge>
                   </Tooltip>
                 </Group>
-                <Tooltip label="Reset to defaults">
-                  <Button size="xs" variant="subtle" color="gray" onClick={resetExclusions}
-                    style={{ fontSize: 9, padding: '0 4px', height: 18 }}>reset</Button>
-                </Tooltip>
+                <Group gap={4}>
+                  <Tooltip label="Save current exclusions as your persistent default — auto-applied when loading any strategy">
+                    <Button size="sm" variant="light" color="teal" onClick={setDefaultPreset}>
+                      ⭐ Set Default Preset
+                    </Button>
+                  </Tooltip>
+                </Group>
               </Group>
 
-              <Group gap={4} wrap="wrap">
-                {exclusions.map((term) => (
-                  <Badge key={term} size="sm" color="yellow" variant="light"
-                    rightSection={
-                      <ActionIcon size={10} variant="transparent" color="yellow"
-                        onClick={() => removeExclusion(term)} style={{ marginLeft: 2 }}>
-                        <FaTimes size={7} />
-                      </ActionIcon>
-                    }
-                    style={{ paddingRight: 2 }}>
-                    !{term}
-                  </Badge>
-                ))}
-              </Group>
+              {exclusions.length > 0 && (
+                <Group gap={4} wrap="wrap">
+                  {exclusions.map((term) => (
+                    <Badge key={term} size="sm" color="yellow" variant="light"
+                      rightSection={
+                        <ActionIcon size={10} variant="transparent" color="yellow"
+                          onClick={() => removeExclusion(term)} style={{ marginLeft: 2 }}>
+                          <FaTimes size={7} />
+                        </ActionIcon>
+                      }
+                      style={{ paddingRight: 2 }}>
+                      !{term}
+                    </Badge>
+                  ))}
+                </Group>
+              )}
 
-              <Group gap={4}>
-                <TextInput size="xs" placeholder="Add exclusion term..." style={{ flex: 1 }}
-                  value={newExclusion}
-                  onChange={(e) => setNewExclusion(e.currentTarget.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && addExclusion()}
-                  styles={{ input: { fontFamily: 'monospace', fontSize: 11 } }} />
-                <Button size="xs" variant="light" color="yellow"
-                  disabled={!newExclusion.trim() || exclusions.includes(newExclusion.trim())}
-                  onClick={addExclusion}>
-                  <FaPlus size={9} />
-                </Button>
-              </Group>
-
-              {/* Pick from full mod list */}
               {brickMods.length > 0 && (
                 <Stack gap={2}>
-                  <Text size="xs" c="dimmed" style={{ fontSize: 9 }}>Or pick from mod list (adds regex term):</Text>
-                  <MultiSelect
-                    size="xs"
-                    placeholder="Search mods…"
-                    searchable clearable
-                    data={brickModData}
+                  <Text size="xs" c="dimmed" style={{ fontSize: 9 }}>
+                    Pick from mod list · <Text span style={{ color: '#cc88ff', fontSize: 9 }}>purple = nightmare</Text>
+                  </Text>
+                  <MultiSelect size="xs" placeholder="Search mods…" searchable clearable
+                    data={brickModData} filter={brickModFilter}
                     value={brickMods.filter((m) => exclusions.includes(m.regexTerm)).map((m) => m.statId)}
+                    renderOption={renderBrickOption}
                     onChange={(selected) => {
-                      // All known regexTerms from the mod list
+                      if (selected.length === 0) { updateSetting('regexExclusions', []); return; }
                       const knownTerms = new Set(brickMods.map((m) => m.regexTerm));
-                      // Keep any terms the user typed manually (not known mod terms)
                       const customTerms = exclusions.filter((e) => !knownTerms.has(e));
-                      // regexTerms for the newly selected mods
                       const modTerms = selected
                         .map((id) => brickMods.find((m) => m.statId === id)?.regexTerm)
                         .filter((t): t is string => !!t);
                       updateSetting('regexExclusions', [...new Set([...customTerms, ...modTerms])]);
                     }}
-                    maxDropdownHeight={220}
-                  />
+                    maxDropdownHeight={220} />
                 </Stack>
               )}
 
+              {/* Regex paste preview */}
+              <Stack gap={2}>
+                <Text size="xs" c="dimmed" style={{ fontSize: 9 }}>Paste a regex to preview its exclusions:</Text>
+                <TextInput size="xs" placeholder='"!vola|eche|nsta" "(urr.*..."'
+                  value={parsedRegex}
+                  onChange={(e) => {
+                    const val = e.currentTarget.value;
+                    setParsedRegex(val);
+                    setParsedTerms(val.trim() ? parseExclusionsFromRegex(val) : []);
+                  }}
+                  styles={{ input: { fontFamily: 'monospace', fontSize: 10 } }} />
+                {parsedTerms.length > 0 && (
+                  <Stack gap={2}>
+                    <Text size="xs" c="dimmed" style={{ fontSize: 9 }}>
+                      Click a mod to add it to your exclusions:
+                    </Text>
+                    <Group gap={4} wrap="wrap">
+                      {parsedTerms.map((t) => {
+                        const mod = brickMods.find((m) => m.regexTerm === t);
+                        const alreadyAdded = exclusions.includes(t);
+                        return (
+                          <Tooltip key={t} label={alreadyAdded ? 'Already in your exclusions' : 'Click to add'} withArrow>
+                            <Badge
+                              size="xs"
+                              color={mod ? (mod.category === 'nightmare' ? 'grape' : 'yellow') : 'gray'}
+                              variant={alreadyAdded ? 'filled' : 'light'}
+                              style={{ cursor: alreadyAdded ? 'default' : 'pointer' }}
+                              onClick={() => !alreadyAdded && addSingleTerm(t)}>
+                              {mod ? mod.label : `!${t} (custom)`}
+                            </Badge>
+                          </Tooltip>
+                        );
+                      })}
+                    </Group>
+                  </Stack>
+                )}
+              </Stack>
+
               <Text size="xs" c="dimmed" style={{ fontSize: 9 }}>
-                Preview: <Code style={{ fontSize: 9 }}>"!{exclusions.join('|')}"</Code>
+                Preview: <Code style={{ fontSize: 9 }}>
+                  {exclusions.length > 0 ? `"!${exclusions.join('|')}"` : '(no exclusions)'}
+                </Code>
               </Text>
             </Stack>
+
+            {/* ── Loaded from strategy ── */}
+            {!generatedRegex && loadedStrategyInfo && (() => {
+              const run  = applyUserExclusionsToRegex(loadedStrategyInfo.runRegex, exclusions);
+              const slam = loadedStrategyInfo.slamRegex ? applyUserExclusionsToRegex(loadedStrategyInfo.slamRegex, exclusions) : null;
+              return (
+                <Stack gap="xs" p="xs" style={{ background: '#1a2020', borderRadius: 6, border: '1px solid #2a4040' }}>
+                  <Group gap="xs">
+                    <FaMagic size={10} color="#4dabf7" />
+                    <Text size="xs" fw={700} c="blue">From {loadedStrategyInfo.authorName} · {loadedStrategyInfo.mapCount} maps</Text>
+                    {loadedStrategyInfo.mapType && (
+                      <Badge size="xs" color="gray" variant="outline">{loadedStrategyInfo.mapType}</Badge>
+                    )}
+                  </Group>
+                  <Text size="xs" c="dimmed">
+                    {loadedStrategyInfo.avgQuant.toFixed(0)}%Q · {loadedStrategyInfo.avgRarity.toFixed(0)}%R · {loadedStrategyInfo.avgPack.toFixed(0)}%P · {loadedStrategyInfo.avgCurr.toFixed(0)}% Curr
+                  </Text>
+                  <Group gap="xs" wrap="nowrap">
+                    <Badge color="green" size="xs" style={{ flexShrink: 0 }}>Run</Badge>
+                    <RegexLine value={run} />
+                  </Group>
+                  {slam && (
+                    <Group gap="xs" wrap="nowrap">
+                      <Badge color="orange" size="xs" style={{ flexShrink: 0 }}>Slam</Badge>
+                      <RegexLine value={slam} />
+                    </Group>
+                  )}
+                  {exclusions.length > 0
+                    ? <Text size="xs" c="dimmed" style={{ fontSize: 9 }}>Your exclusions applied. Click ⭐ Set Default to make these permanent.</Text>
+                    : <Text size="xs" c="orange" style={{ fontSize: 9 }}>No exclusions set — set a default preset or pick mods above.</Text>
+                  }
+                  <Group gap={4}>
+                    <Button size="xs" variant="light" color="gray"
+                      onClick={() => {
+                        setParsedRegex(loadedStrategyInfo.runRegex);
+                        setParsedTerms(parseExclusionsFromRegex(loadedStrategyInfo.runRegex));
+                      }}>
+                      Show their exclusions ↑
+                    </Button>
+                    <Button size="xs" variant="subtle" color="green"
+                      onClick={() => openSaveAsModal(run, 'run')}>
+                      Save Run As…
+                    </Button>
+                    {slam && (
+                      <Button size="xs" variant="subtle" color="orange"
+                        onClick={() => openSaveAsModal(slam, 'slam')}>
+                        Save Slam As…
+                      </Button>
+                    )}
+                  </Group>
+                </Stack>
+              );
+            })()}
 
             {/* ── Generated from session ── */}
             {generatedRegex && (
@@ -514,20 +624,19 @@ export const RegexModule = () => {
                 {generatedRegex.slam && <Text size="xs" c="dimmed" fs="italic">⚠ Open slot only for slam.</Text>}
                 <Group gap={4}>
                   <Button size="xs" variant="subtle" color="green"
-                    onClick={() => saveRegexSet({ label: `Run (${generatedRegex.n} maps)`, type: 'run', lines: [generatedRegex.run] })}>
-                    Save Run
+                    onClick={() => openSaveAsModal(generatedRegex.run, 'run')}>
+                    Save Run As…
                   </Button>
                   {generatedRegex.slam && (
                     <Button size="xs" variant="subtle" color="orange"
-                      onClick={() => saveRegexSet({ label: `Slam (${generatedRegex.n} maps)`, type: 'slam', lines: [generatedRegex.slam!] })}>
-                      Save Slam
+                      onClick={() => openSaveAsModal(generatedRegex.slam!, 'slam')}>
+                      Save Slam As…
                     </Button>
                   )}
                 </Group>
               </Stack>
             )}
 
-            {/* Open Trade always visible */}
             <Group gap={4} justify="flex-end">
               <Button size="xs" variant="light" color="orange" onClick={handleOpenTradeModal}>
                 Open Trade
@@ -541,7 +650,8 @@ export const RegexModule = () => {
             )}
 
             {regexSets.map((set) => (
-              <Stack key={set.id} gap={4} p="xs" style={{ background: '#1e1f22', borderRadius: 6 }}>
+              <Stack key={set.id} gap={4} p="xs"
+                style={{ background: '#1e1f22', borderRadius: 6 }}>
                 <Group justify="space-between">
                   <Group gap="xs">
                     <Badge color={TYPE_COLORS[set.type] ?? 'gray'} size="xs" variant="light">{TYPE_LABELS[set.type] ?? set.type}</Badge>
@@ -560,3 +670,10 @@ export const RegexModule = () => {
     </>
   );
 };
+
+export function applyUserExclusionsToRegex(regex: string, exclusions: string[]): string {
+  if (!regex) return regex;
+  if (exclusions.length === 0) return regex.replace(/^"![^"]*"\s*/, '');
+  if (/^"![^"]+"/.test(regex)) return regex.replace(/^"![^"]+"/, `"!${exclusions.join('|')}"`);
+  return `"!${exclusions.join('|')}" ${regex}`;
+}

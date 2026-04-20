@@ -42,8 +42,8 @@ interface MapAverages {
 }
 
 export const generateRunRegex = (avg: MapAverages, exclusions?: string[]): string => {
-  const excl = exclusions && exclusions.length > 0 ? exclusions.join('|') : 'vola|eche|tab|wb|% of e|reg|get';
-  const parts: string[] = [`"!${excl}"`];
+  const parts: string[] = [];
+  if (exclusions && exclusions.length > 0) parts.push(`"!${exclusions.join('|')}"`);
   const currFloor  = Math.max(Math.floor(avg.avgCurr  / 10) * 10, 40);
   const packFloor  = Math.max(Math.floor(avg.avgPack  / 10) * 10, 20);
   parts.push(`"(urr.*(${thresholdPat(currFloor)})%|ack.*(${thresholdPat(packFloor)})%)"`);
@@ -59,8 +59,8 @@ export const generateRunRegex = (avg: MapAverages, exclusions?: string[]): strin
 };
 
 export const generateSlamRegex = (avg: MapAverages, exclusions?: string[]): string => {
-  const excl = exclusions && exclusions.length > 0 ? exclusions.join('|') : 'vola|eche|tab|wb|% of e|reg|get';
-  const parts: string[] = [`"!${excl}"`];
+  const parts: string[] = [];
+  if (exclusions && exclusions.length > 0) parts.push(`"!${exclusions.join('|')}"`);
   const currFloor = Math.max(Math.floor(avg.avgCurr * 0.75 / 10) * 10, 30);
   const packFloor = Math.max(Math.floor(avg.avgPack * 0.75 / 10) * 10, 15);
   parts.push(`"(urr.*(${thresholdPat(currFloor)})%|ack.*(${thresholdPat(packFloor)})%)"`);

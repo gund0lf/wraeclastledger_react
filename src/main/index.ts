@@ -79,10 +79,10 @@ const BRICK_MOD_DEFS: BrickModDef[] = [
   // ── Regular ──
   { label: 'Reflect Physical Damage',             needle: 'Monsters reflect #% of Physical Damage',                          regexTerm: 's ref',    category: 'regular' },
   { label: 'Reflect Elemental Damage',            needle: 'Monsters reflect #% of Elemental Damage',                         regexTerm: 'fl el',    category: 'regular' },
-  { label: 'Reduced Non-Curse Aura Effect',       needle: 'reduced effect of Non-Curse Auras from Skills',                   regexTerm: 'non-c',   category: 'regular' },
-  { label: 'Reduced Max Resistances',             needle: '#% to all maximum Resistances',                                   regexTerm: 'o al',    category: 'regular' },
+  { label: 'Reduced Non-Curse Aura Effect',       needle: 'Non-Curse Auras',                                                regexTerm: 'non-c',   category: 'regular' },
+  { label: 'Reduced Max Resistances',             needle: 'to all maximum Resistances',                                     regexTerm: 'o al',    category: 'regular' },
   { label: 'Cannot Regenerate Life/Mana/ES',      needle: 'cannot Regenerate Life, Mana',                                   regexTerm: 'reg',     category: 'regular' },
-  { label: 'Less Recovery Rate',                  needle: 'less Recovery Rate of Life and Energy Shield',                    regexTerm: 'covery',  category: 'regular' },
+  { label: 'Less Recovery Rate',                  needle: 'Recovery Rate of Life and Energy Shield',                        regexTerm: 'covery',  category: 'regular' },
   { label: 'Cannot Be Leeched From',              needle: 'cannot be Leeched from',                                         regexTerm: 'eche',    category: 'regular' },
   { label: 'High Crit Chance + Multiplier',       needle: 'Monster Critical Strike Multiplier',                              regexTerm: 'rit mu',  category: 'regular' },
   { label: 'Extra Chaos Damage + Withered',       needle: 'Physical Damage as Extra Chaos Damage',                          regexTerm: 'withe',   category: 'regular' },
@@ -125,20 +125,34 @@ const BRICK_MOD_DEFS: BrickModDef[] = [
   { label: 'Impale on Hit',                       needle: 'chance to Impale on Hit',                                        regexTerm: 'pale on', category: 'regular' },
   { label: 'Ignite/Freeze/Shock Chance',          needle: 'chance to Ignite, Freeze and Shock on Hit',                     regexTerm: 'hock on', category: 'regular' },
   { label: 'Buffs on Players Expire Faster',      needle: 'Buffs on Players expire',                                       regexTerm: 'uffs on', category: 'regular' },
-  { label: 'Less Cooldown Recovery',              needle: 'less Cooldown Recovery Rate',                                    regexTerm: 'ooldown', category: 'regular' },
+  { label: 'Less Cooldown Recovery',              needle: 'Cooldown Recovery',                                              regexTerm: 'coo',     category: 'regular' },
   { label: 'Unique Bosses Possessed',             needle: 'Unique Bosses are Possessed',                                    regexTerm: 'ossesse',  category: 'regular' },
   { label: 'Two Unique Bosses',                   needle: 'Area contains two Unique Bosses',                                regexTerm: 'o uniqu', category: 'regular' },
-  { label: 'Cannot Be Taunted/Slowed',            needle: 'Monsters cannot be Taunted',                                     regexTerm: 'aunted',  category: 'regular' },
-  { label: 'Players Less Accuracy',               needle: "Players have #% less Accuracy Rating",                           regexTerm: 'ss acc',  category: 'regular' },
+  { label: 'Cannot Be Taunted/Slowed',            needle: 'cannot be Taunted',                                              regexTerm: 'aunted',  category: 'regular' },
+  { label: 'Players Less Accuracy',               needle: 'Accuracy Rating',                                                regexTerm: 'ss acc',  category: 'regular' },
   { label: 'Monsters Steal Charges',              needle: 'steal Power, Frenzy and Endurance charges',                      regexTerm: 'teal p',  category: 'regular' },
-  { label: 'Monsters Gain Frenzy Charges',        needle: 'Monsters gain a Frenzy Charge on Hit',                          regexTerm: 'renz',    category: 'regular' },
-  { label: 'Monsters Gain Endurance Charges',     needle: 'Monsters gain an Endurance Charge on Hit',                      regexTerm: 'ndur',    category: 'regular' },
-  { label: 'Monsters Gain Power Charges',         needle: 'Monsters gain a Power Charge on Hit',                           regexTerm: 'ower c',  category: 'regular' },
+  { label: 'Monsters Gain Frenzy Charges',        needle: 'gain a Frenzy Charge on Hit',                                   regexTerm: 'renz',    category: 'regular' },
+  { label: 'Monsters Gain Endurance Charges',     needle: 'gain an Endurance Charge on Hit',                               regexTerm: 'ndur',    category: 'regular' },
+  { label: 'Monsters Gain Power Charges',         needle: 'gain a Power Charge on Hit',                                    regexTerm: 'ower c',  category: 'regular' },
   { label: 'Players Less Area of Effect',         needle: 'Players have #% less Area of Effect',                           regexTerm: 'ss are',  category: 'regular' },
-  { label: 'Monsters Maim on Hit',                needle: 'Monsters Maim on Hit',                                          regexTerm: 'aim on',  category: 'regular' },
-  { label: 'Monsters Hinder on Hit',              needle: 'Monsters Hinder on Hit',                                        regexTerm: 'inder',   category: 'regular' },
-  { label: 'Monsters Blind on Hit',               needle: 'Monsters Blind on Hit',                                         regexTerm: 'lind o',  category: 'regular' },
+  { label: 'Monsters Maim on Hit',                needle: 'Maim on Hit',                                                   regexTerm: 'aim on',  category: 'regular' },
+  { label: 'Monsters Hinder on Hit',              needle: 'Hinder on Hit',                                                 regexTerm: 'inder',   category: 'regular' },
+  { label: 'Monsters Blind on Hit',               needle: 'Blind on Hit',                                                  regexTerm: 'lind o',  category: 'regular' },
   { label: 'Area Contains Many Totems',           needle: 'Area contains many Totems',                                     regexTerm: 'otems',   category: 'regular' },
+  { label: 'Area Has Increased Monster Variety',   needle: 'Area has increased monster variety',                            regexTerm: 'ariety',  category: 'regular' },
+  { label: 'Inhabited by Cultists of Kitava',      needle: 'Area is inhabited by Cultists of Kitava',                       regexTerm: 'itava',   category: 'regular' },
+  { label: 'Inhabited by Ranged Monsters',         needle: 'Area is inhabited by ranged monsters',                          regexTerm: 'ranged',  category: 'regular' },
+  { label: 'Inhabited by Lunaris Fanatics',        needle: 'Area is inhabited by Lunaris fanatics',                         regexTerm: 'unar',    category: 'regular' },
+  { label: 'Inhabited by Undead',                  needle: 'Area is inhabited by Undead',                                   regexTerm: 'ndead',   category: 'regular' },
+  { label: 'Inhabited by Humanoids',               needle: 'Area is inhabited by Humanoids',                                regexTerm: 'umano',   category: 'regular' },
+  { label: 'Inhabited by Goatmen',                 needle: 'Area is inhabited by Goatmen',                                  regexTerm: 'oatme',   category: 'regular' },
+  { label: 'Inhabited by Skeletons',               needle: 'Area is inhabited by Skeletons',                                regexTerm: 'kelet',   category: 'regular' },
+  { label: 'Inhabited by Solaris Fanatics',        needle: 'Area is inhabited by Solaris fanatics',                         regexTerm: 'olari',   category: 'regular' },
+  { label: 'Inhabited by Sea Witches',             needle: 'Area is inhabited by Sea Witches',                              regexTerm: 'ea wi',   category: 'regular' },
+  { label: 'Inhabited by Demons',                  needle: 'Area is inhabited by Demons',                                   regexTerm: 'by dem',  category: 'regular' },
+  { label: 'Inhabited by Abominations',            needle: 'Area is inhabited by Abominations',                             regexTerm: 'bomin',   category: 'regular' },
+  { label: 'Inhabited by Animals',                 needle: 'Area is inhabited by Animals',                                  regexTerm: 'nimal',   category: 'regular' },
+  { label: 'Inhabited by Ghosts',                  needle: 'Area is inhabited by Ghosts',                                   regexTerm: 'host',    category: 'regular' },
   { label: 'Increased Rare Monsters',             needle: 'increased number of Rare Monsters',                              regexTerm: 'rare mo', category: 'regular' },
   { label: 'Increased Magic Monsters',            needle: 'increased Magic Monsters',                                      regexTerm: 'agic mo', category: 'regular' },
 
@@ -151,29 +165,31 @@ const BRICK_MOD_DEFS: BrickModDef[] = [
   { label: 'Unstable Tentacle Fiends',            needle: 'Unstable Tentacle Fiends',                                     regexTerm: 'nsta',    category: 'nightmare' },
   { label: 'Frenzy Charge + Max Frenzy',          needle: 'Maximum Frenzy Charges',                                       regexTerm: 'max fr',  category: 'nightmare' },
   { label: 'Reflect 20% Physical + Elemental',    needle: 'Monsters reflect 20% of Physical Damage',                      regexTerm: 't 20%',   category: 'nightmare' },
-  { label: 'Penetrates Elemental Resistances',    needle: 'Penetrates 15% Elemental Resistances',                         regexTerm: 'enetr',   category: 'nightmare' },
-  { label: 'Skills Chain + Terrain Chain',        needle: 'Projectiles can Chain when colliding',                         regexTerm: 'errain',  category: 'nightmare' },
-  { label: 'Grasping Vines on Hit',               needle: 'Grasping Vines on Hit',                                        regexTerm: 'raspi',   category: 'nightmare' },
+  { label: 'Penetrates Elemental Resistances',    needle: 'Penetrates',                                                   regexTerm: 'enetr',   category: 'nightmare' },
+  { label: 'Skills Chain + Terrain Chain',        needle: 'Chain when colliding',                                         regexTerm: 'errain',  category: 'nightmare' },
+  { label: 'Grasping Vines on Hit',               needle: 'Grasping Vine',                                                regexTerm: 'raspi',   category: 'nightmare' },
   { label: 'Drowning Orbs',                       needle: 'Drowning Orbs',                                                regexTerm: 'rown',    category: 'nightmare' },
   { label: 'Random Elemental Damage',             needle: 'Extra Damage of a random Element',                             regexTerm: 'andom',   category: 'nightmare' },
-  { label: 'Massive All Resistances',             needle: '+50% Monster Physical Damage Reduction',                        regexTerm: '50% mo',  category: 'nightmare' },
+  { label: 'Massive All Resistances',             needle: 'Monster Physical Damage Reduction',                            regexTerm: '50% mo',  category: 'nightmare' },
   { label: 'All Damage Can Ignite/Freeze/Shock',  needle: 'All Monster Damage can Ignite, Freeze and Shock',              regexTerm: 'll dam',  category: 'nightmare' },
-  { label: 'Less Flask Effect',                   needle: 'less effect of Flasks applied',                                regexTerm: 'sk ef',   category: 'nightmare' },
+  { label: 'Less Flask Effect',                   needle: 'Flasks applied to them',                                       regexTerm: 'sk ef',   category: 'nightmare' },
   { label: 'Endurance Charges + Max Endurance',   needle: 'Maximum Endurance Charges',                                    regexTerm: 'ax end',  category: 'nightmare' },
   { label: 'Shrine Buff on Unique Monsters',      needle: 'random Shrine Buff',                                           regexTerm: 'hrine',   category: 'nightmare' },
+  { label: 'Triple Curse (Vuln/Temporal/Elem)',    needle: 'Cursed with Vulnerability',                                    regexTerm: 'triple',  category: 'nightmare' },
+  { label: 'Stunned + Action/Move Speed Floor',    needle: 'Action Speed cannot be modified',                              regexTerm: 'tunn a',  category: 'nightmare' },
   { label: 'Searing Exarch Runes',                needle: 'Runes of the Searing Exarch',                                  regexTerm: 'xarch',   category: 'nightmare' },
   { label: 'Rare Monsters Temporarily Revive',    needle: 'Temporarily Revive on death',                                  regexTerm: 'evive',   category: 'nightmare' },
   { label: 'Poison + Duration + All Can Poison',  needle: 'increased Poison Duration',                                    regexTerm: 'oisona',  category: 'nightmare' },
   { label: 'Bloodstained Sawblades',              needle: 'Bloodstained Sawblades',                                       regexTerm: 'blade',   category: 'nightmare' },
   { label: 'Debuffs Expire Faster',               needle: 'Debuffs on Monsters expire',                                   regexTerm: 'ebuff',   category: 'nightmare' },
-  { label: 'Reduced Leech Recovery',              needle: 'reduced Maximum total Life, Mana and Energy Shield Recovery per second from Leech', regexTerm: 'each re', category: 'nightmare' },
+  { label: 'Reduced Leech Recovery',              needle: 'Recovery per second from Leech',                               regexTerm: 'each re', category: 'nightmare' },
   { label: 'Rare Monsters Fracture on Death',     needle: 'Fracture on death',                                            regexTerm: 'ractur',  category: 'nightmare' },
   { label: 'Flask Triggers Meteor',               needle: 'targeted by a Meteor',                                         regexTerm: 'eteor',   category: 'nightmare' },
-  { label: 'Players Less Defences',               needle: "Players have #% less Defences",                                regexTerm: 'ess def', category: 'nightmare' },
-  { label: 'Extra Projectiles + Massive AoE',     needle: '100% increased Area of Effect',                               regexTerm: '100%',    category: 'nightmare' },
+  { label: 'Players Less Defences',               needle: 'more Defences',                                                regexTerm: 'ess def', category: 'nightmare' },
+  { label: 'Extra Projectiles + Massive AoE',     needle: 'additional Projectiles',                                       regexTerm: '100%',    category: 'nightmare' },
   { label: 'Power Charges + Max Power',           needle: 'Maximum Power Charges',                                        regexTerm: 'ax pow',  category: 'nightmare' },
   { label: 'Labyrinth Hazards',                   needle: 'Labyrinth Hazards',                                            regexTerm: 'abyri',   category: 'nightmare' },
-  { label: 'Rare Monsters Volatile Cores',        needle: 'Volatile Cores',                                               regexTerm: 'vola',    category: 'nightmare' },
+  { label: 'Rare Monsters Volatile Cores',        needle: 'Volatile Core',                                                regexTerm: 'vola',    category: 'nightmare' },
   { label: 'The Maven Interferes',                needle: 'The Maven interferes',                                         regexTerm: 'aven',    category: 'nightmare' },
   { label: 'Auras Affect Enemies',                needle: 'Auras from Player Skills which affect Allies also affect Enemies', regexTerm: 'ect en', category: 'nightmare' },
   { label: 'Moving Marked Ground',                needle: 'patches of moving Marked Ground',                              regexTerm: 'arked g', category: 'nightmare' },
@@ -205,7 +221,7 @@ async function ensureStatsLoaded(): Promise<void> {
           if (group.id === 'explicit') {
             for (const def of BRICK_MOD_DEFS) {
               if (BRICK_MOD_CACHE.has(def.label)) continue;
-              if (entry.text.includes(def.needle)) {
+              if (entry.text.toLowerCase().includes(def.needle.toLowerCase())) {
                 BRICK_MOD_CACHE.set(def.label, entry.id);
               }
             }
@@ -247,25 +263,32 @@ interface TradeParams {
   minMaps:         number;
   mapType:         'any' | 'regular' | '8mod' | 'nightmare' | 'originator';
   empowered:       boolean;
-  minDelirious:    number;
+  minDelirious:    number;   // -1 = any, 0+ = require enchant at >=N%
   deliRewardTypes: string[];
   brickExclusions: string[];
+  minTier:         number;   // 0 = any, 16 = T16+
+  corruptedFilter: 'any' | 'yes' | 'no';
 }
 
 ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
   await ensureStatsLoaded();
 
   const { league, minIIQ, minPack, minIIR, minCurrency, minScarabs, minMaps,
-          mapType, empowered, minDelirious, deliRewardTypes, brickExclusions } = params;
+          mapType, empowered, minDelirious, deliRewardTypes, brickExclusions,
+          minTier, corruptedFilter } = params;
 
+  // Corrupted: explicit override wins, else mapType default
   let corruptedOption: string | null = null;
-  if (mapType === '8mod')    corruptedOption = 'true';
-  if (mapType === 'regular') corruptedOption = 'false';
+  if      (corruptedFilter === 'yes') corruptedOption = 'true';
+  else if (corruptedFilter === 'no')  corruptedOption = 'false';
+  else if (mapType === '8mod')        corruptedOption = 'true';
+  else if (mapType === 'regular')     corruptedOption = 'false';
 
   const mapFilters: Record<string, { min?: number }> = {};
-  if (minIIQ  > 0) mapFilters['map_iiq']     = { min: minIIQ };
-  if (minPack > 0) mapFilters['map_packsize'] = { min: minPack };
-  if (minIIR  > 0) mapFilters['map_iir']      = { min: minIIR };
+  if (minIIQ  > 0)  mapFilters['map_iiq']     = { min: minIIQ };
+  if (minPack > 0)  mapFilters['map_packsize'] = { min: minPack };
+  if (minIIR  > 0)  mapFilters['map_iir']      = { min: minIIR };
+  if (minTier > 0)  mapFilters['map_tier']     = { min: minTier };
 
   const statsArray: unknown[] = [];
 
@@ -284,7 +307,7 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
   if ((mapType === 'nightmare' || mapType === '8mod') && STATS_CACHE.has('originator'))
     statsArray.push({ type: 'not', filters: [{ id: STATS_CACHE.get('originator')! }] });
 
-  if (minDelirious > 0 && STATS_CACHE.has('delirious_pct'))
+  if (minDelirious >= 0 && STATS_CACHE.has('delirious_pct'))
     statsArray.push({ type: 'and', filters: [{ id: STATS_CACHE.get('delirious_pct')!, value: { min: minDelirious } }] });
 
   if (deliRewardTypes.length > 0) {
@@ -300,7 +323,8 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
 
   const query = {
     query: {
-      status: { option: 'any' },
+      // 'available' = Instant Buyout on the trade site (confirmed via PoB trade URL inspection)
+      status: { option: 'available' },
       filters: {
         type_filters: {
           filters: { category: { option: 'map' }, rarity: { option: 'nonunique' } },

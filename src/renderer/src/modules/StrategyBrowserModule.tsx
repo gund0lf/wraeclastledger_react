@@ -12,6 +12,7 @@ import {
 import { useSessionStore } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
 import { generateRunRegex, generateSlamRegex, trimmedMean } from '../utils/priceUtils';
+import { applyUserExclusionsToRegex } from './RegexModule';
 
 const DEFAULT_API_URL = 'http://wledger.richardpruett.com';
 
@@ -497,7 +498,7 @@ const StrategyCard = ({ strategy, onLoadBuild, showDate }: {
 export const StrategyBrowserModule = () => {
   const {
     maps, settings, lootItems, baselineTotal,
-    updateSetting, updateAdvSetting, updateScarab, newSession,
+    updateSetting, updateAdvSetting, updateScarab, newSession, setLoadedStrategyInfo,
   } = useSessionStore();
 
   const apiUrl = DEFAULT_API_URL;
@@ -736,6 +737,35 @@ export const StrategyBrowserModule = () => {
       }
     }
     setLoadedMsg(`Loaded ${s.discord_username}'s build — scarabs, chisel, atlas tree, deli orbs & astrolabe applied.`);
+    // Store strategy averages and regex for RegexModule to display and use
+    if (s.raw_export) {
+      const p2 = parseDiscordExport(s.raw_export);
+      if (p2 && p2.runRegex) {
+        setLoadedStrategyInfo({
+          authorName: s.strategy_name || s.discord_username,
+          mapCount: p2.mapCount || s.map_count || 0,
+          avgQuant:  p2.avgQuant,
+          avgRarity: p2.avgRarity,
+          avgPack:   p2.avgPack,
+          avgCurr:   p2.avgCurr,
+          runRegex:  p2.runRegex,
+          slamRegex: p2.slamRegex || undefined,
+          mapType:   s.map_type === '8-mod' ? '8mod' : (s.type_tag?.split(',').find((t) => ['nightmare','originator','empowered-originator','empowered'].includes(t.trim())) ?? undefined),
+        });
+      }
+    } else if (s.run_regex) {
+      setLoadedStrategyInfo({
+        authorName: s.strategy_name || s.discord_username,
+        mapCount: s.map_count || 0,
+        avgQuant:  s.avg_quant ?? 0,
+        avgRarity: s.avg_rarity ?? 0,
+        avgPack:   s.avg_pack ?? 0,
+        avgCurr:   s.avg_currency ?? 0,
+        runRegex:  s.run_regex,
+        slamRegex: s.slam_regex ?? undefined,
+        mapType:   s.map_type === '8-mod' ? '8mod' : (s.type_tag?.split(',').find((t) => ['nightmare','originator','empowered-originator','empowered'].includes(t.trim())) ?? undefined),
+      });
+    }
     setTimeout(() => setLoadedMsg(null), 6000);
   };
 
