@@ -38,8 +38,6 @@ const TAG_OPTIONS = [
   { value: 'betrayal',    label: 'Betrayal' },
   { value: 'essence',     label: 'Essence' },
   { value: 'divination',  label: 'Divination' },
-  { value: 'titanic',     label: 'Titanic' },
-  { value: 'torment',     label: 'Torment' },
   { value: 'ultimatum',   label: 'Ultimatum' },
   { value: 'kalguur',     label: 'Kalguur' },
   { value: 'heist',       label: 'Heist' },

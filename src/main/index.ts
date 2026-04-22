@@ -98,20 +98,21 @@ const BRICK_MOD_DEFS: BrickModDef[] = [
   { label: 'Monsters Poison on Hit',              needle: 'Monsters Poison on Hit',                                         regexTerm: 'n on hi', category: 'regular' },
   { label: 'Skills Chain Additional Times',       needle: 'Chain # additional times',                                       regexTerm: 'hain 2',  category: 'regular' },
   { label: 'Increased Monster Damage',            needle: 'increased Monster Damage',                                       regexTerm: 'ster da', category: 'regular' },
-  { label: 'Suppress Spell Dmg Prevented + Acc',  needle: 'amount of Suppressed Spell Damage Prevented',                    regexTerm: 'ppresse', category: 'regular' },
-  { label: 'Less Curse Effect',                   needle: 'less effect of Curses on Monsters',                              regexTerm: 'ess cur', category: 'regular' },
-  { label: 'Cursed with Enfeeble',                needle: 'Cursed with Enfeeble',                                           regexTerm: 'feebl',   category: 'regular' },
-  { label: 'Cursed with Vulnerability',           needle: 'Cursed with Vulnerability',                                      regexTerm: 'ulnera',  category: 'regular' },
-  { label: 'Cursed with Temporal Chains',         needle: 'Cursed with Temporal Chains',                                    regexTerm: 'empor',   category: 'regular' },
-  { label: 'Cursed with Elemental Weakness',      needle: 'Cursed with Elemental Weakness',                                 regexTerm: 'al wea',  category: 'regular' },
-  { label: 'Consecrated Ground',                  needle: 'patches of Consecrated Ground',                                  regexTerm: 'onsecr',  category: 'regular' },
-  { label: 'Desecrated Ground',                   needle: 'patches of desecrated ground',                                   regexTerm: 'esecr',   category: 'regular' },
-  { label: 'Shocked Ground',                      needle: 'patches of Shocked Ground',                                      regexTerm: 'hocked g',category: 'regular' },
-  { label: 'Chilled Ground',                      needle: 'patches of Chilled Ground',                                      regexTerm: 'hilled g',category: 'regular' },
-  { label: 'Burning Ground',                      needle: 'patches of Burning Ground',                                      regexTerm: 'urning g',category: 'regular' },
-  { label: 'Reduced Block + Less Armour',         needle: 'reduced Chance to Block',                                        regexTerm: 'nce to b',category: 'regular' },
-  { label: 'Suppress Spell Damage Chance',        needle: 'chance to Suppress Spell Damage',                                regexTerm: 'ppress s',category: 'regular' },
-  { label: 'Reduced Crit Damage Taken',           needle: 'reduced Extra Damage from Critical Strikes',                     regexTerm: 'uced ext',category: 'regular' },
+  { label: 'Players Less Suppressed Spell Damage',   needle: 'Prevent +#% of Suppressed Spell Damage',       regexTerm: 'uppres',  category: 'regular' },
+  { label: 'Monsters Increased Accuracy Rating',       needle: 'Monsters have #% increased Accuracy Rating',   regexTerm: 'ccurac',  category: 'regular' },
+  { label: 'Monsters Suppress Spell Damage Chance',   needle: 'chance to Suppress Spell Damage',               regexTerm: 'ppress',  category: 'regular' },
+  { label: 'Less Curse Effect',                        needle: 'less effect of Curses on Monsters',             regexTerm: 'ess cur', category: 'regular' },
+  { label: 'Cursed with Enfeeble',                     needle: 'Cursed with Enfeeble',                          regexTerm: 'feebl',   category: 'regular' },
+  { label: 'Cursed with Vulnerability',                needle: 'Cursed with Vulnerability',                     regexTerm: 'ulnera',  category: 'regular' },
+  { label: 'Cursed with Temporal Chains',              needle: 'Cursed with Temporal Chains',                   regexTerm: 'empor',   category: 'regular' },
+  { label: 'Cursed with Elemental Weakness',           needle: 'Cursed with Elemental Weakness',                regexTerm: 'al wea',  category: 'regular' },
+  { label: 'Consecrated Ground',                       needle: 'patches of Consecrated Ground',                 regexTerm: 'onsecr',  category: 'regular' },
+  { label: 'Desecrated Ground',                        needle: 'patches of desecrated ground',                  regexTerm: 'esecr',   category: 'regular' },
+  { label: 'Shocked Ground',                           needle: 'patches of Shocked Ground',                     regexTerm: 'hocked g',category: 'regular' },
+  { label: 'Chilled Ground',                           needle: 'patches of Chilled Ground',                     regexTerm: 'hilled g',category: 'regular' },
+  { label: 'Burning Ground',                           needle: 'patches of Burning Ground',                     regexTerm: 'urning g',category: 'regular' },
+  { label: 'Reduced Block + Less Armour',              needle: 'reduced Chance to Block',                       regexTerm: 'nce to b',category: 'regular' },
+  { label: 'Reduced Crit Damage Taken',                 needle: 'reduced Extra Damage from Critical Strikes',    regexTerm: 'uced ext',category: 'regular' },
   { label: 'Extra Energy Shield from Life',       needle: 'Maximum Life as Extra Maximum Energy Shield',                    regexTerm: 'ife as e',category: 'regular' },
   { label: 'Reduced Flask Charges',               needle: 'reduced Flask Charges',                                          regexTerm: 'sk char', category: 'regular' },
   { label: 'Avoid Elemental Ailments',            needle: 'chance to Avoid Elemental Ailments',                             regexTerm: 'oid ele', category: 'regular' },
@@ -320,6 +321,12 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
 
   if (brickExclusions.length > 0)
     statsArray.push({ type: 'not', filters: brickExclusions.map((id) => ({ id })) });
+
+  // Always exclude Shaper/Elder influenced and Conqueror-occupied maps
+  statsArray.push({ type: 'not', filters: [
+    { id: 'implicit.stat_1792283443' }, // Area is influenced by # (Shaper/Elder)
+    { id: 'implicit.stat_3624393862' }, // Map is occupied by # (Conquerors)
+  ] });
 
   const query = {
     query: {

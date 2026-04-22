@@ -5,6 +5,12 @@ import { useSessionStore } from '../store/useSessionStore';
 
 const BASE_URL = 'https://pathofpathing.com';
 
+// Safely check that a URL belongs to the pathofpathing.com host
+function isPathofpathingUrl(url: string): boolean {
+  try { return new URL(url).hostname === 'pathofpathing.com'; }
+  catch { return false; }
+}
+
 interface StatGroup {
   title: string;
   stats: string[];
@@ -18,7 +24,7 @@ export const AtlasTreeModule = () => {
 
   const [srcUrl,      setSrcUrl]      = useState(() => {
     const stored = settings.atlasTreeUrl;
-    return stored?.startsWith('https://pathofpathing.com') ? stored : BASE_URL;
+    return isPathofpathingUrl(stored) ? stored : BASE_URL;
   });
   const [capturedUrl, setCapturedUrl] = useState(srcUrl);
   const [key,         setKey]         = useState(0);
@@ -34,7 +40,7 @@ export const AtlasTreeModule = () => {
     if (prevSessionRef.current === activeSessionId) return;
     prevSessionRef.current = activeSessionId;
     const url = useSessionStore.getState().settings.atlasTreeUrl;
-    const next = url?.startsWith('https://pathofpathing.com') ? url : BASE_URL;
+    const next = isPathofpathingUrl(url) ? url : BASE_URL;
     setSrcUrl(next);
     setCapturedUrl(next);
     setKey((k) => k + 1);
@@ -45,7 +51,7 @@ export const AtlasTreeModule = () => {
   useEffect(() => {
     const stored = settings.atlasTreeUrl;
     if (!stored || stored === capturedUrl || stored === srcUrl) return;
-    if (!stored.startsWith('https://pathofpathing.com')) return;
+    if (!isPathofpathingUrl(stored)) return;
     setSrcUrl(stored);
     setCapturedUrl(stored);
     autoApplyRef.current = true; // auto-apply calc after load
@@ -59,7 +65,7 @@ export const AtlasTreeModule = () => {
     if (!wv) return;
     const handleNav = (e: any) => {
       const url: string = e.url ?? '';
-      if (!url.startsWith('https://pathofpathing.com')) return;
+      if (!isPathofpathingUrl(url)) return;
       setCapturedUrl(url);
       updateSetting('atlasTreeUrl', url);
     };
@@ -183,7 +189,7 @@ export const AtlasTreeModule = () => {
   // ── Import URL from text input ───────────────────────────────────────
   const loadImportUrl = () => {
     const url = importUrl.trim();
-    if (!url.startsWith('https://pathofpathing.com')) return;
+    if (!isPathofpathingUrl(url)) return;
     setSrcUrl(url);
     setCapturedUrl(url);
     updateSetting('atlasTreeUrl', url);
@@ -288,7 +294,7 @@ export const AtlasTreeModule = () => {
             onKeyDown={(e) => e.key === 'Enter' && loadImportUrl()}
           />
           <Button size="xs" variant="light" color="orange"
-            disabled={!importUrl.trim().startsWith('https://pathofpathing.com')}
+            disabled={!isPathofpathingUrl(importUrl.trim())}
             onClick={loadImportUrl}>
             Load
           </Button>

@@ -10,6 +10,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.40',
+    date: '2026-04-22',
+    changes: [
+      'Regex: fixed thresholdPat for currency floors 100–199 — e.g. 140% now correctly generates 1[4-9].|[2-9].. instead of the ambiguous \\d.. pattern',
+      'Regex: removed “⚠ Open slot only for slam” note',
+      'Trade: trade modal stays open after clicking Search so you can adjust filters and re-search',
+      'Trade: Copy Regex button has fixed minimum width so it doesn’t resize when showing Copied',
+      'Changelog: past versions are now collapsible — click any version header to expand its changes',
+      'Tags: removed Titanic (not a meaningful build mechanic), restored Ambush (= Strongboxes, still in game)',
+      'Types: removed sinistral/dextral from RegexSet type',
+      'Trade: Shaper/Elder influenced and Conqueror-occupied maps are now always excluded from results',
+      'Security: Atlas Tree and Atlas Calc URL checks now use proper hostname parsing, fixing all CodeQL high-severity alerts',
+      'Suppress mods: split into three correct separate entries with accurate API needles',
+    ],
+  },
+  {
     version: '1.0.39',
     date: '2026-04-21',
     changes: [

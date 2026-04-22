@@ -29,11 +29,19 @@ export function trimmedMean(values: number[]): number {
 
 // ─── Regex helpers ────────────────────────────────────────────────────────────
 function thresholdPat(floor: number): string {
-  if (floor <= 0 || floor >= 100) return '\\d..';
-  const tens = Math.floor(floor / 10);
-  if (tens <= 0) return '[1-9].|\\d..';
-  if (tens >= 9) return `9.|\\d..`;
-  return `[${tens}-9].|\\d..`;
+  if (floor <= 0) return '\\d..';
+  const f = Math.floor(floor);
+  if (f >= 200) return '[2-9]..';
+  if (f >= 100) {
+    const tens = Math.floor((f % 100) / 10);
+    if (tens === 0) return '\\d..'; // 100 → any 3-digit
+    return `1[${tens}-9].|[2-9]..`; // e.g. 140 → 1[4-9].|[2-9]..
+  }
+  if (f >= 10) {
+    const tens = Math.floor(f / 10);
+    return tens >= 9 ? `9.|\\d..` : `[${tens}-9].|\\d..`;
+  }
+  return `[${f}-9]|[1-9].|\\d..`;
 }
 
 interface MapAverages {
@@ -44,9 +52,20 @@ interface MapAverages {
 export const generateRunRegex = (avg: MapAverages, exclusions?: string[]): string => {
   const parts: string[] = [];
   if (exclusions && exclusions.length > 0) parts.push(`"!${exclusions.join('|')}"`);
-  const currFloor  = Math.max(Math.floor(avg.avgCurr  / 10) * 10, 40);
-  const packFloor  = Math.max(Math.floor(avg.avgPack  / 10) * 10, 20);
-  parts.push(`"(urr.*(${thresholdPat(currFloor)})%|ack.*(${thresholdPat(packFloor)})%)"`);
+
+  const packFloor = Math.max(Math.floor(avg.avgPack / 10) * 10, 20);
+
+  if (avg.avgCurr >= 80) {
+    // High-currency session: require currency AND pack as separate conditions
+    const currFloor = Math.max(Math.floor(avg.avgCurr / 10) * 10, 80);
+    parts.push(`"urr.*(${thresholdPat(currFloor)})%"`);
+    parts.push(`"ack.*(${thresholdPat(packFloor)})%"`);
+  } else {
+    // Regular session: either decent currency OR decent pack is fine
+    const currFloor = Math.max(Math.floor(avg.avgCurr / 10) * 10, 40);
+    parts.push(`"(urr.*(${thresholdPat(currFloor)})%|ack.*(${thresholdPat(packFloor)})%)"`);
+  }
+
   if (avg.avgQuant > 20) {
     const quantFloor = Math.max(Math.floor(avg.avgQuant * 0.6 / 10) * 10, 20);
     parts.push(`"iz.*(${thresholdPat(quantFloor)})%"`);

@@ -23,7 +23,7 @@ export interface MapData {
 export interface RegexSet {
   id: string;
   label: string;
-  type: 'run' | 'slam' | 'sinistral' | 'dextral' | 'other';
+  type: 'run' | 'slam' | 'other';
   lines: string[];
   isDefault?: boolean; // pinned to top of saved sets, applied when loading strategies
 }

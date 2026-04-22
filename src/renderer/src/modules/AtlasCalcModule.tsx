@@ -43,7 +43,8 @@ export const AtlasCalcModule = () => {
     const s = useSessionStore.getState().settings;
     const configured = s.mountingModifiers || s.fragmentsUsed > 0 || s.smallNodesAllocated > 0;
     // Also skip wizard if a real tree URL is loaded — user will Apply to Calc from the tree
-    const hasTree = s.atlasTreeUrl?.startsWith('https://pathofpathing.com') && s.atlasTreeUrl.includes('#');
+    let hasTree = false;
+    try { hasTree = new URL(s.atlasTreeUrl ?? '').hostname === 'pathofpathing.com' && s.atlasTreeUrl.includes('#'); } catch {}
     setStep(configured || hasTree ? 'done' : 'mounting');
     setShowNodeSlider(false);
     setEditingPill(null);

@@ -10,6 +10,14 @@ import { RegexSet } from '../types';
 import { FaTrash, FaPlus, FaCopy, FaCheck, FaMagic, FaTimes, FaExternalLinkAlt } from 'react-icons/fa';
 import { generateRunRegex, generateSlamRegex, trimmedMean } from '../utils/priceUtils';
 
+// Generate an approximate stash regex from the trade search parameters
+function generateTradeRegex(exclusions: string[], minIIQ: number, minPack: number, minCurr: number): string {
+  // Trade rounds down — use the same floor values the trade search uses
+  const avg = { avgQuant: minIIQ || 0, avgPack: minPack || 0, avgCurr: minCurr || 0, avgRarity: 0, avgScarabs: 0 };
+  if (avg.avgQuant === 0 && avg.avgPack === 0 && avg.avgCurr === 0) return '';
+  return generateRunRegex(avg, exclusions);
+}
+
 const TYPE_COLORS: Record<string, string> = { run: 'green', slam: 'orange', other: 'gray' };
 const TYPE_LABELS: Record<string, string> = { run: 'Run', slam: 'Slam', other: 'Other' };
 
@@ -222,7 +230,7 @@ export const RegexModule = () => {
         minDelirious: tradeMinDelirious, deliRewardTypes: tradeDeliRewards,
         brickExclusions: tradeBrickExcl,
       });
-      if (result.url) { window.open(result.url, '_blank'); closeTrade(); }
+      if (result.url) { window.open(result.url, '_blank'); }
       else setTradeError(result.error ?? 'Failed to create trade search');
     } catch (err: any) { setTradeError(err.message ?? 'IPC error'); }
     finally { setTradeLoading(false); }
@@ -413,10 +421,30 @@ export const RegexModule = () => {
           </Stack>
 
           {tradeError && <Text size="xs" c="red">{tradeError}</Text>}
-          <Button color="orange" loading={tradeLoading}
-            leftSection={<FaExternalLinkAlt size={11} />} onClick={handleSearch} fullWidth>
-            Search on PoE Trade (Instant Buyout)
-          </Button>
+
+          <Group gap={8}>
+            <Button color="orange" loading={tradeLoading}
+              leftSection={<FaExternalLinkAlt size={11} />} onClick={handleSearch} style={{ flex: 1 }}>
+              Search on PoE Trade
+            </Button>
+            {(() => {
+              const r = generateTradeRegex(exclusions, tradeMinIIQ, tradeMinPack, tradeMinCurrency);
+              if (!r) return null;
+              return (
+                <CopyButton value={r} timeout={2000}>
+                  {({ copied, copy }) => (
+                    <Tooltip label={copied ? 'Copied!' : 'Copy matching stash regex'} withArrow>
+                      <Button variant="light" color={copied ? 'teal' : 'gray'} onClick={copy}
+                        style={{ minWidth: 110 }}
+                        leftSection={copied ? <FaCheck size={11} /> : <FaCopy size={11} />}>
+                        {copied ? 'Copied' : 'Copy Regex'}
+                      </Button>
+                    </Tooltip>
+                  )}
+                </CopyButton>
+              );
+            })()}
+          </Group>
         </Stack>
       </Modal>
 
@@ -621,7 +649,6 @@ export const RegexModule = () => {
                 ) : (
                   <Text size="xs" c="dimmed" fs="italic">8-mod / Nightmare maps are corrupted — slam not applicable.</Text>
                 )}
-                {generatedRegex.slam && <Text size="xs" c="dimmed" fs="italic">⚠ Open slot only for slam.</Text>}
                 <Group gap={4}>
                   <Button size="xs" variant="subtle" color="green"
                     onClick={() => openSaveAsModal(generatedRegex.run, 'run')}>
