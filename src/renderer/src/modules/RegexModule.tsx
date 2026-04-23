@@ -8,12 +8,11 @@ import { useState, useMemo, useEffect } from 'react';
 import { useSessionStore } from '../store/useSessionStore';
 import { RegexSet } from '../types';
 import { FaTrash, FaPlus, FaCopy, FaCheck, FaMagic, FaTimes, FaExternalLinkAlt } from 'react-icons/fa';
-import { generateRunRegex, generateSlamRegex, trimmedMean } from '../utils/priceUtils';
+import { generateRunRegex, generateSlamRegex, trimmedMean, sanitizeExclusionTerms } from '../utils/priceUtils';
 
 // Generate an approximate stash regex from the trade search parameters
-function generateTradeRegex(exclusions: string[], minIIQ: number, minPack: number, minCurr: number): string {
-  // Trade rounds down — use the same floor values the trade search uses
-  const avg = { avgQuant: minIIQ || 0, avgPack: minPack || 0, avgCurr: minCurr || 0, avgRarity: 0, avgScarabs: 0 };
+function generateTradeRegex(exclusions: string[], minIIQ: number, minPack: number, minCurr: number, minIIR: number): string {
+  const avg = { avgQuant: minIIQ || 0, avgPack: minPack || 0, avgCurr: minCurr || 0, avgRarity: minIIR || 0, avgScarabs: 0 };
   if (avg.avgQuant === 0 && avg.avgPack === 0 && avg.avgCurr === 0) return '';
   return generateRunRegex(avg, exclusions);
 }
@@ -428,7 +427,7 @@ export const RegexModule = () => {
               Search on PoE Trade
             </Button>
             {(() => {
-              const r = generateTradeRegex(exclusions, tradeMinIIQ, tradeMinPack, tradeMinCurrency);
+              const r = generateTradeRegex(exclusions, tradeMinIIQ, tradeMinPack, tradeMinCurrency, tradeMinIIR);
               if (!r) return null;
               return (
                 <CopyButton value={r} timeout={2000}>
@@ -700,7 +699,9 @@ export const RegexModule = () => {
 
 export function applyUserExclusionsToRegex(regex: string, exclusions: string[]): string {
   if (!regex) return regex;
-  if (exclusions.length === 0) return regex.replace(/^"![^"]*"\s*/, '');
-  if (/^"![^"]+"/.test(regex)) return regex.replace(/^"![^"]+"/, `"!${exclusions.join('|')}"`);
-  return `"!${exclusions.join('|')}" ${regex}`;
+  const cleanExcl = sanitizeExclusionTerms(exclusions);
+  // Strip ALL leading exclusion blocks (handles malformed double-quoted cases like "!"!nsta|eche"")
+  const stripped = regex.replace(/^("![^"]*"|"!"[^"]*""?)\s*/g, '').trim();
+  if (cleanExcl.length === 0) return stripped;
+  return `"!${cleanExcl.join('|')}" ${stripped}`;
 }

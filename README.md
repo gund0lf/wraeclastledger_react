@@ -67,12 +67,6 @@ npm run build:mac
 npm run build:linux
 ```
 
-### Publish release (Windows, pushes to GitHub Releases)
-
-```bash
-npm run publish:win
-```
-
 ---
 
 ## Tech Stack

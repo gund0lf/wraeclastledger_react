@@ -42,13 +42,11 @@ export const AtlasCalcModule = () => {
   useEffect(() => {
     const s = useSessionStore.getState().settings;
     const configured = s.mountingModifiers || s.fragmentsUsed > 0 || s.smallNodesAllocated > 0;
-    // Also skip wizard if a real tree URL is loaded — user will Apply to Calc from the tree
     let hasTree = false;
     try { hasTree = new URL(s.atlasTreeUrl ?? '').hostname === 'pathofpathing.com' && s.atlasTreeUrl.includes('#'); } catch {}
-    setStep(configured || hasTree ? 'done' : 'mounting');
-    setShowNodeSlider(false);
-    setEditingPill(null);
-  }, [activeSessionId]);
+    // Always jump to 'done' if anything is configured — never show wizard for a configured state
+    if (configured || hasTree) { setStep('done'); setShowNodeSlider(false); setEditingPill(null); }
+  }, [activeSessionId, settings.mountingModifiers, settings.fragmentsUsed, settings.smallNodesAllocated, settings.atlasTreeUrl]);
 
   // ── Auto-detect map type from parsed maps ─────────────────────────────────
   // Requires ≥ 4 maps. Real 8-mod maps are always corrupted — Risk scarab adds

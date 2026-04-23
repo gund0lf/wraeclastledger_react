@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { MapData, SessionSettings, LootItem, SavedSession, ScarabSlot, ScarabPreset, RegexSet } from '../types';
 import { v4 as uuidv4 } from 'uuid';
-import { fetchDivinePrice } from '../utils/priceUtils';
+import { fetchDivinePrice, sanitizeExclusionTerms } from '../utils/priceUtils';
 import { getCurrentLeague } from '../utils/league';
 
 const STORE_VERSION = 14;
@@ -58,6 +58,16 @@ function migrateState(persisted: any): any {
   }
   delete merged['mirageBonus'];
 
+  // Sanitize regexExclusions — remove any corrupted entries that contain full regex fragments
+  if (Array.isArray(merged['regexExclusions'])) {
+    merged['regexExclusions'] = sanitizeExclusionTerms(merged['regexExclusions']);
+  }
+
+  // Sanitize defaultExclusionPreset too
+  if (Array.isArray(persisted?.defaultExclusionPreset)) {
+    persisted.defaultExclusionPreset = sanitizeExclusionTerms(persisted.defaultExclusionPreset);
+  }
+
   const savedSessions: Record<string, any> = persisted?.savedSessions ?? {};
   for (const id of Object.keys(savedSessions)) {
     const ss = savedSessions[id].settings ?? {};
@@ -72,6 +82,10 @@ function migrateState(persisted: any): any {
       mergedSs['atlasBonus'] = mergedSs['mirageBonus'];
     }
     delete mergedSs['mirageBonus'];
+    // Sanitize saved session regexExclusions
+    if (Array.isArray(mergedSs['regexExclusions'])) {
+      mergedSs['regexExclusions'] = sanitizeExclusionTerms(mergedSs['regexExclusions']);
+    }
     savedSessions[id] = { ...savedSessions[id], settings: mergedSs };
   }
 

@@ -27,6 +27,15 @@ export function trimmedMean(values: number[]): number {
   return trimmed.reduce((a, b) => a + b, 0) / trimmed.length;
 }
 
+// Sanitize exclusion terms — strips anything that looks like a full regex fragment
+// rather than a bare term. This cleans up corrupted data where the whole
+// '"!nsta|eche"' string ended up stored as a single element.
+export function sanitizeExclusionTerms(terms: string[]): string[] {
+  return terms
+    .map((t) => t.trim().replace(/^"|"$/g, '').replace(/^!/, ''))
+    .filter((t) => t.length > 0 && !t.includes('"') && !t.includes('(') && !t.includes('*'));
+}
+
 // ─── Regex helpers ────────────────────────────────────────────────────────────
 function thresholdPat(floor: number): string {
   if (floor <= 0) return '\\d..';
@@ -51,7 +60,8 @@ interface MapAverages {
 
 export const generateRunRegex = (avg: MapAverages, exclusions?: string[]): string => {
   const parts: string[] = [];
-  if (exclusions && exclusions.length > 0) parts.push(`"!${exclusions.join('|')}"`);
+  const cleanExcl = sanitizeExclusionTerms(exclusions ?? []);
+  if (cleanExcl.length > 0) parts.push(`"!${cleanExcl.join('|')}"`);
 
   const packFloor = Math.max(Math.floor(avg.avgPack / 10) * 10, 20);
 
@@ -79,7 +89,8 @@ export const generateRunRegex = (avg: MapAverages, exclusions?: string[]): strin
 
 export const generateSlamRegex = (avg: MapAverages, exclusions?: string[]): string => {
   const parts: string[] = [];
-  if (exclusions && exclusions.length > 0) parts.push(`"!${exclusions.join('|')}"`);
+  const cleanExcl = sanitizeExclusionTerms(exclusions ?? []);
+  if (cleanExcl.length > 0) parts.push(`"!${cleanExcl.join('|')}"`);
   const currFloor = Math.max(Math.floor(avg.avgCurr * 0.75 / 10) * 10, 30);
   const packFloor = Math.max(Math.floor(avg.avgPack * 0.75 / 10) * 10, 15);
   parts.push(`"(urr.*(${thresholdPat(currFloor)})%|ack.*(${thresholdPat(packFloor)})%)"`);
