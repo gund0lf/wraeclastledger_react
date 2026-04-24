@@ -13,6 +13,7 @@ import { useSessionStore } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
 import { generateRunRegex, generateSlamRegex, trimmedMean } from '../utils/priceUtils';
 import { applyUserExclusionsToRegex } from './RegexModule';
+import { KNOWN_LEAGUES, CURRENT_LEAGUE } from '../utils/league';
 
 const DEFAULT_API_URL = 'http://wledger.richardpruett.com';
 
@@ -518,7 +519,7 @@ export const StrategyBrowserModule = () => {
   const [offset,     setOffset]     = useState(0);
   const [loadedMsg,  setLoadedMsg]  = useState<string | null>(null);
   const [typeTags,   setTypeTags]   = useState<string[]>([]);
-  const [leagueFilter, setLeagueFilter] = useState<string | null>(null);
+  const [leagueFilter, setLeagueFilter] = useState<string>(CURRENT_LEAGUE);
   const [minDiv,     setMinDiv]     = useState('');
   const [sortBy,     setSortBy]     = useState('posted_at');
   const [period,     setPeriod]     = useState('all');
@@ -934,9 +935,9 @@ export const StrategyBrowserModule = () => {
           <MultiSelect size="xs" placeholder="Any type" clearable style={{ flex: 1 }}
             data={ALL_TYPE_TAGS.map((t) => ({ value: t, label: t.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') }))}
             value={typeTags} onChange={setTypeTags} maxDropdownHeight={200} searchable />
-          <Select size="xs" placeholder="Any league" clearable style={{ width: 110 }}
-            data={['Mirage','Dawn of the Hunt','Mercenaries','Settlers','Affliction','Standard'].map((l) => ({ value: l, label: l }))}
-            value={leagueFilter} onChange={setLeagueFilter} />
+          <Select size="xs" style={{ width: 110 }}
+            data={KNOWN_LEAGUES.filter((l) => l !== 'Standard').map((l) => ({ value: l, label: l }))}
+            value={leagueFilter} onChange={(v) => setLeagueFilter(v ?? CURRENT_LEAGUE)} />
           <TextInput size="xs" placeholder="Min d/map" style={{ width: 80 }}
             value={minDiv} onChange={(e) => setMinDiv(e.currentTarget.value)} />
           <Select size="xs" style={{ width: 90 }}

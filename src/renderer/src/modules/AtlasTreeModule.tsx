@@ -39,12 +39,14 @@ export const AtlasTreeModule = () => {
   useEffect(() => {
     if (prevSessionRef.current === activeSessionId) return;
     prevSessionRef.current = activeSessionId;
+    autoApplyRef.current = false; // never auto-read stats on New Session
     const url = useSessionStore.getState().settings.atlasTreeUrl;
     const next = isPathofpathingUrl(url) ? url : BASE_URL;
     setSrcUrl(next);
     setCapturedUrl(next);
     setKey((k) => k + 1);
     setStatGroups([]);
+    setStatsOpen(false); // close stats panel on session change
   }, [activeSessionId]);
 
   // ── Reload when atlasTreeUrl is set externally (Load Build Settings) ───────

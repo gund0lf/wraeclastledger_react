@@ -10,6 +10,21 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.41',
+    date: '2026-04-24',
+    changes: [
+      'Atlas Tree: New Session no longer triggers atlas tree stat reading or leaves the pathofpathing stats panel open',
+      'Atlas Tree: stats panel is now closed automatically when switching sessions',
+      'League: simplified to Mirage only — removed Dawn of the Hunt, Settlers, Standard etc. from probe list',
+      'League: easy to extend for future leagues — just update CURRENT_LEAGUE and KNOWN_LEAGUES at the top of league.ts',
+      'Regex: fixed double-exclusion bug (“!”!…””) caused by corrupted regexExclusions containing full regex strings instead of bare terms',
+      'Regex: sanitizeExclusionTerms() added — strips quotes, leading !, and rejects any term with special regex characters',
+      'Regex: migration cleans corrupted regexExclusions and defaultExclusionPreset in all saved sessions on next load',
+      'Regex: trade window regex now includes rarity (IIR) in the generated Copy Regex',
+      'Atlas Calc: wizard now reactively watches settings values — no longer shows yes/no questions after Load Build Settings applies calc data asynchronously',
+    ],
+  },
+  {
     version: '1.0.40',
     date: '2026-04-22',
     changes: [

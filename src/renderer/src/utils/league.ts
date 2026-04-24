@@ -1,27 +1,29 @@
 /**
- * Detects the current PoE1 challenge league from poe.ninja.
+ * PoE1 challenge league management.
  *
- * poe.ninja API notes:
- *   - The economy endpoints live under /api/data/ (PoE1)
- *   - The index state endpoint returns leagues keyed by game
- *   - We probe to find which challenge league has live data
+ * To add a new league when it launches:
+ *   1. Add it to the top of KNOWN_LEAGUES (most recent first)
+ *   2. Update CURRENT_LEAGUE to the new league name
+ *
+ * League detection probes poe.ninja in order — first hit with live data wins.
+ * Standard is intentionally last as a fallback only.
  */
+
+// ─── Update this each new league ─────────────────────────────────────────────
+export const CURRENT_LEAGUE = 'Mirage';
+
+export const KNOWN_LEAGUES: string[] = [
+  'Mirage',       // 3.28 — current
+  // 'NextLeague', // add here when it launches
+  'Standard',     // fallback only
+];
+// ─────────────────────────────────────────────────────────────────────────────
 
 let cachedLeague: string | null = null;
 let cachedFetchPromise: Promise<string> | null = null;
 
 async function detect(): Promise<string> {
-  // Probe known recent league names — most recent first.
-  // poe.ninja's getindexstate endpoint was removed; direct probing is reliable.
-  // Update this list each new league.
-  // If poe.ninja returns lines[] with data, that league is active.
-  // Order = most recent first — update this list each patch.
-  const probes = [
-    'Mirage', 'Dawn of the Hunt', 'Mercenaries', 'Settlers',
-    'Affliction', 'Necropolis', 'Standard',
-  ];
-
-  for (const name of probes) {
+  for (const name of KNOWN_LEAGUES) {
     try {
       const r = await fetch(
         `https://poe.ninja/api/data/currencyoverview?league=${encodeURIComponent(name)}&type=Currency`
@@ -29,27 +31,23 @@ async function detect(): Promise<string> {
       if (!r.ok) continue;
       const d = await r.json();
       if ((d.lines ?? []).length > 5) {
-        // Found a live league
         console.log('[League] Detected via probe:', name);
         return name;
       }
     } catch { /* continue */ }
   }
-
-  console.warn('[League] Could not detect, falling back to Standard');
-  return 'Standard';
+  console.warn('[League] Could not detect, falling back to:', CURRENT_LEAGUE);
+  return CURRENT_LEAGUE;
 }
 
 export async function getCurrentLeague(): Promise<string> {
   if (cachedLeague) return cachedLeague;
   if (cachedFetchPromise) return cachedFetchPromise;
-
   cachedFetchPromise = detect().then((league) => {
     cachedLeague = league;
     cachedFetchPromise = null;
     return league;
   });
-
   return cachedFetchPromise;
 }
 
