@@ -1,6 +1,6 @@
 {
   "name": "WraeclastLedger",
-  "version": "1.0.54",
+  "version": "1.0.56",
   "description": "WraeclastLedger",
   "main": "./out/main/index.js",
   "author": "gund0lf",

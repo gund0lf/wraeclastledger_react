@@ -1,7 +1,7 @@
 import {
   Card, Text, NumberInput, Divider, Group, Stack,
   Select, Button, Modal, SimpleGrid, Autocomplete, Badge,
-  ActionIcon, TextInput, Menu, Alert, Collapse, Tooltip,
+  ActionIcon, TextInput, Menu, Alert, Collapse, Tooltip, Switch,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useState, useEffect } from 'react';
@@ -74,13 +74,15 @@ export const InvestmentModule = () => {
   const [fetchingPrice, setFetchingPrice] = useState(false);
 
   const divinePrice   = settings.divinePrice || 1;
-  const chiselCost    = settings.chiselType && settings.chiselPrice > 0 ? settings.chiselPrice : 0;
-  const scarabCost    = settings.scarabs.reduce((acc, s) => acc + (s.cost || 0), 0);
-  const mapCount      = maps.length || 1;
-  const isSplit       = settings.advSplitPrice > 0;
-  const perMapBase    = isSplit
-    ? (settings.baseMapCost + chiselCost + settings.advSplitPrice) / 2 + scarabCost
-    : settings.baseMapCost + chiselCost + scarabCost;
+  const chiselCost      = settings.chiselType && settings.chiselPrice > 0 ? settings.chiselPrice : 0;
+  const perMapScarabs   = settings.scarabs.filter((s) => !s.preserved).reduce((acc, s) => acc + (s.cost || 0), 0);
+  const oneTimeScarabs  = settings.scarabs.filter((s) =>  s.preserved).reduce((acc, s) => acc + (s.cost || 0), 0);
+  const scarabCost      = perMapScarabs; // for perMap display
+  const mapCount        = maps.length || 1;
+  const isSplit         = settings.advSplitPrice > 0;
+  const perMapBase      = isSplit
+    ? (settings.baseMapCost + chiselCost + settings.advSplitPrice) / 2 + perMapScarabs
+    : settings.baseMapCost + chiselCost + perMapScarabs;
   const rollingPerMap   = settings.rollingCostPerMap / mapCount;
   const totalPerMapFull = perMapBase + rollingPerMap;
   const deliPerMap      = settings.advDeliOrbQtyPerMap * settings.advDeliOrbPriceEach;
@@ -363,6 +365,11 @@ export const InvestmentModule = () => {
                   Astro {astrolabeTotal.toFixed(0)}c
                 </Badge>
               )}
+              {oneTimeScarabs > 0 && (
+                <Badge size="xs" color="teal" variant="outline">
+                  🔒 Preserved {oneTimeScarabs.toFixed(0)}c
+                </Badge>
+              )}
             </Group>
           )}
 
@@ -402,7 +409,7 @@ export const InvestmentModule = () => {
           </Group>
 
           {settings.scarabs.map((scarab, i) => (
-            <Group key={i} gap={4} wrap="nowrap">
+            <Group key={i} gap={4} wrap="nowrap" align="center">
               <Autocomplete placeholder={`Scarab ${i + 1}`} value={scarab.name}
                 onChange={(v) => updateScarab(i, 'name', v)}
                 data={SCARAB_LIST} size="xs" style={{ flex: 1, minWidth: 0 }}
@@ -415,7 +422,20 @@ export const InvestmentModule = () => {
                 rightSectionPointerEvents={scarab.name ? 'all' : 'none'}
               />
               <PriceInput value={scarab.cost} onChange={(v) => updateScarab(i, 'cost', v)}
-                divinePrice={divinePrice} placeholder="0c" style={{ width: 100, flexShrink: 0 }} />
+                divinePrice={divinePrice} placeholder="0c" style={{ width: 76, flexShrink: 0 }} />
+              <Tooltip
+                label={scarab.preserved
+                  ? 'Preserved (one-time cost) — kept by Horned Scarab of Preservation, not consumed each map'
+                  : 'Per-map cost — toggle if this scarab is kept by Horned Scarab of Preservation'}
+                withArrow multiline w={200}>
+                <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                  <Switch size="xs" checked={!!scarab.preserved}
+                    onChange={(e) => updateScarab(i, 'preserved', e.currentTarget.checked)}
+                    color="teal"
+                    styles={{ track: { cursor: 'pointer' } }}
+                  />
+                </div>
+              </Tooltip>
             </Group>
           ))}
         </Stack>

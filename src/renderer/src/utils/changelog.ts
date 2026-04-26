@@ -10,6 +10,30 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.56',
+    date: '2026-04-26',
+    changes: [
+      'Investment: Preservation toggle per scarab slot — toggle to mark a scarab as preserved (kept by Horned Scarab of Preservation)',
+      'Investment: preserved scarabs are treated as one-time cost instead of per-map cost — only Preservation scarab itself is counted per-map',
+      'Investment: 🔒 Preserved Xc badge shown in cost indicators when any scarab is marked preserved',
+      'Dashboard: investment auto-detection — after importing both baseline and return, detects if configured investment items (scarabs, astrolabes, deli orbs) appear in the diff losses',
+      'Dashboard: yellow warning banner shows matched items with their loss values and a Neutralise button',
+      'Dashboard: neutralising adds the loss values back to loot gain to un-do the double-count from having investment in tracked stash tabs at baseline time',
+      'Dashboard: neutralisation can be undone and resets on new session',
+    ],
+  },
+  {
+    version: '1.0.55',
+    date: '2026-04-26',
+    changes: [
+      'Scarab list: updated to 111 verified droppable scarabs for Mirage League (3.28)',
+      'Removed: Scarab of Bisection (split into Sinistral/Dextral in 3.28), Sinistral/Dextral Breach Scarab (never real items)',
+      'Removed: all Shrine Scarab variants (no such scarabs exist), Ritual Scarab plain, Scarab of Hunted Traitors (drop-disabled)',
+      'Removed: plain Breach Scarab, Cartography Scarab, Divination Scarab (not droppable in current league)',
+      'Added: Breach Scarab of Resonant Cascade, Breach Scarab of the Marshal, Divination Scarab of Pilfering, Horned Scarab of Awakening, Scarab of Radiant Storms, Incursion Scarab of Timelines and others',
+    ],
+  },
+  {
     version: '1.0.54',
     date: '2026-04-26',
     changes: [

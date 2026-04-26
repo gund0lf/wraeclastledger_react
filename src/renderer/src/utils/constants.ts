@@ -1,5 +1,9 @@
 // ─── SCARAB LIST ──────────────────────────────────────────────────────────────
-// Verified against wiki for 3.25+ (Mirage/Originator league)
+// Verified against wiki for 3.28 (Mirage League) — 111 droppable scarabs
+// Removed: Scarab of Bisection (split into Sinistral/Dextral in 3.28),
+//          Sinistral/Dextral Breach Scarab (never real items),
+//          all Shrine Scarab variants (don't exist as scarabs),
+//          Ritual Scarab plain, Scarab of Hunted Traitors (drop-disabled)
 export const SCARAB_LIST: string[] = [
   // ── Horned ──
   "Horned Scarab of Awakening",
@@ -9,17 +13,6 @@ export const SCARAB_LIST: string[] = [
   "Horned Scarab of Pandemonium",
   "Horned Scarab of Preservation",
   "Horned Scarab of Tradition",
-  // ── Misc / Generic ──
-  "Scarab of Adversaries",
-  "Scarab of Bisection",
-  "Scarab of the Dextral",
-  "Scarab of Divinity",
-  "Scarab of Hunted Traitors",
-  "Scarab of Monstrous Lineage",
-  "Scarab of Radiant Storms",
-  "Scarab of the Sinistral",
-  "Scarab of Stability",
-  "Scarab of Wisps",
   // ── Abyss ──
   "Abyss Scarab",
   "Abyss Scarab of Descending",
@@ -34,39 +27,35 @@ export const SCARAB_LIST: string[] = [
   "Ambush Scarab of Potency",
   // ── Anarchy ──
   "Anarchy Scarab",
-  "Anarchy Scarab of the Exceptional",   // fixed: was "Exception"
   "Anarchy Scarab of Gigantification",
   "Anarchy Scarab of Partnership",
+  "Anarchy Scarab of the Exceptional",
   // ── Bestiary ──
   "Bestiary Scarab",
   "Bestiary Scarab of Duplicating",
   "Bestiary Scarab of the Herd",
   // ── Betrayal ──
   "Betrayal Scarab",
-  "Betrayal Scarab of the Allflame",
   "Betrayal Scarab of Reinforcements",
+  "Betrayal Scarab of the Allflame",
   "Betrayal Scarab of Unbreaking",
   // ── Beyond ──
   "Beyond Scarab",
   "Beyond Scarab of Haemophilia",
-  "Beyond Scarab of the Invasion",
   "Beyond Scarab of Resurgence",
+  "Beyond Scarab of the Invasion",
   // ── Blight ──
   "Blight Scarab",
   "Blight Scarab of Blooming",
   "Blight Scarab of Invigoration",
   "Blight Scarab of the Blightheart",
   // ── Breach ──
-  "Breach Scarab",
   "Breach Scarab of Instability",
-  "Breach Scarab of the Incensed Swarm",
-  "Breach Scarab of the Marshal",
   "Breach Scarab of Resonant Cascade",
   "Breach Scarab of the Hive",
-  "Sinistral Breach Scarab",
-  "Dextral Breach Scarab",
+  "Breach Scarab of the Incensed Swarm",
+  "Breach Scarab of the Marshal",
   // ── Cartography ──
-  "Cartography Scarab",
   "Cartography Scarab of Corruption",
   "Cartography Scarab of Escalation",
   "Cartography Scarab of Risk",
@@ -78,7 +67,6 @@ export const SCARAB_LIST: string[] = [
   "Delirium Scarab of Neuroses",
   "Delirium Scarab of Paranoia",
   // ── Divination ──
-  "Divination Scarab",
   "Divination Scarab of Pilfering",
   "Divination Scarab of Plenty",
   "Divination Scarab of The Cloister",
@@ -139,16 +127,10 @@ export const SCARAB_LIST: string[] = [
   "Metamorph Scarab of Curiosity",
   "Metamorph Scarab of Specimen",
   // ── Ritual ──
-  "Ritual Scarab",
   "Ritual Scarab of Abundance",
   "Ritual Scarab of Corpses",
   "Ritual Scarab of Selectiveness",
   "Ritual Scarab of Wisps",
-  // ── Shrine ──
-  "Shrine Scarab",
-  "Shrine Scarab of Pandaemonium",
-  "Shrine Scarab of Gluttony",
-  "Shrine Scarab of Divine",
   // ── Sulphite ──
   "Sulphite Scarab",
   "Sulphite Scarab of Fumes",
@@ -166,6 +148,15 @@ export const SCARAB_LIST: string[] = [
   "Ultimatum Scarab of Catalysing",
   "Ultimatum Scarab of Dueling",
   "Ultimatum Scarab of Inscription",
+  // ── Generic ──
+  "Scarab of Adversaries",
+  "Scarab of Divinity",
+  "Scarab of Monstrous Lineage",
+  "Scarab of Radiant Storms",
+  "Scarab of Stability",
+  "Scarab of the Dextral",
+  "Scarab of the Sinistral",
+  "Scarab of Wisps",
 ];
 
 // ─── CHISEL TYPES ─────────────────────────────────────────────────────────────

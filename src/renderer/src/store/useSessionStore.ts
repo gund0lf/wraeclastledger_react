@@ -104,6 +104,7 @@ interface SessionState {
   activeSessionName: string | null;
   scarabPresets: ScarabPreset[];
   sessionNotes: string;
+  investmentNeutralization: number; // amount added back to lootGain from auto-detected investment losses
   // Persistent default exclusion preset — survives newSession(), applied on strategy load
   defaultExclusionPreset: string[];
   // Loaded strategy preview
@@ -143,6 +144,7 @@ interface SessionState {
   deleteRegexSet: (id: string) => void;
   setDefaultPreset: () => void; // saves current regexExclusions as persistent default
   setSessionNotes: (notes: string) => void;
+  setInvestmentNeutralization: (v: number) => void;
   setLoadedStrategyInfo: (info: SessionState['loadedStrategyInfo']) => void;
 }
 
@@ -153,7 +155,7 @@ export const useSessionStore = create<SessionState>()(
       settings: { ...DEFAULT_SETTINGS },
       isWatching: false, savedSessions: {},
       activeSessionId: null, activeSessionName: null, scarabPresets: [],
-      sessionNotes: '', loadedStrategyInfo: null, defaultExclusionPreset: [],
+      sessionNotes: '', investmentNeutralization: 0, loadedStrategyInfo: null, defaultExclusionPreset: [],
 
       addMap: (m) => set((s) => ({ maps: [...s.maps, { ...m, id: uuidv4() }] })),
       removeMap: (id) => set((s) => ({ maps: s.maps.filter((m) => m.id !== id) })),
@@ -261,7 +263,7 @@ export const useSessionStore = create<SessionState>()(
       renameSession: (id, newName) =>
         set((s) => ({ savedSessions: { ...s.savedSessions, [id]: { ...s.savedSessions[id], name: newName } }, activeSessionName: s.activeSessionId === id ? newName : s.activeSessionName })),
       newSession: () =>
-        set({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, sessionNotes: '', settings: { ...DEFAULT_SETTINGS }, activeSessionId: null, activeSessionName: null, isWatching: false, loadedStrategyInfo: null }),
+        set({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, sessionNotes: '', investmentNeutralization: 0, settings: { ...DEFAULT_SETTINGS }, activeSessionId: null, activeSessionName: null, isWatching: false, loadedStrategyInfo: null }),
 
       saveScarabPreset: (name) => {
         const p: ScarabPreset = { id: uuidv4(), name, scarabs: get().settings.scarabs.map((s) => ({ ...s })) };
@@ -284,6 +286,7 @@ export const useSessionStore = create<SessionState>()(
         // Save current session exclusions as the persistent default
         set((s) => ({ defaultExclusionPreset: [...s.settings.regexExclusions] })),
       setSessionNotes: (notes) => set({ sessionNotes: notes }),
+      setInvestmentNeutralization: (v) => set({ investmentNeutralization: v }),
       setLoadedStrategyInfo: (info) =>
         set((s) => ({
           loadedStrategyInfo: info,

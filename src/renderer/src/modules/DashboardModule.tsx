@@ -6,7 +6,7 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useSessionStore } from '../store/useSessionStore';
-import { QUALITY_STAT_EFFECTS, CHISEL_TYPES } from '../utils/constants';
+import { QUALITY_STAT_EFFECTS, CHISEL_TYPES, DELIRIUM_ORB_LIST } from '../utils/constants';
 import { MapData, LootItem } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { FaChevronDown, FaChevronRight, FaTrash, FaFileImport, FaSearch } from 'react-icons/fa';
@@ -100,6 +100,7 @@ export const DashboardModule = () => {
   const {
     maps, settings, lootItems, baselineItems, baselineTotal,
     setLootItems, setBaselineItems, toggleLootItemExcluded, clearLoot,
+    investmentNeutralization, setInvestmentNeutralization,
   } = useSessionStore();
 
   const stats = useMemo(() => {
@@ -135,12 +136,13 @@ export const DashboardModule = () => {
   }, [maps, settings]);
 
   const profit = useMemo(() => {
-    const chiselCost = settings.chiselType && settings.chiselPrice > 0 ? settings.chiselPrice : 0;
-    const scarabCost = settings.scarabs.reduce((a, s) => a + (s.cost || 0), 0);
-    const count      = stats?.count ?? 0;
-    let perMap = settings.baseMapCost + chiselCost + scarabCost;
-    if (settings.advSplitPrice > 0) perMap = (settings.baseMapCost + chiselCost + settings.advSplitPrice) / 2 + scarabCost;
-    const totalInvest = perMap * count + settings.rollingCostPerMap;
+    const chiselCost      = settings.chiselType && settings.chiselPrice > 0 ? settings.chiselPrice : 0;
+    const perMapScarabs   = settings.scarabs.filter((s) => !s.preserved).reduce((a, s) => a + (s.cost || 0), 0);
+    const oneTimeScarabs  = settings.scarabs.filter((s) =>  s.preserved).reduce((a, s) => a + (s.cost || 0), 0);
+    const count           = stats?.count ?? 0;
+    let perMap = settings.baseMapCost + chiselCost + perMapScarabs;
+    if (settings.advSplitPrice > 0) perMap = (settings.baseMapCost + chiselCost + settings.advSplitPrice) / 2 + perMapScarabs;
+    const totalInvest = perMap * count + settings.rollingCostPerMap + oneTimeScarabs;
     const rawReturn   = lootItems.filter((l) => !l.excluded).reduce((a, b) => a + b.total, 0);
     // If gems are configured with a name (auto-excluded from CSV) and a buy price,
     // add back the buy cost so gem activity is neutral to map profit.
@@ -149,7 +151,7 @@ export const DashboardModule = () => {
     const gemBuyOffset = (settings.advGemName?.trim() && settings.advGemCount > 0 && settings.advGemBuyPrice > 0)
       ? settings.advGemCount * settings.advGemBuyPrice
       : 0;
-    const adjReturn   = rawReturn + gemBuyOffset;
+    const adjReturn   = rawReturn + gemBuyOffset + investmentNeutralization;
     const hasReturn   = lootItems.length > 0;
     const hasBl       = baselineTotal > 0 && hasReturn;
     const lootGain    = hasReturn ? (hasBl ? adjReturn - baselineTotal : adjReturn) : 0;
@@ -196,6 +198,29 @@ export const DashboardModule = () => {
   const losses   = allDiffRows.filter((r) => r.delta < 0).sort((a, b) => a.delta - b.delta);
   const netGain  = gains.reduce((a, b) => a + b.delta, 0) + losses.reduce((a, b) => a + b.delta, 0);
   const activeDiff = diffTab === 'gains' ? gains : losses;
+
+  // Auto-detect investment items in diff losses
+  const detectedMatches = useMemo(() => {
+    if (!hasBoth || losses.length === 0) return [];
+    const investItems: { name: string }[] = [
+      // Scarabs from configured slots
+      ...settings.scarabs.filter((s) => s.name.trim()).map((s) => ({ name: s.name })),
+      // Astrolabe — full name is the value itself (e.g. "Grasping Astrolabe")
+      ...(settings.advAstrolabeType ? [{ name: settings.advAstrolabeType }] : []),
+      // Deli orbs — label contains the correct apostrophe form e.g. "Armoursmith's (Armour)"
+      // Extract the prefix before " (" and append " Delirium Orb" to match WealthyExile export
+      ...(settings.advDeliOrbType ? (() => {
+        const entry = DELIRIUM_ORB_LIST.find((o) => o.value === settings.advDeliOrbType);
+        const orbName = entry ? entry.label.split(' (')[0] + ' Delirium Orb' : settings.advDeliOrbType + ' Delirium Orb';
+        return [{ name: orbName }];
+      })() : []),
+    ];
+    return losses
+      .filter((r) => investItems.some((inv) => inv.name.toLowerCase() === r.name.toLowerCase()))
+      .map((r) => ({ name: r.name, value: Math.abs(r.delta) }));
+  }, [hasBoth, losses, settings]);
+
+  const detectedTotal = detectedMatches.reduce((a, m) => a + m.value, 0);
 
   const categoryBreakdown = useMemo(() => {
     const gi = gains.map((r) => ({ name: r.name, tab: r.tab, total: r.delta, excluded: false }));
@@ -371,6 +396,50 @@ export const DashboardModule = () => {
 
         {/* ── Loot Tracker — fills remaining space ── */}
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          {/* Investment auto-detection banner */}
+          {detectedMatches.length > 0 && investmentNeutralization === 0 && (
+            <Stack gap={4} mb={6} p="xs"
+              style={{ background: 'rgba(255,200,0,0.07)', border: '1px solid rgba(255,200,0,0.25)', borderRadius: 6, flexShrink: 0 }}>
+              <Group justify="space-between" align="flex-start">
+                <Stack gap={2} style={{ flex: 1 }}>
+                  <Text size="xs" fw={600} c="yellow">⚠ Investment detected in baseline diff</Text>
+                  <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>
+                    These items disappeared from your stash and match your investment setup:
+                  </Text>
+                  {detectedMatches.map((m) => (
+                    <Text key={m.name} size="xs" c="dimmed" style={{ fontSize: 10 }}>
+                      · {m.name}: <Text span c="red">−{m.value.toFixed(1)}c</Text>
+                    </Text>
+                  ))}
+                  <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>
+                    If these were in your tracked tabs at baseline time they are double-counted.
+                    Neutralising adds <Text span c="teal">+{detectedTotal.toFixed(1)}c</Text> back to loot gain.
+                  </Text>
+                </Stack>
+              </Group>
+              <Group gap={4}>
+                <Button size="xs" variant="light" color="yellow"
+                  onClick={() => setInvestmentNeutralization(detectedTotal)}>
+                  Neutralise +{detectedTotal.toFixed(1)}c
+                </Button>
+                <Button size="xs" variant="subtle" color="gray"
+                  onClick={() => setInvestmentNeutralization(-1)}>
+                  Dismiss
+                </Button>
+              </Group>
+            </Stack>
+          )}
+          {investmentNeutralization > 0 && (
+            <Group gap={4} mb={4} style={{ flexShrink: 0 }}>
+              <Badge color="teal" variant="light" size="xs">
+                ✓ +{investmentNeutralization.toFixed(1)}c investment neutralised
+              </Badge>
+              <Button size="xs" variant="subtle" color="gray" compact
+                onClick={() => setInvestmentNeutralization(0)} style={{ fontSize: 9, padding: '0 4px', height: 16 }}>
+                undo
+              </Button>
+            </Group>
+          )}
           <Group justify="space-between" mb={4} style={{ flexShrink: 0 }}>
             <Text size="xs" fw={700} c="dimmed" style={{ textTransform: 'uppercase', letterSpacing: 1, fontSize: 10 }}>
               Loot Tracker
