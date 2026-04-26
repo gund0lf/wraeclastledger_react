@@ -10,6 +10,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.54',
+    date: '2026-04-26',
+    changes: [
+      'Atlas Calc: wizard no longer skips when a blank pathofpathing tree is loaded — pathofpathing emits a hash even for an empty tree which was incorrectly treated as configured',
+      'Atlas Calc: wizard visibility now derived purely from actual calc settings (mounting, fragments, nodes) and the dismissed flag',
+      'Atlas Calc: wizard resets correctly on every New Session — dismissed flag cleared, step back to mounting',
+      'Atlas Calc: pill editing state clears automatically when settings are applied externally (Load Build Settings)',
+      'Atlas Calc: added Skip button with tooltip — skips wizard and shows pills immediately',
+      'Atlas Tree: New Session no longer triggers stat reading or leaves the stats panel open',
+    ],
+  },
+  {
     version: '1.0.53',
     date: '2026-04-26',
     changes: [
