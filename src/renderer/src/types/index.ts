@@ -1,4 +1,4 @@
-export interface ScarabSlot { name: string; cost: number; preserved?: boolean; }
+export interface ScarabSlot { name: string; cost: number; }
 export interface ScarabPreset { id: string; name: string; scarabs: ScarabSlot[]; }
 
 export interface LootItem {

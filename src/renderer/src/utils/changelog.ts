@@ -10,6 +10,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.57',
+    date: '2026-04-26',
+    changes: [
+      'Investment: Preservation is now fully automatic — when any slot contains a Preservation scarab, all other scarabs are treated as one-time cost, no manual toggle needed',
+      'Investment: 🔒 preservation active indicator appears next to the Scarabs header with a tooltip explaining the logic',
+      'Investment: scarab slot UI restored to original clean layout with no extra controls',
+    ],
+  },
+  {
     version: '1.0.56',
     date: '2026-04-26',
     changes: [

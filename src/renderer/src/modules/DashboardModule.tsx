@@ -137,9 +137,14 @@ export const DashboardModule = () => {
 
   const profit = useMemo(() => {
     const chiselCost      = settings.chiselType && settings.chiselPrice > 0 ? settings.chiselPrice : 0;
-    const perMapScarabs   = settings.scarabs.filter((s) => !s.preserved).reduce((a, s) => a + (s.cost || 0), 0);
-    const oneTimeScarabs  = settings.scarabs.filter((s) =>  s.preserved).reduce((a, s) => a + (s.cost || 0), 0);
-    const count           = stats?.count ?? 0;
+    const hasPreservation  = settings.scarabs.some((s) => s.name.toLowerCase().includes('preservation'));
+    const perMapScarabs    = hasPreservation
+      ? settings.scarabs.filter((s) =>  s.name.toLowerCase().includes('preservation')).reduce((a, s) => a + (s.cost || 0), 0)
+      : settings.scarabs.reduce((a, s) => a + (s.cost || 0), 0);
+    const oneTimeScarabs   = hasPreservation
+      ? settings.scarabs.filter((s) => !s.name.toLowerCase().includes('preservation')).reduce((a, s) => a + (s.cost || 0), 0)
+      : 0;
+    const count            = stats?.count ?? 0;
     let perMap = settings.baseMapCost + chiselCost + perMapScarabs;
     if (settings.advSplitPrice > 0) perMap = (settings.baseMapCost + chiselCost + settings.advSplitPrice) / 2 + perMapScarabs;
     const totalInvest = perMap * count + settings.rollingCostPerMap + oneTimeScarabs;

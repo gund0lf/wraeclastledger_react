@@ -1,7 +1,7 @@
 import {
   Card, Text, NumberInput, Divider, Group, Stack,
   Select, Button, Modal, SimpleGrid, Autocomplete, Badge,
-  ActionIcon, TextInput, Menu, Alert, Collapse, Tooltip, Switch,
+  ActionIcon, TextInput, Menu, Alert, Collapse, Tooltip,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useState, useEffect } from 'react';
@@ -75,12 +75,17 @@ export const InvestmentModule = () => {
 
   const divinePrice   = settings.divinePrice || 1;
   const chiselCost      = settings.chiselType && settings.chiselPrice > 0 ? settings.chiselPrice : 0;
-  const perMapScarabs   = settings.scarabs.filter((s) => !s.preserved).reduce((acc, s) => acc + (s.cost || 0), 0);
-  const oneTimeScarabs  = settings.scarabs.filter((s) =>  s.preserved).reduce((acc, s) => acc + (s.cost || 0), 0);
-  const scarabCost      = perMapScarabs; // for perMap display
-  const mapCount        = maps.length || 1;
-  const isSplit         = settings.advSplitPrice > 0;
-  const perMapBase      = isSplit
+  const hasPreservation  = settings.scarabs.some((s) => s.name.toLowerCase().includes('preservation'));
+  const perMapScarabs    = hasPreservation
+    ? settings.scarabs.filter((s) =>  s.name.toLowerCase().includes('preservation')).reduce((acc, s) => acc + (s.cost || 0), 0)
+    : settings.scarabs.reduce((acc, s) => acc + (s.cost || 0), 0);
+  const oneTimeScarabs   = hasPreservation
+    ? settings.scarabs.filter((s) => !s.name.toLowerCase().includes('preservation')).reduce((acc, s) => acc + (s.cost || 0), 0)
+    : 0;
+  const scarabCost       = perMapScarabs;
+  const mapCount         = maps.length || 1;
+  const isSplit          = settings.advSplitPrice > 0;
+  const perMapBase       = isSplit
     ? (settings.baseMapCost + chiselCost + settings.advSplitPrice) / 2 + perMapScarabs
     : settings.baseMapCost + chiselCost + perMapScarabs;
   const rollingPerMap   = settings.rollingCostPerMap / mapCount;
@@ -382,7 +387,18 @@ export const InvestmentModule = () => {
             </Group>
           )}
 
-          <Divider label="Scarabs" />
+          <Divider label={
+            <Group gap={4}>
+              <Text size="xs" c="dimmed">Scarabs</Text>
+              {hasPreservation && (
+                <Tooltip
+                  label="Horned Scarab of Preservation detected — only Preservation scarabs are counted per-map. All other scarabs are treated as a one-time cost."
+                  withArrow multiline w={240}>
+                  <Text size="xs" c="teal" style={{ cursor: 'help' }}>🔒 preservation active</Text>
+                </Tooltip>
+              )}
+            </Group>
+          } />
           <Group gap="xs" align="flex-end">
             <TextInput placeholder="Preset name" value={presetName}
               onChange={(e) => setPresetName(e.currentTarget.value)} size="xs" style={{ flex: 1 }} />
@@ -409,7 +425,7 @@ export const InvestmentModule = () => {
           </Group>
 
           {settings.scarabs.map((scarab, i) => (
-            <Group key={i} gap={4} wrap="nowrap" align="center">
+            <Group key={i} gap={4} wrap="nowrap">
               <Autocomplete placeholder={`Scarab ${i + 1}`} value={scarab.name}
                 onChange={(v) => updateScarab(i, 'name', v)}
                 data={SCARAB_LIST} size="xs" style={{ flex: 1, minWidth: 0 }}
@@ -422,20 +438,7 @@ export const InvestmentModule = () => {
                 rightSectionPointerEvents={scarab.name ? 'all' : 'none'}
               />
               <PriceInput value={scarab.cost} onChange={(v) => updateScarab(i, 'cost', v)}
-                divinePrice={divinePrice} placeholder="0c" style={{ width: 76, flexShrink: 0 }} />
-              <Tooltip
-                label={scarab.preserved
-                  ? 'Preserved (one-time cost) — kept by Horned Scarab of Preservation, not consumed each map'
-                  : 'Per-map cost — toggle if this scarab is kept by Horned Scarab of Preservation'}
-                withArrow multiline w={200}>
-                <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                  <Switch size="xs" checked={!!scarab.preserved}
-                    onChange={(e) => updateScarab(i, 'preserved', e.currentTarget.checked)}
-                    color="teal"
-                    styles={{ track: { cursor: 'pointer' } }}
-                  />
-                </div>
-              </Tooltip>
+                divinePrice={divinePrice} placeholder="0c" style={{ width: 100, flexShrink: 0 }} />
             </Group>
           ))}
         </Stack>
