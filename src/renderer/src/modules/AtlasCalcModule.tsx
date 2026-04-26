@@ -1,8 +1,6 @@
 import { Card, Text, Stack, Group, Divider, Slider, Badge, Tooltip, Button, Collapse } from '@mantine/core';
 import { useSessionStore } from '../store/useSessionStore';
-import { useMemo, useState, useEffect } from 'react';
-
-type WizardStep = 'mounting' | 'fragments' | 'nodes' | 'done';
+import { useMemo, useState, useEffect, useRef } from 'react';
 
 const Pill = ({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) => (
   <div onClick={onClick} style={{
@@ -33,24 +31,54 @@ const Question = ({ question, hint, onYes, onNo }: {
 export const AtlasCalcModule = () => {
   const { maps, settings, updateSetting, activeSessionId } = useSessionStore();
 
+  // ── Derived: always fresh from real settings ──────────────────────────────
   const isConfigured = settings.mountingModifiers || settings.fragmentsUsed > 0 || settings.smallNodesAllocated > 0;
-  const [step, setStep] = useState<WizardStep>(isConfigured ? 'done' : 'mounting');
+  // Note: we deliberately do NOT check atlasTreeUrl here — pathofpathing always
+  // emits a hash even for a blank tree, which would wrongly skip the wizard.
+  // The wizard should only hide when actual calc values are set, or dismissed.
+  const effectivelyConfigured = isConfigured;
+
+  // ── Wizard local state ────────────────────────────────────────────────────
+  // Visibility is DERIVED from effectivelyConfigured, not driven by step.
+  // dismissed: set when user skips or completes the wizard manually.
+  // Reset on every session change so new sessions start fresh.
+  const [wizardStep,  setWizardStep]  = useState<'mounting' | 'fragments' | 'nodes'>('mounting');
+  const [dismissed,   setDismissed]   = useState(false);
+  const [editingPill, setEditingPill] = useState<'mounting' | 'fragments' | 'nodes' | null>(null);
   const [showNodeSlider, setShowNodeSlider] = useState(settings.smallNodesAllocated > 0 && settings.smallNodesAllocated < 16);
-  const [editingPill, setEditingPill] = useState<WizardStep | null>(null);
-  const [autoDetectMsg, setAutoDetectMsg] = useState<string | null>(null);
+  const [autoDetectMsg, setAutoDetectMsg]   = useState<string | null>(null);
+  const prevSessionRef = useRef(activeSessionId);
 
+  // Reset wizard completely on session change
   useEffect(() => {
-    const s = useSessionStore.getState().settings;
-    const configured = s.mountingModifiers || s.fragmentsUsed > 0 || s.smallNodesAllocated > 0;
-    let hasTree = false;
-    try { hasTree = new URL(s.atlasTreeUrl ?? '').hostname === 'pathofpathing.com' && s.atlasTreeUrl.includes('#'); } catch {}
-    // Always jump to 'done' if anything is configured — never show wizard for a configured state
-    if (configured || hasTree) { setStep('done'); setShowNodeSlider(false); setEditingPill(null); }
-  }, [activeSessionId, settings.mountingModifiers, settings.fragmentsUsed, settings.smallNodesAllocated, settings.atlasTreeUrl]);
+    if (prevSessionRef.current === activeSessionId) return;
+    prevSessionRef.current = activeSessionId;
+    setWizardStep('mounting');
+    setDismissed(false);
+    setShowNodeSlider(false);
+    setEditingPill(null);
+  }, [activeSessionId]);
 
-  // ── Auto-detect map type from parsed maps ─────────────────────────────────
-  // Requires ≥ 4 maps. Real 8-mod maps are always corrupted — Risk scarab adds
-  // mods to the map device but does NOT corrupt the map itself.
+  // When configuration appears externally (tree loaded / Load Build), stop any in-progress editing
+  const prevConfigured = useRef(effectivelyConfigured);
+  useEffect(() => {
+    if (!prevConfigured.current && effectivelyConfigured) {
+      // Just became configured — clear any stale edit state
+      setEditingPill(null);
+      setShowNodeSlider(settings.smallNodesAllocated > 0 && settings.smallNodesAllocated < 16);
+    }
+    prevConfigured.current = effectivelyConfigured;
+  }, [effectivelyConfigured, settings.smallNodesAllocated]);
+
+  // ── Show logic ────────────────────────────────────────────────────────────
+  // Wizard shows when: nothing configured AND user hasn't dismissed/completed it
+  const showWizard  = !effectivelyConfigured && !dismissed;
+  // Pill strip shows when: configured OR wizard was completed/dismissed
+  const showPills   = effectivelyConfigured || dismissed;
+  // Which question to show: wizard step, or the pill being edited
+  const activeStep  = editingPill ?? (showWizard ? wizardStep : null);
+
+  // ── Auto-detect map type ──────────────────────────────────────────────────
   useEffect(() => {
     if (maps.length < 4) return;
     const eightModCount = maps.filter((m) => m.modCount > 6 && m.isCorrupted).length;
@@ -83,21 +111,33 @@ export const AtlasCalcModule = () => {
   }, [maps, settings.mapType]);
   const mapTypeConflict = maps.length > 3 && derivedMapType !== settings.mapType;
 
-  const done = () => { setEditingPill(null); setStep('done'); };
+  // ── Wizard answer handlers ────────────────────────────────────────────────
+  const finishWizard = () => {
+    setEditingPill(null);
+    setDismissed(true); // mark as done so pills show
+  };
 
-  const answerMounting  = (yes: boolean) => { updateSetting('mountingModifiers', yes); editingPill ? done() : setStep('fragments'); };
+  const answerMounting = (yes: boolean) => {
+    updateSetting('mountingModifiers', yes);
+    if (editingPill) { finishWizard(); return; }
+    setWizardStep('fragments');
+  };
+
   const answerFragments = (yes: boolean) => {
     if (!yes) updateSetting('fragmentsUsed', 0);
     else if (settings.fragmentsUsed === 0) updateSetting('fragmentsUsed', 5);
-    editingPill ? done() : setStep('nodes');
+    if (editingPill) { finishWizard(); return; }
+    setWizardStep('nodes');
   };
+
   const answerNodes = (yes: boolean) => {
     if (yes) { updateSetting('smallNodesAllocated', 16); setShowNodeSlider(false); }
     else setShowNodeSlider(true);
-    done();
+    finishWizard();
   };
-  const editPill = (which: WizardStep) => {
-    setEditingPill(which); setStep(which);
+
+  const editPill = (which: 'mounting' | 'fragments' | 'nodes') => {
+    setEditingPill(which);
     if (which !== 'nodes') setShowNodeSlider(false);
   };
 
@@ -140,7 +180,8 @@ export const AtlasCalcModule = () => {
 
         <Divider />
 
-        {step === 'done' && (
+        {/* ── Pill strip (shown when configured or wizard completed/skipped) ── */}
+        {showPills && (
           <Stack gap={6}>
             <Text size="xs" c="dimmed" fw={500}>Click to edit</Text>
             <Group gap={6} wrap="wrap">
@@ -150,21 +191,36 @@ export const AtlasCalcModule = () => {
                 active={settings.fragmentsUsed > 0} onClick={() => editPill('fragments')} />
               <Pill label={settings.smallNodesAllocated > 0 ? `${settings.smallNodesAllocated} Nodes +${nodeEffect}%` : 'Nodes Off'}
                 active={settings.smallNodesAllocated > 0}
-                onClick={() => { setShowNodeSlider(settings.smallNodesAllocated > 0 && settings.smallNodesAllocated < 16); editPill('nodes'); }} />
+                onClick={() => {
+                  setShowNodeSlider(settings.smallNodesAllocated > 0 && settings.smallNodesAllocated < 16);
+                  editPill('nodes');
+                }} />
             </Group>
           </Stack>
         )}
 
-        {step === 'mounting' && (
+        {/* ── Wizard (shown when nothing configured + not dismissed) ── */}
+        {showWizard && !editingPill && (
+          <Group justify="flex-end">
+            <Tooltip label="Skip the setup — configure manually by clicking the Atlas Tree and using Apply to Calc, or click the pills above after loading a build" withArrow multiline w={240}>
+              <Button size="xs" variant="subtle" color="gray" onClick={() => setDismissed(true)}>
+                Skip →
+              </Button>
+            </Tooltip>
+          </Group>
+        )}
+
+        {/* ── Active question (wizard step or pill edit) ── */}
+        {activeStep === 'mounting' && (
           <>
             <Question question="Mounting Modifiers allocated?"
               hint={`Atlas passive that gives +2% IIQ per explicit mod on the map.\nWith ${effectiveMods} mods → +${mountBonus}% if active.`}
               onYes={() => answerMounting(true)} onNo={() => answerMounting(false)} />
-            {!editingPill && <Text size="xs" c="dimmed" ta="center">Step 1 of 3</Text>}
+            {showWizard && !editingPill && <Text size="xs" c="dimmed" ta="center">Step 1 of 3</Text>}
           </>
         )}
 
-        {step === 'fragments' && (
+        {activeStep === 'fragments' && (
           <>
             <Question question="Using Multiplying Modifiers fragments?"
               hint="Fragments used in the map device with 'Multiplying Modifiers'. Each adds +3% IIQ. Max 5 fragments = +15%."
@@ -176,16 +232,16 @@ export const AtlasCalcModule = () => {
                   min={1} max={5} step={1} label={(v) => `${v} frags (+${v * 3}%)`}
                   marks={[1,2,3,4,5].map((v) => ({ value: v, label: String(v) }))}
                   size="xs" mb={6} />
-                <Button size="xs" variant="subtle" onClick={() => editingPill ? done() : setStep('nodes')}>
+                <Button size="xs" variant="subtle" onClick={() => editingPill ? finishWizard() : setWizardStep('nodes')}>
                   {editingPill ? 'Done ✓' : 'Next →'}
                 </Button>
               </Stack>
             )}
-            {!editingPill && <Text size="xs" c="dimmed" ta="center">Step 2 of 3</Text>}
+            {showWizard && !editingPill && <Text size="xs" c="dimmed" ta="center">Step 2 of 3</Text>}
           </>
         )}
 
-        {step === 'nodes' && (
+        {activeStep === 'nodes' && (
           <>
             <Question question="All 16 small nodes allocated?"
               hint="16 × 2% = +32% total"
@@ -197,10 +253,10 @@ export const AtlasCalcModule = () => {
                   min={0} max={16} step={1} label={(v) => `${v} nodes (+${v * 2}%)`}
                   marks={[{ value: 0, label: '0' }, { value: 8, label: '8' }, { value: 16, label: '16' }]}
                   size="xs" mb={6} />
-                <Button size="xs" variant="subtle" onClick={done}>Done ✓</Button>
+                <Button size="xs" variant="subtle" onClick={finishWizard}>Done ✓</Button>
               </Stack>
             )}
-            {!editingPill && <Text size="xs" c="dimmed" ta="center">Step 3 of 3</Text>}
+            {showWizard && !editingPill && <Text size="xs" c="dimmed" ta="center">Step 3 of 3</Text>}
           </>
         )}
 

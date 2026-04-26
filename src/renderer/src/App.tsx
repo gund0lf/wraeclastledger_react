@@ -33,6 +33,7 @@ const ALL_PANELS = [
   { component: 'atlas-tree',      name: 'Atlas Tree' },
   { component: 'map-search',      name: 'Map Search (poe.re)' },
   { component: 'regex',           name: 'Regex' },
+  { component: 'regex-builder',    name: 'Regex Builder' },
   { component: 'map-analyzer',    name: 'Map Analyzer' },
   { component: 'strategy-browser', name: 'Strategy Browser' },
   { component: 'notes',            name: 'Notes' },

@@ -1,7 +1,7 @@
 import {
   Card, Text, Group, Stack, Badge, TextInput, Select, MultiSelect, Button,
   ActionIcon, Loader, Alert, Collapse, SimpleGrid, Tooltip, CopyButton,
-  Modal, Textarea, Divider, NumberInput,
+  Modal, Textarea, Divider, NumberInput, Switch,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -105,6 +105,7 @@ interface Strategy {
   strategy_name?: string | null;
   strategy_notes?: string | null;
   score?: number | null;
+  is_group_play?: boolean | null;
   posted_at: string;
   raw_export?: string | null;
 }
@@ -122,6 +123,7 @@ interface DiscordImport {
   astroType: string; astroCount: number; astroPrice: number;
   excludedDrops: { name: string; value: number }[];
   gemInfo: { count: number; buy: number; sell: number; net: number } | null;
+  isGroupPlay: boolean;
 }
 
 function parseDiscordExport(raw: string): DiscordImport | null {
@@ -190,12 +192,13 @@ function parseDiscordExport(raw: string): DiscordImport | null {
       count: parseInt(gemMatch[1]), buy: parseInt(gemMatch[2]),
       sell: parseInt(gemMatch[3]), net: parseInt(gemMatch[4]),
     } : null;
+    const isGroupPlay = /Party Play:\s*Yes/i.test(text);
     if (mapCount === 0) return null;
     return { mapCount, mapType, multiplier, avgQuant, avgRarity, avgPack, avgCurr,
              perMapCost, totalInvest, totalReturn, netProfit, divPerMap, divPrice,
              chisel, runRegex, slamRegex, scarabs, strategyName, strategyNotes,
              deliOrbQty, deliOrbType, deliOrbPrice, astroType, astroCount, astroPrice,
-             excludedDrops, gemInfo };
+             excludedDrops, gemInfo, isGroupPlay };
   } catch { return null; }
 }
 
@@ -303,6 +306,9 @@ const StrategyCard = ({ strategy, onLoadBuild, showDate }: {
   const scoreColor = score > 0 ? '#51cf66' : score < 0 ? '#ff6b6b' : '#555';
   const profitColor = strategy.net_profit != null ? (strategy.net_profit >= 0 ? '#51cf66' : '#ff6b6b') : '#555';
 
+  const isGroup = strategy.is_group_play ||
+    (strategy.raw_export ? /Party Play:\s*Yes/i.test(strategy.raw_export) : false);
+
   return (
     <div style={{
       background: score <= -3 ? 'rgba(255,107,107,0.04)' : 'rgba(255,255,255,0.025)',
@@ -315,7 +321,14 @@ const StrategyCard = ({ strategy, onLoadBuild, showDate }: {
           {open ? <FaChevronDown size={8} /> : <FaChevronRight size={8} />}
         </ActionIcon>
         <Stack gap={0} style={{ width: 88, flexShrink: 0, paddingLeft: 4 }}>
-          <Text size="xs" fw={600} lineClamp={1}>{strategy.discord_username}</Text>
+          <Group gap={3} wrap="nowrap">
+            <Text size="xs" fw={600} lineClamp={1}>{strategy.discord_username}</Text>
+            {isGroup && (
+              <Tooltip label="Group / Party play — loot scales with more players" withArrow>
+                <Badge size="xs" color="cyan" variant="light" style={{ fontSize: 7, padding: '0 3px', flexShrink: 0, cursor: 'help' }}>👥</Badge>
+              </Tooltip>
+            )}
+          </Group>
           {strategy.strategy_name && (
             <Text size="xs" c="dimmed" lineClamp={1} style={{ fontSize: 9 }}>{strategy.strategy_name}</Text>
           )}
@@ -523,13 +536,15 @@ export const StrategyBrowserModule = () => {
   const [minDiv,     setMinDiv]     = useState('');
   const [sortBy,     setSortBy]     = useState('posted_at');
   const [period,     setPeriod]     = useState('all');
-  const [showDate,   setShowDate]   = useState(false);
+  const [showDate,     setShowDate]     = useState(false);
+  const [hideGroup,    setHideGroup]    = useState(false);
   const LIMIT = 20;
 
   const [shareOpen, { open: openShare, close: closeShare }] = useDisclosure(false);
-  const [shareTags,  setShareTags]  = useState<string[]>([]);
-  const [stratName,  setStratName]  = useState('');
-  const [stratNotes, setStratNotes] = useState('');
+  const [shareTags,    setShareTags]    = useState<string[]>([]);
+  const [stratName,    setStratName]    = useState('');
+  const [stratNotes,   setStratNotes]   = useState('');
+  const [isGroupPlay,  setIsGroupPlay]  = useState(false);
 
   const autoTags = useMemo(() => {
     const names = settings.scarabs.filter((s) => s.name).map((s) => s.name.toLowerCase()).join(' ');
@@ -660,6 +675,7 @@ export const StrategyBrowserModule = () => {
       ...(stratName.trim()  ? [`📝 **Strategy:** ${stratName.trim()}`] : []),
       ...(shareTags.length > 0 ? [`🏷️ **Tags:** ${shareTags.join(', ')}`] : []),
       ...(stratNotes.trim() ? [`📋 **Notes:** ${stratNotes.trim()}`] : []),
+      ...(isGroupPlay ? [`👥 **Party Play:** Yes`] : []),
       ...(excludedItems.length > 0 ? [
         `⛔ **Excluded drops (${excludedItems.length}):** ${excludedItems.map((i) => `${i.name} (${i.total.toFixed(0)}c)`).join(', ')}`
       ] : []),
@@ -668,7 +684,7 @@ export const StrategyBrowserModule = () => {
       ] : []),
       ...(regexBlock ? [regexBlock] : []),
     ].join('\n');
-  }, [maps, settings, lootItems, baselineTotal, shareTags, stratName, stratNotes]);
+  }, [maps, settings, lootItems, baselineTotal, shareTags, stratName, stratNotes, isGroupPlay]);
 
   const handleImportTextChange = (text: string) => {
     setImportText(text);
@@ -815,6 +831,13 @@ export const StrategyBrowserModule = () => {
             placeholder="e.g. Div Scarabs were cheap this week, Divine was 280c"
             value={stratNotes} onChange={(e) => setStratNotes(e.currentTarget.value)}
             autosize minRows={2} maxRows={4} />
+          <Group gap={8} align="center">
+            <Switch size="sm" checked={isGroupPlay} onChange={(e) => setIsGroupPlay(e.currentTarget.checked)} />
+            <Stack gap={0}>
+              <Text size="xs" fw={500}>Party / Group play</Text>
+              <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>Additional players increase loot. Mark this so others know the strategy scales with a group.</Text>
+            </Stack>
+          </Group>
           <Divider label="Preview" labelPosition="left" />
           <div style={{ background: '#0d0e10', borderRadius: 6, padding: '8px 10px', maxHeight: 200, overflowY: 'auto' }}>
             <Text size="xs" style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', color: '#ccc', fontSize: 10, lineHeight: 1.5 }}>
@@ -946,6 +969,12 @@ export const StrategyBrowserModule = () => {
           <Select size="xs" style={{ flex: 1 }}
             data={[{ value: 'posted_at', label: 'Newest' },{ value: 'div_per_map', label: 'Best d/map' },{ value: 'net_profit', label: 'Most profit' },{ value: 'least_invest', label: 'Least invest' },{ value: 'score', label: 'Top rated 👍' }]}
             value={sortBy} onChange={(v) => setSortBy(v ?? 'posted_at')} />
+          <Tooltip label={hideGroup ? 'Showing solo only — click to show all' : 'Click to hide group/party strategies'} withArrow>
+            <Button size="xs" variant={hideGroup ? 'filled' : 'subtle'} color={hideGroup ? 'cyan' : 'gray'}
+              onClick={() => setHideGroup((v) => !v)}>
+              👥
+            </Button>
+          </Tooltip>
         </Group>
 
         <Group gap={6} mb={3} style={{ flexShrink: 0, paddingLeft: 10, paddingRight: 10 }}>
@@ -979,7 +1008,13 @@ export const StrategyBrowserModule = () => {
             </Stack>
           )}
           <Stack gap={3}>
-            {strategies.map((s) => <StrategyCard key={s.id} strategy={s} onLoadBuild={handleLoadBuild} showDate={showDate} />)}
+            {strategies
+              .filter((s) => {
+                if (!hideGroup) return true;
+                const grp = s.is_group_play || (s.raw_export ? /Party Play:\s*Yes/i.test(s.raw_export) : false);
+                return !grp;
+              })
+              .map((s) => <StrategyCard key={s.id} strategy={s} onLoadBuild={handleLoadBuild} showDate={showDate} />)}
           </Stack>
           {hasMore && !loading && (
             <Button variant="subtle" size="xs" fullWidth mt={8} onClick={() => fetchStrategies(offset + LIMIT)}>

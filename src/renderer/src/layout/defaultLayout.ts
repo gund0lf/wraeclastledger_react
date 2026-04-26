@@ -36,6 +36,7 @@ export const defaultLayout: IJsonModel = {
               { type: 'tab', name: 'Atlas Tree',          component: 'atlas-tree' },
               { type: 'tab', name: 'Map Search (poe.re)', component: 'map-search' },
               { type: 'tab', name: 'Regex',               component: 'regex' },
+              { type: 'tab', name: 'Regex Builder',       component: 'regex-builder' },
               { type: 'tab', name: 'Map Analyzer',        component: 'map-analyzer' },
             ],
           },

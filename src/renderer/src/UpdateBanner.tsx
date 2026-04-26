@@ -3,7 +3,7 @@ import { Button, Group, Text, Stack, List, Badge, Collapse, ActionIcon } from '@
 import { FaChevronDown, FaChevronRight } from 'react-icons/fa';
 import { CHANGELOG } from './utils/changelog';
 
-export const APP_VERSION = '1.0.41';
+export const APP_VERSION = '1.0.53';
 const SEEN_KEY = 'wraeclast-seen-version';
 
 const VersionEntry = ({ entry, defaultOpen }: { entry: typeof CHANGELOG[0]; defaultOpen: boolean }) => {
