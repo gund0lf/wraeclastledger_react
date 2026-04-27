@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { MapData, SessionSettings, LootItem, SavedSession, ScarabSlot, ScarabPreset, RegexSet } from '../types';
 import { v4 as uuidv4 } from 'uuid';
-import { fetchDivinePrice, sanitizeExclusionTerms } from '../utils/priceUtils';
+import { tryFetchDivinePrice, sanitizeExclusionTerms } from '../utils/priceUtils';
 import { getCurrentLeague } from '../utils/league';
 
 const STORE_VERSION = 14;
@@ -130,7 +130,9 @@ interface SessionState {
   setBaselineTotal: (total: number) => void;
   toggleLootItemExcluded: (id: string) => void;
   clearLoot: () => void;
-  initDivinePrice: () => Promise<void>;
+  // initDivinePrice: cooldown-gated by default. Pass { force: true } to bypass
+  // the 60s cooldown — used by the manual refresh button in InvestmentModule.
+  initDivinePrice: (opts?: { force?: boolean }) => Promise<void>;
   saveAsNewSession: (name: string) => void;
   updateCurrentSession: () => void;
   loadSession: (id: string) => void;
@@ -207,11 +209,16 @@ export const useSessionStore = create<SessionState>()(
         set((s) => ({ lootItems: s.lootItems.map((i) => i.id === id ? { ...i, excluded: !i.excluded } : i) })),
       clearLoot: () => set({ lootItems: [], baselineItems: [], baselineTotal: 0 }),
 
-      initDivinePrice: async () => {
+      initDivinePrice: async (opts = {}) => {
         const current = get().settings.divinePrice;
         if (current !== 0 && current !== 200) return;
-        // Fetch league and price in parallel — both use poe.ninja
-        const [league, price] = await Promise.all([getCurrentLeague(), fetchDivinePrice()]);
+        // Fetch league and price in parallel — both use poe.ninja.
+        // Price is cooldown-gated unless `force` is set; league has its own
+        // in-memory cache and falls back to CURRENT_LEAGUE on failure.
+        const [league, price] = await Promise.all([
+          getCurrentLeague(),
+          tryFetchDivinePrice(opts.force === true),
+        ]);
         set((s) => ({
           settings: {
             ...s.settings,

@@ -19,14 +19,22 @@ export const KNOWN_LEAGUES: string[] = [
 ];
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Per-probe network timeout. Without this, a hung poe.ninja request would
+// stall the entire detection loop indefinitely. 5s is generous — a healthy
+// response normally returns in <500ms.
+const LEAGUE_PROBE_TIMEOUT_MS = 5_000;
+
 let cachedLeague: string | null = null;
 let cachedFetchPromise: Promise<string> | null = null;
 
 async function detect(): Promise<string> {
   for (const name of KNOWN_LEAGUES) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), LEAGUE_PROBE_TIMEOUT_MS);
     try {
       const r = await fetch(
-        `https://poe.ninja/api/data/currencyoverview?league=${encodeURIComponent(name)}&type=Currency`
+        `https://poe.ninja/api/data/currencyoverview?league=${encodeURIComponent(name)}&type=Currency`,
+        { signal: controller.signal }
       );
       if (!r.ok) continue;
       const d = await r.json();
@@ -34,7 +42,8 @@ async function detect(): Promise<string> {
         console.log('[League] Detected via probe:', name);
         return name;
       }
-    } catch { /* continue */ }
+    } catch { /* abort or network error — fall through to next league */ }
+    finally { clearTimeout(timeoutId); }
   }
   console.warn('[League] Could not detect, falling back to:', CURRENT_LEAGUE);
   return CURRENT_LEAGUE;

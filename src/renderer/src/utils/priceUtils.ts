@@ -97,15 +97,53 @@ export const generateSlamRegex = (avg: MapAverages, exclusions?: string[]): stri
   return parts.join(' ');
 };
 
+// ─── Divine price fetching ────────────────────────────────────────────────────
+//
+// fetchDivinePrice always fetches and is short-timeout-bounded. It updates a
+// module-level "last attempt" timestamp regardless of success, so the
+// cooldown wrapper (tryFetchDivinePrice) can rate-limit auto-init paths
+// without rate-limiting an explicit user-triggered refresh.
+
+const DIVINE_PRICE_FETCH_TIMEOUT_MS = 5_000;
+const DIVINE_PRICE_COOLDOWN_MS = 60_000;
+let lastDivineFetchAttempt = 0;
+
 export async function fetchDivinePrice(): Promise<number | null> {
+  lastDivineFetchAttempt = Date.now();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), DIVINE_PRICE_FETCH_TIMEOUT_MS);
   try {
     const league = await getCurrentLeague();
     const url = `https://poe.ninja/api/data/currencyoverview?league=${encodeURIComponent(league)}&type=Currency`;
-    const res  = await fetch(url);
+    const res  = await fetch(url, { signal: controller.signal });
     if (!res.ok) return null;
     const data  = await res.json();
     const lines: { currencyTypeName: string; chaosEquivalent?: number }[] = data.lines ?? [];
     const divine = lines.find((l) => l.currencyTypeName === 'Divine Orb');
     return divine?.chaosEquivalent ?? null;
-  } catch { return null; }
+  } catch {
+    // AbortError or network error — caller treats null as "no price".
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Cooldown-gated wrapper around fetchDivinePrice.
+ *
+ * Returns null without making a network call if the last attempt (success or
+ * failure) was within the cooldown window. Pass `force: true` for explicit
+ * user-triggered refreshes — those should never be rate-limited.
+ *
+ * The store's `initDivinePrice` uses this to prevent retry storms when
+ * panels remount and the price keeps coming back as 0 due to an offline
+ * network or a poe.ninja outage.
+ */
+export async function tryFetchDivinePrice(force = false): Promise<number | null> {
+  if (!force) {
+    const elapsed = Date.now() - lastDivineFetchAttempt;
+    if (elapsed < DIVINE_PRICE_COOLDOWN_MS) return null;
+  }
+  return fetchDivinePrice();
 }

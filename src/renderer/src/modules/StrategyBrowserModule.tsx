@@ -15,7 +15,7 @@ import { generateRunRegex, generateSlamRegex, trimmedMean } from '../utils/price
 import { applyUserExclusionsToRegex } from './RegexModule';
 import { KNOWN_LEAGUES, CURRENT_LEAGUE } from '../utils/league';
 
-const DEFAULT_API_URL = 'http://wledger.richardpruett.com';
+const DEFAULT_API_URL = 'https://wledger.richardpruett.com';
 
 // ─── Tag options & colors ──────────────────────────────────────────────────────
 const TAG_OPTIONS = [

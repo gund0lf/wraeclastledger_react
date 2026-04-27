@@ -96,14 +96,19 @@ export const InvestmentModule = () => {
   const gemSellTotal    = settings.advGemCount * settings.advGemSellPrice;
   const gemNetPL        = gemSellTotal - gemBuyTotal;
 
+  // Auto-init on mount: cooldown-gated. If poe.ninja is unreachable and the
+  // price stays 0, we don't retry on every remount — the cooldown in
+  // tryFetchDivinePrice (60s) prevents the storm.
   useEffect(() => {
     if (settings.divinePrice === 0 || settings.divinePrice === 200) initDivinePrice();
   }, []);
 
+  // Manual refresh button: bypasses the cooldown via { force: true }, since
+  // an explicit user action shouldn't be silently skipped.
   const handleFetchPrice = async () => {
     setFetchingPrice(true);
     updateSetting('divinePrice', 0);
-    await initDivinePrice();
+    await initDivinePrice({ force: true });
     setFetchingPrice(false);
   };
 

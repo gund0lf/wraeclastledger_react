@@ -10,6 +10,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.58',
+    date: '2026-04-28',
+    changes: [
+      'Strategy server: switched to HTTPS — DEFAULT_API_URL is now https://wledger.richardpruett.com',
+      'poe.ninja: divine price fetch now has a 60-second cooldown — if the network was offline and the price stayed at 0, the app no longer hammers poe.ninja on every InvestmentModule remount',
+      'poe.ninja: manual refresh button bypasses the cooldown so explicit user action is never silently skipped',
+      'poe.ninja: divine price and league detection both have a 5-second AbortController timeout — a hung response can no longer stall the app indefinitely',
+      'Cleanup: deleted stale duplicate utils/useSessionStore.ts (the live store lives in store/useSessionStore.ts)',
+      'Cleanup: deleted unused WelcomeModule (not registered, not in default layout)',
+      'Cleanup: deprecated Statistics and Loot panels — bodies replaced with a notice pointing at Dashboard, since their old math was missing recent corrections (Atlas Bonus, gem-buy offset, investment neutralisation). Panels stay in the registry so old saved layouts don\'t show "Unknown Module"',
+      'Build: moved @types/uuid from dependencies to devDependencies',
+    ],
+  },
+  {
     version: '1.0.57',
     date: '2026-04-26',
     changes: [
