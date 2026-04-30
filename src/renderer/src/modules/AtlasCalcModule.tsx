@@ -1,4 +1,4 @@
-import { Card, Text, Stack, Group, Divider, Slider, Badge, Tooltip, Button, Collapse } from '@mantine/core';
+import { Card, Text, Stack, Group, Divider, Slider, Badge, Tooltip, Button } from '@mantine/core';
 import { useSessionStore } from '../store/useSessionStore';
 import { useMemo, useState, useEffect, useRef } from 'react';
 
@@ -39,9 +39,6 @@ export const AtlasCalcModule = () => {
   const effectivelyConfigured = isConfigured;
 
   // ── Wizard local state ────────────────────────────────────────────────────
-  // Visibility is DERIVED from effectivelyConfigured, not driven by step.
-  // dismissed: set when user skips or completes the wizard manually.
-  // Reset on every session change so new sessions start fresh.
   const [wizardStep,  setWizardStep]  = useState<'mounting' | 'fragments' | 'nodes'>('mounting');
   const [dismissed,   setDismissed]   = useState(false);
   const [editingPill, setEditingPill] = useState<'mounting' | 'fragments' | 'nodes' | null>(null);
@@ -63,7 +60,6 @@ export const AtlasCalcModule = () => {
   const prevConfigured = useRef(effectivelyConfigured);
   useEffect(() => {
     if (!prevConfigured.current && effectivelyConfigured) {
-      // Just became configured — clear any stale edit state
       setEditingPill(null);
       setShowNodeSlider(settings.smallNodesAllocated > 0 && settings.smallNodesAllocated < 16);
     }
@@ -71,17 +67,19 @@ export const AtlasCalcModule = () => {
   }, [effectivelyConfigured, settings.smallNodesAllocated]);
 
   // ── Show logic ────────────────────────────────────────────────────────────
-  // Wizard shows when: nothing configured AND user hasn't dismissed/completed it
   const showWizard  = !effectivelyConfigured && !dismissed;
-  // Pill strip shows when: configured OR wizard was completed/dismissed
   const showPills   = effectivelyConfigured || dismissed;
-  // Which question to show: wizard step, or the pill being edited
   const activeStep  = editingPill ?? (showWizard ? wizardStep : null);
 
   // ── Auto-detect map type ──────────────────────────────────────────────────
+  // 8-mod content includes:
+  //   - Corrupted maps with chaos rolls (which forces 8 mods on a previously rare-rolled map)
+  //   - Nightmare maps (always 6+ mods, can drop with 8-9 mods natively, NOT inherently corrupted)
+  // We count both so a session of pure uncorrupted Nightmare maps still
+  // auto-detects as 8-mod content correctly.
   useEffect(() => {
-    if (maps.length < 4) return;
-    const eightModCount = maps.filter((m) => m.modCount > 6 && m.isCorrupted).length;
+    if (maps.length < 4) return undefined;
+    const eightModCount = maps.filter((m) => m.modCount > 6 && (m.isCorrupted || m.isNightmare)).length;
     const ratio = eightModCount / maps.length;
     const inferred: '6-mod' | '8-mod' = ratio > 0.6 ? '8-mod' : ratio < 0.4 ? '6-mod' : settings.mapType;
     if (inferred !== settings.mapType) {
@@ -90,6 +88,7 @@ export const AtlasCalcModule = () => {
       const t = setTimeout(() => setAutoDetectMsg(null), 4000);
       return () => clearTimeout(t);
     }
+    return undefined;
   }, [maps.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const scarabOfRiskCount = useMemo(
@@ -104,17 +103,10 @@ export const AtlasCalcModule = () => {
   const mountBonus     = settings.mountingModifiers ? effectiveMods * 2 : 0;
   const multiplier     = 1 + (fragmentEffect + nodeEffect + mountBonus) / 100;
 
-  const derivedMapType = useMemo<'6-mod' | '8-mod'>(() => {
-    if (maps.length < 4) return settings.mapType;
-    const eightMod = maps.filter((m) => m.modCount > 6).length;
-    return eightMod > maps.length / 2 ? '8-mod' : '6-mod';
-  }, [maps, settings.mapType]);
-  const mapTypeConflict = maps.length > 3 && derivedMapType !== settings.mapType;
-
   // ── Wizard answer handlers ────────────────────────────────────────────────
   const finishWizard = () => {
     setEditingPill(null);
-    setDismissed(true); // mark as done so pills show
+    setDismissed(true);
   };
 
   const answerMounting = (yes: boolean) => {
@@ -180,7 +172,6 @@ export const AtlasCalcModule = () => {
 
         <Divider />
 
-        {/* ── Pill strip (shown when configured or wizard completed/skipped) ── */}
         {showPills && (
           <Stack gap={6}>
             <Text size="xs" c="dimmed" fw={500}>Click to edit</Text>
@@ -199,7 +190,6 @@ export const AtlasCalcModule = () => {
           </Stack>
         )}
 
-        {/* ── Wizard (shown when nothing configured + not dismissed) ── */}
         {showWizard && !editingPill && (
           <Group justify="flex-end">
             <Tooltip label="Skip the setup — configure manually by clicking the Atlas Tree and using Apply to Calc, or click the pills above after loading a build" withArrow multiline w={240}>
@@ -210,7 +200,6 @@ export const AtlasCalcModule = () => {
           </Group>
         )}
 
-        {/* ── Active question (wizard step or pill edit) ── */}
         {activeStep === 'mounting' && (
           <>
             <Question question="Mounting Modifiers allocated?"

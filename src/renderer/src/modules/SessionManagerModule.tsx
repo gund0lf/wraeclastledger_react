@@ -10,7 +10,7 @@ import { FaTrash, FaPen, FaSave, FaPlus, FaShareAlt, FaDiscord } from 'react-ico
 
 export const SessionManagerModule = () => {
   const {
-    maps, lootItems, savedSessions, activeSessionId, activeSessionName,
+    maps, savedSessions, activeSessionId, activeSessionName,
     saveAsNewSession, updateCurrentSession, loadSession, deleteSession, renameSession, newSession,
   } = useSessionStore();
 

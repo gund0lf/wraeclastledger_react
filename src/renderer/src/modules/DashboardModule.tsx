@@ -149,10 +149,6 @@ export const DashboardModule = () => {
     if (settings.advSplitPrice > 0) perMap = (settings.baseMapCost + chiselCost + settings.advSplitPrice) / 2 + perMapScarabs;
     const totalInvest = perMap * count + settings.rollingCostPerMap + oneTimeScarabs;
     const rawReturn   = lootItems.filter((l) => !l.excluded).reduce((a, b) => a + b.total, 0);
-    // If gems are configured with a name (auto-excluded from CSV) and a buy price,
-    // add back the buy cost so gem activity is neutral to map profit.
-    // Logic: you paid gemBuyTotal during the session (stash reduced), then excluded gem
-    // sell value from return. Without the add-back, profit is understated by gemBuyTotal.
     const gemBuyOffset = (settings.advGemName?.trim() && settings.advGemCount > 0 && settings.advGemBuyPrice > 0)
       ? settings.advGemCount * settings.advGemBuyPrice
       : 0;
@@ -179,7 +175,6 @@ export const DashboardModule = () => {
   const [diffTab,   setDiffTab]   = useState<'gains' | 'losses'>('gains');
   const [resolver,  setResolver]  = useState<((n: string) => string | undefined) | null>(null);
   const [iconsLoading, setIconsLoading] = useState(false);
-  // Smart load-more: start with INITIAL_ROWS, expand on demand
   const [visibleListRows, setVisibleListRows] = useState(INITIAL_ROWS);
   const [visibleDiffRows, setVisibleDiffRows] = useState(INITIAL_ROWS);
 
@@ -194,7 +189,6 @@ export const DashboardModule = () => {
     getItemIcons().then((c) => setResolver(() => c.resolve)).catch(() => {}).finally(() => setIconsLoading(false));
   }, [hasCurrent, hasBaseline]);
 
-  // Reset visible rows when view or search changes
   useEffect(() => { setVisibleListRows(INITIAL_ROWS); }, [lootView, search]);
   useEffect(() => { setVisibleDiffRows(INITIAL_ROWS); }, [lootView, diffTab]);
 
@@ -204,16 +198,11 @@ export const DashboardModule = () => {
   const netGain  = gains.reduce((a, b) => a + b.delta, 0) + losses.reduce((a, b) => a + b.delta, 0);
   const activeDiff = diffTab === 'gains' ? gains : losses;
 
-  // Auto-detect investment items in diff losses
   const detectedMatches = useMemo(() => {
     if (!hasBoth || losses.length === 0) return [];
     const investItems: { name: string }[] = [
-      // Scarabs from configured slots
       ...settings.scarabs.filter((s) => s.name.trim()).map((s) => ({ name: s.name })),
-      // Astrolabe — full name is the value itself (e.g. "Grasping Astrolabe")
       ...(settings.advAstrolabeType ? [{ name: settings.advAstrolabeType }] : []),
-      // Deli orbs — label contains the correct apostrophe form e.g. "Armoursmith's (Armour)"
-      // Extract the prefix before " (" and append " Delirium Orb" to match WealthyExile export
       ...(settings.advDeliOrbType ? (() => {
         const entry = DELIRIUM_ORB_LIST.find((o) => o.value === settings.advDeliOrbType);
         const orbName = entry ? entry.label.split(' (')[0] + ' Delirium Orb' : settings.advDeliOrbType + ' Delirium Orb';
@@ -277,7 +266,6 @@ export const DashboardModule = () => {
     <>
       <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFileChange} />
 
-      {/* CSV role modal */}
       <Modal opened={blOpen} onClose={closeBl} title="How should this CSV be used?" size="sm">
         <Stack gap="md">
           <Text size="sm"><Text span fw={700}>{pendingItems.length} items</Text> worth <Text span fw={700} c="teal">{pendingTotal.toFixed(1)}c</Text></Text>
@@ -287,15 +275,12 @@ export const DashboardModule = () => {
         </Stack>
       </Modal>
 
-      {/* Clear confirmation modal */}
       <Modal opened={clearOpen} onClose={closeClear} title="Clear Loot Tracker?" size="sm">
         <Stack gap="md">
           <Text size="sm" c="dimmed">This will remove all imported loot and baseline data. This cannot be undone.</Text>
           <Group justify="flex-end" gap="xs">
             <Button variant="default" onClick={closeClear}>Cancel</Button>
-            <Button color="red" onClick={() => { clearLoot(); setSearch(''); setLootView('list'); closeClear(); }}>
-              Clear All
-            </Button>
+            <Button color="red" onClick={() => { clearLoot(); setSearch(''); setLootView('list'); closeClear(); }}>Clear All</Button>
           </Group>
         </Stack>
       </Modal>
@@ -303,7 +288,6 @@ export const DashboardModule = () => {
       <Card shadow="sm" padding="sm" radius="md" withBorder h="100%"
         style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-        {/* Header */}
         <Group justify="space-between" mb={4} style={{ flexShrink: 0 }}>
           <Text fw={700} size="sm">Dashboard</Text>
           {stats && (
@@ -314,10 +298,7 @@ export const DashboardModule = () => {
           )}
         </Group>
 
-        {/* Fixed upper sections */}
         <div style={{ flexShrink: 0 }}>
-
-          {/* ── Profit Overview ── */}
           <Section title="Profit Overview">
             <SimpleGrid cols={2} spacing="xs" mb={6}>
               <div style={{ background: profit.net >= 0 ? 'rgba(81,207,102,0.08)' : 'rgba(255,107,107,0.10)', border: `1px solid ${profit.net >= 0 ? 'rgba(81,207,102,0.3)' : 'rgba(255,107,107,0.3)'}`, borderRadius: 8, padding: '8px', textAlign: 'center' }}>
@@ -352,7 +333,6 @@ export const DashboardModule = () => {
 
           <Divider my={4} />
 
-          {/* ── Map Multipliers: label baked into box, values take full height ── */}
           {stats && (
             <Section title="Map Multipliers"
               right={settings.chiselType
@@ -369,12 +349,10 @@ export const DashboardModule = () => {
                       borderRadius: 6, padding: '4px 8px 6px',
                       display: 'flex', flexDirection: 'column',
                     }}>
-                      {/* Label embedded at top, small */}
                       <Text style={{ fontSize: 9, color: '#555', textTransform: 'uppercase',
                         letterSpacing: 0.8, marginBottom: 2, lineHeight: 1 }}>
                         {STAT_LABELS[key as string]}
                       </Text>
-                      {/* Values take remaining space, centered */}
                       <Group gap={4} justify="center" align="center" wrap="nowrap" style={{ flex: 1 }}>
                         <Text fw={500} style={{ fontSize: 14, color: '#666', fontVariantNumeric: 'tabular-nums' }}>
                           {d.avg.toFixed(1)}%
@@ -399,9 +377,7 @@ export const DashboardModule = () => {
           <Divider my={4} />
         </div>
 
-        {/* ── Loot Tracker — fills remaining space ── */}
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          {/* Investment auto-detection banner */}
           {detectedMatches.length > 0 && investmentNeutralization === 0 && (
             <Stack gap={4} mb={6} p="xs"
               style={{ background: 'rgba(255,200,0,0.07)', border: '1px solid rgba(255,200,0,0.25)', borderRadius: 6, flexShrink: 0 }}>
@@ -439,8 +415,9 @@ export const DashboardModule = () => {
               <Badge color="teal" variant="light" size="xs">
                 ✓ +{investmentNeutralization.toFixed(1)}c investment neutralised
               </Badge>
-              <Button size="xs" variant="subtle" color="gray" compact
-                onClick={() => setInvestmentNeutralization(0)} style={{ fontSize: 9, padding: '0 4px', height: 16 }}>
+              {/* compact prop was removed in Mantine v8 — use size="compact-xs" instead */}
+              <Button size="compact-xs" variant="subtle" color="gray"
+                onClick={() => setInvestmentNeutralization(0)} style={{ fontSize: 9, padding: '0 4px' }}>
                 undo
               </Button>
             </Group>
@@ -474,13 +451,13 @@ export const DashboardModule = () => {
 
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             {!hasCurrent && !hasBaseline && (
-            <Stack align="center" justify="center" style={{ flex: 1 }} gap="xs">
-            <Text size="xs" c="dimmed" ta="center">Import a baseline before your session, then a return CSV to see your gains.</Text>
-              <Text size="xs" c="dimmed" ta="center" style={{ fontStyle: 'italic', fontSize: 10 }}>
+              <Stack align="center" justify="center" style={{ flex: 1 }} gap="xs">
+                <Text size="xs" c="dimmed" ta="center">Import a baseline before your session, then a return CSV to see your gains.</Text>
+                <Text size="xs" c="dimmed" ta="center" style={{ fontStyle: 'italic', fontSize: 10 }}>
                   Tip: before importing a baseline, move your investment items (maps, scarabs etc.) out of any WealthyExile-monitored tab into your inventory or an unmonitored tab, then change zones so WealthyExile updates, then refresh and import. Otherwise your investment will be counted twice.
-              </Text>
-            </Stack>
-          )}
+                </Text>
+              </Stack>
+            )}
             {!hasCurrent && hasBaseline && (
               <Stack align="center" justify="center" style={{ flex: 1 }} gap="xs">
                 <Badge color="yellow" variant="light">Baseline: {baselineTotal.toFixed(1)}c</Badge>
@@ -495,7 +472,6 @@ export const DashboardModule = () => {
                   data={[{ value: 'list', label: 'List' }, { value: 'diff', label: hasBoth ? '🔍 Diff' : 'Diff', disabled: !hasBoth }, { value: 'breakdown', label: '📊' }]}
                   size="xs" fullWidth style={{ flexShrink: 0 }} />
 
-                {/* LIST VIEW — smart load-more */}
                 {lootView === 'list' && (
                   <Stack gap={4} style={{ flex: 1, minHeight: 0 }}>
                     <TextInput size="xs" placeholder="Filter items..." leftSection={<FaSearch size={10} />}
@@ -522,7 +498,6 @@ export const DashboardModule = () => {
                           ))}
                         </Table.Tbody>
                       </Table>
-                      {/* Load more button inside scroll area */}
                       {visibleListRows < filteredItems.length && (
                         <Button variant="subtle" size="xs" fullWidth mt={4}
                           onClick={() => setVisibleListRows((v) => v + STEP_ROWS)}>
@@ -544,7 +519,6 @@ export const DashboardModule = () => {
                   </Stack>
                 )}
 
-                {/* DIFF VIEW — smart load-more */}
                 {hasBoth && lootView === 'diff' && (
                   <Stack gap={4} style={{ flex: 1, minHeight: 0 }}>
                     <Group justify="space-between" style={{ flexShrink: 0 }}>
@@ -578,7 +552,6 @@ export const DashboardModule = () => {
                   </Stack>
                 )}
 
-                {/* BREAKDOWN */}
                 {lootView === 'breakdown' && (
                   <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
                     <Stack gap={6}>

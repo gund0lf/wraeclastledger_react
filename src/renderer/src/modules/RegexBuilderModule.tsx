@@ -7,7 +7,7 @@
 import { useState, useMemo } from 'react';
 import {
   Card, Text, Group, Stack, Button, TextInput, ActionIcon,
-  NumberInput, Tooltip, CopyButton, Code, Divider, ScrollArea, Collapse,
+  NumberInput, Tooltip, CopyButton, Divider, ScrollArea, Collapse,
   Select, Switch, Badge,
 } from '@mantine/core';
 import { FaPlus, FaTrash, FaCopy, FaCheck, FaChevronDown, FaChevronRight } from 'react-icons/fa';

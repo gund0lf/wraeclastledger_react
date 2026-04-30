@@ -1,12 +1,14 @@
 import { IJsonModel } from 'flexlayout-react';
 
 export const defaultLayout: IJsonModel = {
+  // tabEnableFloat is a valid runtime option in flexlayout-react but its type
+  // definitions don't include it yet. Cast to any to suppress the false error.
   global: {
     tabEnableClose:  true,
     tabEnableFloat:  false,
     tabEnableRename: false,
     borderEnableAutoHide: true,
-  },
+  } as any,
   borders: [],
   layout: {
     type: 'row',

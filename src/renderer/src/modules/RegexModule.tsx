@@ -7,7 +7,7 @@ import { useDisclosure } from '@mantine/hooks';
 import { useState, useMemo, useEffect } from 'react';
 import { useSessionStore } from '../store/useSessionStore';
 import { RegexSet } from '../types';
-import { FaTrash, FaPlus, FaCopy, FaCheck, FaMagic, FaTimes, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaTrash, FaCopy, FaCheck, FaMagic, FaTimes, FaExternalLinkAlt } from 'react-icons/fa';
 import { generateRunRegex, generateSlamRegex, trimmedMean, sanitizeExclusionTerms } from '../utils/priceUtils';
 
 // Generate an approximate stash regex from the trade search parameters
@@ -97,7 +97,6 @@ export const RegexModule = () => {
 
   const removeExclusion = (term: string) =>
     updateSetting('regexExclusions', exclusions.filter((e) => e !== term));
-  const resetExclusions = () => updateSetting('regexExclusions', []);
 
   const is8Mod = maps.length > 0 && maps.every((m) => m.modCount > 6 || m.isNightmare);
 

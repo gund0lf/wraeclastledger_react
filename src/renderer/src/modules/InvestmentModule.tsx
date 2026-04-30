@@ -82,7 +82,6 @@ export const InvestmentModule = () => {
   const oneTimeScarabs   = hasPreservation
     ? settings.scarabs.filter((s) => !s.name.toLowerCase().includes('preservation')).reduce((acc, s) => acc + (s.cost || 0), 0)
     : 0;
-  const scarabCost       = perMapScarabs;
   const mapCount         = maps.length || 1;
   const isSplit          = settings.advSplitPrice > 0;
   const perMapBase       = isSplit

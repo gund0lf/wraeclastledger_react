@@ -1,7 +1,7 @@
 import {
   Card, Text, Group, Stack, Badge, TextInput, Select, MultiSelect, Button,
   ActionIcon, Loader, Alert, Collapse, SimpleGrid, Tooltip, CopyButton,
-  Modal, Textarea, Divider, NumberInput, Switch,
+  Modal, Textarea, Divider, NumberInput, Switch, ScrollArea,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -12,7 +12,6 @@ import {
 import { useSessionStore } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
 import { generateRunRegex, generateSlamRegex, trimmedMean } from '../utils/priceUtils';
-import { applyUserExclusionsToRegex } from './RegexModule';
 import { KNOWN_LEAGUES, CURRENT_LEAGUE } from '../utils/league';
 
 const DEFAULT_API_URL = 'https://wledger.richardpruett.com';
@@ -168,7 +167,6 @@ function parseDiscordExport(raw: string): DiscordImport | null {
     const strategyName     = strategyNameRaw.replace(/[^\x00-\x7F]/g, '').trim();
     const strategyNotesRaw = str([/Notes:\s*([^\n]+)/]);
     const strategyNotes    = strategyNotesRaw.replace(/[^\x00-\x7F]/g, '').trim();
-    // Parse deli orbs and astrolabe
     const deliOrbMatch    = text.match(/Delirium Orbs:\s*(\d+)x\s+([^\s(]+)[^\n]*?(\d+\.?\d*)c each/i);
     const deliOrbQty      = deliOrbMatch ? parseInt(deliOrbMatch[1]) : 0;
     const deliOrbType     = deliOrbMatch ? deliOrbMatch[2].replace(/[^\x00-\x7F]/g, '').trim() : '';
@@ -177,7 +175,6 @@ function parseDiscordExport(raw: string): DiscordImport | null {
     const astroType       = astroMatch ? astroMatch[1].replace(/[^\x00-\x7F]/g, '').trim() : '';
     const astroCount      = astroMatch ? parseInt(astroMatch[2]) : 0;
     const astroPrice      = astroMatch ? parseFloat(astroMatch[3]) : 0;
-    // Parse excluded drops: "Excluded drops (N): Name (Vc), Name2 (V2c)"
     const excludedDrops: { name: string; value: number }[] = [];
     const exclMatch = text.match(/Excluded drops \(\d+\):\s*([^\n]+)/i);
     if (exclMatch) {
@@ -186,7 +183,6 @@ function parseDiscordExport(raw: string): DiscordImport | null {
         if (m) excludedDrops.push({ name: m[1].trim(), value: parseFloat(m[2]) });
       }
     }
-    // Parse gem leveling: "Gem leveling: N gems | buy Xc | sell Xc | net +/-Xc"
     const gemMatch = text.match(/Gem leveling:\s*(\d+) gems \| buy (\d+)c \| sell (\d+)c \| net ([+-]?\d+)c/i);
     const gemInfo = gemMatch ? {
       count: parseInt(gemMatch[1]), buy: parseInt(gemMatch[2]),
@@ -208,7 +204,7 @@ const fc = (v: number | null | undefined, sign = false): string => {
   if (v == null) return '—';
   const abs = Math.abs(v);
   const s = abs >= 1000
-    ? `${parseFloat((abs / 1000).toFixed(1))}k` // strips trailing .0 (107.0 → 107)
+    ? `${parseFloat((abs / 1000).toFixed(1))}k`
     : `${Math.round(abs)}`;
   const prefix = sign ? (v >= 0 ? '+' : '-') : (v < 0 ? '-' : '');
   return `${prefix}${s}c`;
@@ -236,13 +232,11 @@ const MAP_TYPE_LABELS: Record<string, string> = {
 };
 
 const TAG_SHORT: Record<string, string> = {
-  // Only shorten genuinely long/compound names
   'empowered-originator': 'emp+orig',
   'empowered':            'emp',
   'boss-rush':            'boss',
   'mirage-rush':          'mirage',
   'delirium':             'deli',
-  // Astrolabe variants
   'astrolabe':            'astro',
   'astrolabe-templar':    'a:templ',
   'astrolabe-enshrouded': 'a:enshr',
@@ -297,7 +291,6 @@ const StrategyCard = ({ strategy, onLoadBuild, showDate }: {
   const [open, setOpen] = useState(false);
   const date = (() => { try { return new Date(strategy.posted_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }); } catch { return '—'; } })();
   const div = strategy.div_per_map ??
-    // Fallback: compute from stored net_profit / divine_price / map_count when server didn't store div_per_map
     (strategy.net_profit != null && strategy.divine_price != null && strategy.divine_price > 0 && strategy.map_count != null && strategy.map_count > 0
       ? strategy.net_profit / strategy.divine_price / strategy.map_count
       : null);
@@ -383,7 +376,6 @@ const StrategyCard = ({ strategy, onLoadBuild, showDate }: {
             </Group>
           )}
 
-          {/* Deli orbs and astrolabe headers — parsed from raw_export */}
           {(() => {
             if (!strategy.raw_export) return null;
             const deliM = strategy.raw_export.match(/Delirium Orbs:\s*(\d+)x\s+([^\s(]+)/i);
@@ -437,7 +429,6 @@ const StrategyCard = ({ strategy, onLoadBuild, showDate }: {
             </Stack>
           )}
 
-          {/* Excluded drops + gem leveling — parsed from raw_export */}
           {(() => {
             if (!strategy.raw_export) return null;
             const exclM = strategy.raw_export.match(/Excluded drops \(\d+\):\s*([^\n]+)/i);
@@ -578,7 +569,6 @@ export const StrategyBrowserModule = () => {
         else                                        subtype = 'mixed';
         if (subtype && !merged.includes(subtype)) merged.unshift(subtype);
       }
-      // Auto-add astrolabe tag from settings if configured
       if (settings.advAstrolabeType) {
         const a = settings.advAstrolabeType.toLowerCase();
         let astroTag = 'astrolabe';
@@ -746,7 +736,6 @@ export const StrategyBrowserModule = () => {
       });
     }
     if (s.atlas_tree_url) updateSetting('atlasTreeUrl', s.atlas_tree_url);
-    // Load deli orbs and astrolabe from raw_export
     if (s.raw_export) {
       const parsed = parseDiscordExport(s.raw_export);
       if (parsed) {
@@ -763,7 +752,6 @@ export const StrategyBrowserModule = () => {
       }
     }
     setLoadedMsg(`Loaded ${s.discord_username}'s build — scarabs, chisel, atlas tree, deli orbs & astrolabe applied.`);
-    // Store strategy averages and regex for RegexModule to display and use
     if (s.raw_export) {
       const p2 = parseDiscordExport(s.raw_export);
       if (p2 && p2.runRegex) {
@@ -856,9 +844,10 @@ export const StrategyBrowserModule = () => {
       </Modal>
 
       {/* ── Import modal ── */}
+      {/* scrollAreaComponent uses ScrollArea.Autosize (Mantine v8 API — string "div" is not valid) */}
       <Modal opened={importOpen}
         onClose={() => { closeImport(); setImportText(''); setImportResult(null); setParseError(false); }}
-        title="Analyse a Discord Export" size="lg" scrollAreaComponent="div">
+        title="Analyse a Discord Export" size="lg" scrollAreaComponent={ScrollArea.Autosize}>
         <Stack gap="sm">
           <Text size="xs" c="dimmed">Paste any WraeclastLedger export to see how it performs at your current divine price.</Text>
           <Textarea placeholder="Paste export here — auto-parses as you type..."

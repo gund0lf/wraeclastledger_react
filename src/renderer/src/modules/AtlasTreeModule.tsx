@@ -265,7 +265,10 @@ export const AtlasTreeModule = () => {
           </ActionIcon>
         </Tooltip>
         <Tooltip label="Read allocated node stats">
-          <ActionIcon size="xs" variant="subtle" color="blue" onClick={readStats}>
+          {/* Wrap in arrow function so the click MouseEvent isn't passed as the
+              `autoApply` parameter — that would always be truthy and silently
+              put readStats into auto-apply mode on every manual click. */}
+          <ActionIcon size="xs" variant="subtle" color="blue" onClick={() => readStats()}>
             <FaChartBar size={10} />
           </ActionIcon>
         </Tooltip>

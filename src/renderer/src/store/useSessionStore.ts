@@ -248,20 +248,27 @@ export const useSessionStore = create<SessionState>()(
         if (!session) return;
         const maps = session.maps.map((m) => {
           // Re-detect subtype flags from rawText when they weren't set at parse time
-          // (sessions saved before 1.0.9 have all flags as false/undefined)
-          const raw = m.rawText ?? '';
-          const needsRedetect = !m.isOriginator && !m.isEmpoweredMirage && !m.isNightmare && raw.length > 0;
+          // (sessions saved before 1.0.9 have all flags as false/undefined).
+          //
+          // The cast to Partial<MapData> reflects the runtime reality: localStorage
+          // can contain map objects from older app versions that didn't have these
+          // fields. The current MapData type requires them, so without the cast,
+          // TS would mark the `false` defaults as dead code (correctly per the type,
+          // but wrongly per the runtime).
+          const safeM = m as Partial<MapData> & { rawText?: string };
+          const raw = safeM.rawText ?? '';
+          const needsRedetect = !safeM.isOriginator && !safeM.isEmpoweredMirage && !safeM.isNightmare && raw.length > 0;
           return {
             isOriginator: false, isEmpoweredMirage: false,
             isNightmare: false,  isCorrupted: false,
-            ...m,
+            ...safeM,
             ...(needsRedetect ? {
               isOriginator:     raw.includes("Originator's Memories"),
               isEmpoweredMirage: raw.includes('Empowered Mirage which covers the entire Map'),
               isNightmare:      raw.includes('Nightmare Map'),
               isCorrupted:      /\bCorrupted\b/.test(raw),
             } : {}),
-          };
+          } as MapData;
         });
         set({ maps, lootItems: [...session.lootItems], baselineItems: [...(session.baselineItems ?? [])], baselineTotal: session.baselineTotal ?? 0, settings: { ...DEFAULT_SETTINGS, ...session.settings }, sessionNotes: session.notes ?? '', activeSessionId: id, activeSessionName: session.name, isWatching: false });
       },

@@ -7,7 +7,7 @@ import { MapData } from '../types';
  *   - Regular maps (T15/T16, 6-mod or 8-mod)
  *   - Originator maps  ("Area is Influenced by the Originator's Memories")
  *   - Empowered Mirage ("Area contains an Empowered Mirage which covers the entire Map")
- *   - Nightmare maps   ("Nightmare Map" item type)
+ *   - Nightmare maps   ("Nightmare Map" item type — can be corrupted or not)
  *   - Corrupted maps   (extra "Corrupted" trailing section + <tag>{content} mod format)
  */
 export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
@@ -15,6 +15,7 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
     text.includes('Item Class: Maps') ||
     text.includes('Map Tier:') ||
     /Map \(Tier \d+\)/.test(text) ||
+    /\(Tier \d+\)/.test(text) ||
     text.includes('Nightmare Map');
   if (!isMap) return null;
 
@@ -22,8 +23,16 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
   const clean = text.replace(/<[^>]+>\{([^}]*)\}/g, '$1');
 
   // ── Basic stats ────────────────────────────────────────────────────────────
+  // Tier extraction handles three formats:
+  //   1. Rare map name line: "Toxic Sewer Map (Tier 16)" → matches via "Map (Tier"
+  //   2. Magic prefix+suffix: "Fecund Map of Exposure (Tier 16)" — the word
+  //      between "Map" and "(Tier" is the suffix, so we need a more generic
+  //      pattern that catches "(Tier N)" regardless of the preceding word.
+  //   3. Old "Map Tier: N" format from earlier game versions.
   let tier = 0;
-  const tierMatch = clean.match(/Map \(Tier (\d+)\)/) || clean.match(/Map Tier:\s*(\d+)/);
+  const tierMatch =
+    clean.match(/\(Tier (\d+)\)/) ||
+    clean.match(/Map Tier:\s*(\d+)/);
   if (tierMatch) tier = parseInt(tierMatch[1]);
   // Nightmare maps don't always have a visible tier number; treat as T16
   if (tier === 0 && clean.includes('Nightmare Map')) tier = 16;
@@ -51,6 +60,11 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
   else { const q = clean.match(/Quality: \+(\d+)%/); if (q) quality = parseInt(q[1]); }
 
   // ── Map subtypes ────────────────────────────────────────────────────────────
+  // Note: Nightmare maps are NOT inherently corrupted — they can drop white,
+  // be picked up rare, and run uncorrupted. The "Modifiable only with Chaos
+  // Orbs, Vaal Orbs, Delirium Orbs and Chisels" footer is restriction text,
+  // not a corruption signal. Only the explicit "Corrupted" section indicates
+  // a corrupted map.
   const isOriginator    = clean.includes("Originator's Memories");
   const isEmpoweredMirage = clean.includes('Empowered Mirage which covers the entire Map');
   const isNightmare     = clean.includes('Nightmare Map');

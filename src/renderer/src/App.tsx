@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { JSX } from 'react';
 import { Layout, Model, Node, Actions, DockLocation } from 'flexlayout-react';
 import { getModuleComponent } from './layout/Registry';
 import { defaultLayout } from './layout/defaultLayout';
@@ -9,18 +10,7 @@ import { UpdateBanner, APP_VERSION } from './UpdateBanner';
 import { FaSync } from 'react-icons/fa';
 
 // APP_VERSION imported from UpdateBanner.tsx — single source of truth
-
-declare global {
-  interface Window {
-    api: any;
-    electron?: {
-      ipcRenderer: {
-        on: (channel: string, listener: (...args: any[]) => void) => void;
-        send: (channel: string, ...args: any[]) => void;
-      }
-    }
-  }
-}
+// window.electron and window.api are declared in src/preload/index.d.ts — no redeclaration needed here.
 
 const ALL_PANELS = [
   { component: 'session-manager', name: 'Sessions' },
@@ -49,7 +39,9 @@ function App(): JSX.Element {
     } catch { /* corrupt/old */ }
     return Model.fromJson(defaultLayout);
   });
-  const [modelVersion, setModelVersion] = useState(0);
+  // modelVersion value is not read directly — the setter is used in onModelChange
+  // to force re-renders of the toolbar's "open panels" menu after layout changes.
+  const [, setModelVersion] = useState(0);
   const [checking, setChecking] = useState(false);
 
   const addMapRef      = useRef(useSessionStore.getState().addMap);
@@ -104,7 +96,9 @@ function App(): JSX.Element {
   };
 
   const factory = (node: Node) => {
-    const componentId = node.getComponent();
+    // flexlayout-react's type definitions don't expose getComponent() on Node,
+    // but the method exists at runtime. Cast to any to satisfy TS.
+    const componentId = (node as any).getComponent?.();
     if (typeof componentId === 'string') return getModuleComponent(componentId);
     return <div>Missing Config</div>;
   };
