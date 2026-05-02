@@ -118,7 +118,7 @@ export const UBER_MODS: UberMod[] = [
   // S-tier
   { name: 'of Exposure',    affix: 'suffix', tier: 'S', quant: 19, rarity: 11, pack: 20,
     keyword: 'Players have -20% to all maximum Resistances',
-    regexToken: 'ax R' },
+    regexToken: '20% t' },  // '-20% to all' — 'ax R' was wrong (no such substring in 'maximum Resistances')
   { name: 'of Defiance',    affix: 'suffix', tier: 'S', quant: 16, rarity: 12, pack: 6,
     secondary: '+64% Currency',
     keyword: 'Debuffs on Monsters expire 100% faster',

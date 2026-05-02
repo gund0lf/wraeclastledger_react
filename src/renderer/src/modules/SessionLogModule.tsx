@@ -1,9 +1,10 @@
 import {
   Card, ScrollArea, Table, Text, ActionIcon, Group, Button, Switch,
-  Tooltip,
+  Tooltip, TextInput,
 } from '@mantine/core';
+import { useState } from 'react';
 import { useSessionStore } from '../store/useSessionStore';
-import { FaTrash, FaClipboard, FaUndo } from 'react-icons/fa';
+import { FaTrash, FaClipboard, FaUndo, FaSearch } from 'react-icons/fa';
 import { parseMapClipboard } from '../utils/mapParser';
 
 export const SessionLogModule = () => {
@@ -11,6 +12,8 @@ export const SessionLogModule = () => {
     maps, removeMap, addMap, undoLastMap, clearMaps,
     isWatching, toggleWatch,
   } = useSessionStore();
+
+  const [search, setSearch] = useState('');
 
   const handlePaste = async () => {
     try {
@@ -20,7 +23,11 @@ export const SessionLogModule = () => {
     } catch (err) { console.error('Clipboard error', err); }
   };
 
-  const rows = maps.map((map, index) => (
+  const filtered = search.trim()
+    ? maps.filter((m) => m.name?.toLowerCase().includes(search.trim().toLowerCase()))
+    : maps;
+
+  const rows = filtered.map((map, index) => (
     <Table.Tr key={map.id}>
       <Table.Td>{index + 1}</Table.Td>
       <Table.Td>{map.quantity}%</Table.Td>
@@ -42,13 +49,24 @@ export const SessionLogModule = () => {
       style={{ display: 'flex', flexDirection: 'column' }}>
       <Group justify="space-between" mb="xs">
         <Group gap="xs">
-          <Text fw={700} size="sm">Map Log ({maps.length})</Text>
+          <Text fw={700} size="sm">Map Log ({maps.length}{search.trim() && filtered.length !== maps.length ? ` · ${filtered.length} shown` : ''})</Text>
           <Tooltip label={isWatching ? 'Live: Ctrl+C in game' : 'Paused'}>
             <Switch checked={isWatching} onChange={toggleWatch}
               color="green" size="sm" label={isWatching ? 'Live' : 'Paused'} labelPosition="left" />
           </Tooltip>
         </Group>
         <Group gap={5}>
+          <TextInput
+            size="xs" placeholder="Filter maps…" value={search}
+            onChange={(e) => setSearch(e.currentTarget.value)}
+            leftSection={<FaSearch size={9} />}
+            style={{ width: 120 }}
+            rightSection={search ? (
+              <ActionIcon size="xs" variant="transparent" c="dimmed" onClick={() => setSearch('')}>
+                ×
+              </ActionIcon>
+            ) : null}
+          />
           <Tooltip label="Undo last map">
             <ActionIcon variant="default" size="sm" onClick={undoLastMap} disabled={maps.length === 0}>
               <FaUndo size={10} />

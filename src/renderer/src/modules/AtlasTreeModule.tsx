@@ -11,6 +11,20 @@ function isPathofpathingUrl(url: string): boolean {
   catch { return false; }
 }
 
+// Polls a predicate (via async check fn) until it returns true or the timeout expires.
+// Used to wait for pathofpathing page elements to render before injecting JS.
+async function pollUntil(
+  check: () => Promise<boolean>,
+  intervalMs = 200,
+  maxMs = 5000,
+): Promise<void> {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    if (await check()) return;
+    await new Promise<void>((r) => setTimeout(r, intervalMs));
+  }
+}
+
 interface StatGroup {
   title: string;
   stats: string[];
@@ -72,16 +86,27 @@ export const AtlasTreeModule = () => {
       updateSetting('atlasTreeUrl', url);
     };
     // Auto-apply to calc when URL is loaded externally (Load Build Settings / import URL)
-    const handleFinishLoad = () => {
+    // Block any navigation that would leave pathofpathing.com (e.g. ad/link clicks on the page)
+    const handleWillNavigate = (e: any) => {
+      if (!isPathofpathingUrl(e.url ?? '')) e.preventDefault();
+    };
+    const handleFinishLoad = async () => {
       if (!autoApplyRef.current) return;
       autoApplyRef.current = false;
-      // Wait for the page to fully render before reading stats
-      setTimeout(() => readStats(true), 1500);
+      // Poll until the stats button exists — more reliable than a fixed timeout
+      await pollUntil(() =>
+        (wv as any).executeJavaScript(
+          `Promise.resolve(!!document.getElementById('skillTreeStats_ShowHide'))`,
+        ).catch(() => false),
+      );
+      readStats(true);
     };
+    wv.addEventListener('will-navigate', handleWillNavigate);
     wv.addEventListener('did-navigate', handleNav);
     wv.addEventListener('did-navigate-in-page', handleNav);
     wv.addEventListener('did-finish-load', handleFinishLoad);
     return () => {
+      wv.removeEventListener('will-navigate', handleWillNavigate);
       wv.removeEventListener('did-navigate', handleNav);
       wv.removeEventListener('did-navigate-in-page', handleNav);
       wv.removeEventListener('did-finish-load', handleFinishLoad);
@@ -176,7 +201,9 @@ export const AtlasTreeModule = () => {
               if (btn && btn.textContent && btn.textContent.trim() === 'Hide stats') btn.click();
             })()
           `);
-        } catch {}
+        } catch (closeErr) {
+          console.error('[AtlasTree] failed to close stats panel:', closeErr);
+        }
       }
     } catch (err: any) {
       setStatsError('Could not read stats — try navigating the tree first.');

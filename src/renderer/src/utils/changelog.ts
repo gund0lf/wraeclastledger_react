@@ -10,6 +10,44 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.60',
+    date: '2026-05-02',
+    changes: [
+      'Phase 4: Gem buy-back (gemBuyOffset) no longer added to profit when no baseline is set — it was inflating the return figure without a diff to neutralise.',
+      'Phase 4: Brick mod fixes — ditio → 1 add (was matching all "additional" mods), max fr/ax end/ax pow → m f/m end/m po (abbreviated display assumption was wrong), tunn a → n sp (was not present in mod text), ax R in uber mods → 20% t. Known overlaps documented.',
+      'Phase 4: AtlasTree webview now blocks off-domain navigation via will-navigate listener.',
+      'Phase 4: AtlasTree auto-apply replaced flat 1500ms timeout with pollUntil — fires as soon as the stats button is rendered.',
+      'Phase 4: AtlasTree silent catch{} replaced with console.error for stats-panel-close failures.',
+      'Phase 4: Store migration v14→v15 — investmentNeutralization === -1 sentinel replaced with explicit investmentDismissed: boolean field.',
+      'Phase 4: Investment detection normalises both sides with NFKD + apostrophe unification before matching — fixes misses on WealthyExile exports with curly apostrophes.',
+      'Phase 5: rawText stripped from MapData on save — large per-map clipboard strings no longer accumulate in localStorage.',
+      'Phase 5: Sessions panel now shows a Storage row with session count and MB used; turns orange above 4MB.',
+      'Phase 5: localStorage quota errors now surface as a dismissible orange banner instead of silently failing.',
+      'Phase 6: StrategyBrowserModule extracted from 59KB → 17KB. New files: utils/parseDiscordExport.ts (pure parser + 25 tests), utils/strategyConstants.ts (types + constants), components/StrategyCard.tsx, components/ShareModal.tsx, components/ImportModal.tsx.',
+      'Phase 6: ImportModal now has a Load Build Settings button — apply chisel, deli orbs, astrolabe and regex from any pasted Discord export without it being on the server.',
+      'Refactor: parseLootCsv and diffLootItems extracted from DashboardModule into utils/lootUtils.ts with 22 tests covering CSV edge cases and diff logic.',
+      'Phase 7: Map Log filter — TextInput above the map table filters rows by name in real time, with a clear button and a \'X shown\' count.',
+      'Phase 7: WealthyExile link in loot empty state — explains the export flow (log in, pick tabs, sync, ··· → Export CSV) with a clickable link.',
+      'Phase 7: Brick mod IPC failure now surfaces an orange Alert in the Regex panel instead of silently staying on Loading… forever.',
+      'Phase 7: Strategy Browser \'by you\' indicator — set your Discord tag once in the Share modal; your own strategies get a subtle blue left border and tint.',
+      'Phase 7: Strategy card cost breakdown — expanded cards now show Base map / Chisel / Scarabs split when the data is available.',
+      'Phase 7: Session bulk management — checkboxes on all history rows, Export selected as JSON, Delete selected with confirmation, Import JSON with conflict skip/overwrite choice.',
+    ],
+  },
+  {
+    version: '1.0.59',
+    date: '2026-05-01',
+    changes: [
+      'Trade: fixed Listed Status — was using \'available\' (Instant Buyout & In Person) instead of \'securable\' (Instant Buyout only). Searches now open on strictly Instant Buyout listings as intended.',
+      'Trade: 8-mod map searches now include a # Modifiers ≥ 8 pseudo filter — previously selecting 8-mod did not strictly enforce 8 affixes, so sub-8-mod maps could appear in results.',
+      'Loot categories: Vaal Gems were miscategorised as Currency — now correctly classified as Gems (e.g. Vaal Orb, Vaal Haste, Vaal Discipline no longer inflate the Currency loot line).',
+      'Map parser: tier extraction on magic-rarity maps fixed — words between \'Map\' and \'(Tier N)\' no longer break tier detection.',
+      'Map parser: Nightmare corruption detection logic corrected.',
+      'Atlas Calc: 8-mod auto-detect now includes uncorrupted Nightmare maps — previously only corrupted maps triggered 8-mod mode.',
+      'Atlas Tree: fixed auto-apply firing with onClick instead of a proper arrow wrapper — no longer double-fires on click.',
+    ],
+  },
+  {
     version: '1.0.58',
     date: '2026-04-28',
     changes: [

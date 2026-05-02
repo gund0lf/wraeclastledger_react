@@ -1,14 +1,14 @@
 import {
   Card, Text, Group, Stack, Badge, Divider, Collapse, ActionIcon,
   Button, SegmentedControl, Table, Checkbox, TextInput,
-  Progress, Image, Skeleton, Tooltip, Modal, SimpleGrid,
+  Progress, Image, Skeleton, Tooltip, Modal, SimpleGrid, Anchor,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { useSessionStore } from '../store/useSessionStore';
 import { QUALITY_STAT_EFFECTS, CHISEL_TYPES, DELIRIUM_ORB_LIST } from '../utils/constants';
 import { MapData, LootItem } from '../types';
-import { v4 as uuidv4 } from 'uuid';
+import { parseLootCsv, diffLootItems } from '../utils/lootUtils';
 import { FaChevronDown, FaChevronRight, FaTrash, FaFileImport, FaSearch } from 'react-icons/fa';
 import { getItemIcons } from '../utils/itemIcons';
 import { buildCategoryBreakdown, ItemCategory, CAT_COLORS } from '../utils/lootCategories';
@@ -57,50 +57,12 @@ const STAT_LABELS: Record<string, string> = {
 
 const ICON_SIZE = 20;
 
-const parseCsv = (csv: string): LootItem[] => {
-  const clean = csv.replace(/^\uFEFF/, '');
-  const lines = clean.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length < 2) return [];
-  const items: LootItem[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const parts: string[] = [];
-    let cur = ''; let inQuote = false;
-    for (const ch of lines[i]) {
-      if (ch === '"') { inQuote = !inQuote; continue; }
-      if (ch === ',' && !inQuote) { parts.push(cur); cur = ''; continue; }
-      cur += ch;
-    }
-    parts.push(cur);
-    if (parts.length < 5) continue;
-    const [n, t, q, p] = parts.map((s) => s.trim());
-    const total = parseFloat(parts[4].trim());
-    if (!n || isNaN(total)) continue;
-    items.push({ id: uuidv4(), name: n, tab: t, quantity: q, price: p, total, excluded: false });
-  }
-  return items.sort((a, b) => b.total - a.total);
-};
-
-interface DiffRow { name: string; tab: string; delta: number; baseQty: number; currQty: number; }
-function diffItems(baseline: LootItem[], current: LootItem[]): DiffRow[] {
-  const bMap = new Map(baseline.map((i) => [i.name, i]));
-  const cMap = new Map(current.map((i) => [i.name, i]));
-  const rows: DiffRow[] = [];
-  for (const name of new Set([...bMap.keys(), ...cMap.keys()])) {
-    const b = bMap.get(name), c = cMap.get(name);
-    const delta = (c?.total ?? 0) - (b?.total ?? 0);
-    if (Math.abs(delta) < 0.01) continue;
-    rows.push({ name, tab: c?.tab ?? b?.tab ?? '', delta,
-      baseQty: parseInt(b?.quantity ?? '0') || 0,
-      currQty: parseInt(c?.quantity ?? '0') || 0 });
-  }
-  return rows.sort((a, b) => b.delta - a.delta);
-}
-
 export const DashboardModule = () => {
   const {
     maps, settings, lootItems, baselineItems, baselineTotal,
     setLootItems, setBaselineItems, toggleLootItemExcluded, clearLoot,
     investmentNeutralization, setInvestmentNeutralization,
+    investmentDismissed, setInvestmentDismissed,
   } = useSessionStore();
 
   const stats = useMemo(() => {
@@ -149,12 +111,14 @@ export const DashboardModule = () => {
     if (settings.advSplitPrice > 0) perMap = (settings.baseMapCost + chiselCost + settings.advSplitPrice) / 2 + perMapScarabs;
     const totalInvest = perMap * count + settings.rollingCostPerMap + oneTimeScarabs;
     const rawReturn   = lootItems.filter((l) => !l.excluded).reduce((a, b) => a + b.total, 0);
-    const gemBuyOffset = (settings.advGemName?.trim() && settings.advGemCount > 0 && settings.advGemBuyPrice > 0)
+    const hasReturn   = lootItems.length > 0;
+    const hasBl       = baselineTotal > 0 && hasReturn;
+    // gemBuyOffset is only relevant when a baseline exists — the offset corrects for gem cost
+    // appearing as a diff loss; without a baseline there's no diff to neutralise.
+    const gemBuyOffset = hasBl && (settings.advGemName?.trim() && settings.advGemCount > 0 && settings.advGemBuyPrice > 0)
       ? settings.advGemCount * settings.advGemBuyPrice
       : 0;
     const adjReturn   = rawReturn + gemBuyOffset + investmentNeutralization;
-    const hasReturn   = lootItems.length > 0;
-    const hasBl       = baselineTotal > 0 && hasReturn;
     const lootGain    = hasReturn ? (hasBl ? adjReturn - baselineTotal : adjReturn) : 0;
     const net         = lootGain - totalInvest;
     const div         = settings.divinePrice || 1;
@@ -192,7 +156,7 @@ export const DashboardModule = () => {
   useEffect(() => { setVisibleListRows(INITIAL_ROWS); }, [lootView, search]);
   useEffect(() => { setVisibleDiffRows(INITIAL_ROWS); }, [lootView, diffTab]);
 
-  const allDiffRows = useMemo(() => hasBoth ? diffItems(baselineItems, lootItems) : [], [baselineItems, lootItems, hasBoth]);
+  const allDiffRows = useMemo(() => hasBoth ? diffLootItems(baselineItems, lootItems) : [], [baselineItems, lootItems, hasBoth]);
   const gains    = allDiffRows.filter((r) => r.delta > 0);
   const losses   = allDiffRows.filter((r) => r.delta < 0).sort((a, b) => a.delta - b.delta);
   const netGain  = gains.reduce((a, b) => a + b.delta, 0) + losses.reduce((a, b) => a + b.delta, 0);
@@ -210,7 +174,10 @@ export const DashboardModule = () => {
       })() : []),
     ];
     return losses
-      .filter((r) => investItems.some((inv) => inv.name.toLowerCase() === r.name.toLowerCase()))
+      .filter((r) => {
+        const normName = (s: string) => s.normalize('NFKD').replace(/[\u2018\u2019\u02BC]/g, "'").toLowerCase();
+        return investItems.some((inv) => normName(inv.name) === normName(r.name));
+      })
       .map((r) => ({ name: r.name, value: Math.abs(r.delta) }));
   }, [hasBoth, losses, settings]);
 
@@ -234,7 +201,7 @@ export const DashboardModule = () => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const items = parseCsv(ev.target?.result as string);
+      const items = parseLootCsv(ev.target?.result as string);
       if (!items.length) return;
       const total = items.reduce((a, b) => a + b.total, 0);
       if (pendingRoleRef.current === 'baseline') { setBaselineItems(items); pendingRoleRef.current = null; if (hasCurrent) { setLootView('diff'); setDiffTab('gains'); } return; }
@@ -378,7 +345,7 @@ export const DashboardModule = () => {
         </div>
 
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          {detectedMatches.length > 0 && investmentNeutralization === 0 && (
+          {detectedMatches.length > 0 && investmentNeutralization === 0 && !investmentDismissed && (
             <Stack gap={4} mb={6} p="xs"
               style={{ background: 'rgba(255,200,0,0.07)', border: '1px solid rgba(255,200,0,0.25)', borderRadius: 6, flexShrink: 0 }}>
               <Group justify="space-between" align="flex-start">
@@ -404,7 +371,7 @@ export const DashboardModule = () => {
                   Neutralise +{detectedTotal.toFixed(1)}c
                 </Button>
                 <Button size="xs" variant="subtle" color="gray"
-                  onClick={() => setInvestmentNeutralization(-1)}>
+                  onClick={() => setInvestmentDismissed(true)}>
                   Dismiss
                 </Button>
               </Group>
@@ -455,6 +422,13 @@ export const DashboardModule = () => {
                 <Text size="xs" c="dimmed" ta="center">Import a baseline before your session, then a return CSV to see your gains.</Text>
                 <Text size="xs" c="dimmed" ta="center" style={{ fontStyle: 'italic', fontSize: 10 }}>
                   Tip: before importing a baseline, move your investment items (maps, scarabs etc.) out of any WealthyExile-monitored tab into your inventory or an unmonitored tab, then change zones so WealthyExile updates, then refresh and import. Otherwise your investment will be counted twice.
+                </Text>
+                <Text size="xs" c="dimmed" ta="center" style={{ fontSize: 10 }}>
+                  Export from{' '}
+                  <Anchor href="#" size="xs" onClick={(e) => { e.preventDefault(); window.open('https://wealthyexile.com', '_blank'); }}>
+                    WealthyExile
+                  </Anchor>
+                  {' '}— log in, pick stash tabs, sync, then click ··· → Export CSV.
                 </Text>
               </Stack>
             )}

@@ -5,6 +5,8 @@ out
 .eslintcache
 *.log*
 BUILD.md
+CLAUDE.md
+HANDOVER.md
 
 # Server-side code — not part of the public client repo
 traceuer-server-side/

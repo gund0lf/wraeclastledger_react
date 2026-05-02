@@ -1,7 +1,7 @@
 import {
   Card, Text, Button, Group, Stack, Badge, ActionIcon,
   TextInput, Select, MultiSelect, Modal, CopyButton, Code, Divider, ScrollArea, Tooltip,
-  NumberInput, Switch,
+  NumberInput, Switch, Alert,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useState, useMemo, useEffect } from 'react';
@@ -90,6 +90,7 @@ export const RegexModule = () => {
   const [tradeLoading,      setTradeLoading]      = useState(false);
   const [tradeError,        setTradeError]        = useState<string | null>(null);
   const [brickMods,         setBrickMods]         = useState<{ label: string; statId: string; regexTerm: string; category: 'regular' | 'nightmare' }[]>([]);
+  const [brickModsError,    setBrickModsError]    = useState(false);
   const [tradeBrickExcl,    setTradeBrickExcl]    = useState<string[]>([]);
 
   const regexSets: RegexSet[] = settings.regexSets ?? [];
@@ -109,8 +110,8 @@ export const RegexModule = () => {
   useEffect(() => {
     try {
       const fn = window.api?.getBrickMods;
-      if (typeof fn === 'function') fn().then(setBrickMods).catch(() => {});
-    } catch { /* preload not ready */ }
+      if (typeof fn === 'function') fn().then(setBrickMods).catch(() => setBrickModsError(true));
+    } catch { setBrickModsError(true); }
   }, []);
 
   const generatedRegex = useMemo(() => {
@@ -398,8 +399,13 @@ export const RegexModule = () => {
             <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>
               Exclude maps with these mods. <Text span style={{ color: '#cc88ff', fontSize: 10 }}>Purple = Nightmare mods.</Text>
             </Text>
+            {brickModsError && (
+              <Alert color="orange" variant="light" p="xs">
+                <Text size="xs">Mod list failed to load — restart the app to retry. Brick exclusions by regex term still work.</Text>
+              </Alert>
+            )}
             <MultiSelect size="xs"
-              placeholder={brickMods.length === 0 ? 'Loading…' : 'Search and select mods to exclude'}
+              placeholder={brickModsError ? 'Unavailable' : brickMods.length === 0 ? 'Loading…' : 'Search and select mods to exclude'}
               searchable clearable filter={brickModFilter}
               data={brickModData} value={tradeBrickExcl} onChange={setTradeBrickExcl}
               renderOption={renderBrickOption}

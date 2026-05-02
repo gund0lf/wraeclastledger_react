@@ -121,17 +121,21 @@ const BRICK_MOD_DEFS: BrickModDef[] = [
   { label: 'Monsters Hexproof',                   needle: 'Monsters are Hexproof',                                          regexTerm: 'xpro',    category: 'regular' },
   { label: 'Chaos + Elemental Resistances',       needle: 'Monster Chaos Resistance',                                       regexTerm: 'haos re', category: 'regular' },
   { label: 'More Monster Life',                   needle: 'more Monster Life',                                              regexTerm: 're mon',  category: 'regular' },
+  // KNOWN OVERLAP: 'tunn' also matches uber 'of the Juggernaut' (identical mod text). Both tiers are brick — intentional.
   { label: 'Cannot Be Stunned',                   needle: 'Monsters cannot be Stunned',                                     regexTerm: 'tunn',    category: 'regular' },
   { label: 'All Damage Ignites',                  needle: 'All Monster Damage from Hits always Ignites',                   regexTerm: 'lways i', category: 'regular' },
   { label: 'Impale on Hit',                       needle: 'chance to Impale on Hit',                                        regexTerm: 'pale on', category: 'regular' },
   { label: 'Ignite/Freeze/Shock Chance',          needle: 'chance to Ignite, Freeze and Shock on Hit',                     regexTerm: 'hock on', category: 'regular' },
+  // KNOWN OVERLAP: 'yers e' also matches uber 'of Transience' (100% faster vs 70% faster — same token, different values). Both are brick — intentional.
   { label: 'Buffs on Players Expire Faster',      needle: 'Buffs on Players expire',                                       regexTerm: 'yers e', category: 'regular' },
   { label: 'Less Cooldown Recovery',              needle: 'Cooldown Recovery',                                              regexTerm: 'coo',     category: 'regular' },
+  // KNOWN OVERLAP: 'poss' also matches uber 'Enthralled' (identical mod text, different quant/pack values). Both are brick — intentional.
   { label: 'Unique Bosses Possessed',             needle: 'Unique Bosses are Possessed',                                    regexTerm: 'poss',    category: 'regular' },
   { label: 'Two Unique Bosses',                   needle: 'Area contains two Unique Bosses',                                regexTerm: 'o uniqu', category: 'regular' },
   { label: 'Cannot Be Taunted/Slowed',            needle: 'cannot be Taunted',                                              regexTerm: 'aunted',  category: 'regular' },
   { label: 'Players Less Accuracy',               needle: 'Accuracy Rating',                                                regexTerm: 'ss acc',  category: 'regular' },
   { label: 'Monsters Steal Charges',              needle: 'steal Power, Frenzy and Endurance charges',                      regexTerm: 'teal p',  category: 'regular' },
+  // MINOR OVERLAP: 'renz' also matches 'Monsters Steal Charges' (steal Power, Frenzy... — 'Frenzy' contains 'renz'). Steal-charges is also brick; overlap is acceptable.
   { label: 'Monsters Gain Frenzy Charges',        needle: 'gain a Frenzy Charge on Hit',                                   regexTerm: 'renz',    category: 'regular' },
   { label: 'Monsters Gain Endurance Charges',     needle: 'gain an Endurance Charge on Hit',                               regexTerm: 'ndur',    category: 'regular' },
   { label: 'Monsters Gain Power Charges',         needle: 'gain a Power Charge on Hit',                                    regexTerm: 'ower c',  category: 'regular' },
@@ -162,9 +166,12 @@ const BRICK_MOD_DEFS: BrickModDef[] = [
   { label: '-20% Max Resistances',                needle: 'Players have -20% to all maximum Resistances',                  regexTerm: '20% to',  category: 'nightmare' },
   { label: '+50% Monster Block Chance',           needle: 'Chance to Block Attack Damage',                                 regexTerm: '50% ch',  category: 'nightmare' },
   { label: 'Rare Monsters Shaper-Touched',        needle: 'Shaper-Touched',                                               regexTerm: 'haper',   category: 'nightmare' },
-  { label: 'Rare Monsters +1 Modifier',           needle: 'additional Modifier',                                          regexTerm: 'ditio',   category: 'nightmare' },
+  // FIXED: was 'ditio' which collides with 'additional Projectiles' and 'additional times' (any mod containing 'additional').
+  // '1 add' uniquely targets '+1 additional Modifier' vs '2 additional Projectiles' / '3 additional times'.
+  { label: 'Rare Monsters +1 Modifier',           needle: 'additional Modifier',                                          regexTerm: '1 add',   category: 'nightmare' },
   { label: 'Unstable Tentacle Fiends',            needle: 'Unstable Tentacle Fiends',                                     regexTerm: 'nsta',    category: 'nightmare' },
-  { label: 'Frenzy Charge + Max Frenzy',          needle: 'Maximum Frenzy Charges',                                       regexTerm: 'max fr',  category: 'nightmare' },
+  // 'm f' from 'Maximum Frenzy' — position 6-8 of 'Maximum': 'm[space]F'. Clean: 'gain a Frenzy' has no 'm' before the 'F'.
+  { label: 'Frenzy Charge + Max Frenzy',          needle: 'Maximum Frenzy Charges',                                       regexTerm: 'm f',     category: 'nightmare' },
   { label: 'Reflect 20% Physical + Elemental',    needle: 'Monsters reflect 20% of Physical Damage',                      regexTerm: 't 20%',   category: 'nightmare' },
   { label: 'Penetrates Elemental Resistances',    needle: 'Penetrates',                                                   regexTerm: 'net',     category: 'nightmare' },
   { label: 'Skills Chain + Terrain Chain',        needle: 'Chain when colliding',                                         regexTerm: 'errain',  category: 'nightmare' },
@@ -174,10 +181,14 @@ const BRICK_MOD_DEFS: BrickModDef[] = [
   { label: 'Massive All Resistances',             needle: 'Monster Physical Damage Reduction',                            regexTerm: '50% mo',  category: 'nightmare' },
   { label: 'All Damage Can Ignite/Freeze/Shock',  needle: 'All Monster Damage can Ignite, Freeze and Shock',              regexTerm: 'll dam',  category: 'nightmare' },
   { label: 'Less Flask Effect',                   needle: 'Flasks applied to them',                                       regexTerm: 'sk ef',   category: 'nightmare' },
-  { label: 'Endurance Charges + Max Endurance',   needle: 'Maximum Endurance Charges',                                    regexTerm: 'ax end',  category: 'nightmare' },
+  // 'm end' from 'Maximum Endurance' — 'm[space]End' at positions 6-10. Clean: 'gain an Endurance' has 'an End' not 'm End'.
+  { label: 'Endurance Charges + Max Endurance',   needle: 'Maximum Endurance Charges',                                    regexTerm: 'm end',   category: 'nightmare' },
   { label: 'Shrine Buff on Unique Monsters',      needle: 'random Shrine Buff',                                           regexTerm: 'hrine',   category: 'nightmare' },
   { label: 'Triple Curse (Vuln/Temporal/Elem)',    needle: 'Cursed with Vulnerability',                                    regexTerm: 'oral',    category: 'nightmare' },
-  { label: 'Stunned + Action/Move Speed Floor',    needle: 'Action Speed cannot be modified',                              regexTerm: 'tunn a',  category: 'nightmare' },
+  // 'n sp' from 'Action Speed' — 'action[space]speed' has 'n[space]sp' at positions 5-8.
+  // Clean: 'Movement Speed' = 'nt[space]sp' (not 'n[space]sp'); 'Modifier'/'modified' contain no 'n sp'.
+  // Catches both uber (Juggernaut: Stunned+ActionSpd) and regular (Unstoppable: Taunted+ActionSpd) — same mod slot.
+  { label: 'Stunned + Action/Move Speed Floor',    needle: 'Action Speed cannot be modified',                              regexTerm: 'n sp',    category: 'nightmare' },
   { label: 'Searing Exarch Runes',                needle: 'Runes of the Searing Exarch',                                  regexTerm: 'xarch',   category: 'nightmare' },
   { label: 'Rare Monsters Temporarily Revive',    needle: 'Temporarily Revive on death',                                  regexTerm: 'evive',   category: 'nightmare' },
   { label: 'Poison + Duration + All Can Poison',  needle: 'increased Poison Duration',                                    regexTerm: 'oisona',  category: 'nightmare' },
@@ -188,7 +199,8 @@ const BRICK_MOD_DEFS: BrickModDef[] = [
   { label: 'Flask Triggers Meteor',               needle: 'targeted by a Meteor',                                         regexTerm: 'eteor',   category: 'nightmare' },
   { label: 'Players Less Defences',               needle: 'more Defences',                                                regexTerm: 'fenc',    category: 'nightmare' },
   { label: 'Extra Projectiles + Massive AoE',     needle: 'additional Projectiles',                                       regexTerm: '100%',    category: 'nightmare' },
-  { label: 'Power Charges + Max Power',           needle: 'Maximum Power Charges',                                        regexTerm: 'ax pow',  category: 'nightmare' },
+  // 'm po' from 'Maximum Power' — 'm[space]Po' at positions 6-9. Clean: 'gain a Power Charge' has 'a Po' not 'm Po'.
+  { label: 'Power Charges + Max Power',           needle: 'Maximum Power Charges',                                        regexTerm: 'm po',    category: 'nightmare' },
   { label: 'Labyrinth Hazards',                   needle: 'Labyrinth Hazards',                                            regexTerm: 'abyri',   category: 'nightmare' },
   { label: 'Rare Monsters Volatile Cores',        needle: 'Volatile Core',                                                regexTerm: 'vola',    category: 'nightmare' },
   { label: 'The Maven Interferes',                needle: 'The Maven interferes',                                         regexTerm: 'aven',    category: 'nightmare' },
@@ -308,6 +320,9 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
   if ((mapType === 'nightmare' || mapType === '8mod') && STATS_CACHE.has('originator'))
     statsArray.push({ type: 'not', filters: [{ id: STATS_CACHE.get('originator')! }] });
 
+  if (mapType === '8mod')
+    statsArray.push({ type: 'and', filters: [{ id: 'pseudo.pseudo_number_of_affix_mods', value: { min: 8 } }] });
+
   if (minDelirious >= 0 && STATS_CACHE.has('delirious_pct'))
     statsArray.push({ type: 'and', filters: [{ id: STATS_CACHE.get('delirious_pct')!, value: { min: minDelirious } }] });
 
@@ -330,8 +345,9 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
 
   const query = {
     query: {
-      // 'available' = Instant Buyout on the trade site (confirmed via PoB trade URL inspection)
-      status: { option: 'available' },
+      // 'securable' = Instant Buyout only (PoB source: LISTED_STATUS_OPTIONS)
+      // 'available' = Instant Buyout & In Person (broader — was incorrectly used before)
+      status: { option: 'securable' },
       filters: {
         type_filters: {
           filters: { category: { option: 'map' }, rarity: { option: 'nonunique' } },

@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { tryFetchDivinePrice, sanitizeExclusionTerms } from '../utils/priceUtils';
 import { getCurrentLeague } from '../utils/league';
 
-const STORE_VERSION = 14;
+const STORE_VERSION = 15;
 
 const DEFAULT_SETTINGS: SessionSettings = {
   divinePrice: 0,
@@ -28,6 +28,7 @@ const DEFAULT_SETTINGS: SessionSettings = {
   regexExclusions: [],
   regexSets: [],
   atlasTreeUrl: 'https://pathofpathing.com',
+  discordTag: '',
 };
 
 function calcAdvTotal(s: SessionSettings, mapCount: number): number {
@@ -43,7 +44,31 @@ function calcAdvTotal(s: SessionSettings, mapCount: number): number {
     + astrolabeTotal;
 }
 
+/** Strip rawText from a MapData before persisting — flags are materialised first so re-detection on load still works. */
+function stripRawText(m: MapData): MapData {
+  const raw = (m as any).rawText as string | undefined ?? '';
+  // Ensure subtype flags are populated before discarding rawText
+  const patched: MapData = {
+    ...m,
+    isOriginator:      m.isOriginator      || raw.includes("Originator's Memories"),
+    isEmpoweredMirage: m.isEmpoweredMirage  || raw.includes('Empowered Mirage which covers the entire Map'),
+    isNightmare:       m.isNightmare        || raw.includes('Nightmare Map'),
+    isCorrupted:       m.isCorrupted        || /\bCorrupted\b/.test(raw),
+  };
+  delete (patched as any).rawText;
+  return patched;
+}
+
 function migrateState(persisted: any): any {
+  // v14→v15: replace investmentNeutralization === -1 sentinel with explicit investmentDismissed boolean
+  if (persisted?.investmentNeutralization === -1) {
+    persisted.investmentNeutralization = 0;
+    persisted.investmentDismissed = true;
+  }
+  if (persisted?.investmentDismissed === undefined) {
+    persisted.investmentDismissed = false;
+  }
+
   const s = persisted?.settings ?? {};
   const defaults = DEFAULT_SETTINGS as Record<string, any>;
   const merged: Record<string, any> = { ...s };
@@ -105,6 +130,7 @@ interface SessionState {
   scarabPresets: ScarabPreset[];
   sessionNotes: string;
   investmentNeutralization: number; // amount added back to lootGain from auto-detected investment losses
+  investmentDismissed: boolean;      // true when user dismissed the detection banner without neutralising
   // Persistent default exclusion preset — survives newSession(), applied on strategy load
   defaultExclusionPreset: string[];
   // Loaded strategy preview
@@ -147,7 +173,9 @@ interface SessionState {
   setDefaultPreset: () => void; // saves current regexExclusions as persistent default
   setSessionNotes: (notes: string) => void;
   setInvestmentNeutralization: (v: number) => void;
+  setInvestmentDismissed: (v: boolean) => void;
   setLoadedStrategyInfo: (info: SessionState['loadedStrategyInfo']) => void;
+  importSessions: (sessions: SavedSession[], conflictMode: 'skip' | 'overwrite') => void;
 }
 
 export const useSessionStore = create<SessionState>()(
@@ -157,7 +185,7 @@ export const useSessionStore = create<SessionState>()(
       settings: { ...DEFAULT_SETTINGS },
       isWatching: false, savedSessions: {},
       activeSessionId: null, activeSessionName: null, scarabPresets: [],
-      sessionNotes: '', investmentNeutralization: 0, loadedStrategyInfo: null, defaultExclusionPreset: [],
+      sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, loadedStrategyInfo: null, defaultExclusionPreset: [],
 
       addMap: (m) => set((s) => ({ maps: [...s.maps, { ...m, id: uuidv4() }] })),
       removeMap: (id) => set((s) => ({ maps: s.maps.filter((m) => m.id !== id) })),
@@ -232,7 +260,7 @@ export const useSessionStore = create<SessionState>()(
         const { maps, lootItems, baselineItems, baselineTotal, settings, sessionNotes } = get();
         const id = new Date().toISOString();
         set((s) => ({
-          savedSessions: { ...s.savedSessions, [id]: { id, name, createdAt: id, maps: [...maps], lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, settings: { ...settings }, notes: sessionNotes } },
+          savedSessions: { ...s.savedSessions, [id]: { id, name, createdAt: id, maps: maps.map(stripRawText), lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, settings: { ...settings }, notes: sessionNotes } },
           activeSessionId: id, activeSessionName: name,
         }));
       },
@@ -240,7 +268,7 @@ export const useSessionStore = create<SessionState>()(
         const { maps, lootItems, baselineItems, baselineTotal, settings, sessionNotes, activeSessionId, activeSessionName, savedSessions } = get();
         if (!activeSessionId || !savedSessions[activeSessionId]) return;
         set((s) => ({
-          savedSessions: { ...s.savedSessions, [activeSessionId]: { ...s.savedSessions[activeSessionId], name: activeSessionName ?? s.savedSessions[activeSessionId].name, maps: [...maps], lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, settings: { ...settings }, notes: sessionNotes } },
+          savedSessions: { ...s.savedSessions, [activeSessionId]: { ...s.savedSessions[activeSessionId], name: activeSessionName ?? s.savedSessions[activeSessionId].name, maps: maps.map(stripRawText), lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, settings: { ...settings }, notes: sessionNotes } },
         }));
       },
       loadSession: (id) => {
@@ -277,7 +305,7 @@ export const useSessionStore = create<SessionState>()(
       renameSession: (id, newName) =>
         set((s) => ({ savedSessions: { ...s.savedSessions, [id]: { ...s.savedSessions[id], name: newName } }, activeSessionName: s.activeSessionId === id ? newName : s.activeSessionName })),
       newSession: () =>
-        set({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, sessionNotes: '', investmentNeutralization: 0, settings: { ...DEFAULT_SETTINGS }, activeSessionId: null, activeSessionName: null, isWatching: false, loadedStrategyInfo: null }),
+        set({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, settings: { ...DEFAULT_SETTINGS }, activeSessionId: null, activeSessionName: null, isWatching: false, loadedStrategyInfo: null }),
 
       saveScarabPreset: (name) => {
         const p: ScarabPreset = { id: uuidv4(), name, scarabs: get().settings.scarabs.map((s) => ({ ...s })) };
@@ -301,6 +329,16 @@ export const useSessionStore = create<SessionState>()(
         set((s) => ({ defaultExclusionPreset: [...s.settings.regexExclusions] })),
       setSessionNotes: (notes) => set({ sessionNotes: notes }),
       setInvestmentNeutralization: (v) => set({ investmentNeutralization: v }),
+      setInvestmentDismissed: (v: boolean) => set({ investmentDismissed: v }),
+      importSessions: (sessions, conflictMode) =>
+        set((s) => {
+          const toAdd: Record<string, SavedSession> = {};
+          for (const session of sessions) {
+            if (conflictMode === 'skip' && s.savedSessions[session.id]) continue;
+            toAdd[session.id] = session;
+          }
+          return { savedSessions: { ...s.savedSessions, ...toAdd } };
+        }),
       setLoadedStrategyInfo: (info) =>
         set((s) => ({
           loadedStrategyInfo: info,

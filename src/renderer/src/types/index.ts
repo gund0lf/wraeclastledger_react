@@ -59,6 +59,7 @@ export interface SessionSettings {
   atlasTreeUrl: string;
   leagueName: string;          // Current league, auto-detected from poe.ninja
   atlasDetectedTags: string[]; // Tags inferred from atlas tree node group titles
+  discordTag: string;          // User's Discord tag — used to highlight own strategies in the browser
 }
 
 export interface SavedSession {

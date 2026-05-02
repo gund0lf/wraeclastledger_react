@@ -3,7 +3,7 @@ import type { JSX } from 'react';
 import { Layout, Model, Node, Actions, DockLocation } from 'flexlayout-react';
 import { getModuleComponent } from './layout/Registry';
 import { defaultLayout } from './layout/defaultLayout';
-import { Box, Button, Menu, Text, ActionIcon, Tooltip, Badge } from '@mantine/core';
+import { Box, Button, Menu, Text, ActionIcon, Tooltip, Badge, Alert } from '@mantine/core';
 import { useSessionStore } from './store/useSessionStore';
 import { parseMapClipboard } from './utils/mapParser';
 import { UpdateBanner, APP_VERSION } from './UpdateBanner';
@@ -43,6 +43,7 @@ function App(): JSX.Element {
   // to force re-renders of the toolbar's "open panels" menu after layout changes.
   const [, setModelVersion] = useState(0);
   const [checking, setChecking] = useState(false);
+  const [quotaError, setQuotaError] = useState(false);
 
   const addMapRef      = useRef(useSessionStore.getState().addMap);
   const isWatchingRef  = useRef(useSessionStore.getState().isWatching);
@@ -170,10 +171,26 @@ function App(): JSX.Element {
             setModelVersion((v) => v + 1);
             try {
               localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(model.toJson()));
-            } catch { /* quota */ }
+            } catch {
+              console.error('[App] localStorage quota exceeded — layout not saved');
+              setQuotaError(true);
+            }
           }}
         />
       </Box>
+
+      {/* Quota error banner */}
+      {quotaError && (
+        <Alert color="orange" variant="light" withCloseButton
+          onClose={() => setQuotaError(false)}
+          style={{ position: 'absolute', bottom: 32, right: 16, zIndex: 9999, maxWidth: 380 }}>
+          <Text size="xs" fw={600}>Storage quota exceeded</Text>
+          <Text size="xs" c="dimmed">
+            Layout changes couldn’t be saved — localStorage is full.
+            Delete old sessions in the Sessions panel to free space.
+          </Text>
+        </Alert>
+      )}
 
       {/* Update notifications + changelog banner */}
       <UpdateBanner />
