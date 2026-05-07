@@ -10,8 +10,8 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: '1.0.60',
-    date: '2026-05-02',
+    version: '1.0.61',
+    date: '2026-05-07',
     changes: [
       'Phase 4: Gem buy-back (gemBuyOffset) no longer added to profit when no baseline is set — it was inflating the return figure without a diff to neutralise.',
       'Phase 4: Brick mod fixes — ditio → 1 add (was matching all "additional" mods), max fr/ax end/ax pow → m f/m end/m po (abbreviated display assumption was wrong), tunn a → n sp (was not present in mod text), ax R in uber mods → 20% t. Known overlaps documented.',
@@ -32,6 +32,9 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Phase 7: Strategy Browser \'by you\' indicator — set your Discord tag once in the Share modal; your own strategies get a subtle blue left border and tint.',
       'Phase 7: Strategy card cost breakdown — expanded cards now show Base map / Chisel / Scarabs split when the data is available.',
       'Phase 7: Session bulk management — checkboxes on all history rows, Export selected as JSON, Delete selected with confirmation, Import JSON with conflict skip/overwrite choice.',
+      'Regex: token consolidation — all stash regex tokens now live in modTokens.ts (single source of truth). RegexBuilder imports from it; BRICK_MOD_DEFS aligned. 28 divergent nightmare tokens fixed to in-game verified values.',
+      'Regex: fixed broken "ax R" token for -20% Max Resistances — stash searches now correctly match this mod.',
+      'Regex: removed dead regexToken field from uberMapMods.ts (was never consumed).',
     ],
   },
   {

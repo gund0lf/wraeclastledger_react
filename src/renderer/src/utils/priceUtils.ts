@@ -70,10 +70,13 @@ export const generateRunRegex = (avg: MapAverages, exclusions?: string[]): strin
     const currFloor = Math.max(Math.floor(avg.avgCurr / 10) * 10, 80);
     parts.push(`"urr.*(${thresholdPat(currFloor)})%"`);
     parts.push(`"ack.*(${thresholdPat(packFloor)})%"`);
-  } else {
+  } else if (avg.avgCurr > 0) {
     // Regular session: either decent currency OR decent pack is fine
     const currFloor = Math.max(Math.floor(avg.avgCurr / 10) * 10, 40);
     parts.push(`"(urr.*(${thresholdPat(currFloor)})%|ack.*(${thresholdPat(packFloor)})%)"`);
+  } else {
+    // Currency explicitly zeroed — pack only
+    parts.push(`"ack.*(${thresholdPat(packFloor)})%"`);
   }
 
   if (avg.avgQuant > 20) {

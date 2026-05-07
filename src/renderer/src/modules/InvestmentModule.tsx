@@ -67,7 +67,7 @@ const PriceInput = ({
 export const InvestmentModule = () => {
   const {
     maps, settings, updateSetting, updateAdvSetting, updateScarab, clearScarab, initDivinePrice,
-    scarabPresets, saveScarabPreset, loadScarabPreset, deleteScarabPreset,
+    scarabPresets, saveScarabPreset, loadScarabPreset, deleteScarabPreset, activeSessionId,
   } = useSessionStore();
   const [advOpen, { open: openAdv, close: closeAdv }] = useDisclosure(false);
   const [presetName, setPresetName] = useState('');
@@ -101,6 +101,12 @@ export const InvestmentModule = () => {
   useEffect(() => {
     if (settings.divinePrice === 0 || settings.divinePrice === 200) initDivinePrice();
   }, []);
+
+  // Re-fetch when a new session is started (activeSessionId transitions to null)
+  // so the price stays fresh without requiring a manual refresh.
+  useEffect(() => {
+    if (activeSessionId === null) initDivinePrice();
+  }, [activeSessionId]);
 
   // Manual refresh button: bypasses the cooldown via { force: true }, since
   // an explicit user action shouldn't be silently skipped.
