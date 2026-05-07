@@ -4,9 +4,9 @@
 
 <img src="resources/icon.png" alt="WraeclastLedger Logo" width="120" />
 
-**A Path of Exile map-running tracker built with Electron + React + TypeScript.**
+**A Path of Exile map-farming companion — track sessions, generate stash regex, browse strategies, and search trade.**
 
-Track your session profits, analyse your map stash, generate regex filters, browse community strategies, and search PoE Trade — all in one place.
+Built with Electron + React + TypeScript. Windows only.
 
 ---
 
@@ -21,50 +21,63 @@ Track your session profits, analyse your map stash, generate regex filters, brow
 
 ---
 
+## What it does
+
+You Ctrl-C a map tooltip in PoE, and WraeclastLedger captures it — IIQ, IIR, pack size, mods, tier, everything. From there it tracks your session, calculates profit, generates stash regex for your next batch, and gives you a trade search that already knows what you're looking for.
+
+It's a single-window desktop app with draggable panels. Arrange them however you want — layout persists across sessions.
+
+<div align="center">
+  <img src="docs/screenshots/1.png" alt="WraeclastLedger Overview" width="800" />
+  <br/><br/>
+  <img src="docs/screenshots/2.png" alt="Trade Search" width="800" />
+</div>
+
+---
+
 ## Features
 
-- **Map Log** — Live clipboard capture of map tooltips. Tracks IIQ, IIR, pack size, currency mods, scarabs, delirium orbs.
-- **Dashboard** — Session profit overview with investment baseline, loot tracker, per-map averages, and atlas multiplier breakdown.
-- **Atlas Calc** — Atlas multiplier calculator with scarab, node, and mounting inputs. Avarice chisel indicator.
-- **Investment Module** — Scarab and cost tracking with divine price, per-map cost, and gem leveling offset.
-- **Strategy Browser** — Community strategy feed with profit/map estimates, inline divine sub-values, Cost/map column, and Discord export.
-- **Regex Module** — Auto-generates stash highlight regex from your session averages. Brick exclusion mod picker, persistent default preset, PoE Trade integration with IIQ/IIR/pack/pseudo stats/delirium/reward type/map type/tier filters.
-- **Map Analyzer** — Visual stash grid with quality tier colouring and chisel recommendation. Supports Originator/Uber and regular T16 mod pools. Multi-tab support.
-- **Atlas Tree** — Embedded pathofpathing.com atlas planner.
-- **Session Manager** — Save, load, import and export sessions. Persistent panel layout.
-- **Auto-updater** — Checks GitHub releases on startup.
+**Map Log** — Paste map tooltips from clipboard. Tracks IIQ, IIR, pack size, currency mods, scarabs, delirium orbs. Filterable table with per-map detail.
+
+**Dashboard** — Session profit at a glance. Import loot CSVs to get a categorized breakdown (Currency, Scarabs, Gems, Maps, etc.) with diff against your baseline. Shows per-map averages and atlas multiplier impact. Currently supports [WealthyExile](https://wealthyexile.com) CSV exports — loot import may change as better options become available.
+
+**Investment Module** — Define your per-map costs: scarabs, delirium orbs, astrolabe, chisels. Tracks divine price via poe.ninja. Calculates cost-per-map and net profit after investment.
+
+**Atlas Calc** — Atlas multiplier calculator. Plug in your scarab values, atlas nodes, and map tier to see effective IIQ/IIR.
+
+**Regex Panel** — Generates stash highlight regex from your session averages (min IIQ, pack, currency). Pick which brick mods to exclude — the regex updates live. Integrates with PoE Trade: opens a search pre-filled with your IIQ/IIR/pack thresholds, mod count, delirium, reward type, and map tier filters.
+
+**Regex Builder** — Combinatorial K-of-N stash regex generator. Pick a reward category (Currency, Maps, Scarabs, Pack Size, Quantity), select which uber mods you want, set a threshold (e.g. "at least 3 of these 8"), and it generates a Product-of-Sums regex that fits the 250-char stash limit. Useful for quickly scanning a stash tab full of rolled maps.
+
+**Strategy Browser** *(experimental)* — Community-shared mapping strategies pulled from a shared server. Each strategy shows estimated profit/map, cost breakdown, and the atlas setup used. You can import a strategy's build settings (chisel type, scarabs, regex) directly into your own session. Share your own via Discord export format.
+
+**Atlas Tree** — Embedded [pathofpathing.com](https://pathofpathing.com) atlas planner. Auto-applies atlas passives for stat calculations without leaving the app.
+
+**Session Manager** — Save and load sessions. Bulk export/import as JSON. Persistent panel layout — your window arrangement carries over between launches.
+
+**Auto-updater** — Checks GitHub releases on startup and prompts to install.
 
 ---
 
 ## Download
 
-Head to the [**Releases page**](https://github.com/gund0lf/wraeclastledger_react/releases/latest) and download the latest `.exe` installer.
+Grab the latest `.exe` installer from the [**Releases page**](https://github.com/gund0lf/wraeclastledger_react/releases/latest).
 
 ---
 
-## Project Setup
+## Development
 
 ```bash
 npm install
+npm start          # preview the built app
+npm run dev        # dev server with hot reload
 ```
 
-### Development
+### Build & Publish
 
 ```bash
-npm run dev
-```
-
-### Build
-
-```bash
-# Windows
-npm run build:win
-
-# macOS
-npm run build:mac
-
-# Linux
-npm run build:linux
+npm run build          # production build
+npm run publish:win    # build + publish to GitHub releases
 ```
 
 ---
@@ -77,3 +90,7 @@ npm run build:linux
 [![Mantine](https://img.shields.io/badge/Mantine_v8-339af0?style=flat-square)](https://mantine.dev/)
 [![Zustand](https://img.shields.io/badge/Zustand-orange?style=flat-square)](https://zustand-demo.pmnd.rs/)
 [![electron-vite](https://img.shields.io/badge/electron--vite-646cff?style=flat-square&logo=vite&logoColor=white)](https://electron-vite.org/)
+
+---
+
+*WraeclastLedger is not affiliated with or endorsed by Grinding Gear Games.*
