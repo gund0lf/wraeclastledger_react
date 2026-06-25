@@ -31,9 +31,10 @@ interface StatGroup {
 }
 
 export const AtlasTreeModule = () => {
-  const { settings, activeSessionId, updateSetting } = useSessionStore();
+  const { settings, activeSessionId, sessionNonce, updateSetting } = useSessionStore();
   const webviewRef     = useRef<any>(null);
   const prevSessionRef = useRef<string | null>(activeSessionId);
+  const prevNonceRef   = useRef(sessionNonce);
   const autoApplyRef   = useRef(false); // set true when URL imported — triggers auto readStats+apply
 
   const [srcUrl,      setSrcUrl]      = useState(() => {
@@ -51,8 +52,9 @@ export const AtlasTreeModule = () => {
 
   // ── Reload when session changes ────────────────────────────────────────────
   useEffect(() => {
-    if (prevSessionRef.current === activeSessionId) return;
+    if (prevSessionRef.current === activeSessionId && prevNonceRef.current === sessionNonce) return;
     prevSessionRef.current = activeSessionId;
+    prevNonceRef.current   = sessionNonce;
     autoApplyRef.current = false; // never auto-read stats on New Session
     const url = useSessionStore.getState().settings.atlasTreeUrl;
     const next = isPathofpathingUrl(url) ? url : BASE_URL;
@@ -61,7 +63,7 @@ export const AtlasTreeModule = () => {
     setKey((k) => k + 1);
     setStatGroups([]);
     setStatsOpen(false); // close stats panel on session change
-  }, [activeSessionId]);
+  }, [activeSessionId, sessionNonce]);
 
   // ── Reload when atlasTreeUrl is set externally (Load Build Settings) ───────
   useEffect(() => {
@@ -164,6 +166,20 @@ export const AtlasTreeModule = () => {
         setStatsError((result as any)?.error ?? 'No stats found. Select some nodes in the atlas tree first.');
         setStatGroups([]);
         if (!autoApply) setStatsOpen(true);
+        else {
+          // Auto-apply opened the pathofpathing stats panel to read it; nothing was found
+          // (e.g. an empty/blank tree), so close it again so it does not stay stuck open.
+          try {
+            await wv.executeJavaScript(`
+              (function() {
+                var btn = document.getElementById('skillTreeStats_ShowHide');
+                if (btn && btn.textContent && btn.textContent.trim() === 'Hide stats') btn.click();
+              })()
+            `);
+          } catch (closeErr) {
+            console.error('[AtlasTree] failed to close stats panel after empty auto-read:', closeErr);
+          }
+        }
         return;
       }
 

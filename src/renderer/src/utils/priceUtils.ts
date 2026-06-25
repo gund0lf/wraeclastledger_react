@@ -107,28 +107,21 @@ export const generateSlamRegex = (avg: MapAverages, exclusions?: string[]): stri
 // cooldown wrapper (tryFetchDivinePrice) can rate-limit auto-init paths
 // without rate-limiting an explicit user-triggered refresh.
 
-const DIVINE_PRICE_FETCH_TIMEOUT_MS = 5_000;
 const DIVINE_PRICE_COOLDOWN_MS = 60_000;
 let lastDivineFetchAttempt = 0;
 
 export async function fetchDivinePrice(): Promise<number | null> {
   lastDivineFetchAttempt = Date.now();
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), DIVINE_PRICE_FETCH_TIMEOUT_MS);
   try {
     const league = await getCurrentLeague();
-    const url = `https://poe.ninja/api/data/currencyoverview?league=${encodeURIComponent(league)}&type=Currency`;
-    const res  = await fetch(url, { signal: controller.signal });
-    if (!res.ok) return null;
-    const data  = await res.json();
-    const lines: { currencyTypeName: string; chaosEquivalent?: number }[] = data.lines ?? [];
-    const divine = lines.find((l) => l.currencyTypeName === 'Divine Orb');
-    return divine?.chaosEquivalent ?? null;
+    // poe.ninja is fetched via the main process to avoid renderer CORS.
+    const res = await window.api?.fetchCurrencyOverview(league);
+    const lines = res?.lines ?? [];
+    const divine = lines.find((l) => l.id === 'divine');
+    return divine?.primaryValue ?? null;
   } catch {
     // AbortError or network error — caller treats null as "no price".
     return null;
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 

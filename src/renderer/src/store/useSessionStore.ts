@@ -14,7 +14,7 @@ const DEFAULT_SETTINGS: SessionSettings = {
   fragmentsUsed: 0, smallNodesAllocated: 0, mountingModifiers: false,
   baseMapCost: 0, rollingCostPerMap: 0,
   scarabs: Array(5).fill(null).map(() => ({ name: '', cost: 0 })),
-  atlasBonus: true,   // Atlas Bonus: +25% flat IIQ on all maps
+  atlasBonus: false,  // Atlas Bonus: flat +25% IIQ. Defaults OFF — only earned once all 100 atlas bonus objectives are complete; resets to 0 each league/event.
   leagueName: '',      // auto-populated on startup via poe.ninja
   atlasDetectedTags: [],
   advChaos: 0,
@@ -127,6 +127,7 @@ interface SessionState {
   savedSessions: Record<string, SavedSession>;
   activeSessionId: string | null;
   activeSessionName: string | null;
+  sessionNonce: number; // bumps on every newSession() so the UI can detect a fresh session even when activeSessionId stays null (unsaved -> unsaved)
   scarabPresets: ScarabPreset[];
   sessionNotes: string;
   investmentNeutralization: number; // amount added back to lootGain from auto-detected investment losses
@@ -184,7 +185,7 @@ export const useSessionStore = create<SessionState>()(
       maps: [], lootItems: [], baselineItems: [], baselineTotal: 0,
       settings: { ...DEFAULT_SETTINGS },
       isWatching: false, savedSessions: {},
-      activeSessionId: null, activeSessionName: null, scarabPresets: [],
+      activeSessionId: null, activeSessionName: null, scarabPresets: [], sessionNonce: 0,
       sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, loadedStrategyInfo: null, defaultExclusionPreset: [],
 
       addMap: (m) => set((s) => ({ maps: [...s.maps, { ...m, id: uuidv4() }] })),
@@ -305,7 +306,7 @@ export const useSessionStore = create<SessionState>()(
       renameSession: (id, newName) =>
         set((s) => ({ savedSessions: { ...s.savedSessions, [id]: { ...s.savedSessions[id], name: newName } }, activeSessionName: s.activeSessionId === id ? newName : s.activeSessionName })),
       newSession: () =>
-        set({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, settings: { ...DEFAULT_SETTINGS }, activeSessionId: null, activeSessionName: null, isWatching: false, loadedStrategyInfo: null }),
+        set((s) => ({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, settings: { ...DEFAULT_SETTINGS }, activeSessionId: null, activeSessionName: null, isWatching: false, loadedStrategyInfo: null, sessionNonce: s.sessionNonce + 1 })),
 
       saveScarabPreset: (name) => {
         const p: ScarabPreset = { id: uuidv4(), name, scarabs: get().settings.scarabs.map((s) => ({ ...s })) };

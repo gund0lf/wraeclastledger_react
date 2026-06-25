@@ -1,4 +1,4 @@
-import { Card, Text, Stack, Group, Divider, Slider, Badge, Tooltip, Button } from '@mantine/core';
+import { Card, Text, Stack, Group, Divider, Slider, Badge, Tooltip, Button, Switch } from '@mantine/core';
 import { useSessionStore } from '../store/useSessionStore';
 import { useMemo, useState, useEffect, useRef } from 'react';
 
@@ -29,7 +29,7 @@ const Question = ({ question, hint, onYes, onNo }: {
 );
 
 export const AtlasCalcModule = () => {
-  const { maps, settings, updateSetting, activeSessionId } = useSessionStore();
+  const { maps, settings, updateSetting, activeSessionId, sessionNonce } = useSessionStore();
 
   // ── Derived: always fresh from real settings ──────────────────────────────
   const isConfigured = settings.mountingModifiers || settings.fragmentsUsed > 0 || settings.smallNodesAllocated > 0;
@@ -44,17 +44,26 @@ export const AtlasCalcModule = () => {
   const [editingPill, setEditingPill] = useState<'mounting' | 'fragments' | 'nodes' | null>(null);
   const [showNodeSlider, setShowNodeSlider] = useState(settings.smallNodesAllocated > 0 && settings.smallNodesAllocated < 16);
   const [autoDetectMsg, setAutoDetectMsg]   = useState<string | null>(null);
+  // True once the user answers any wizard step. Lets the wizard keep running through
+  // all steps even though each answer sets a config value (which would otherwise flip
+  // effectivelyConfigured and hide the wizard mid-walk).
+  const [userAnswered, setUserAnswered]     = useState(false);
   const prevSessionRef = useRef(activeSessionId);
+  const prevNonceRef   = useRef(sessionNonce);
 
-  // Reset wizard completely on session change
+  // Reset wizard completely on session change OR new session. The nonce is required
+  // because newSession() leaves activeSessionId as null when you were already on an
+  // unsaved session (null -> null), so keying on the id alone would miss it.
   useEffect(() => {
-    if (prevSessionRef.current === activeSessionId) return;
+    if (prevSessionRef.current === activeSessionId && prevNonceRef.current === sessionNonce) return;
     prevSessionRef.current = activeSessionId;
+    prevNonceRef.current   = sessionNonce;
     setWizardStep('mounting');
     setDismissed(false);
     setShowNodeSlider(false);
     setEditingPill(null);
-  }, [activeSessionId]);
+    setUserAnswered(false);
+  }, [activeSessionId, sessionNonce]);
 
   // When configuration appears externally (tree loaded / Load Build), stop any in-progress editing
   const prevConfigured = useRef(effectivelyConfigured);
@@ -67,8 +76,12 @@ export const AtlasCalcModule = () => {
   }, [effectivelyConfigured, settings.smallNodesAllocated]);
 
   // ── Show logic ────────────────────────────────────────────────────────────
-  const showWizard  = !effectivelyConfigured && !dismissed;
-  const showPills   = effectivelyConfigured || dismissed;
+  // The wizard keeps running once the user starts answering (userAnswered), even
+  // though their answers set config values. When config appears WITHOUT the user
+  // answering -- a tree autofills via Apply to Calc, or a saved session loads -- the
+  // wizard stays hidden and the pills show instead.
+  const showWizard  = (!effectivelyConfigured || userAnswered) && !dismissed;
+  const showPills   = !showWizard;
   const activeStep  = editingPill ?? (showWizard ? wizardStep : null);
 
   // ── Auto-detect map type ──────────────────────────────────────────────────
@@ -110,12 +123,14 @@ export const AtlasCalcModule = () => {
   };
 
   const answerMounting = (yes: boolean) => {
+    setUserAnswered(true);
     updateSetting('mountingModifiers', yes);
     if (editingPill) { finishWizard(); return; }
     setWizardStep('fragments');
   };
 
   const answerFragments = (yes: boolean) => {
+    setUserAnswered(true);
     if (!yes) updateSetting('fragmentsUsed', 0);
     else if (settings.fragmentsUsed === 0) updateSetting('fragmentsUsed', 5);
     if (editingPill) { finishWizard(); return; }
@@ -123,6 +138,7 @@ export const AtlasCalcModule = () => {
   };
 
   const answerNodes = (yes: boolean) => {
+    setUserAnswered(true);
     if (yes) { updateSetting('smallNodesAllocated', 16); setShowNodeSlider(false); }
     else setShowNodeSlider(true);
     finishWizard();
@@ -274,12 +290,17 @@ export const AtlasCalcModule = () => {
             <Text size="sm" fw={700}>Multiplier</Text>
             <Text size="sm" fw={700} c="blue">{multiplier.toFixed(3)}×</Text>
           </Group>
-          {settings.atlasBonus && (
-            <Group justify="space-between" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 4, marginTop: 2 }}>
-              <Text size="xs" c="dimmed">Atlas Bonus (Quantity only)</Text>
-              <Text size="xs" c="grape">+25% flat IIQ</Text>
+          <Group justify="space-between" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 4, marginTop: 2 }}>
+            <Tooltip multiline w={230}
+              label="Completing all 100 Atlas Bonus Objectives grants a flat +25% IIQ (Quantity only). Turn this on once your Atlas is complete. It starts off each new league/event because Atlas progress resets to zero.">
+              <Text size="xs" c="dimmed" style={{ cursor: 'help' }}>Atlas Bonus (Quantity only)</Text>
+            </Tooltip>
+            <Group gap={6}>
+              {settings.atlasBonus && <Text size="xs" c="grape">+25% flat IIQ</Text>}
+              <Switch size="xs" color="grape" checked={settings.atlasBonus}
+                onChange={(e) => updateSetting('atlasBonus', e.currentTarget.checked)} />
             </Group>
-          )}
+          </Group>
         </Stack>
       </Stack>
     </Card>

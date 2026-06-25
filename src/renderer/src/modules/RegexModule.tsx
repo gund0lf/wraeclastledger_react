@@ -9,6 +9,7 @@ import { useSessionStore } from '../store/useSessionStore';
 import { RegexSet } from '../types';
 import { FaTrash, FaCopy, FaCheck, FaMagic, FaTimes, FaExternalLinkAlt } from 'react-icons/fa';
 import { generateRunRegex, generateSlamRegex, trimmedMean, sanitizeExclusionTerms } from '../utils/priceUtils';
+import { CURRENT_LEAGUE } from '../utils/league';
 
 // Generate an approximate stash regex from the trade search parameters
 function generateTradeRegex(exclusions: string[], minIIQ: number, minPack: number, minCurr: number, minIIR: number): string {
@@ -217,7 +218,7 @@ export const RegexModule = () => {
   const handleSearch = async () => {
     const league = settings.leagueName?.trim() || await (async () => {
       await initDivinePrice();
-      return useSessionStore.getState().settings.leagueName || 'Mirage';
+      return useSessionStore.getState().settings.leagueName || CURRENT_LEAGUE;
     })();
     setTradeLoading(true); setTradeError(null);
     try {
@@ -280,7 +281,7 @@ export const RegexModule = () => {
       <Modal opened={tradeOpen} onClose={closeTrade} title="PoE Trade Map Search" size="md" scrollAreaComponent={ScrollArea.Autosize}>
         <Stack gap="md">
           <Text size="xs" c="dimmed">
-            League: <Text span fw={600} c="teal">{settings.leagueName || 'Mirage'}</Text>
+            League: <Text span fw={600} c="teal">{settings.leagueName || CURRENT_LEAGUE}</Text>
             {' · '}Any Non-Unique{' · '}<Text span c="green" fw={600}>Instant Buyout</Text>
           </Text>
 

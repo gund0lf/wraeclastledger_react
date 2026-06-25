@@ -7,6 +7,8 @@ out
 BUILD.md
 CLAUDE.md
 HANDOVER.md
+LEAGUE_ROLLOVER_PLAN.md
+EXTERNAL_APIS.md
 
 # Server-side code — not part of the public client repo
 traceuer-server-side/

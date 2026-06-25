@@ -10,7 +10,6 @@
 export interface Strategy {
   id: string;
   discord_username: string;
-  discord_avatar_url?: string;
   discord_jump_url?: string | null;
   map_type?: string | null;
   map_count?: number | null;

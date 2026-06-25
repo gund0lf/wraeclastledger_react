@@ -10,6 +10,23 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.62',
+    date: '2026-06-26',
+    changes: [
+      'Leagues: added the Return of the Ancestors event to league auto-detection and the Strategy Browser filter. Standard is no longer used as a detection fallback.',
+      'Leagues: trade searches and the league display now follow the detected current league everywhere, removing the hardcoded "Mirage" fallback.',
+      'Atlas Calc: Atlas Bonus (+25% IIQ, Quantity only) is now a toggle in the Atlas Calc panel. It defaults off on new sessions; turn it on once all 100 Atlas bonus objectives are complete.',
+      'Atlas Calc: fixed the setup wizard skipping its remaining steps after a Yes answer, and not restarting on New Session.',
+      'Atlas Tree: now resets to a blank tree when you start a New Session, instead of keeping the previously selected nodes.',
+      'Atlas Tree: fixed the stats panel occasionally staying open after auto-reading an empty tree.',
+      'Strategy Browser: the league filter now defaults to the newest league/event instead of Mirage.',
+      'Strategy Browser: Load Build Settings from a Discord import now also applies scarabs (with costs), the atlas tree, and the chisel; previously it only loaded delirium orbs and astrolabes.',
+      'poe.ninja: updated for the PoE1/PoE2 site split - the economy endpoints the app relied on had moved, which had broken the live divine price, league auto-detection, and loot icons. All now fetch through the app (more robust, no dev/CORS issues) and work again.',
+      'Loot icons: restored across currency, fragments, scarabs, essences, uniques, maps, gems and more. Divination cards and any item poe.ninja does not index fall back to a generic icon instead of a blank.',
+      'Privacy: strategy sharing no longer stores or transmits Discord avatar URLs - attribution still works via your Discord name and the message jump link.',
+    ],
+  },
+  {
     version: '1.0.61',
     date: '2026-05-07',
     changes: [

@@ -395,6 +395,77 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
   }
 });
 
+// poe.ninja is fetched from the main process (not the renderer) so it isn't subject
+// to CORS: poe.ninja sends no Access-Control-Allow-Origin header, so a renderer-origin
+// fetch (localhost in dev) gets blocked. Returns { lines, error } for league.ts +
+// priceUtils.ts (league detection + divine price).
+ipcMain.handle('poeninja:currency-overview', async (_event, league: string) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5_000);
+  try {
+    const res = await fetch(
+      `https://poe.ninja/poe1/api/economy/exchange/current/overview?league=${encodeURIComponent(league)}&type=Currency`,
+      { signal: controller.signal }
+    );
+    if (!res.ok) return { lines: null, error: `poe.ninja ${res.status}` };
+    const data = await res.json() as { lines?: { id: string; primaryValue?: number }[] };
+    return { lines: data.lines ?? [], error: null };
+  } catch (err: any) {
+    return { lines: null, error: err?.message ?? 'fetch failed' };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+});
+
+// poe.ninja icon source. Both economy families carry per-item icons, but in
+// different places, so the family is passed in:
+//   exchange -> top-level items[] { name, image: "/gen/image/..." (relative) }
+//   stash    -> lines[] { name, icon: full web.poecdn.com url }
+// Returns normalized { name, icon } pairs. Routed through main (CORS).
+ipcMain.handle('poeninja:economy-icons', async (_event, family: 'exchange' | 'stash', league: string, type: string) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5_000);
+  try {
+    const base = family === 'exchange'
+      ? 'https://poe.ninja/poe1/api/economy/exchange/current/overview'
+      : 'https://poe.ninja/poe1/api/economy/stash/current/item/overview';
+    const res = await fetch(
+      `${base}?league=${encodeURIComponent(league)}&type=${encodeURIComponent(type)}`,
+      { signal: controller.signal }
+    );
+    if (!res.ok) return { icons: null, slugs: [], error: `poe.ninja ${res.status}` };
+    const data = await res.json() as {
+      items?: { name?: string; image?: string }[];
+      lines?: { id?: string; name?: string; baseType?: string; icon?: string }[];
+    };
+    const icons: { name: string; icon: string }[] = [];
+    if (family === 'exchange') {
+      for (const it of data.items ?? []) {
+        if (it.name && it.image) {
+          const icon = it.image.startsWith('http') ? it.image : `https://web.poecdn.com${it.image}`;
+          icons.push({ name: it.name, icon });
+        }
+      }
+    } else {
+      for (const l of data.lines ?? []) {
+        const name = l.name || l.baseType;
+        if (name && l.icon) icons.push({ name, icon: l.icon });
+      }
+    }
+    // exchange lines[] is the authoritative item list by slug id (e.g. div
+    // cards, which have no icon anywhere) - return it so the renderer can build
+    // name sets for icon-less categories.
+    const slugs = family === 'exchange'
+      ? (data.lines ?? []).map((l) => l.id).filter((s): s is string => !!s)
+      : [];
+    return { icons, slugs, error: null };
+  } catch (err: any) {
+    return { icons: null, slugs: [], error: err?.message ?? 'fetch failed' };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+});
+
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1280, height: 800,

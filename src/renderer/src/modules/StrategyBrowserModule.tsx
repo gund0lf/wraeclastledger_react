@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { FaSync, FaDiscord, FaShareAlt } from 'react-icons/fa';
 import { useSessionStore } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
-import { KNOWN_LEAGUES, CURRENT_LEAGUE } from '../utils/league';
+import { KNOWN_LEAGUES } from '../utils/league';
 import { parseDiscordExport } from '../utils/parseDiscordExport';
 import { Strategy, ApiResponse, ALL_TYPE_TAGS } from '../utils/strategyConstants';
 import { StrategyCard } from '../components/StrategyCard';
@@ -32,7 +32,7 @@ export const StrategyBrowserModule = () => {
   const [offset,     setOffset]     = useState(0);
   const [loadedMsg,  setLoadedMsg]  = useState<string | null>(null);
   const [typeTags,   setTypeTags]   = useState<string[]>([]);
-  const [leagueFilter, setLeagueFilter] = useState<string>(CURRENT_LEAGUE);
+  const [leagueFilter, setLeagueFilter] = useState<string>(KNOWN_LEAGUES[0]); // default to the newest league/event
   const [minDiv,     setMinDiv]     = useState('');
   const [sortBy,     setSortBy]     = useState('posted_at');
   const [period,     setPeriod]     = useState('all');
@@ -153,7 +153,17 @@ export const StrategyBrowserModule = () => {
   const handleLoadFromImport = (parsed: DiscordImport) => {
     // Apply what we can from a parsed import (no Strategy object — use parsed fields)
     newSession();
-    if (parsed.chisel && parsed.chisel !== 'None') updateSetting('chiselType', parsed.chisel.split(' ')[0]);
+    if (parsed.chisel && parsed.chisel !== 'None') {
+      updateSetting('chiselType', parsed.chisel.split(' ')[0]);
+      updateSetting('chiselUsed', true);
+    }
+    if (parsed.scarabs && parsed.scarabs.length > 0) {
+      parsed.scarabs.slice(0, 5).forEach((name, i) => {
+        updateScarab(i, 'name', name);
+        if (parsed.scarabCosts[i] > 0) updateScarab(i, 'cost', parsed.scarabCosts[i]);
+      });
+    }
+    if (parsed.atlasTreeUrl) updateSetting('atlasTreeUrl', parsed.atlasTreeUrl);
     if (parsed.deliOrbType)  { updateAdvSetting('advDeliOrbType', parsed.deliOrbType); updateAdvSetting('advDeliOrbQtyPerMap', parsed.deliOrbQty); updateAdvSetting('advDeliOrbPriceEach', parsed.deliOrbPrice); }
     if (parsed.astroType)    { updateAdvSetting('advAstrolabeType', parsed.astroType); updateAdvSetting('advAstrolabeCount', parsed.astroCount); updateAdvSetting('advAstrolabePrice', parsed.astroPrice); }
     if (parsed.runRegex) {
@@ -169,7 +179,7 @@ export const StrategyBrowserModule = () => {
         mapType:    parsed.mapType === '8-mod' ? '8mod' : undefined,
       });
     }
-    setLoadedMsg(`Imported build settings applied.`);
+    setLoadedMsg(`Imported build settings applied: chisel, scarabs, atlas tree, deli orbs & astrolabe.`);
     setTimeout(() => setLoadedMsg(null), 6000);
   };
 
@@ -232,7 +242,7 @@ export const StrategyBrowserModule = () => {
             value={typeTags} onChange={setTypeTags} maxDropdownHeight={200} searchable />
           <Select size="xs" style={{ width: 110 }}
             data={KNOWN_LEAGUES.filter((l) => l !== 'Standard').map((l) => ({ value: l, label: l }))}
-            value={leagueFilter} onChange={(v) => setLeagueFilter(v ?? CURRENT_LEAGUE)} />
+            value={leagueFilter} onChange={(v) => setLeagueFilter(v ?? KNOWN_LEAGUES[0])} />
           <TextInput size="xs" placeholder="Min d/map" style={{ width: 80 }}
             value={minDiv} onChange={(e) => setMinDiv(e.currentTarget.value)} />
           <Select size="xs" style={{ width: 90 }}

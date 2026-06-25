@@ -10,7 +10,8 @@ export interface DiscordImport {
   avgQuant: number; avgRarity: number; avgPack: number; avgCurr: number;
   perMapCost: number; totalInvest: number; totalReturn: number;
   netProfit: number; divPerMap: number; divPrice: number;
-  chisel: string; runRegex: string; slamRegex: string; scarabs: string[];
+  chisel: string; runRegex: string; slamRegex: string; scarabs: string[]; scarabCosts: number[];
+  atlasTreeUrl: string;
   strategyName: string; strategyNotes: string;
   deliOrbQty: number; deliOrbType: string; deliOrbPrice: number;
   astroType: string; astroCount: number; astroPrice: number;
@@ -47,15 +48,17 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     const mapType     = str([/Type:\s*([68]-mod)/]);
     const chiselRaw   = str([/Chisel:\s*([^\n]+)/]);
     const chisel      = chiselRaw.replace(/\(.*/, '').replace(/[^\x00-\x7F]/g, '').trim();
+    const atlasTreeUrl = str([/Atlas Tree:\s*(https?:\/\/\S+)/]);
     const stripBt     = (s: string) => s.trim().replace(/^`+|`+$/g, '').trim();
     const runMatch    = text.match(/(?:\u{1F7E2}\s*)?Run:\s+(.+)/u);
     const slamMatch   = text.match(/(?:\u{1F7E0}\s*)?Slam:\s+(.+?)(?:\s*[*(]open|\s*$)/mu);
     const runRegex    = runMatch  ? stripBt(runMatch[1])  : '';
     const slamRegex   = slamMatch ? stripBt(slamMatch[1]) : '';
     const scarabs: string[] = [];
+    const scarabCosts: number[] = [];
     for (const line of text.split('\n')) {
-      const m = line.match(/^\s*-?\s*([A-Z][^\n(]+?)\s+\(\d/);
-      if (m && !m[1].includes(':') && m[1].trim().length >= 5) scarabs.push(m[1].trim());
+      const m = line.match(/^\s*-?\s*([A-Z][^\n(]+?)\s+\((\d[\d.]*)/);
+      if (m && !m[1].includes(':') && m[1].trim().length >= 5) { scarabs.push(m[1].trim()); scarabCosts.push(parseFloat(m[2])); }
     }
     const strategyNameRaw  = str([/Strategy:\s*([^\n]+)/]);
     const strategyName     = strategyNameRaw.replace(/[^\x00-\x7F]/g, '').trim();
@@ -86,7 +89,7 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     if (mapCount === 0) return null;
     return { mapCount, mapType, multiplier, avgQuant, avgRarity, avgPack, avgCurr,
              perMapCost, totalInvest, totalReturn, netProfit, divPerMap, divPrice,
-             chisel, runRegex, slamRegex, scarabs, strategyName, strategyNotes,
+             chisel, runRegex, slamRegex, scarabs, scarabCosts, atlasTreeUrl, strategyName, strategyNotes,
              deliOrbQty, deliOrbType, deliOrbPrice, astroType, astroCount, astroPrice,
              excludedDrops, gemInfo, isGroupPlay };
   } catch { return null; }
