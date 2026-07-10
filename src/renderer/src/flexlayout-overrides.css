@@ -34,3 +34,15 @@
 }
 
 .flexlayout__tabset--selected { border: 1px solid rgba(150, 150, 150, 0.25) !important; }
+
+/* ── Auto-hide native scrollbars (density-pass rider, 2026-07-08) ──────────
+   Applies to native overflow containers (Card overflow:auto, loot tables).
+   Mantine <ScrollArea> renders its own scrollbars and already auto-fades —
+   unaffected by these rules. Thumb is invisible until the scrolling element
+   is hovered; Chromium-only selectors are fine (Electron renderer). */
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-corner { background: transparent; }
+*::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
+*:hover::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); }
+*::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.30); }

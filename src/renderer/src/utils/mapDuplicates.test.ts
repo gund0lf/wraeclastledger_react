@@ -1,0 +1,68 @@
+import { describe, it, expect } from 'vitest';
+import { isParseIdentical, markPossibleDuplicates } from './mapDuplicates';
+import type { MapData } from '../types';
+
+const base = (over: Partial<MapData> = {}): MapData => ({
+  id: 'id-' + Math.random(), tier: 16, name: 'Crimson Temple Map',
+  quantity: 92, rarity: 55, packSize: 31,
+  quality: 20, qualityType: 'Quality',
+  moreCurrency: 0, moreMaps: 0, moreScarabs: 0, moreDivCards: 0,
+  modCount: 6,
+  isOriginator: false, isEmpoweredMirage: false, isNightmare: false, isCorrupted: false,
+  parsedAt: Date.now(),
+  rawText: 'Item Class: Maps ...',
+  ...over,
+} as MapData);
+
+describe('isParseIdentical', () => {
+  it('ignores id, parsedAt and rawText', () => {
+    const a = base({ id: 'a', parsedAt: 1, rawText: 'x' });
+    const b = base({ id: 'b', parsedAt: 2, rawText: 'y' });
+    expect(isParseIdentical(a, b)).toBe(true);
+  });
+
+  it('any differing parsed field breaks identity', () => {
+    const a = base();
+    expect(isParseIdentical(a, base({ quantity: 93 }))).toBe(false);
+    expect(isParseIdentical(a, base({ name: 'Dune Map' }))).toBe(false);
+    expect(isParseIdentical(a, base({ isCorrupted: true }))).toBe(false);
+    expect(isParseIdentical(a, base({ modCount: 8 }))).toBe(false);
+  });
+
+  it('normalizes optional additive fields (old persisted map vs fresh re-parse)', () => {
+    // old maps lack moreDivCards / isUnidentified entirely
+    const old = base();
+    delete (old as any).moreDivCards;
+    delete (old as any).isUnidentified;
+    expect(isParseIdentical(old, base({ moreDivCards: 0, isUnidentified: false }))).toBe(true);
+    expect(isParseIdentical(old, base({ moreDivCards: 5 }))).toBe(false);
+  });
+});
+
+describe('markPossibleDuplicates', () => {
+  it('marks the LATER map of an identical adjacent pair', () => {
+    const a = base({ id: 'a' });
+    const b = base({ id: 'b' });
+    const dup = markPossibleDuplicates([a, b]);
+    expect(dup.has('a')).toBe(false);
+    expect(dup.has('b')).toBe(true);
+  });
+
+  it('identical but non-adjacent maps are NOT marked', () => {
+    const a = base({ id: 'a' });
+    const other = base({ id: 'x', name: 'Dune Map' });
+    const c = base({ id: 'c' });
+    expect(markPossibleDuplicates([a, other, c]).size).toBe(0);
+  });
+
+  it('a run of N identical maps marks maps 2..N', () => {
+    const maps = [base({ id: 'a' }), base({ id: 'b' }), base({ id: 'c' })];
+    const dup = markPossibleDuplicates(maps);
+    expect([...dup].sort()).toEqual(['b', 'c']);
+  });
+
+  it('empty and single-map logs mark nothing', () => {
+    expect(markPossibleDuplicates([]).size).toBe(0);
+    expect(markPossibleDuplicates([base()]).size).toBe(0);
+  });
+});

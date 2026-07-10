@@ -1,0 +1,254 @@
+/**
+ * discordExport.test.ts — locks the export wire format and proves parity (WP1).
+ *
+ * Three layers:
+ *  1. The generated export's money lines match the hand-verified Sad fixture.
+ *  2. Round-trip: buildDiscordExport -> parseDiscordExport recovers every field
+ *     (this is the wire-format lock the bot + client import paths depend on).
+ *  3. The REAL v1.0.62 export fixture still parses (regression artifact of the
+ *     old buggy output — we assert the parser reads it, not that it is correct).
+ */
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { SessionSettings, LootItem } from '../types';
+import { buildDiscordExport, ExportMapStats } from './discordExport';
+import { parseDiscordExport } from './parseDiscordExport';
+import { EXPORT_EMOJI } from './discordEmoji';
+
+/* ------------------------------------------------------------------ */
+/* Fixture (mirrors profit.test.ts — the hand-verified Sad session)    */
+/* ------------------------------------------------------------------ */
+
+const settings = (over: Partial<SessionSettings> = {}): SessionSettings => ({
+  divinePrice: 500,
+  chiselUsed: true, chiselType: 'Avarice', chiselPrice: 150,
+  mapType: '6-mod', isSplitSession: false,
+  fragmentsUsed: 5, smallNodesAllocated: 16, mountingModifiers: true,
+  baseMapCost: 1500, // (the legacy stored rollingCostPerMap:2120 field was removed in v16 — the builder derives the session total live)
+  scarabs: [
+    { name: 'Horned Scarab of Preservation', cost: 7 },
+    { name: 'Horned Scarab of Bloodlines',   cost: 100 },
+    { name: 'Breach Scarab of Instability',  cost: 5 },
+    { name: 'Cartography Scarab of Risk',    cost: 70 },
+    { name: 'Scarab of Wisps',               cost: 20 },
+  ],
+  atlasBonus: false,
+  leagueName: 'Ancestors', atlasDetectedTags: [],
+  advChaos: 750,
+  advExalt: 500, advExaltPrice: 700,
+  advScour: 500, advScourPrice: 100,
+  advAlch: 500, advAlchPrice: 100,
+  advDeliOrbType: 'Fine', advDeliOrbQtyPerMap: 4, advDeliOrbPriceEach: 100,
+  advSplitPrice: 0,
+  advAstrolabeType: 'Grasping Astrolabe', advAstrolabePrice: 10, advAstrolabeCount: 7,
+  advGemCount: 9, advGemBuyPrice: 5, advGemSellPrice: 385, advGemName: 'Enhance',
+  regexExclusions: [],
+  atlasTreeUrl: 'https://pathofpathing.com/?v=3.28.0-atlas-league#AAAABgAADAsAJMFG',
+  atlasPoints: null, atlasPointsMax: null,
+  ...over,
+});
+
+const N = 38;
+const maps: ExportMapStats[] = Array(N).fill(null).map(() => ({
+  quantity: 83, rarity: 63, packSize: 45, moreCurrency: 117, moreScarabs: 5,
+}));
+const lootItems: LootItem[] = [
+  { id: 'a', name: 'Divine Orb', tab: 'curr', quantity: '1', price: '', total: 198492.6, excluded: false },
+  { id: 'b', name: 'Enhance Support - 4/0 corrupted', tab: 'gemy', quantity: '9', price: '', total: 3600, excluded: true },
+];
+const baselineTotal = 100000;
+
+const build = () => buildDiscordExport({
+  maps, settings: settings(), lootItems, baselineTotal,
+  investmentNeutralization: 0,
+  shareTags: ['originator', 'breach', 'cartography', 'astrolabe-grasping'],
+  isGroupPlay: false,
+});
+
+/* ------------------------------------------------------------------ */
+
+describe('buildDiscordExport — corrected money lines (Sad fixture parity)', () => {
+  it('emits Dashboard-parity figures, ignoring the stale stored rollingCostPerMap', () => {
+    const out = build();
+    // Per Map Cost is ALL-IN (totalInvest / maps = 80081 / 38) — one definition everywhere
+    expect(out).toContain('**Per Map Cost:** 2107.4c | **Total Invest:** 80081.0c');
+    expect(out).toContain('**Total Return:** 98537.6c | **Net Profit:** +18456.6c');
+    expect(out).toContain('**Div / Map:** 0.971d | **Divine Price:** 500c');
+    expect(out).toContain('**Maps:** 38 | **Type:** 6-mod | **Multiplier:** 1.63×');
+  });
+
+  it('includes neutralization in the shared numbers (bug #3 regression)', () => {
+    const out = buildDiscordExport({
+      maps, settings: settings(), lootItems, baselineTotal,
+      investmentNeutralization: 6448.1,
+    });
+    // 98537.6 + 6448.1 and 18456.6 + 6448.1
+    expect(out).toContain('**Total Return:** 104985.7c | **Net Profit:** +24904.7c');
+  });
+
+  it('does not apply the gem offset without a baseline (bug #2 regression)', () => {
+    const out = buildDiscordExport({
+      maps, settings: settings(), lootItems, baselineTotal: 0,
+      investmentNeutralization: 0,
+    });
+    // lootGain = rawReturn only: 198492.6 (no +45 offset, no baseline subtraction)
+    expect(out).toContain('**Total Return:** 198492.6c');
+  });
+});
+
+describe('buildDiscordExport <-> parseDiscordExport round-trip (wire-format lock)', () => {
+  const parsed = parseDiscordExport(build());
+
+  it('parses at all', () => { expect(parsed).not.toBeNull(); });
+
+  it('recovers headline stats', () => {
+    expect(parsed!.mapCount).toBe(38);
+    expect(parsed!.mapType).toBe('6-mod');
+    expect(parsed!.multiplier).toBeCloseTo(1.63, 6);
+    expect(parsed!.avgQuant).toBe(83);
+    expect(parsed!.avgRarity).toBe(63);
+    expect(parsed!.avgPack).toBe(45);
+    expect(parsed!.avgCurr).toBe(117);
+  });
+
+  it('recovers money figures', () => {
+    expect(parsed!.perMapCost).toBeCloseTo(2107.4, 1); // all-in: totalInvest / maps
+    expect(parsed!.totalInvest).toBeCloseTo(80081.0, 4);
+    expect(parsed!.totalReturn).toBeCloseTo(98537.6, 4);
+    expect(parsed!.netProfit).toBeCloseTo(18456.6, 4);
+    expect(parsed!.divPerMap).toBeCloseTo(0.971, 4);
+    expect(parsed!.divPrice).toBe(500);
+  });
+
+  it('recovers chisel, scarabs, deli, astrolabe', () => {
+    expect(parsed!.chisel).toBe('Avarice');
+    expect(parsed!.scarabs).toEqual([
+      'Horned Scarab of Preservation',
+      'Horned Scarab of Bloodlines',
+      'Breach Scarab of Instability',
+      'Cartography Scarab of Risk',
+      'Scarab of Wisps',
+    ]);
+    expect(parsed!.scarabCosts).toEqual([7, 100, 5, 70, 20]);
+    expect(parsed!.deliOrbQty).toBe(4);
+    expect(parsed!.deliOrbType).toBe('Fine');
+    expect(parsed!.deliOrbPrice).toBeCloseTo(100, 4);
+    expect(parsed!.astroType).toBe('Grasping Astrolabe');
+    expect(parsed!.astroCount).toBe(7);
+    expect(parsed!.astroPrice).toBeCloseTo(10, 4);
+  });
+
+  it('recovers exclusions, gems, tags context, group play, atlas url, regexes', () => {
+    expect(parsed!.excludedDrops).toEqual([{ name: 'Enhance Support - 4/0 corrupted', value: 3600 }]);
+    expect(parsed!.gemInfo).toEqual({ count: 9, buy: 45, sell: 3465, net: 3420 });
+    expect(parsed!.isGroupPlay).toBe(false);
+    expect(parsed!.atlasTreeUrl).toContain('pathofpathing.com');
+    expect(parsed!.runRegex.length).toBeGreaterThan(0);
+    expect(parsed!.slamRegex.length).toBeGreaterThan(0);
+  });
+
+  it('flags group play when set', () => {
+    const p = parseDiscordExport(buildDiscordExport({
+      maps, settings: settings(), lootItems, baselineTotal,
+      investmentNeutralization: 0, isGroupPlay: true,
+    }));
+    expect(p!.isGroupPlay).toBe(true);
+  });
+
+  it('absent optional metadata parses as null across the board (legacy exports)', () => {
+    expect(parsed!.groupSize).toBeNull();
+    expect(parsed!.sessionMinutes).toBeNull();
+    expect(parsed!.atlasPoints).toBeNull();
+    expect(parsed!.atlasPointsMax).toBeNull();
+  });
+
+  it('round-trips the shared-metadata batch: group size, session time, atlas points', () => {
+    const out = buildDiscordExport({
+      maps, settings: settings({ atlasPoints: 112, atlasPointsMax: 138 }),
+      lootItems, baselineTotal, investmentNeutralization: 0,
+      isGroupPlay: true, groupSize: 3, sessionMinutes: 245,
+    });
+    expect(out).toContain('**Party Play:** Yes (3 players)');
+    expect(out).toContain('**Session Time:** 245 min');
+    expect(out).toContain('**Atlas Points:** 112/138');
+    const p = parseDiscordExport(out);
+    expect(p!.isGroupPlay).toBe(true);
+    expect(p!.groupSize).toBe(3);
+    expect(p!.sessionMinutes).toBe(245);
+    expect(p!.atlasPoints).toBe(112);
+    expect(p!.atlasPointsMax).toBe(138);
+  });
+
+  it('group without size emits the LEGACY bare line (old parsers keep working)', () => {
+    const out = buildDiscordExport({
+      maps, settings: settings(), lootItems, baselineTotal,
+      investmentNeutralization: 0, isGroupPlay: true, groupSize: null,
+    });
+    expect(out).toContain('**Party Play:** Yes');
+    expect(out).not.toContain('players');
+    const p = parseDiscordExport(out);
+    expect(p!.isGroupPlay).toBe(true);
+    expect(p!.groupSize).toBeNull();
+  });
+
+  it('no claim = no line: time <= 0 and half-missing points are suppressed', () => {
+    const out = buildDiscordExport({
+      maps, settings: settings({ atlasPoints: 112, atlasPointsMax: null }),
+      lootItems, baselineTotal, investmentNeutralization: 0, sessionMinutes: 0,
+    });
+    expect(out).not.toContain('Session Time');
+    expect(out).not.toContain('Atlas Points');
+  });
+});
+
+describe('parseDiscordExport — real v1.0.62 fixture files', () => {
+  const read = (f: string) =>
+    readFileSync(fileURLToPath(new URL(`./__fixtures__/${f}`, import.meta.url)), 'utf-8');
+
+  it('reads the real preservation export (values are the OLD buggy output — parser lock only)', () => {
+    const p = parseDiscordExport(read('export_preservation_38maps_BUGGY.txt'));
+    expect(p).not.toBeNull();
+    expect(p!.mapCount).toBe(38);
+    expect(p!.perMapCost).toBeCloseTo(1852.0, 4);
+    expect(p!.totalInvest).toBeCloseTo(72496.0, 4);
+    expect(p!.netProfit).toBeCloseTo(26041.6, 4);
+    expect(p!.scarabs).toContain('Horned Scarab of Preservation');
+    expect(p!.gemInfo).toEqual({ count: 9, buy: 45, sell: 3465, net: 3420 });
+  });
+
+  it('reads the real no-preservation export', () => {
+    const p = parseDiscordExport(read('export_no_preservation_38maps.txt'));
+    expect(p).not.toBeNull();
+    expect(p!.mapCount).toBe(38);
+    expect(p!.perMapCost).toBeCloseTo(1850.0, 4);
+    expect(p!.totalInvest).toBeCloseTo(72420.0, 4);
+    expect(p!.netProfit).toBeCloseTo(26117.6, 4);
+    expect(p!.isGroupPlay).toBe(false);
+  });
+});
+
+describe('export decoration is swappable without breaking re-import (Parts 1+2)', () => {
+  it('parses identically after every unicode marker is swapped for a <:name:id> ref', () => {
+    const out = build();
+    // Simulate the DEFERRED bot-posted path: each unicode marker replaced by its
+    // application-emoji reference. Import must be indifferent to the swap.
+    let botStyle = out;
+    for (const e of Object.values(EXPORT_EMOJI)) {
+      botStyle = botStyle.split(e.uni).join(`<:${e.name}:100000000000000000>`);
+    }
+    expect(botStyle).not.toBe(out); // the swap actually changed something
+    const a = parseDiscordExport(out);
+    const b = parseDiscordExport(botStyle);
+    expect(a).not.toBeNull();
+    expect(b).toEqual(a);
+  });
+
+  it('registry defines a unicode glyph, plain label, and app-emoji name for every marker', () => {
+    for (const e of Object.values(EXPORT_EMOJI)) {
+      expect(e.uni.length).toBeGreaterThan(0);
+      expect(e.plain.length).toBeGreaterThan(0);
+      expect(e.name.length).toBeGreaterThan(0);
+    }
+  });
+});

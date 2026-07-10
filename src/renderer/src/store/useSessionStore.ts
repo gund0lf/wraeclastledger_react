@@ -1,18 +1,24 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { MapData, SessionSettings, LootItem, SavedSession, ScarabSlot, ScarabPreset, RegexSet } from '../types';
+import { useShallow } from 'zustand/react/shallow';
+import { persist, type PersistStorage } from 'zustand/middleware';
+import { MapData, SessionSettings, LootItem, SavedSession, ScarabSlot, ScarabPreset, RegexSet, ExclusionPreset } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { tryFetchDivinePrice, sanitizeExclusionTerms } from '../utils/priceUtils';
-import { getCurrentLeague } from '../utils/league';
+import { getCurrentLeague, setLeagueOverrideValue } from '../utils/league';
+import { ModGroupState, cloneDefaultGroups } from '../utils/regexBuilderPresets';
 
-const STORE_VERSION = 15;
+const STORE_VERSION = 16;
 
-const DEFAULT_SETTINGS: SessionSettings = {
+// WP4.2: divine price older than this is refreshed on the next init.
+const DIVINE_PRICE_STALE_MS = 30 * 60_000;
+
+// Exported for useSessionStore.migrate.test.ts — not for component use.
+export const DEFAULT_SETTINGS: SessionSettings = {
   divinePrice: 0,
   chiselUsed: false, chiselType: '', chiselPrice: 0,
   mapType: '6-mod', isSplitSession: false,
   fragmentsUsed: 0, smallNodesAllocated: 0, mountingModifiers: false,
-  baseMapCost: 0, rollingCostPerMap: 0,
+  baseMapCost: 0,
   scarabs: Array(5).fill(null).map(() => ({ name: '', cost: 0 })),
   atlasBonus: false,  // Atlas Bonus: flat +25% IIQ. Defaults OFF — only earned once all 100 atlas bonus objectives are complete; resets to 0 each league/event.
   leagueName: '',      // auto-populated on startup via poe.ninja
@@ -26,23 +32,59 @@ const DEFAULT_SETTINGS: SessionSettings = {
   advAstrolabeType: '', advAstrolabePrice: 0, advAstrolabeCount: 0,
   advGemCount: 0, advGemBuyPrice: 0, advGemSellPrice: 0, advGemName: '',
   regexExclusions: [],
-  regexSets: [],
   atlasTreeUrl: 'https://pathofpathing.com',
-  discordTag: '',
+  atlasPoints: null, atlasPointsMax: null, // captured by AtlasTreeModule; null = no tree read yet
 };
 
-function calcAdvTotal(s: SessionSettings, mapCount: number): number {
-  const n              = mapCount || 1;
-  const deliTotal      = s.advDeliOrbQtyPerMap * s.advDeliOrbPriceEach * n;
-  const astrolabeTotal = s.advAstrolabePrice * s.advAstrolabeCount;
-  // NOTE: gems are intentionally excluded — gem leveling is side income, not map investment
-  return s.advChaos
-    + s.advExaltPrice
-    + s.advScourPrice
-    + s.advAlchPrice
-    + deliTotal
-    + astrolabeTotal;
+// v16: user-scoped fields lifted OUT of SessionSettings so loadSession can
+// never revert them to a saved session's historical values.
+const DEFAULT_DISCORD_TAG = '';
+const DEFAULT_REGEX_SETS: RegexSet[] = [];
+
+// ── Debounced persist storage (write-amplification interim, pre-WP14) ───────
+// Zustand persist calls storage.setItem on EVERY set(). With createJSONStorage
+// the full store — including every saved session — was JSON.stringify'd and
+// written to localStorage per Notes keystroke / pause toggle (~1MB each).
+// This custom PersistStorage defers BOTH the stringify and the write: setItem
+// only stashes the latest state reference (immutable snapshot, so it stays
+// correct) and serialization happens once per debounce window / on flush.
+// WP14 (sessions-as-files) removes the need for this entirely.
+const PERSIST_DEBOUNCE_MS = 1000;
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingPersist: { name: string; value: unknown } | null = null;
+
+/** Write any pending debounced persist immediately. Safe to call anytime. */
+export function flushPersist(): void {
+  if (persistTimer !== null) { clearTimeout(persistTimer); persistTimer = null; }
+  if (pendingPersist === null) return;
+  const { name, value } = pendingPersist;
+  pendingPersist = null;
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(name, JSON.stringify(value));
+  } catch (e) {
+    // Surface loudly — a swallowed quota error here would mean silent data loss.
+    console.error('[Persist] localStorage write FAILED (quota?):', e);
+    throw e;
+  }
 }
+
+const debouncedStorage: PersistStorage<unknown> = {
+  getItem: (name) => {
+    if (typeof localStorage === 'undefined') return null;
+    const str = localStorage.getItem(name);
+    return str ? JSON.parse(str) : null;
+  },
+  setItem: (name, value) => {
+    pendingPersist = { name, value };
+    if (persistTimer !== null) clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => { persistTimer = null; flushPersist(); }, PERSIST_DEBOUNCE_MS);
+  },
+  removeItem: (name) => {
+    if (persistTimer !== null) { clearTimeout(persistTimer); persistTimer = null; }
+    pendingPersist = null;
+    if (typeof localStorage !== 'undefined') localStorage.removeItem(name);
+  },
+};
 
 /** Strip rawText from a MapData before persisting — flags are materialised first so re-detection on load still works. */
 function stripRawText(m: MapData): MapData {
@@ -72,16 +114,33 @@ function migrateState(persisted: any): any {
   const s = persisted?.settings ?? {};
   const defaults = DEFAULT_SETTINGS as Record<string, any>;
   const merged: Record<string, any> = { ...s };
+  // v13→v14: mirageBonus renamed to atlasBonus — carry the old value over if
+  // present. MUST run BEFORE the defaults fill: the fill sets atlasBonus to the
+  // default (false), which made the old carry-after-fill dead code (bug found
+  // by useSessionStore.migrate.test.ts, fixed 2026-07-03).
+  if (merged['mirageBonus'] !== undefined && merged['atlasBonus'] === undefined) {
+    merged['atlasBonus'] = merged['mirageBonus'];
+  }
+  delete merged['mirageBonus'];
   for (const key of Object.keys(defaults)) {
     if (merged[key] === undefined) merged[key] = defaults[key];
   }
   delete merged['advAstrolabeTotalCost'];
   delete merged['advAstrolabeTotalCount'];
-  // v13→v14: mirageBonus renamed to atlasBonus — carry the old value over if present
-  if (merged['mirageBonus'] !== undefined && merged['atlasBonus'] === undefined) {
-    merged['atlasBonus'] = merged['mirageBonus'];
+  // v15→v16: discordTag + regexSets lifted from SessionSettings to TOP-LEVEL
+  // store state (loadSession used to revert them to the saved session's
+  // historical values). Lift the values, then drop the settings-level keys.
+  if (persisted?.discordTag === undefined) {
+    persisted.discordTag = typeof merged['discordTag'] === 'string' ? merged['discordTag'] : DEFAULT_DISCORD_TAG;
   }
-  delete merged['mirageBonus'];
+  if (persisted?.regexSets === undefined) {
+    persisted.regexSets = Array.isArray(merged['regexSets']) ? merged['regexSets'] : DEFAULT_REGEX_SETS;
+  }
+  delete merged['discordTag'];
+  delete merged['regexSets'];
+  // v15→v16: stored rollingCostPerMap removed — it froze at the map count of
+  // the last Advanced Costs edit; the live value comes from computeRollingSessionTotal.
+  delete merged['rollingCostPerMap'];
 
   // Sanitize regexExclusions — remove any corrupted entries that contain full regex fragments
   if (Array.isArray(merged['regexExclusions'])) {
@@ -97,16 +156,21 @@ function migrateState(persisted: any): any {
   for (const id of Object.keys(savedSessions)) {
     const ss = savedSessions[id].settings ?? {};
     const mergedSs: Record<string, any> = { ...ss };
+    // v13→v14 carry for saved sessions — same before-the-fill ordering as above
+    if (mergedSs['mirageBonus'] !== undefined && mergedSs['atlasBonus'] === undefined) {
+      mergedSs['atlasBonus'] = mergedSs['mirageBonus'];
+    }
+    delete mergedSs['mirageBonus'];
     for (const key of Object.keys(defaults)) {
       if (mergedSs[key] === undefined) mergedSs[key] = defaults[key];
     }
     delete mergedSs['advAstrolabeTotalCost'];
     delete mergedSs['advAstrolabeTotalCount'];
-    // v13→v14: carry mirageBonus → atlasBonus for saved sessions too
-    if (mergedSs['mirageBonus'] !== undefined && mergedSs['atlasBonus'] === undefined) {
-      mergedSs['atlasBonus'] = mergedSs['mirageBonus'];
-    }
-    delete mergedSs['mirageBonus'];
+    // v15→v16: saved sessions lose the user-scoped keys too — loadSession
+    // spreads session.settings, so leftovers would resurrect them as strays.
+    delete mergedSs['discordTag'];
+    delete mergedSs['regexSets'];
+    delete mergedSs['rollingCostPerMap'];
     // Sanitize saved session regexExclusions
     if (Array.isArray(mergedSs['regexExclusions'])) {
       mergedSs['regexExclusions'] = sanitizeExclusionTerms(mergedSs['regexExclusions']);
@@ -117,12 +181,27 @@ function migrateState(persisted: any): any {
   return { ...persisted, settings: merged as SessionSettings, savedSessions };
 }
 
+// Exported for useSessionStore.migrate.test.ts.
+export { migrateState };
+
 interface SessionState {
   maps: MapData[];
   lootItems: LootItem[];
   baselineItems: LootItem[];
   baselineTotal: number;
   settings: SessionSettings;
+  // v16: user-scoped, survive loadSession/newSession untouched
+  discordTag: string;   // used to highlight own strategies in the browser
+  regexSets: RegexSet[];
+  // Manual league override (rollover plan D4/D5): null = auto-detect. User-scoped,
+  // top-level + additive (persist shallow-merge defaults it to null — no migration).
+  // Mirrored into utils/league.ts module state (seeded below + on every set).
+  leagueOverride: string | null;
+  // WP8: Regex Builder workspace — user-scoped preference, survives
+  // loadSession/newSession (not in SessionSettings, not a session snapshot).
+  // Additive top-level + no partialize => persist's shallow merge defaults it
+  // to cloneDefaultGroups() for old stores (no migration needed).
+  regexBuilderGroups: ModGroupState[];
   isWatching: boolean;
   savedSessions: Record<string, SavedSession>;
   activeSessionId: string | null;
@@ -130,10 +209,20 @@ interface SessionState {
   sessionNonce: number; // bumps on every newSession() so the UI can detect a fresh session even when activeSessionId stays null (unsaved -> unsaved)
   scarabPresets: ScarabPreset[];
   sessionNotes: string;
+  // Epoch ms of the last SUCCESSFUL divine-price fetch. Top-level (not in
+  // settings): staleness is a fact about the fetch, not about the session.
+  // Additive — persist's shallow merge fills it with 0 for old stores.
+  divinePriceFetchedAt: number;
   investmentNeutralization: number; // amount added back to lootGain from auto-detected investment losses
   investmentDismissed: boolean;      // true when user dismissed the detection banner without neutralising
+  // WP7: first-run onboarding card dismissed. Top-level + additive - persist's
+  // shallow merge defaults it to false for old stores (no migration needed).
+  onboardingDismissed: boolean;
   // Persistent default exclusion preset — survives newSession(), applied on strategy load
   defaultExclusionPreset: string[];
+  // Named exclusion presets for rotation (Sad 2026-07-09). User-scoped,
+  // top-level + additive — persist's shallow merge defaults [] (no migration).
+  exclusionPresets: ExclusionPreset[];
   // Loaded strategy preview
   loadedStrategyInfo: {
     authorName: string; mapCount: number;
@@ -160,6 +249,9 @@ interface SessionState {
   // initDivinePrice: cooldown-gated by default. Pass { force: true } to bypass
   // the 60s cooldown — used by the manual refresh button in InvestmentModule.
   initDivinePrice: (opts?: { force?: boolean }) => Promise<void>;
+  /** Manual divine-price entry — sets the price AND marks it fresh so the
+   *  30-min staleness auto-refresh doesn't overwrite a hand-typed value. */
+  setDivinePriceManual: (v: number) => void;
   saveAsNewSession: (name: string) => void;
   updateCurrentSession: () => void;
   loadSession: (id: string) => void;
@@ -171,10 +263,18 @@ interface SessionState {
   deleteScarabPreset: (id: string) => void;
   saveRegexSet: (set: Omit<RegexSet, 'id'>) => void;
   deleteRegexSet: (id: string) => void;
+  setRegexBuilderGroups: (groups: ModGroupState[]) => void;
+  setDiscordTag: (tag: string) => void;
+  setLeagueOverride: (league: string | null) => void;
   setDefaultPreset: () => void; // saves current regexExclusions as persistent default
+  clearDefaultPreset: () => void;
+  saveExclusionPreset: (name: string) => void;
+  loadExclusionPreset: (id: string) => void;
+  deleteExclusionPreset: (id: string) => void;
   setSessionNotes: (notes: string) => void;
   setInvestmentNeutralization: (v: number) => void;
   setInvestmentDismissed: (v: boolean) => void;
+  dismissOnboarding: () => void;
   setLoadedStrategyInfo: (info: SessionState['loadedStrategyInfo']) => void;
   importSessions: (sessions: SavedSession[], conflictMode: 'skip' | 'overwrite') => void;
 }
@@ -184,11 +284,16 @@ export const useSessionStore = create<SessionState>()(
     (set, get) => ({
       maps: [], lootItems: [], baselineItems: [], baselineTotal: 0,
       settings: { ...DEFAULT_SETTINGS },
+      discordTag: DEFAULT_DISCORD_TAG, regexSets: [...DEFAULT_REGEX_SETS],
+      leagueOverride: null,
+      regexBuilderGroups: cloneDefaultGroups(),
       isWatching: false, savedSessions: {},
       activeSessionId: null, activeSessionName: null, scarabPresets: [], sessionNonce: 0,
-      sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, loadedStrategyInfo: null, defaultExclusionPreset: [],
+      divinePriceFetchedAt: 0,
+      sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, onboardingDismissed: false, loadedStrategyInfo: null, defaultExclusionPreset: [], exclusionPresets: [],
 
-      addMap: (m) => set((s) => ({ maps: [...s.maps, { ...m, id: uuidv4() }] })),
+      // parsedAt: WP9 Tier 0 — epoch ms timestamp on every parsed map (additive, no migration needed)
+      addMap: (m) => set((s) => ({ maps: [...s.maps, { ...m, id: uuidv4(), parsedAt: Date.now() }] })),
       removeMap: (id) => set((s) => ({ maps: s.maps.filter((m) => m.id !== id) })),
       undoLastMap: () => set((s) => ({ maps: s.maps.slice(0, -1) })),
       clearMaps: () => set({ maps: [] }),
@@ -201,9 +306,10 @@ export const useSessionStore = create<SessionState>()(
       updateAdvSetting: (key, value) =>
         set((s) => {
           const ns = { ...s.settings, [key]: value };
-          const mapCount = s.maps.length || 1;
-          ns.rollingCostPerMap = parseFloat(calcAdvTotal(ns, mapCount).toFixed(2));
-          // Sync isSplitSession from advSplitPrice
+          // Sync isSplitSession from advSplitPrice. (The old rollingCostPerMap
+          // recalc side effect is gone — the session total is derived live in
+          // utils/profit.ts computeRollingSessionTotal. updateAdvSetting is kept
+          // as the designated setter for adv* fields.)
           ns.isSplitSession = ns.advSplitPrice > 0;
           return { settings: ns };
         }),
@@ -239,8 +345,15 @@ export const useSessionStore = create<SessionState>()(
       clearLoot: () => set({ lootItems: [], baselineItems: [], baselineTotal: 0 }),
 
       initDivinePrice: async (opts = {}) => {
-        const current = get().settings.divinePrice;
-        if (current !== 0 && current !== 200) return;
+        // WP4.2: staleness-based refresh. The old guard only fetched when the
+        // price was 0 or the legacy default 200, so an already-set price never
+        // auto-refreshed — even days later. Now: fetch when the price is
+        // unset/legacy OR the last successful fetch is older than 30 min.
+        // `force` (manual refresh button) always fetches.
+        const { settings: st, divinePriceFetchedAt } = get();
+        const isUnset = st.divinePrice === 0 || st.divinePrice === 200;
+        const isStale = Date.now() - divinePriceFetchedAt > DIVINE_PRICE_STALE_MS;
+        if (!opts.force && !isUnset && !isStale) return;
         // Fetch league and price in parallel — both use poe.ninja.
         // Price is cooldown-gated unless `force` is set; league has its own
         // in-memory cache and falls back to CURRENT_LEAGUE on failure.
@@ -249,6 +362,10 @@ export const useSessionStore = create<SessionState>()(
           tryFetchDivinePrice(opts.force === true),
         ]);
         set((s) => ({
+          // Timestamp advances only on a successful price fetch, so failures
+          // stay "stale" and the next init retries (bounded by the 60s cooldown
+          // in tryFetchDivinePrice).
+          ...(price && price > 0 ? { divinePriceFetchedAt: Date.now() } : {}),
           settings: {
             ...s.settings,
             ...(price && price > 0 ? { divinePrice: Math.round(price) } : {}),
@@ -257,22 +374,30 @@ export const useSessionStore = create<SessionState>()(
         }));
       },
 
+      setDivinePriceManual: (v) =>
+        set((s) => ({
+          divinePriceFetchedAt: Date.now(),
+          settings: { ...s.settings, divinePrice: v },
+        })),
+
       saveAsNewSession: (name) => {
-        const { maps, lootItems, baselineItems, baselineTotal, settings, sessionNotes } = get();
+        flushActiveSessionAutoSave();
+        const { maps, lootItems, baselineItems, baselineTotal, settings, sessionNotes, investmentNeutralization, investmentDismissed } = get();
         const id = new Date().toISOString();
         set((s) => ({
-          savedSessions: { ...s.savedSessions, [id]: { id, name, createdAt: id, maps: maps.map(stripRawText), lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, settings: { ...settings }, notes: sessionNotes } },
+          savedSessions: { ...s.savedSessions, [id]: { id, name, createdAt: id, maps: maps.map(stripRawText), lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, settings: { ...settings }, notes: sessionNotes, investmentNeutralization, investmentDismissed } },
           activeSessionId: id, activeSessionName: name,
         }));
       },
       updateCurrentSession: () => {
-        const { maps, lootItems, baselineItems, baselineTotal, settings, sessionNotes, activeSessionId, activeSessionName, savedSessions } = get();
+        const { maps, lootItems, baselineItems, baselineTotal, settings, sessionNotes, investmentNeutralization, investmentDismissed, activeSessionId, activeSessionName, savedSessions } = get();
         if (!activeSessionId || !savedSessions[activeSessionId]) return;
         set((s) => ({
-          savedSessions: { ...s.savedSessions, [activeSessionId]: { ...s.savedSessions[activeSessionId], name: activeSessionName ?? s.savedSessions[activeSessionId].name, maps: maps.map(stripRawText), lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, settings: { ...settings }, notes: sessionNotes } },
+          savedSessions: { ...s.savedSessions, [activeSessionId]: { ...s.savedSessions[activeSessionId], name: activeSessionName ?? s.savedSessions[activeSessionId].name, maps: maps.map(stripRawText), lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, settings: { ...settings }, notes: sessionNotes, investmentNeutralization, investmentDismissed } },
         }));
       },
       loadSession: (id) => {
+        flushActiveSessionAutoSave();
         const session = get().savedSessions[id];
         if (!session) return;
         const maps = session.maps.map((m) => {
@@ -299,14 +424,16 @@ export const useSessionStore = create<SessionState>()(
             } : {}),
           } as MapData;
         });
-        set({ maps, lootItems: [...session.lootItems], baselineItems: [...(session.baselineItems ?? [])], baselineTotal: session.baselineTotal ?? 0, settings: { ...DEFAULT_SETTINGS, ...session.settings }, sessionNotes: session.notes ?? '', activeSessionId: id, activeSessionName: session.name, isWatching: false });
+        set({ maps, lootItems: [...session.lootItems], baselineItems: [...(session.baselineItems ?? [])], baselineTotal: session.baselineTotal ?? 0, settings: { ...DEFAULT_SETTINGS, ...session.settings }, sessionNotes: session.notes ?? '', investmentNeutralization: session.investmentNeutralization ?? 0, investmentDismissed: session.investmentDismissed ?? false, activeSessionId: id, activeSessionName: session.name, isWatching: false });
       },
       deleteSession: (id) =>
         set((s) => { const { [id]: _, ...rest } = s.savedSessions; return { savedSessions: rest, activeSessionId: s.activeSessionId === id ? null : s.activeSessionId, activeSessionName: s.activeSessionId === id ? null : s.activeSessionName }; }),
       renameSession: (id, newName) =>
         set((s) => ({ savedSessions: { ...s.savedSessions, [id]: { ...s.savedSessions[id], name: newName } }, activeSessionName: s.activeSessionId === id ? newName : s.activeSessionName })),
-      newSession: () =>
-        set((s) => ({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, settings: { ...DEFAULT_SETTINGS }, activeSessionId: null, activeSessionName: null, isWatching: false, loadedStrategyInfo: null, sessionNonce: s.sessionNonce + 1 })),
+      newSession: () => {
+        flushActiveSessionAutoSave();
+        set((s) => ({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, settings: { ...DEFAULT_SETTINGS }, activeSessionId: null, activeSessionName: null, isWatching: false, loadedStrategyInfo: null, sessionNonce: s.sessionNonce + 1 }));
+      },
 
       saveScarabPreset: (name) => {
         const p: ScarabPreset = { id: uuidv4(), name, scarabs: get().settings.scarabs.map((s) => ({ ...s })) };
@@ -321,22 +448,57 @@ export const useSessionStore = create<SessionState>()(
         set((s) => ({ scarabPresets: s.scarabPresets.filter((p) => p.id !== id) })),
       saveRegexSet: (regexSet) => {
         const ns: RegexSet = { ...regexSet, id: uuidv4() };
-        set((s) => ({ settings: { ...s.settings, regexSets: [...(s.settings.regexSets ?? []), ns] } }));
+        set((s) => ({ regexSets: [...s.regexSets, ns] }));
       },
       deleteRegexSet: (id) =>
-        set((s) => ({ settings: { ...s.settings, regexSets: (s.settings.regexSets ?? []).filter((r) => r.id !== id) } })),
+        set((s) => ({ regexSets: s.regexSets.filter((r) => r.id !== id) })),
+      setRegexBuilderGroups: (groups) => set({ regexBuilderGroups: groups }),
+      setDiscordTag: (tag) => set({ discordTag: tag }),
+
+      setLeagueOverride: (league) => {
+        const v = league && league.trim() ? league.trim() : null;
+        setLeagueOverrideValue(v); // clears the detection cache in league.ts
+        set({ leagueOverride: v });
+        // Re-stamp settings.leagueName and refetch the divine price for the
+        // new league immediately. force bypasses BOTH the staleness guard and
+        // the fetch cooldown — an explicit league change must never be skipped.
+        get().initDivinePrice({ force: true });
+      },
       setDefaultPreset: () =>
         // Save current session exclusions as the persistent default
         set((s) => ({ defaultExclusionPreset: [...s.settings.regexExclusions] })),
+      clearDefaultPreset: () => set({ defaultExclusionPreset: [] }),
+      saveExclusionPreset: (name) => {
+        const p: ExclusionPreset = {
+          id: uuidv4(), name,
+          terms: sanitizeExclusionTerms(get().settings.regexExclusions),
+        };
+        set((s) => ({ exclusionPresets: [...s.exclusionPresets, p] }));
+      },
+      loadExclusionPreset: (id) => {
+        const p = get().exclusionPresets.find((p) => p.id === id);
+        if (!p) return;
+        set((s) => ({ settings: { ...s.settings, regexExclusions: [...p.terms] } }));
+      },
+      deleteExclusionPreset: (id) =>
+        set((s) => ({ exclusionPresets: s.exclusionPresets.filter((p) => p.id !== id) })),
       setSessionNotes: (notes) => set({ sessionNotes: notes }),
       setInvestmentNeutralization: (v) => set({ investmentNeutralization: v }),
       setInvestmentDismissed: (v: boolean) => set({ investmentDismissed: v }),
+      dismissOnboarding: () => set({ onboardingDismissed: true }),
       importSessions: (sessions, conflictMode) =>
         set((s) => {
           const toAdd: Record<string, SavedSession> = {};
           for (const session of sessions) {
             if (conflictMode === 'skip' && s.savedSessions[session.id]) continue;
-            toAdd[session.id] = session;
+            // Old JSON exports (pre-v16) can carry user-scoped keys in the
+            // session's settings blob — scrub them so loadSession never
+            // resurrects them (same scrub migrateState applies on upgrade).
+            const settings: Record<string, any> = { ...(session.settings as any) };
+            delete settings['discordTag'];
+            delete settings['regexSets'];
+            delete settings['rollingCostPerMap'];
+            toAdd[session.id] = { ...session, settings: settings as SavedSession['settings'] };
           }
           return { savedSessions: { ...s.savedSessions, ...toAdd } };
         }),
@@ -349,6 +511,90 @@ export const useSessionStore = create<SessionState>()(
             : s.settings,
         })),
     }),
-    { name: 'map-tracker-storage', version: STORE_VERSION, migrate: migrateState, storage: createJSONStorage(() => localStorage) }
+    { name: 'map-tracker-storage', version: STORE_VERSION, migrate: migrateState, storage: debouncedStorage as PersistStorage<any> }
   )
 );
+
+// ── WP10: auto-save the active session ───────────────────────────────────────
+// When a saved session is active, any edit to its content persists into
+// savedSessions[activeSessionId] automatically (debounced). Unsaved sessions
+// (activeSessionId === null) keep the old behavior. Save-as-New remains the
+// explicit forking action; the Update button is gone.
+const AUTO_SAVE_DEBOUNCE_MS = 800;
+let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Fire a PENDING auto-save immediately (no-op when nothing is dirty).
+ * Called before session switches (loadSession/newSession/saveAsNewSession)
+ * and on window close, so debounced edits are never dropped.
+ */
+export function flushActiveSessionAutoSave(): void {
+  if (autoSaveTimer === null) return; // pending timer <=> dirty; otherwise skip the write
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = null;
+  const s = useSessionStore.getState();
+  if (s.activeSessionId && s.savedSessions[s.activeSessionId]) s.updateCurrentSession();
+}
+
+useSessionStore.subscribe((state, prev) => {
+  if (!state.activeSessionId) return;
+  // A session switch (load / save-as-new) is not an edit: loadSession copies
+  // FROM the saved session, so auto-saving here would only echo it back — and
+  // in the pathological case clobber it. Never schedule on an id change.
+  if (state.activeSessionId !== prev.activeSessionId) return;
+  const dirty =
+    state.maps !== prev.maps ||
+    state.lootItems !== prev.lootItems ||
+    state.baselineItems !== prev.baselineItems ||
+    state.baselineTotal !== prev.baselineTotal ||
+    state.settings !== prev.settings ||
+    state.sessionNotes !== prev.sessionNotes ||
+    state.investmentNeutralization !== prev.investmentNeutralization ||
+    state.investmentDismissed !== prev.investmentDismissed;
+  if (!dirty) return;
+  if (autoSaveTimer !== null) clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => {
+    autoSaveTimer = null;
+    const s = useSessionStore.getState();
+    if (s.activeSessionId && s.savedSessions[s.activeSessionId]) s.updateCurrentSession();
+  }, AUTO_SAVE_DEBOUNCE_MS);
+});
+
+// Flush on app close so the last debounce window is never lost.
+// Order matters: the auto-save flush runs FIRST (it set()s, which lands in
+// pendingPersist synchronously), then flushPersist writes the final state.
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', flushActiveSessionAutoSave);
+  window.addEventListener('beforeunload', flushPersist);
+}
+
+// ── Selector subscription helpers (session 17: typing-lag fix) ──────────────
+// Subscribing with `useSessionStore()` (no selector) re-renders the component
+// on EVERY store change — a Notes keystroke used to re-render the Map Log
+// table, the 600-row loot table, the Map Analyzer grid, everything mounted.
+// All components must subscribe via useSessionKeys (or a custom selector for
+// nested scalars, e.g. `useSessionStore((s) => s.settings.atlasTreeUrl)`).
+// Convention: no bare `useSessionStore()` calls in components.
+
+/** Pure key-pick — exported for tests. */
+export function pickKeys<T extends object, K extends keyof T>(obj: T, keys: readonly K[]): Pick<T, K> {
+  const out = {} as Pick<T, K>;
+  for (const k of keys) out[k] = obj[k];
+  return out;
+}
+
+/**
+ * Subscribe to a shallow-compared slice of the session store.
+ * `const { maps, settings } = useSessionKeys('maps', 'settings')` re-renders
+ * only when one of the picked values changes (actions are stable references,
+ * so listing them is free).
+ */
+export function useSessionKeys<K extends keyof SessionState>(...keys: K[]): Pick<SessionState, K> {
+  return useSessionStore(useShallow((s) => pickKeys(s, keys)));
+}
+
+// Seed the persisted league override into the store-agnostic league util.
+// persist() hydrates synchronously from localStorage during create(), so the
+// value is already in state here. For old stores the additive top-level field
+// shallow-merges to null (no migration needed) — seeding null is a no-op.
+setLeagueOverrideValue(useSessionStore.getState().leagueOverride ?? null);

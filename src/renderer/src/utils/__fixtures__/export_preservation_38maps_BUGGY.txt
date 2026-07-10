@@ -1,0 +1,27 @@
+[WraeclastLedger Session]
+**Map Session — WraeclastLedger**
+📦 **Maps:** 38 | **Type:** 6-mod | **Multiplier:** 1.63×
+🪨 **Chisel:** Avarice (150c)
+📊 **Avg Quant:** 83% | **Avg Rarity:** 63% | **Avg Pack:** 45% | **Avg Currency:** 117%
+💰 **Per Map Cost:** 1852.0c | **Total Invest:** 72496.0c
+🎯 **Total Return:** 98537.6c | **Net Profit:** +26041.6c
+📈 **Div / Map:** 1.371d | **Divine Price:** 500c
+🦂 **Scarabs:**
+  - Horned Scarab of Preservation (7c)
+  - Horned Scarab of Bloodlines (100c)
+  - Breach Scarab of Instability (5c)
+  - Cartography Scarab of Risk (70c)
+  - Scarab of Wisps (20c)
+🌫️ **Delirium Orbs:** 4x Fine (80% delirious, 100.0c each = 400.0c/map)
+🌍 **Astrolabe:** Grasping Astrolabe (7x, 10c each)
+🌳 **Atlas Tree:** https://pathofpathing.com/?v=3.28.0-atlas-league#AAAABgAADAsAJMFG206LU2FYqXF1sibDTcnCzw7qynF1AAA=
+🏆 **League:** Ancestors
+🏷️ **Tags:** originator, breach, cartography, astrolabe-grasping
+⛔ **Excluded drops (1):** Enhance Support - 4/0 corrupted (3600c)
+💫 **Gem leveling:** 9 gems | buy 45c | sell 3465c | net +3420c *(excluded from map profit)*
+
+🔍 **Generated Regex (38 maps, trimmed avg)**
+Avg: 83%Q · 63%R · 45%P · 117% Curr
+*Brick exclusion is build-dependent — edit in settings*
+🟢 Run: `"urr.*(1[1-9].|[2-9]..)%" "ack.*([4-9].|\d..)%" "iz.*([4-9].|\d..)%" "m rar.*([3-9].|\d..)%"`
+🟠 Slam: `"(urr.*([8-9].|\d..)%|ack.*([3-9].|\d..)%)"` *(open slots only)*

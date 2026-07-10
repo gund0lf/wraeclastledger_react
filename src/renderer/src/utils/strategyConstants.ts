@@ -33,6 +33,12 @@ export interface Strategy {
   strategy_notes?: string | null;
   score?: number | null;
   is_group_play?: boolean | null;
+  // Optional author-declared metadata (server migration 008 / shared-metadata
+  // batch 2026-07). All nullable — absence = no claim, never penalised.
+  session_minutes?: number | null;
+  group_size?: number | null;
+  atlas_points?: number | null;
+  atlas_points_max?: number | null;
   posted_at: string;
   raw_export?: string | null;
 }
@@ -142,3 +148,58 @@ export const TAG_SHORT: Record<string, string> = {
   'astrolabe-chaotic':    'a:chaos',
   'astrolabe-lightless':  'a:light',
 };
+
+// ─── Strategy Browser sorting ─────────────────────────────────────────────────
+// Mirrors the server's SORT_EXPR allow-list (api/server.js). Each key's default
+// direction matches the server default so the header arrow is truthful before
+// the user ever sends an explicit ?order=. div_per_hour is NEVER the default
+// sort (locked decision — self-reported time must not outrank div/map) and is
+// computed server-side from author-declared session_minutes, NULLS LAST.
+
+export type SortKey =
+  | 'posted_at' | 'div_per_map' | 'net_profit' | 'score'
+  | 'least_invest' | 'cost_per_map' | 'div_per_hour';
+export type SortOrder = 'asc' | 'desc';
+
+export const SORT_DEFAULT_DIR: Record<SortKey, SortOrder> = {
+  posted_at:    'desc',
+  div_per_map:  'desc',
+  net_profit:   'desc',
+  score:        'desc',
+  least_invest: 'asc',
+  cost_per_map: 'asc',
+  div_per_hour: 'desc',
+};
+
+export const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: 'posted_at',    label: 'Newest' },
+  { value: 'div_per_map',  label: 'Best d/map' },
+  { value: 'div_per_hour', label: 'Best d/hour' },
+  { value: 'net_profit',   label: 'Most profit' },
+  { value: 'cost_per_map', label: 'Cheapest /map' },
+  { value: 'least_invest', label: 'Least invest' },
+  { value: 'score',        label: 'Top rated' },
+];
+
+// ─── Strategy Browser row layout ─────────────────────────────
+// Single source of truth for the column widths shared by the header row
+// (StrategyBrowserModule) and every data row (StrategyCard). Both render a flex
+// Group of these fixed-width cells plus a flexible Profit/map cell; defining the
+// widths here keeps the two sides from drifting out of alignment. GAP and PAD_X
+// are the row's flex gap and horizontal padding, which must match on both sides.
+
+export const BROWSER_COLS = {
+  chevron: 22,
+  author:  88,
+  tags:    140,
+  mod:     44,
+  maps:    32,
+  cost:    66,
+  invest:  110,
+  profit:  114,
+  score:   36,
+  date:    36,
+} as const;
+
+export const BROWSER_ROW_GAP = 6;
+export const BROWSER_ROW_PAD_X = 10;

@@ -1,6 +1,7 @@
 import { Card, LoadingOverlay, ActionIcon, Group, Text, Tooltip, Box } from '@mantine/core';
 import { useState } from 'react';
-import { FaSync, FaExternalLinkAlt } from 'react-icons/fa';
+import { IconRefresh, IconExternalLink } from '@tabler/icons-react';
+import { COLOR } from '../utils/uiTokens'
 
 export const MapSearchModule = () => {
   const [loading, setLoading] = useState(true);
@@ -24,8 +25,8 @@ export const MapSearchModule = () => {
         justify="space-between"
         px="xs"
         py={5}
-        bg="#141517"
-        style={{ borderBottom: '1px solid #2C2E33', flexShrink: 0 }}
+        bg={COLOR.bgSunken}
+        style={{ borderBottom: `1px solid ${COLOR.border}`, flexShrink: 0 }}
       >
         <Text size="xs" fw={700} c="dimmed">Map Search — poe.re</Text>
         <Group gap={4}>
@@ -37,12 +38,12 @@ export const MapSearchModule = () => {
               href="https://poe.re/#/maps"
               target="_blank"
             >
-              <FaExternalLinkAlt size={10} />
+              <IconExternalLink size={14} />
             </ActionIcon>
           </Tooltip>
           <Tooltip label="Reload">
             <ActionIcon size="sm" variant="subtle" onClick={reload}>
-              <FaSync size={10} />
+              <IconRefresh size={14} />
             </ActionIcon>
           </Tooltip>
         </Group>

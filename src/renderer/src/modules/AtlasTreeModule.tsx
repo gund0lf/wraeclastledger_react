@@ -1,7 +1,11 @@
 import { Card, ActionIcon, Group, Tooltip, CopyButton, Text, Badge, ScrollArea, Stack, TextInput, Button } from '@mantine/core';
 import { useState, useRef, useEffect } from 'react';
-import { FaSync, FaCopy, FaCheck, FaChartBar } from 'react-icons/fa';
-import { useSessionStore } from '../store/useSessionStore';
+import { IconRefresh, IconCopy, IconCheck, IconChartBar, IconLink, IconX } from '@tabler/icons-react';
+import { useSessionStore, useSessionKeys } from '../store/useSessionStore';
+import { getManifest } from '../utils/gameData';
+import { atlasVersionOf } from '../utils/strategyCompat';
+import { SectionLabel } from '../components/ui/SectionLabel';
+import { COLOR, FONT } from '../utils/uiTokens'
 
 const BASE_URL = 'https://pathofpathing.com';
 
@@ -31,14 +35,18 @@ interface StatGroup {
 }
 
 export const AtlasTreeModule = () => {
-  const { settings, activeSessionId, sessionNonce, updateSetting } = useSessionStore();
+  const { activeSessionId, sessionNonce, updateSetting } =
+    useSessionKeys('activeSessionId', 'sessionNonce', 'updateSetting');
+  // Scalar selector: this panel hosts a webview — it must NOT re-render on
+  // unrelated settings edits (scarab typing etc.), only when the tree URL moves.
+  const atlasTreeUrl = useSessionStore((s) => s.settings.atlasTreeUrl);
   const webviewRef     = useRef<any>(null);
   const prevSessionRef = useRef<string | null>(activeSessionId);
   const prevNonceRef   = useRef(sessionNonce);
   const autoApplyRef   = useRef(false); // set true when URL imported — triggers auto readStats+apply
 
   const [srcUrl,      setSrcUrl]      = useState(() => {
-    const stored = settings.atlasTreeUrl;
+    const stored = atlasTreeUrl;
     return isPathofpathingUrl(stored) ? stored : BASE_URL;
   });
   const [capturedUrl, setCapturedUrl] = useState(srcUrl);
@@ -67,7 +75,7 @@ export const AtlasTreeModule = () => {
 
   // ── Reload when atlasTreeUrl is set externally (Load Build Settings) ───────
   useEffect(() => {
-    const stored = settings.atlasTreeUrl;
+    const stored = atlasTreeUrl;
     if (!stored || stored === capturedUrl || stored === srcUrl) return;
     if (!isPathofpathingUrl(stored)) return;
     setSrcUrl(stored);
@@ -75,17 +83,49 @@ export const AtlasTreeModule = () => {
     autoApplyRef.current = true; // auto-apply calc after load
     setKey((k) => k + 1);
     setStatGroups([]);
-  }, [settings.atlasTreeUrl]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [atlasTreeUrl]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Attach navigation + finish-load listeners ─────────────────────────────
   useEffect(() => {
     const wv = webviewRef.current;
     if (!wv) return;
+    // Capture atlas points (allocated/max) from the pathofpathing counter
+    // spans (#skillTreeNormalNodeCount / ...Maximum — feasibility confirmed
+    // session 13). Fired on every tree edit (nav events change the hash) and
+    // on load; the small delay lets the spans update after the nav event.
+    // Author-declared share context ONLY — never load-bearing (batch 2026-07).
+    const readPoints = () => {
+      setTimeout(async () => {
+        try {
+          const r = await (wv as any).executeJavaScript(`
+            (function() {
+              var a = document.getElementById('skillTreeNormalNodeCount');
+              var m = document.getElementById('skillTreeNormalNodeCountMaximum');
+              if (!a || !m) return null;
+              var av = parseInt(a.textContent, 10);
+              var mv = parseInt(m.textContent, 10);
+              if (isNaN(av) || isNaN(mv) || mv <= 0) return null;
+              return { allocated: av, max: mv };
+            })()
+          `);
+          if (r && typeof r.allocated === 'number' && typeof r.max === 'number') {
+            const s = useSessionStore.getState().settings;
+            if (s.atlasPoints !== r.allocated || s.atlasPointsMax !== r.max) {
+              updateSetting('atlasPoints', r.allocated);
+              updateSetting('atlasPointsMax', r.max);
+            }
+          }
+        } catch (err) {
+          console.error('[AtlasTree] failed to read atlas points:', err);
+        }
+      }, 250);
+    };
     const handleNav = (e: any) => {
       const url: string = e.url ?? '';
       if (!isPathofpathingUrl(url)) return;
       setCapturedUrl(url);
       updateSetting('atlasTreeUrl', url);
+      readPoints(); // node toggles change the hash — capture the new count
     };
     // Auto-apply to calc when URL is loaded externally (Load Build Settings / import URL)
     // Block any navigation that would leave pathofpathing.com (e.g. ad/link clicks on the page)
@@ -93,6 +133,7 @@ export const AtlasTreeModule = () => {
       if (!isPathofpathingUrl(e.url ?? '')) e.preventDefault();
     };
     const handleFinishLoad = async () => {
+      readPoints(); // restored sessions: capture points once the page is up
       if (!autoApplyRef.current) return;
       autoApplyRef.current = false;
       // Poll until the stats button exists — more reliable than a fixed timeout
@@ -163,7 +204,8 @@ export const AtlasTreeModule = () => {
       `);
 
       if (!result || (result as any).error) {
-        setStatsError((result as any)?.error ?? 'No stats found. Select some nodes in the atlas tree first.');
+        setStatsError((result as any)?.error
+          ?? 'No stats found. Select some nodes in the atlas tree first — if nodes ARE selected and this keeps happening, pathofpathing may have changed its layout; please report it.');
         setStatGroups([]);
         if (!autoApply) setStatsOpen(true);
         else {
@@ -222,14 +264,24 @@ export const AtlasTreeModule = () => {
         }
       }
     } catch (err: any) {
-      setStatsError('Could not read stats — try navigating the tree first.');
+      setStatsError('Could not read stats — try navigating the tree first. If this keeps happening, pathofpathing may have changed its layout; please report it.');
       if (!autoApply) setStatsOpen(true);
     }
   };
 
   const reload  = () => { setKey((k) => k + 1); setStatGroups([]); };
+
   const hasTree = capturedUrl !== BASE_URL && capturedUrl.includes('#');
   const urlShort = capturedUrl.replace('https://pathofpathing.com', '') || '/';
+
+  // Atlas-tree version flag (rollover §5.4 Tier 1). Compare the loaded tree's
+  // ?v= against the manifest's atlasTreeVersion — but ONLY when BOTH are known.
+  // Manifest '' = unobserved for this patch -> stay silent (no false 'outdated',
+  // matching the strategyCompat discipline). Lights up at 3.29 once the version
+  // is recorded in the manifest.
+  const treeVersion    = atlasVersionOf(capturedUrl);
+  const currentVersion = getManifest().atlasTreeVersion;
+  const versionMismatch = !!treeVersion && !!currentVersion && treeVersion !== currentVersion;
 
   // ── Import URL from text input ───────────────────────────────────────
   const loadImportUrl = () => {
@@ -286,54 +338,58 @@ export const AtlasTreeModule = () => {
       style={{ display: 'flex', flexDirection: 'column', position: 'relative' }}>
 
       {/* Toolbar */}
-      <Group px={8} py={4} gap="xs" style={{ flexShrink: 0, borderBottom: '1px solid #2a2b2e' }}>
+      <Group px={8} py={4} gap="xs" style={{ flexShrink: 0, borderBottom: `1px solid ${COLOR.bgHover}` }}>
         <Text size="xs" c="dimmed"
-          style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 10 }}>
+          style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: FONT.small }}>
           {urlShort.length > 60 ? urlShort.slice(0, 60) + '…' : urlShort}
         </Text>
         {hasTree && <Badge size="xs" color="green" variant="dot">Tree saved</Badge>}
+        {versionMismatch && (
+          <Tooltip label={`This tree was built for atlas version ${treeVersion}; current is ${currentVersion}. Node values may differ under the new patch.`} withArrow multiline w={230}>
+            <Badge size="xs" color="yellow" variant="light" style={{ cursor: 'help' }}>v{treeVersion}</Badge>
+          </Tooltip>
+        )}
         {statGroups.length > 0 && (
           <Tooltip label="Apply node stats to Atlas Calc (small nodes, Mounting Modifiers, fragments)">
-            <Button size="xs" variant="light" color="teal"
-              onClick={applyToAtlasCalc}
-              style={{ height: 18, fontSize: 9, padding: '0 5px' }}>
+            <Button size="compact-xs" variant="default"
+              onClick={applyToAtlasCalc}>
               Apply to Calc
             </Button>
           </Tooltip>
         )}
         <Tooltip label="Import tree from URL">
-          <ActionIcon size="xs" variant={showImport ? 'filled' : 'subtle'} color="orange"
+          <ActionIcon size="md" variant={showImport ? 'light' : 'subtle'} color="gray"
             onClick={() => setShowImport((v) => !v)}>
-            📎
+            <IconLink size={14} />
           </ActionIcon>
         </Tooltip>
         <Tooltip label="Read allocated node stats">
           {/* Wrap in arrow function so the click MouseEvent isn't passed as the
               `autoApply` parameter — that would always be truthy and silently
               put readStats into auto-apply mode on every manual click. */}
-          <ActionIcon size="xs" variant="subtle" color="blue" onClick={() => readStats()}>
-            <FaChartBar size={10} />
+          <ActionIcon size="md" variant="subtle" color="gray" onClick={() => readStats()}>
+            <IconChartBar size={14} />
           </ActionIcon>
         </Tooltip>
         <CopyButton value={capturedUrl}>
           {({ copied, copy }) => (
             <Tooltip label={copied ? 'Copied!' : 'Copy tree URL'}>
-              <ActionIcon size="xs" variant="subtle" color={copied ? 'teal' : 'gray'} onClick={copy}>
-                {copied ? <FaCheck size={10} /> : <FaCopy size={10} />}
+              <ActionIcon size="md" variant="subtle" color={copied ? 'teal' : 'gray'} onClick={copy}>
+                {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
               </ActionIcon>
             </Tooltip>
           )}
         </CopyButton>
-        <Tooltip label="Reload">
-          <ActionIcon size="xs" variant="subtle" color="gray" onClick={reload}>
-            <FaSync size={10} />
+        <Tooltip label="Reload (re-centers the tree)">
+          <ActionIcon size="md" variant="subtle" color="gray" onClick={reload}>
+            <IconRefresh size={14} />
           </ActionIcon>
         </Tooltip>
       </Group>
 
       {/* URL import row */}
       {showImport && (
-        <Group px={8} py={4} gap={4} style={{ flexShrink: 0, borderBottom: '1px solid #2a2b2e', background: 'rgba(255,147,43,0.05)' }}>
+        <Group px={8} py={4} gap={4} style={{ flexShrink: 0, borderBottom: `1px solid ${COLOR.bgHover}`, background: 'rgba(255,147,43,0.05)' }}>
           <TextInput
             size="xs" style={{ flex: 1 }}
             placeholder="Paste pathofpathing.com URL..."
@@ -353,18 +409,18 @@ export const AtlasTreeModule = () => {
       {statsOpen && (
         <div style={{
           position: 'absolute', top: showImport ? 65 : 33, left: 0, right: 0, zIndex: 10,
-          background: '#0d0e10', borderBottom: '1px solid #2a2b2e',
+          background: COLOR.bgDeep, borderBottom: `1px solid ${COLOR.bgHover}`,
           maxHeight: '65%', display: 'flex', flexDirection: 'column',
           overflow: 'hidden',
           boxShadow: '0 4px 20px rgba(0,0,0,0.8)',
         }}>
           <Group justify="space-between" px={8} pt={6} pb={4} style={{ flexShrink: 0 }}>
             <Text size="xs" fw={700} c="blue">Atlas Node Stats</Text>
-            <ActionIcon size="xs" variant="subtle" color="gray" onClick={() => setStatsOpen(false)}>×</ActionIcon>
+            <ActionIcon size="xs" variant="subtle" color="gray" onClick={() => setStatsOpen(false)}><IconX size={11} /></ActionIcon>
           </Group>
           {calcApplied && (
             <Text size="xs" c="teal" px={8} pb={4} style={{ flexShrink: 0 }}>
-              ✓ Applied to Calc: {calcApplied}
+              Applied to Calc: {calcApplied}
             </Text>
           )}
           {statsError && (
@@ -375,12 +431,11 @@ export const AtlasTreeModule = () => {
               <Stack gap={8} pb={8}>
                 {statGroups.map((group) => (
                   <Stack key={group.title} gap={3}>
-                    <Text size="xs" fw={700} c="dimmed"
-                      style={{ textTransform: 'uppercase', letterSpacing: 0.8, fontSize: 9 }}>
+                    <SectionLabel fw={700}>
                       {group.title}
-                    </Text>
+                    </SectionLabel>
                     {group.stats.map((stat, i) => (
-                      <Text key={i} size="xs" style={{ fontSize: 10, color: '#aaa', lineHeight: 1.3 }}>
+                      <Text key={i} size="xs" style={{ fontSize: FONT.small, color: COLOR.textDim, lineHeight: 1.3 }}>
                         {stat}
                       </Text>
                     ))}

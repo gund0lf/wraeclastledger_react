@@ -1,14 +1,27 @@
 /**
- * PoE1 challenge league / event management.
+ * PoE1 challenge league / event management — ACTIVE CONTEXT v1.
+ *
+ * (LEAGUE_ROLLOVER_PLAN Phase 1 step 1.) The old getCurrentLeague() is now a
+ * thin wrapper over getActiveContext(). v1 carries only the league name + how
+ * it was determined; gameDataRevision / atlasTreeVersion / mechanics arrive
+ * with the manifest (Phase 1 step 2).
+ *
+ * League resolution order:
+ *   1. MANUAL OVERRIDE (user-set dropdown; store top-level `leagueOverride`,
+ *      seeded into this module by the store on startup + on change). Bypasses
+ *      the probe entirely — this is also the escape hatch for the D5
+ *      interregnum problem (detection sticking on an ended event league).
+ *   2. DETECTION: probe poe.ninja over KNOWN_LEAGUES in order — first entry
+ *      with live data wins.
+ *   3. FALLBACK: CURRENT_LEAGUE, only when every probe fails (offline etc).
  *
  * To add a new league or event when it launches:
- *   1. Add its EXACT poe.ninja league string to the top of KNOWN_LEAGUES (newest first).
- *      That is usually all that is needed — detection then auto-selects it.
+ *   1. Add its EXACT poe.ninja league string to the top of KNOWN_LEAGUES
+ *      (newest first). That is usually all that is needed.
  *   2. Only touch CURRENT_LEAGUE if you want to change the total-failure fallback.
  *
- * League detection probes poe.ninja in order — first hit with live data wins.
- * Standard is NOT a member here (this app does not track Standard); CURRENT_LEAGUE
- * is the fallback if no known league returns live data.
+ * Standard is NOT a member here (this app does not track Standard); it is also
+ * filtered out of the override dropdown (locked decision, LEAGUE_ROLLOVER_PLAN).
  */
 
 // ─── Update this each new league ─────────────────────────────────────────────
@@ -30,39 +43,117 @@ export const KNOWN_LEAGUES: string[] = [
 ];
 // ─────────────────────────────────────────────────────────────────────────────
 
-let cachedLeague: string | null = null;
-let cachedFetchPromise: Promise<string> | null = null;
+export type LeagueSource = 'override' | 'detected' | 'fallback';
 
-async function detect(): Promise<string> {
+/** Active context v1 — grows revision/atlasTreeVersion/mechanics with the manifest. */
+export interface ActiveContext {
+  leagueName: string;
+  source: LeagueSource;
+}
+
+// ─── Manual override ─────────────────────────────────────────────────────────
+// Module-level so this util stays store-agnostic (main consumers unchanged).
+// OWNED by useSessionStore (persisted top-level `leagueOverride`); the store
+// seeds this value right after creation and on every setLeagueOverride().
+// Do not set it from anywhere else.
+let leagueOverride: string | null = null;
+
+export function setLeagueOverrideValue(v: string | null): void {
+  const next = v && v.trim() ? v.trim() : null;
+  if (next === leagueOverride) return;
+  leagueOverride = next;
+  // Any cached detection result is now the wrong answer (in BOTH directions:
+  // setting an override, and clearing one back to auto-detect).
+  clearLeagueCache();
+}
+
+// ─── Detection ───────────────────────────────────────────────────────────────
+let cachedContext: ActiveContext | null = null;
+let cachedFetchPromise: Promise<ActiveContext> | null = null;
+
+async function detect(): Promise<ActiveContext> {
   // poe.ninja is fetched via the main process (window.api.fetchCurrencyOverview),
   // not the renderer, to avoid CORS: poe.ninja sends no Access-Control-Allow-Origin
   // header, so a renderer-origin fetch (localhost in dev) is blocked by the browser.
-  // The per-request timeout now lives in the main-process handler.
+  // The per-request timeout lives in the main-process handler.
   for (const name of KNOWN_LEAGUES) {
     try {
       const res = await window.api?.fetchCurrencyOverview(name);
       if (res?.lines && res.lines.length > 5) {
         console.log('[League] Detected via probe:', name);
-        return name;
+        return { leagueName: name, source: 'detected' };
       }
     } catch { /* network error: fall through to the next league */ }
   }
   console.warn('[League] Could not detect, falling back to:', CURRENT_LEAGUE);
-  return CURRENT_LEAGUE;
+  return { leagueName: CURRENT_LEAGUE, source: 'fallback' };
 }
 
-export async function getCurrentLeague(): Promise<string> {
-  if (cachedLeague) return cachedLeague;
+export async function getActiveContext(): Promise<ActiveContext> {
+  // Override wins outright — no probe, no cache involvement.
+  if (leagueOverride) return { leagueName: leagueOverride, source: 'override' };
+  if (cachedContext) return cachedContext;
   if (cachedFetchPromise) return cachedFetchPromise;
-  cachedFetchPromise = detect().then((league) => {
-    cachedLeague = league;
+  cachedFetchPromise = detect().then((ctx) => {
+    cachedContext = ctx;
     cachedFetchPromise = null;
-    return league;
+    return ctx;
   });
   return cachedFetchPromise;
 }
 
+/** Back-compat wrapper — every existing consumer keeps working unchanged. */
+export async function getCurrentLeague(): Promise<string> {
+  return (await getActiveContext()).leagueName;
+}
+
 export function clearLeagueCache(): void {
-  cachedLeague = null;
+  cachedContext = null;
   cachedFetchPromise = null;
+}
+
+// ─── Override dropdown data ──────────────────────────────────────────────────
+
+/**
+ * Pure filter over the poe.ninja index-state league list (exported for tests).
+ * Drops Hardcore/SSF/Ruthless variants and Standard (never trackable — locked
+ * decision), dedupes, and unions in KNOWN_LEAGUES so the curated entries are
+ * always offerable even if the index omits or renames them.
+ */
+export function filterLeagueIndex(names: string[]): string[] {
+  const out: string[] = [];
+  for (const raw of names) {
+    const n = (raw ?? '').trim();
+    if (!n) continue;
+    if (/hardcore|ssf|solo self-found|ruthless/i.test(n)) continue;
+    if (/^standard$/i.test(n)) continue;
+    if (!out.includes(n)) out.push(n);
+  }
+  for (const k of KNOWN_LEAGUES) {
+    if (!out.includes(k)) out.push(k);
+  }
+  return out;
+}
+
+/**
+ * Leagues offered in the manual-override dropdown. Sourced from poe.ninja's
+ * index-state endpoint (EXTERNAL_APIS.md poe.ninja §C) via the main process;
+ * falls back to KNOWN_LEAGUES with a LOUD console.warn if the endpoint is
+ * unreachable or its (unverified — see rollover plan) shape yields nothing.
+ */
+export async function fetchSelectableLeagues(): Promise<string[]> {
+  try {
+    const res = await window.api?.fetchLeagueIndex?.();
+    if (res?.leagues && res.leagues.length > 0) {
+      const filtered = filterLeagueIndex(res.leagues);
+      if (filtered.length > 0) return filtered;
+    }
+    console.warn(
+      '[League] index-state unavailable or empty (' + (res?.error ?? 'no data') +
+      ') — override dropdown falling back to KNOWN_LEAGUES'
+    );
+  } catch (err) {
+    console.warn('[League] index-state fetch failed — override dropdown falling back to KNOWN_LEAGUES', err);
+  }
+  return [...KNOWN_LEAGUES];
 }

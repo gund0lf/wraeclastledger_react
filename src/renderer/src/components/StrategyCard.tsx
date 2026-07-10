@@ -1,27 +1,26 @@
 import {
   Text, Group, Stack, Badge, ActionIcon, Tooltip, Button,
-  CopyButton, Collapse, SimpleGrid,
+  Collapse, SimpleGrid,
 } from '@mantine/core';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
-  FaChevronDown, FaChevronRight, FaCopy, FaCheck,
-  FaThumbsUp, FaThumbsDown, FaExternalLinkAlt,
-} from 'react-icons/fa';
-import { Strategy, TAG_COLORS, MAP_TYPE_TAGS, MAP_TYPE_LABELS, TAG_SHORT } from '../utils/strategyConstants';
-import { fc, f1 } from '../utils/parseDiscordExport';
+  IconChevronDown, IconChevronRight,
+  IconThumbUp, IconThumbDown, IconExternalLink, IconUsers, IconAlertTriangle,
+} from '@tabler/icons-react';
+import { Strategy, TAG_COLORS, MAP_TYPE_TAGS, MAP_TYPE_LABELS, TAG_SHORT, BROWSER_COLS, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X } from '../utils/strategyConstants';
+import { formatActiveTime } from '../utils/timeEstimate';
+import { checkStrategyCompat } from '../utils/strategyCompat';
+import { fc, fcSep, f1, parseDiscordExport } from '../utils/parseDiscordExport';
+import { chiselItemName, deliOrbItemName } from '../utils/itemIcons';
+import { PoeItemIcon } from './ui/PoeItemIcon';
+import { SectionLabel } from './ui/SectionLabel';
+import { StatTile } from './ui/StatTile';
+import { RegexLine } from './ui/RegexLine';
+import { COLOR, FONT } from '../utils/uiTokens'
 
 // ─── CopyRegex ────────────────────────────────────────────────────────────────
 
-export const CopyRegex = ({ value, label }: { value: string; label: string }) => (
-  <CopyButton value={value} timeout={2000}>
-    {({ copied, copy }) => (
-      <ActionIcon size="xs" variant={copied ? 'filled' : 'subtle'} color={copied ? 'teal' : 'gray'} onClick={copy}
-        title={copied ? 'Copied!' : `Copy ${label} regex`}>
-        {copied ? <FaCheck size={8} /> : <FaCopy size={8} />}
-      </ActionIcon>
-    )}
-  </CopyButton>
-);
+export { CopyRegex } from './ui/RegexLine'; // moved to ui/RegexLine (WP6.4); re-exported for compatibility
 
 // ─── TagStrip ─────────────────────────────────────────────────────────────────
 
@@ -37,13 +36,13 @@ export const TagStrip = ({ tagStr, maxVisible = 3 }: { tagStr?: string | null; m
         MAP_TYPE_TAGS.has(t) ? (
           <Tooltip key={t} label={MAP_TYPE_LABELS[t] ?? t} withArrow>
             <Badge size="xs" color={TAG_COLORS[t] ?? 'gray'} variant="light"
-              style={{ fontSize: 8, padding: '0 3px', flexShrink: 0, cursor: 'help' }}>
+              style={{ fontSize: FONT.tiny, padding: '0 3px', flexShrink: 0, cursor: 'help' }}>
               {TAG_SHORT[t] ?? t}
             </Badge>
           </Tooltip>
         ) : (
           <Badge key={t} size="xs" color={TAG_COLORS[t] ?? 'gray'} variant="light"
-            style={{ fontSize: 8, padding: '0 3px', flexShrink: 0 }}>
+            style={{ fontSize: FONT.tiny, padding: '0 3px', flexShrink: 0 }}>
             {TAG_SHORT[t] ?? t}
           </Badge>
         )
@@ -51,7 +50,7 @@ export const TagStrip = ({ tagStr, maxVisible = 3 }: { tagStr?: string | null; m
       {hidden.length > 0 && (
         <Tooltip label={hidden.join(', ')} withArrow>
           <Badge size="xs" color="gray" variant="outline"
-            style={{ fontSize: 8, padding: '0 3px', flexShrink: 0, cursor: 'default' }}>
+            style={{ fontSize: FONT.tiny, padding: '0 3px', flexShrink: 0, cursor: 'default' }}>
             +{hidden.length}
           </Badge>
         </Tooltip>
@@ -66,110 +65,186 @@ export const StrategyCard = ({ strategy, onLoadBuild, showDate, discordTag }: {
   strategy: Strategy; onLoadBuild: (s: Strategy) => void; showDate: boolean; discordTag?: string;
 }) => {
   const [open, setOpen] = useState(false);
+  // Author's atlas multiplier at share time (from the export). Only parsed
+  // when the card is expanded at least once — the raw_export parse is cheap
+  // but there's no reason to run it for collapsed rows.
+  const authorMult = useMemo(() => {
+    if (!open || !strategy.raw_export) return null;
+    const m = parseDiscordExport(strategy.raw_export)?.multiplier;
+    return m && m > 0 ? m : null;
+  }, [open, strategy.raw_export]);
   const isOwn = !!(discordTag?.trim() && strategy.discord_username?.toLowerCase() === discordTag.trim().toLowerCase());
   const date = (() => { try { return new Date(strategy.posted_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }); } catch { return '—'; } })();
   const div = strategy.div_per_map ??
     (strategy.net_profit != null && strategy.divine_price != null && strategy.divine_price > 0 && strategy.map_count != null && strategy.map_count > 0
       ? strategy.net_profit / strategy.divine_price / strategy.map_count
       : null);
-  const divColor    = div != null ? (div >= 8 ? '#51cf66' : div >= 4 ? '#74c0fc' : div >= 1 ? '#ffd43b' : '#868e96') : '#868e96';
+  // ALL-IN cost per map, derived from stored totals so EVERY strategy — old
+  // recurring-only exports included — displays the same definition as the
+  // in-app Investment badge (total_invest / maps). Falls back to the parsed
+  // per_map_cost only for rows missing totals. Decision 2026-07-02.
+  const costPerMap = strategy.total_invest != null && strategy.map_count != null && strategy.map_count > 0
+    ? strategy.total_invest / strategy.map_count
+    : strategy.per_map_cost ?? null;
+  const divColor    = div != null ? (div >= 8 ? COLOR.profit : div >= 4 ? COLOR.accent : div >= 1 ? COLOR.warning : COLOR.textFaint) : COLOR.textFaint;
   const score       = strategy.score ?? 0;
-  const scoreColor  = score > 0 ? '#51cf66' : score < 0 ? '#ff6b6b' : '#555';
-  const profitColor = strategy.net_profit != null ? (strategy.net_profit >= 0 ? '#51cf66' : '#ff6b6b') : '#555';
+  const scoreColor  = score > 0 ? COLOR.profit : score < 0 ? COLOR.loss : COLOR.dim;
+  const profitColor = strategy.net_profit != null ? (strategy.net_profit >= 0 ? COLOR.profit : COLOR.loss) : COLOR.dim;
 
   const isGroup = strategy.is_group_play ||
     (strategy.raw_export ? /Party Play:\s*Yes/i.test(strategy.raw_export) : false);
+
+  // Compatibility vs the current game-data manifest (rollover step 4). Cheap;
+  // resolves to 'ok' for every strategy until 3.29 lands renames/removals.
+  const compat = checkStrategyCompat(strategy);
+  const compatColor = compat.level === 'removed' ? 'red' : 'yellow';
+  const compatTip = compat.issues.map((i) => i.detail).join('\n');
 
   return (
     <div style={{
       background: isOwn ? 'rgba(74,158,255,0.03)' : score <= -3 ? 'rgba(255,107,107,0.04)' : 'rgba(255,255,255,0.025)',
       border: `1px solid ${score <= -3 ? 'rgba(255,107,107,0.2)' : 'rgba(255,255,255,0.07)'}`,
       borderRadius: 8, overflow: 'hidden',
-      borderLeft: isOwn ? '3px solid rgba(74,158,255,0.55)' : undefined,
+      // Fixed-width marker slot: ALWAYS 3px so rows align whether or not the
+      // own-strategy marker is showing (density-pass rider, 2026-07-08).
+      borderLeft: isOwn ? '3px solid rgba(74,158,255,0.55)' : '3px solid transparent',
     }}>
-      <Group gap={6} wrap="nowrap" onClick={() => setOpen((o) => !o)}
-        style={{ cursor: 'pointer', padding: '7px 10px', userSelect: 'none' }}>
-        <ActionIcon size={22} variant="transparent" c="dimmed" style={{ flexShrink: 0 }}>
-          {open ? <FaChevronDown size={8} /> : <FaChevronRight size={8} />}
+      <Group gap={BROWSER_ROW_GAP} wrap="nowrap" onClick={() => setOpen((o) => !o)}
+        style={{ cursor: 'pointer', padding: `7px ${BROWSER_ROW_PAD_X}px`, userSelect: 'none' }}>
+        <ActionIcon size={BROWSER_COLS.chevron} variant="transparent" c="dimmed" style={{ flexShrink: 0 }}>
+          {open ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
         </ActionIcon>
-        <Stack gap={0} style={{ width: 88, flexShrink: 0, paddingLeft: 4 }}>
+        <Stack gap={0} style={{ width: BROWSER_COLS.author, flexShrink: 0, paddingLeft: 4 }}>
           <Group gap={3} wrap="nowrap">
             <Text size="xs" fw={600} lineClamp={1}>{strategy.discord_username}</Text>
             {isGroup && (
-              <Tooltip label="Group / Party play — loot scales with more players" withArrow>
-                <Badge size="xs" color="cyan" variant="light" style={{ fontSize: 7, padding: '0 3px', flexShrink: 0, cursor: 'help' }}>👥</Badge>
+              <Tooltip label={`Group / Party play${strategy.group_size ? ` — ${strategy.group_size} players` : ''} — loot scales with more players`} withArrow>
+                <Badge size="xs" color="cyan" variant="light" style={{ fontSize: FONT.micro, padding: '0 3px', flexShrink: 0, cursor: 'help' }}>
+                  <IconUsers size={8} style={{ display: 'block' }} />
+                </Badge>
+              </Tooltip>
+            )}
+            {compat.level !== 'ok' && (
+              <Tooltip label={compatTip} withArrow multiline w={240} style={{ whiteSpace: 'pre-line' }}>
+                <Badge size="xs" color={compatColor} variant="light" style={{ fontSize: FONT.micro, padding: '0 3px', flexShrink: 0, cursor: 'help' }}>
+                  <IconAlertTriangle size={8} style={{ display: 'block' }} />
+                </Badge>
               </Tooltip>
             )}
           </Group>
           {strategy.strategy_name && (
-            <Text size="xs" c="dimmed" lineClamp={1} style={{ fontSize: 9 }}>{strategy.strategy_name}</Text>
+            <Text size="xs" c="dimmed" lineClamp={1} style={{ fontSize: FONT.label }}>{strategy.strategy_name}</Text>
           )}
         </Stack>
-        <div style={{ width: 140, flexShrink: 0, overflow: 'hidden' }}>
+        <div style={{ width: BROWSER_COLS.tags, flexShrink: 0, overflow: 'hidden' }}>
           <TagStrip tagStr={strategy.type_tag} maxVisible={3} />
         </div>
-        <Text size="xs" c="dimmed" style={{ width: 40, flexShrink: 0, fontSize: 10 }}>{strategy.map_type ?? '?'}</Text>
-        <Text size="xs" c="dimmed" style={{ width: 26, flexShrink: 0 }}>{strategy.map_count != null ? strategy.map_count : '—'}</Text>
-        <Text size="xs" c="dimmed" style={{ width: 58, flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-          {strategy.per_map_cost != null ? `${Math.round(strategy.per_map_cost)}c` : '—'}
+        <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.mod, flexShrink: 0, fontSize: FONT.small }}>{strategy.map_type ?? '?'}</Text>
+        <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.maps, flexShrink: 0 }}>{strategy.map_count != null ? strategy.map_count : '—'}</Text>
+        <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.cost, flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+          {costPerMap != null ? fcSep(costPerMap) : '—'}
         </Text>
-        <Text size="xs" c="dimmed" style={{ width: 96, flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+        <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.invest, flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {fc(strategy.total_invest)}
           {strategy.total_invest != null && strategy.divine_price != null && strategy.divine_price > 0 && (
-            <Text span style={{ color: '#555', fontSize: 9 }}> ({(strategy.total_invest / strategy.divine_price).toFixed(1)}d)</Text>
+            <Text span style={{ color: COLOR.dim, fontSize: FONT.label }}> ({(strategy.total_invest / strategy.divine_price).toFixed(1)}d)</Text>
           )}
         </Text>
-        <Text size="xs" fw={600} style={{ width: 100, flexShrink: 0, fontVariantNumeric: 'tabular-nums', color: profitColor, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+        <Text size="xs" fw={600} style={{ width: BROWSER_COLS.profit, flexShrink: 0, fontVariantNumeric: 'tabular-nums', color: profitColor, whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {fc(strategy.net_profit, true)}
           {strategy.net_profit != null && strategy.divine_price != null && strategy.divine_price > 0 && (
-            <Text span style={{ color: '#555', fontSize: 9 }}> ({strategy.net_profit >= 0 ? '+' : ''}{(strategy.net_profit / strategy.divine_price).toFixed(1)}d)</Text>
+            <Text span style={{ color: COLOR.dim, fontSize: FONT.label }}> ({strategy.net_profit >= 0 ? '+' : ''}{(strategy.net_profit / strategy.divine_price).toFixed(1)}d)</Text>
           )}
         </Text>
-        <Group gap={2} style={{ width: 36, flexShrink: 0 }} align="center">
-          {score >= 0 ? <FaThumbsUp size={8} style={{ color: scoreColor }} /> : <FaThumbsDown size={8} style={{ color: scoreColor }} />}
+        <Group gap={2} style={{ width: BROWSER_COLS.score, flexShrink: 0 }} align="center">
+          {score >= 0 ? <IconThumbUp size={10} style={{ color: scoreColor }} /> : <IconThumbDown size={10} style={{ color: scoreColor }} />}
           <Text size="xs" style={{ color: scoreColor, fontVariantNumeric: 'tabular-nums' }}>{score > 0 ? `+${score}` : score}</Text>
         </Group>
         <Text size="sm" fw={800} style={{ flex: 1, textAlign: 'right', color: divColor, fontVariantNumeric: 'tabular-nums' }}>
           {div != null ? `${div.toFixed(3)}d` : '—'}
         </Text>
         {showDate && (
-          <Text size="xs" c="dimmed" style={{ width: 36, textAlign: 'right', flexShrink: 0, paddingLeft: 4 }}>{date}</Text>
+          <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.date, textAlign: 'right', flexShrink: 0, paddingLeft: 4 }}>{date}</Text>
         )}
       </Group>
 
       <Collapse in={open}>
         <div style={{ padding: '8px 12px 12px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-          <SimpleGrid cols={3} spacing={6} mb={10}>
-            {strategy.avg_quant    != null && <Stack gap={0}><Text style={{ fontSize: 9, color: '#555', textTransform: 'uppercase', letterSpacing: 0.8 }}>Quantity</Text><Text size="sm" fw={700} c="#74c0fc">{f1(strategy.avg_quant)}%</Text></Stack>}
-            {strategy.avg_rarity   != null && <Stack gap={0}><Text style={{ fontSize: 9, color: '#555', textTransform: 'uppercase', letterSpacing: 0.8 }}>Rarity</Text><Text size="sm" fw={700} c="#74c0fc">{f1(strategy.avg_rarity)}%</Text></Stack>}
-            {strategy.avg_pack     != null && <Stack gap={0}><Text style={{ fontSize: 9, color: '#555', textTransform: 'uppercase', letterSpacing: 0.8 }}>Pack</Text><Text size="sm" fw={700} c="#74c0fc">{f1(strategy.avg_pack)}%</Text></Stack>}
-            {strategy.avg_currency != null && <Stack gap={0}><Text style={{ fontSize: 9, color: '#555', textTransform: 'uppercase', letterSpacing: 0.8 }}>Currency</Text><Text size="sm" fw={700} c="#ffd43b">{f1(strategy.avg_currency)}%</Text></Stack>}
-            {strategy.per_map_cost != null && <Stack gap={0}><Text style={{ fontSize: 9, color: '#555', textTransform: 'uppercase', letterSpacing: 0.8 }}>Cost/map</Text><Text size="sm" fw={700}>{f1(strategy.per_map_cost)}c</Text></Stack>}
-            {strategy.net_profit   != null && <Stack gap={0}><Text style={{ fontSize: 9, color: '#555', textTransform: 'uppercase', letterSpacing: 0.8 }}>Net Profit</Text><Text size="sm" fw={700} c={strategy.net_profit >= 0 ? '#51cf66' : '#ff6b6b'}>{strategy.net_profit >= 0 ? '+' : ''}{strategy.net_profit.toFixed(0)}c{strategy.divine_price ? ` (${strategy.net_profit >= 0 ? '+' : ''}${(strategy.net_profit / strategy.divine_price).toFixed(1)}d)` : ''}</Text></Stack>}
+          {/* session-16: boxed StatTiles — same treatment as the Dashboard's
+              Map Multipliers grid (the free-floating look was the complaint) */}
+          <SimpleGrid cols={3} spacing={5} mb={10}>
+            {strategy.avg_quant    != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Quantity" value={`${f1(strategy.avg_quant)}%`} color={COLOR.accent} />}
+            {strategy.avg_rarity   != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Rarity" value={`${f1(strategy.avg_rarity)}%`} color={COLOR.accent} />}
+            {strategy.avg_pack     != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Pack" value={`${f1(strategy.avg_pack)}%`} color={COLOR.accent} />}
+            {strategy.avg_currency != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Currency" value={`${f1(strategy.avg_currency)}%`} color={COLOR.warning} />}
+            {costPerMap != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Cost/map" value={`${f1(costPerMap)}c`} />}
+            {authorMult != null && (
+              <Tooltip withArrow multiline w={260}
+                label="The author's atlas multiplier when they shared. All stat tiles here are base (unprojected) map averages — the regexes are built from them. Load the build and the Dashboard projects YOUR maps with YOUR atlas config.">
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Author Mult." value={`${authorMult.toFixed(3)}×`} color={COLOR.accentStrong} />
+                </div>
+              </Tooltip>
+            )}
+            {strategy.net_profit   != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Net Profit" value={`${fcSep(strategy.net_profit, true)}${strategy.divine_price ? ` (${strategy.net_profit >= 0 ? '+' : ''}${(strategy.net_profit / strategy.divine_price).toFixed(1)}d)` : ''}`} color={strategy.net_profit >= 0 ? COLOR.profit : COLOR.loss} />}
           </SimpleGrid>
 
           {(strategy.divine_price != null || strategy.total_invest != null) && (
             <Group gap="md" mb={8}>
-              {strategy.divine_price != null && <Group gap={4}><Text style={{ fontSize: 9, color: '#555', textTransform: 'uppercase', letterSpacing: 0.8 }}>Divine at time</Text><Text size="xs" c="dimmed">{strategy.divine_price.toFixed(0)}c</Text></Group>}
-              {strategy.total_invest != null && <Group gap={4}><Text style={{ fontSize: 9, color: '#555', textTransform: 'uppercase', letterSpacing: 0.8 }}>Total invest</Text><Text size="xs" c="dimmed">{strategy.total_invest.toFixed(0)}c{strategy.divine_price ? ` (${(strategy.total_invest / strategy.divine_price).toFixed(1)}d)` : ''}</Text></Group>}
+              {strategy.divine_price != null && <Group gap={4}><SectionLabel>Divine at time</SectionLabel><Text size="xs" c="dimmed">{strategy.divine_price.toFixed(0)}c</Text></Group>}
+              {strategy.total_invest != null && <Group gap={4}><SectionLabel>Total invest</SectionLabel><Text size="xs" c="dimmed">{fcSep(strategy.total_invest)}{strategy.divine_price ? ` (${(strategy.total_invest / strategy.divine_price).toFixed(1)}d)` : ''}</Text></Group>}
             </Group>
           )}
 
           {(() => {
-            if (!strategy.per_map_cost) return null;
+            // Optional author-declared session context (shared-metadata batch
+            // 2026-07): time (+ derived div/h) and atlas points. Absent fields
+            // simply do not render — no placeholder, no penalty.
+            const mins = strategy.session_minutes;
+            const pts  = strategy.atlas_points;
+            const ptsMax = strategy.atlas_points_max;
+            if (!mins && pts == null) return null;
+            const divPerHour = mins && div != null && strategy.map_count
+              ? (div * strategy.map_count) / (mins / 60)
+              : null;
+            return (
+              <Group gap="md" mb={6} wrap="wrap">
+                {mins ? (
+                  <Tooltip label="Self-reported by the author — optional context, never a ranking input (div/map stays the primary metric)" withArrow multiline w={230}>
+                    <Group gap={4} wrap="nowrap" style={{ cursor: 'help' }}>
+                      <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>Time</Text>
+                      <Text size="xs">{formatActiveTime(mins * 60_000)}{divPerHour != null ? ` · ${divPerHour.toFixed(2)} div/h` : ''}</Text>
+                    </Group>
+                  </Tooltip>
+                ) : null}
+                {pts != null && ptsMax != null && (
+                  <Group gap={4} wrap="nowrap">
+                    <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>Atlas points</Text>
+                    <Text size="xs">{pts}/{ptsMax}</Text>
+                  </Group>
+                )}
+              </Group>
+            );
+          })()}
+
+          {(() => {
+            // Breakdown of the ALL-IN per-map figure. The remainder after
+            // scarabs + chisel includes the base map AND amortized session
+            // costs / one-time scarabs — labeled honestly as one bucket.
+            if (costPerMap == null || costPerMap <= 0) return null;
             const scarabTotal = (strategy.scarabs ?? []).reduce((a, s) => a + (s.cost ?? 0), 0);
-            const chiselM = strategy.raw_export?.match(/Chisel:\s*[^(]+\((\d+)c\s*each\)/i);
-            const chiselCost = chiselM ? parseInt(chiselM[1]) : 0;
-            const baseImplied = Math.round(strategy.per_map_cost - scarabTotal - chiselCost);
+            const chiselM = strategy.raw_export?.match(/Chisel:\s*[^(]+\((\d+(?:\.\d+)?)c(?:\s*each)?\)/i);
+            const chiselCost = chiselM ? parseFloat(chiselM[1]) : 0;
+            const baseImplied = Math.round(costPerMap - scarabTotal - chiselCost);
             if (scarabTotal === 0 && chiselCost === 0) return null; // nothing to break down
             return (
               <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 4, padding: '5px 8px', marginBottom: 8 }}>
-                <Text size="xs" c="dimmed" mb={3} style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.8 }}>Cost breakdown / map</Text>
+                <SectionLabel mb={3}>Cost breakdown / map</SectionLabel>
                 <Group gap="md" wrap="wrap">
-                  {baseImplied > 0 && <Group gap={3}><Text size="xs" c="dimmed" style={{ fontSize: 10 }}>Base map</Text><Text size="xs">{baseImplied}c</Text></Group>}
-                  {chiselCost > 0 && <Group gap={3}><Text size="xs" c="dimmed" style={{ fontSize: 10 }}>Chisel</Text><Text size="xs">{chiselCost}c</Text></Group>}
-                  {scarabTotal > 0 && <Group gap={3}><Text size="xs" c="dimmed" style={{ fontSize: 10 }}>Scarabs</Text><Text size="xs">{scarabTotal.toFixed(0)}c</Text></Group>}
-                  <Group gap={3}><Text size="xs" c="dimmed" style={{ fontSize: 10 }}>= Total</Text><Text size="xs" fw={600}>{Math.round(strategy.per_map_cost)}c</Text></Group>
+                  {baseImplied > 0 && <Group gap={3}><Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>Base + session</Text><Text size="xs">{fcSep(baseImplied)}</Text></Group>}
+                  {chiselCost > 0 && <Group gap={3}><Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>Chisel</Text><Text size="xs">{chiselCost}c</Text></Group>}
+                  {scarabTotal > 0 && <Group gap={3}><Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>Scarabs</Text><Text size="xs">{fcSep(scarabTotal)}</Text></Group>}
+                  <Group gap={3}><Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>= All-in</Text><Text size="xs" fw={600}>{fcSep(costPerMap)}</Text></Group>
                 </Group>
               </div>
             );
@@ -183,13 +258,15 @@ export const StrategyCard = ({ strategy, onLoadBuild, showDate, discordTag }: {
             return (
               <Group gap={4} mb={6} wrap="wrap">
                 {deliM && (
-                  <Badge size="xs" color="grape" variant="light">
-                    🌫 {deliM[1]}x {deliM[2].replace(/[^\x00-\x7F]/g, '')} ({parseInt(deliM[1]) * 20}% delirious)
+                  <Badge size="sm" color="grape" variant="light"
+                    leftSection={<PoeItemIcon name={deliOrbItemName(deliM[2].replace(/[^\x00-\x7F]/g, '').replace(/'s$/i, ''))} size={16} />}>
+                    {deliM[1]}x {deliM[2].replace(/[^\x00-\x7F]/g, '')} ({parseInt(deliM[1]) * 20}% delirious)
                   </Badge>
                 )}
                 {astM && (
-                  <Badge size="xs" color="teal" variant="light">
-                    🌍 {astM[1].replace(/[^\x00-\x7F]/g, '').trim()}
+                  <Badge size="sm" color="teal" variant="light"
+                    leftSection={<PoeItemIcon name={astM[1].replace(/[^\x00-\x7F]/g, '').trim()} size={16} />}>
+                    {astM[1].replace(/[^\x00-\x7F]/g, '').trim()}
                   </Badge>
                 )}
               </Group>
@@ -197,33 +274,51 @@ export const StrategyCard = ({ strategy, onLoadBuild, showDate, discordTag }: {
           })()}
 
           {strategy.chisel && strategy.chisel !== 'None' && (
-            <Group gap={4} mb={6}><Badge size="xs" color="yellow" variant="light">🪨 {strategy.chisel}</Badge></Group>
+            <Group gap={4} mb={6}>
+              <Badge size="sm" color="yellow" variant="light"
+                leftSection={<PoeItemIcon name={chiselItemName(strategy.chisel)} size={16} />}>
+                {strategy.chisel}
+              </Badge>
+            </Group>
           )}
 
           {strategy.type_tag && (
             <Group gap={4} mb={6} wrap="wrap">
               {strategy.type_tag.split(',').map((t) => t.trim()).filter(Boolean).map((t) => (
-                <Badge key={t} size="xs" color={TAG_COLORS[t] ?? 'gray'} variant="light">{t}</Badge>
+                <Badge key={t} size="sm" color={TAG_COLORS[t] ?? 'gray'} variant="light">{t}</Badge>
               ))}
             </Group>
           )}
 
           {strategy.strategy_notes && (
             <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '6px 8px', marginBottom: 8, borderLeft: '2px solid rgba(255,255,255,0.15)' }}>
-              <Text size="xs" c="dimmed" style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 2 }}>Notes</Text>
-              <Text size="xs" style={{ color: '#aaa', lineHeight: 1.5 }}>{strategy.strategy_notes}</Text>
+              <SectionLabel style={{ marginBottom: 2 }}>Notes</SectionLabel>
+              <Text size="xs" style={{ color: COLOR.textDim, lineHeight: 1.5 }}>{strategy.strategy_notes}</Text>
             </div>
           )}
 
           {strategy.scarabs && strategy.scarabs.length > 0 && (
             <Stack gap={2} mb={8}>
-              <Text style={{ fontSize: 9, color: '#555', textTransform: 'uppercase', letterSpacing: 0.8 }}>Scarabs</Text>
+              <SectionLabel>Scarabs</SectionLabel>
               <Group gap={4} wrap="wrap">
-                {strategy.scarabs.map((s, i) => (
-                  <Badge key={i} size="xs" color={TAG_COLORS[strategy.type_tag ?? ''] ?? 'orange'} variant="light">
-                    {s.name}{s.cost > 0 ? ` · ${s.cost}c` : ''}
-                  </Badge>
-                ))}
+                {strategy.scarabs.map((s, i) => {
+                  // Per-scarab compat cue (step 4). Match the precomputed issue
+                  // by stored name so we don't resolve twice.
+                  const issue = compat.issues.find((c) => c.kind === 'scarab' && c.storedName === s.name.trim());
+                  const removed = issue?.level === 'removed';
+                  const changed = issue?.level === 'changed';
+                  return (
+                    <Tooltip key={i} label={issue?.detail ?? ''} withArrow disabled={!issue}>
+                      <Badge size="sm"
+                        color={removed ? 'red' : changed ? 'yellow' : (TAG_COLORS[strategy.type_tag ?? ''] ?? 'orange')}
+                        variant="light"
+                        leftSection={<PoeItemIcon name={s.name} size={16} />}
+                        style={removed ? { textDecoration: 'line-through', opacity: 0.7 } : undefined}>
+                        {s.name}{s.cost > 0 ? ` · ${s.cost}c` : ''}
+                      </Badge>
+                    </Tooltip>
+                  );
+                })}
               </Group>
             </Stack>
           )}
@@ -241,8 +336,8 @@ export const StrategyCard = ({ strategy, onLoadBuild, showDate, discordTag }: {
               <Stack gap={4} mb={8}>
                 {drops.length > 0 && (
                   <div style={{ background: 'rgba(255,107,107,0.04)', borderRadius: 4, padding: '6px 8px', borderLeft: '2px solid rgba(255,107,107,0.3)' }}>
-                    <Text size="xs" c="dimmed" mb={2} style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.8 }}>Excluded drops ({drops.length})</Text>
-                    <Text size="xs" style={{ color: '#aaa', lineHeight: 1.5 }}>{drops.map((d) => `${d.name} (${d.value.toFixed(0)}c)`).join(', ')}</Text>
+                    <SectionLabel mb={2}>Excluded drops ({drops.length})</SectionLabel>
+                    <Text size="xs" style={{ color: COLOR.textDim, lineHeight: 1.5 }}>{drops.map((d) => `${d.name} (${d.value.toFixed(0)}c)`).join(', ')}</Text>
                   </div>
                 )}
                 {gemM && (
@@ -258,21 +353,9 @@ export const StrategyCard = ({ strategy, onLoadBuild, showDate, discordTag }: {
 
           {(strategy.run_regex || strategy.slam_regex) && (
             <Stack gap={4} mb={8} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 4, padding: '6px 8px' }}>
-              <Text style={{ fontSize: 9, color: '#555', textTransform: 'uppercase', letterSpacing: 0.8 }}>Regex</Text>
-              {strategy.run_regex && (
-                <Group gap={4} wrap="nowrap" align="flex-start">
-                  <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>🟢</Text>
-                  <Text size="xs" c="teal" style={{ fontFamily: 'monospace', fontSize: 10, wordBreak: 'break-all', flex: 1 }}>{strategy.run_regex}</Text>
-                  <CopyRegex value={strategy.run_regex} label="run" />
-                </Group>
-              )}
-              {strategy.slam_regex && (
-                <Group gap={4} wrap="nowrap" align="flex-start">
-                  <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>🟠</Text>
-                  <Text size="xs" c="orange" style={{ fontFamily: 'monospace', fontSize: 10, wordBreak: 'break-all', flex: 1 }}>{strategy.slam_regex}</Text>
-                  <CopyRegex value={strategy.slam_regex} label="slam" />
-                </Group>
-              )}
+              <SectionLabel>Regex</SectionLabel>
+              {strategy.run_regex && <RegexLine value={strategy.run_regex} badge="Run" badgeColor="green" c="teal" />}
+              {strategy.slam_regex && <RegexLine value={strategy.slam_regex} badge="Slam" badgeColor="orange" c="orange" />}
             </Stack>
           )}
 
@@ -282,15 +365,15 @@ export const StrategyCard = ({ strategy, onLoadBuild, showDate, discordTag }: {
             </Button>
             {strategy.atlas_tree_url && (
               <Tooltip label="Open atlas tree in browser">
-                <Button size="xs" variant="subtle" color="gray" rightSection={<FaExternalLinkAlt size={9} />}
+                <Button size="xs" variant="default" rightSection={<IconExternalLink size={11} />}
                   onClick={(e) => { e.stopPropagation(); window.open(strategy.atlas_tree_url!, '_blank'); }}>
                   Atlas Tree
                 </Button>
               </Tooltip>
             )}
             {strategy.discord_jump_url && (
-              <Tooltip label="Jump to this message in Discord to vote 👍/👎">
-                <Button size="xs" variant="subtle" color="indigo" rightSection={<FaExternalLinkAlt size={9} />}
+              <Tooltip label="Jump to this message in Discord to vote">
+                <Button size="xs" variant="default" rightSection={<IconExternalLink size={11} />}
                   onClick={(e) => {
                     e.stopPropagation();
                     const jumpUrl = strategy.discord_jump_url!;

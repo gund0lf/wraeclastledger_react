@@ -4,27 +4,39 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { FaSync, FaDiscord, FaShareAlt } from 'react-icons/fa';
-import { useSessionStore } from '../store/useSessionStore';
+import { IconRefresh, IconBrandDiscord, IconShare2, IconCalendar } from '@tabler/icons-react';
+import { useSessionKeys } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
 import { KNOWN_LEAGUES } from '../utils/league';
 import { parseDiscordExport } from '../utils/parseDiscordExport';
-import { Strategy, ApiResponse, ALL_TYPE_TAGS } from '../utils/strategyConstants';
+import {
+  Strategy, ApiResponse, ALL_TYPE_TAGS, BROWSER_COLS, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X,
+  SortKey, SortOrder, SORT_DEFAULT_DIR, SORT_OPTIONS,
+} from '../utils/strategyConstants';
 import { StrategyCard } from '../components/StrategyCard';
+import { ModuleHeader } from '../components/ui/ModuleHeader';
 import { ShareModal } from '../components/ShareModal';
 import { ImportModal } from '../components/ImportModal';
 import type { DiscordImport } from '../utils/parseDiscordExport';
+import { FONT } from '../utils/uiTokens'
 
 const DEFAULT_API_URL = 'https://wledger.richardpruett.com';
+// Dev override for local end-to-end testing against the docker-compose stack
+// (e.g. `set VITE_STRATEGY_API_URL=http://localhost:3000` before `npm run dev`).
+// Never set in production builds — the default stays the live API.
+const API_URL_OVERRIDE = import.meta.env.VITE_STRATEGY_API_URL as string | undefined;
 
 // ─── Main module ───────────────────────────────────────────────────────────────
 export const StrategyBrowserModule = () => {
   const {
-    maps, settings,
+    maps, settings, discordTag, leagueOverride,
     updateSetting, updateAdvSetting, updateScarab, newSession, setLoadedStrategyInfo,
-  } = useSessionStore();
+  } = useSessionKeys(
+    'maps', 'settings', 'discordTag', 'leagueOverride',
+    'updateSetting', 'updateAdvSetting', 'updateScarab', 'newSession', 'setLoadedStrategyInfo',
+  );
 
-  const apiUrl = DEFAULT_API_URL;
+  const apiUrl = API_URL_OVERRIDE || DEFAULT_API_URL;
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [total,      setTotal]      = useState(0);
   const [loading,    setLoading]    = useState(false);
@@ -32,9 +44,15 @@ export const StrategyBrowserModule = () => {
   const [offset,     setOffset]     = useState(0);
   const [loadedMsg,  setLoadedMsg]  = useState<string | null>(null);
   const [typeTags,   setTypeTags]   = useState<string[]>([]);
-  const [leagueFilter, setLeagueFilter] = useState<string>(KNOWN_LEAGUES[0]); // default to the newest league/event
+  // Default filter follows the active context: manual override wins, else the
+  // newest known league/event (rollover D4). Initial value only — changing the
+  // override mid-session doesn't yank an already-chosen filter.
+  const [leagueFilter, setLeagueFilter] = useState<string>(leagueOverride ?? KNOWN_LEAGUES[0]);
   const [minDiv,     setMinDiv]     = useState('');
-  const [sortBy,     setSortBy]     = useState('posted_at');
+  const [sortBy,     setSortBy]     = useState<SortKey>('posted_at');
+  // null = server default direction for the active sort; only an explicit
+  // header re-click sends ?order=. Changing the sort key always resets this.
+  const [sortOrder,  setSortOrder]  = useState<SortOrder | null>(null);
   const [period,     setPeriod]     = useState('all');
   const [showDate,   setShowDate]   = useState(false);
   const [hideGroup,  setHideGroup]  = useState(false);
@@ -188,6 +206,7 @@ export const StrategyBrowserModule = () => {
     setLoading(true); setError(null);
     try {
       const params = new URLSearchParams({ limit: String(LIMIT), offset: String(newOffset), sort: sortBy });
+      if (sortOrder) params.set('order', sortOrder);
       if (typeTags.length > 0) params.set('type_tag', typeTags.join(','));
       const divNum = parseFloat(minDiv);
       if (!isNaN(divNum) && divNum > 0) params.set('min_div', String(divNum));
@@ -200,7 +219,20 @@ export const StrategyBrowserModule = () => {
       setTotal(data.total); setOffset(newOffset);
     } catch (err: any) { setError(err.message ?? 'Could not reach the strategy server.'); }
     finally { setLoading(false); }
-  }, [apiUrl, typeTags, minDiv, sortBy, period, leagueFilter]);
+  }, [apiUrl, typeTags, minDiv, sortBy, sortOrder, period, leagueFilter]);
+
+  // ── Sorting (dropdown + click-header share the same state) ──────────────────
+  const setSort = (key: SortKey) => { setSortBy(key); setSortOrder(null); };
+  const effectiveDir: SortOrder = sortOrder ?? SORT_DEFAULT_DIR[sortBy];
+  const handleHeaderSort = (key: SortKey) => {
+    if (sortBy === key) {
+      setSortOrder(effectiveDir === 'asc' ? 'desc' : 'asc'); // re-click flips
+    } else {
+      setSort(key);
+    }
+  };
+  const sortArrow = (key: SortKey) =>
+    sortBy === key ? (effectiveDir === 'asc' ? ' ▲' : ' ▼') : '';
 
   const { pendingStrategyAction, clearStrategyAction } = useUIStore();
 
@@ -222,64 +254,93 @@ export const StrategyBrowserModule = () => {
       <ImportModal opened={importOpen} onClose={closeImport} onLoadBuild={handleLoadFromImport} />
 
       <Card shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ display: 'flex', flexDirection: 'column' }}>
-        <Group justify="space-between" mb={6} style={{ flexShrink: 0 }}>
-          <Text fw={700} size="sm">Strategy Browser</Text>
-          <Group gap={4}>
-            <Badge variant="light" size="sm">{total}</Badge>
-            <Tooltip label="Analyse an export from Discord">
-              <Button size="xs" variant="subtle" color="indigo" leftSection={<FaDiscord size={10} />} onClick={openImport}>Import</Button>
+        {/* session-16: "Strategy Browser" title dropped (redundant with the
+            tab label); the count badge anchors the left. */}
+        <ModuleHeader
+          title={
+            <Tooltip label="Strategies matching the current filters" withArrow>
+              <Badge color="gray" variant="outline" size="sm" style={{ cursor: 'default', fontVariantNumeric: 'tabular-nums' }}>{total} strategies</Badge>
             </Tooltip>
-            <Tooltip label="Share your current session">
-              <Button size="xs" variant="light" color="teal" leftSection={<FaShareAlt size={10} />} onClick={handleOpenShare}>Share</Button>
-            </Tooltip>
-            <ActionIcon size="sm" variant="subtle" loading={loading} onClick={() => fetchStrategies(0)}><FaSync size={10} /></ActionIcon>
-          </Group>
-        </Group>
+          }
+          right={
+            <Group gap={4}>
+              <Tooltip label="Analyse an export from Discord">
+                <Button size="xs" variant="default" leftSection={<IconBrandDiscord size={12} />} onClick={openImport}>Import Strategy</Button>
+              </Tooltip>
+              <Tooltip label="Share your current session">
+                <Button size="xs" variant="default" leftSection={<IconShare2 size={12} />} onClick={handleOpenShare}>Share Strategy</Button>
+              </Tooltip>
+              <Tooltip label="Refresh strategies" withArrow>
+                <ActionIcon size="md" variant="default" loading={loading} aria-label="Refresh strategies"
+                  onClick={() => fetchStrategies(0)}><IconRefresh size={14} /></ActionIcon>
+              </Tooltip>
+            </Group>
+          }
+        />
 
         <Group gap={6} mb={6} style={{ flexShrink: 0 }} wrap="nowrap">
           <MultiSelect size="xs" placeholder="Any type" clearable style={{ flex: 1 }}
             data={ALL_TYPE_TAGS.map((t) => ({ value: t, label: t.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') }))}
             value={typeTags} onChange={setTypeTags} maxDropdownHeight={200} searchable />
           <Select size="xs" style={{ width: 110 }}
-            data={KNOWN_LEAGUES.filter((l) => l !== 'Standard').map((l) => ({ value: l, label: l }))}
-            value={leagueFilter} onChange={(v) => setLeagueFilter(v ?? KNOWN_LEAGUES[0])} />
+            data={[...new Set([...(leagueOverride ? [leagueOverride] : []), ...KNOWN_LEAGUES])]
+              .filter((l) => l !== 'Standard').map((l) => ({ value: l, label: l }))}
+            value={leagueFilter} onChange={(v) => setLeagueFilter(v ?? leagueOverride ?? KNOWN_LEAGUES[0])} />
           <TextInput size="xs" placeholder="Min d/map" style={{ width: 80 }}
             value={minDiv} onChange={(e) => setMinDiv(e.currentTarget.value)} />
           <Select size="xs" style={{ width: 90 }}
             data={[{ value: 'all', label: 'All time' },{ value: '1d', label: 'Last 24h' },{ value: '3d', label: 'Last 3 days' },{ value: '7d', label: 'Last 7 days' }]}
             value={period} onChange={(v) => setPeriod(v ?? 'all')} />
           <Select size="xs" style={{ flex: 1 }}
-            data={[{ value: 'posted_at', label: 'Newest' },{ value: 'div_per_map', label: 'Best d/map' },{ value: 'net_profit', label: 'Most profit' },{ value: 'least_invest', label: 'Least invest' },{ value: 'score', label: 'Top rated 👍' }]}
-            value={sortBy} onChange={(v) => setSortBy(v ?? 'posted_at')} />
-          <Tooltip label={hideGroup ? 'Showing solo only — click to show all' : 'Click to hide group/party strategies'} withArrow>
-            <Button size="xs" variant={hideGroup ? 'filled' : 'subtle'} color={hideGroup ? 'cyan' : 'gray'}
+            data={SORT_OPTIONS}
+            value={sortBy} onChange={(v) => setSort((v as SortKey) ?? 'posted_at')} />
+          <Tooltip label={hideGroup ? 'Group/party strategies hidden — click to show them' : 'Click to hide group/party strategies'} withArrow>
+            <Button size="xs" variant={hideGroup ? 'light' : 'default'} color={hideGroup ? 'cyan' : undefined}
               onClick={() => setHideGroup((v) => !v)}>
-              👥
+              {hideGroup ? 'Show group' : 'Hide group'}
             </Button>
           </Tooltip>
         </Group>
 
-        <Group gap={6} mb={3} style={{ flexShrink: 0, paddingLeft: 10, paddingRight: 10 }}>
-          <div style={{ width: 22, flexShrink: 0 }} />
-          <Text size="xs" c="dimmed" style={{ width: 88,  flexShrink: 0, fontSize: 10 }}>Author</Text>
-          <Text size="xs" c="dimmed" style={{ width: 140, flexShrink: 0, fontSize: 10 }}>Tags</Text>
-          <Text size="xs" c="dimmed" style={{ width: 40,  flexShrink: 0, fontSize: 10 }}>Mod</Text>
-          <Text size="xs" c="dimmed" style={{ width: 26,  flexShrink: 0, fontSize: 10 }}>Maps</Text>
-          <Text size="xs" c="dimmed" style={{ width: 58,  flexShrink: 0, fontSize: 10 }}>Cost/map</Text>
-          <Text size="xs" c="dimmed" style={{ width: 96,  flexShrink: 0, fontSize: 10 }}>Total Invest</Text>
-          <Text size="xs" c="dimmed" style={{ width: 100, flexShrink: 0, fontSize: 10 }}>Total Profit</Text>
-          <Text size="xs" c="dimmed" style={{ width: 36,  flexShrink: 0, fontSize: 10 }}>Score</Text>
-          <Text size="xs" c="dimmed" style={{ flex: 1, textAlign: 'right', fontSize: 10 }}>Profit/map</Text>
+        {/* +3 compensates the rows' always-on 3px marker border slot */}
+        <Group gap={BROWSER_ROW_GAP} mb={3} style={{ flexShrink: 0, paddingLeft: BROWSER_ROW_PAD_X + 3, paddingRight: BROWSER_ROW_PAD_X }}>
+          <div style={{ width: BROWSER_COLS.chevron, flexShrink: 0 }} />
+          <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.author, flexShrink: 0, fontSize: FONT.small }}>Author</Text>
+          <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.tags,   flexShrink: 0, fontSize: FONT.small }}>Tags</Text>
+          <Tooltip label="Map mod count — 6-mod (alched) or 8-mod (corrupted)" withArrow>
+            <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.mod,    flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>Mod</Text>
+          </Tooltip>
+          <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.maps,   flexShrink: 0, fontSize: FONT.small }}>Maps</Text>
+          <Tooltip label="All-in: total investment ÷ map count — click to sort" withArrow>
+            <Text size="xs" c="dimmed" onClick={() => handleHeaderSort('cost_per_map')}
+              style={{ width: BROWSER_COLS.cost,   flexShrink: 0, fontSize: FONT.small, cursor: 'pointer', userSelect: 'none' }}>Cost/map{sortArrow('cost_per_map')}</Text>
+          </Tooltip>
+          <Tooltip label="Click to sort by total investment" withArrow>
+            <Text size="xs" c="dimmed" onClick={() => handleHeaderSort('least_invest')}
+              style={{ width: BROWSER_COLS.invest, flexShrink: 0, fontSize: FONT.small, cursor: 'pointer', userSelect: 'none' }}>Total Invest{sortArrow('least_invest')}</Text>
+          </Tooltip>
+          <Tooltip label="Click to sort by net profit" withArrow>
+            <Text size="xs" c="dimmed" onClick={() => handleHeaderSort('net_profit')}
+              style={{ width: BROWSER_COLS.profit, flexShrink: 0, fontSize: FONT.small, cursor: 'pointer', userSelect: 'none' }}>Total Profit{sortArrow('net_profit')}</Text>
+          </Tooltip>
+          <Tooltip label="Community score from thumbs reactions on the Discord post — click to sort" withArrow>
+            <Text size="xs" c="dimmed" onClick={() => handleHeaderSort('score')}
+              style={{ width: BROWSER_COLS.score,  flexShrink: 0, fontSize: FONT.small, cursor: 'pointer', userSelect: 'none' }}>Score{sortArrow('score')}</Text>
+          </Tooltip>
+          <Tooltip label="Click to sort by divines per map" withArrow>
+            <Text size="xs" c="dimmed" onClick={() => handleHeaderSort('div_per_map')}
+              style={{ flex: 1, textAlign: 'right', fontSize: FONT.small, cursor: 'pointer', userSelect: 'none' }}>Profit/map{sortArrow('div_per_map')}</Text>
+          </Tooltip>
           <Tooltip label={showDate ? 'Hide date column' : 'Show date column'} withArrow>
-            <Text size="xs" c={showDate ? 'dimmed' : 'dark'}
-              style={{ width: 36, textAlign: 'right', flexShrink: 0, paddingLeft: 4, fontSize: 10, cursor: 'pointer', userSelect: 'none' }}
+            <ActionIcon size="xs" variant={showDate ? 'light' : 'subtle'} color="gray"
+              style={{ width: BROWSER_COLS.date, flexShrink: 0 }}
               onClick={() => setShowDate((v) => !v)}>
-              {showDate ? 'Date' : '···'}
-            </Text>
+              <IconCalendar size={11} />
+            </ActionIcon>
           </Tooltip>
         </Group>
 
-        {loadedMsg && <Alert color="teal" variant="light" p="xs" mb={6} style={{ flexShrink: 0 }}><Text size="xs">✓ {loadedMsg}</Text></Alert>}
+        {loadedMsg && <Alert color="teal" variant="light" p="xs" mb={6} style={{ flexShrink: 0 }}><Text size="xs">{loadedMsg}</Text></Alert>}
         {error     && <Alert color="red"  variant="light" p="xs" mb={6} style={{ flexShrink: 0 }}><Text size="xs">{error}</Text></Alert>}
 
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
@@ -296,7 +357,7 @@ export const StrategyBrowserModule = () => {
                 const grp = s.is_group_play || (s.raw_export ? /Party Play:\s*Yes/i.test(s.raw_export) : false);
                 return !grp;
               })
-              .map((s) => <StrategyCard key={s.id} strategy={s} onLoadBuild={handleLoadBuild} showDate={showDate} discordTag={settings.discordTag} />)}
+              .map((s) => <StrategyCard key={s.id} strategy={s} onLoadBuild={handleLoadBuild} showDate={showDate} discordTag={discordTag} />)}
           </Stack>
           {hasMore && !loading && (
             <Button variant="subtle" size="xs" fullWidth mt={8} onClick={() => fetchStrategies(offset + LIMIT)}>
@@ -307,7 +368,7 @@ export const StrategyBrowserModule = () => {
         </div>
 
         <Text size="xs" c="dimmed" ta="center" mt={6} style={{ flexShrink: 0 }}>
-          React with 👍 or 👎 in Discord · Share submits your session · Load Build starts a new session
+          Vote with the thumbs reactions in Discord · Share submits your session · Load Build starts a new session
         </Text>
       </Card>
     </>

@@ -4,6 +4,7 @@
  * Pure parser for WraeclastLedger Discord export strings.
  * No React or store dependencies — safe to test in isolation.
  */
+import { stripExportDecoration } from './discordEmoji';
 
 export interface DiscordImport {
   mapCount: number; mapType: string; multiplier: number;
@@ -18,11 +19,22 @@ export interface DiscordImport {
   excludedDrops: { name: string; value: number }[];
   gemInfo: { count: number; buy: number; sell: number; net: number } | null;
   isGroupPlay: boolean;
+  // Optional author-declared metadata (shared-metadata batch 2026-07).
+  // null = line absent = no claim.
+  groupSize: number | null;
+  sessionMinutes: number | null;
+  atlasPoints: number | null;
+  atlasPointsMax: number | null;
 }
 
 export function parseDiscordExport(raw: string): DiscordImport | null {
   try {
-    const text = raw.replace(/^```\s*/m, '').replace(/\s*```\s*$/m, '').replace(/\*\*/g, '').trim();
+    // Strip all decoration (custom/app emoji refs + unicode emoji) up front so
+    // every field pattern below keys on the text label, never on a glyph
+    // (BACKLOG "Discord export/import" Part 1 - import stays decoration-proof).
+    const text = stripExportDecoration(
+      raw.replace(/^```\s*/m, '').replace(/\s*```\s*$/m, '').replace(/\*\*/g, '')
+    ).trim();
     if (!text.includes('WraeclastLedger')) return null;
     const num = (patterns: RegExp[]): number => {
       for (const p of patterns) { const m = text.match(p); if (m) return parseFloat(m[1].replace(/,/g, '')); }
@@ -50,14 +62,19 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     const chisel      = chiselRaw.replace(/\(.*/, '').replace(/[^\x00-\x7F]/g, '').trim();
     const atlasTreeUrl = str([/Atlas Tree:\s*(https?:\/\/\S+)/]);
     const stripBt     = (s: string) => s.trim().replace(/^`+|`+$/g, '').trim();
-    const runMatch    = text.match(/(?:\u{1F7E2}\s*)?Run:\s+(.+)/u);
-    const slamMatch   = text.match(/(?:\u{1F7E0}\s*)?Slam:\s+(.+?)(?:\s*[*(]open|\s*$)/mu);
+    // Decoration already stripped above, so key purely on the label.
+    const runMatch    = text.match(/Run:\s+(.+)/);
+    const slamMatch   = text.match(/Slam:\s+(.+?)(?:\s*[*(]open|\s*$)/m);
     const runRegex    = runMatch  ? stripBt(runMatch[1])  : '';
     const slamRegex   = slamMatch ? stripBt(slamMatch[1]) : '';
     const scarabs: string[] = [];
     const scarabCosts: number[] = [];
     for (const line of text.split('\n')) {
-      const m = line.match(/^\s*-?\s*([A-Z][^\n(]+?)\s+\((\d[\d.]*)/);
+      // Scarabs are bullet sub-lines under the Scarabs header: "  - Name (Ncost)".
+      // The leading "-" is REQUIRED - without it, label lines that happen to end
+      // in " (N" (e.g. "Excluded drops (2):", "Generated Regex (38 maps") get
+      // mis-read as scarabs once decoration is stripped. Key on structure, not glyphs.
+      const m = line.match(/^\s*-\s*([A-Z][^\n(]+?)\s+\((\d[\d.]*)/);
       if (m && !m[1].includes(':') && m[1].trim().length >= 5) { scarabs.push(m[1].trim()); scarabCosts.push(parseFloat(m[2])); }
     }
     const strategyNameRaw  = str([/Strategy:\s*([^\n]+)/]);
@@ -86,12 +103,22 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
       sell: parseInt(gemMatch[3]), net: parseInt(gemMatch[4]),
     } : null;
     const isGroupPlay = /Party Play:\s*Yes/i.test(text);
+    // Extended party line "Yes (N players)" — bare "Yes" (legacy) leaves size null.
+    const partyM      = text.match(/Party Play:\s*Yes(?:\s*\((\d)\s*players?\))?/i);
+    const groupSize   = partyM && partyM[1] ? parseInt(partyM[1]) : null;
+    const timeM          = text.match(/Session Time:\s*(\d+)\s*min/i);
+    const sessionMinutes = timeM ? parseInt(timeM[1]) : null;
+    // "Atlas Points: a/max" — label distinct from "Atlas Tree:", no collision.
+    const ptsM           = text.match(/Atlas Points:\s*(\d+)\s*\/\s*(\d+)/i);
+    const atlasPoints    = ptsM ? parseInt(ptsM[1]) : null;
+    const atlasPointsMax = ptsM ? parseInt(ptsM[2]) : null;
     if (mapCount === 0) return null;
     return { mapCount, mapType, multiplier, avgQuant, avgRarity, avgPack, avgCurr,
              perMapCost, totalInvest, totalReturn, netProfit, divPerMap, divPrice,
              chisel, runRegex, slamRegex, scarabs, scarabCosts, atlasTreeUrl, strategyName, strategyNotes,
              deliOrbQty, deliOrbType, deliOrbPrice, astroType, astroCount, astroPrice,
-             excludedDrops, gemInfo, isGroupPlay };
+             excludedDrops, gemInfo, isGroupPlay,
+             groupSize, sessionMinutes, atlasPoints, atlasPointsMax };
   } catch { return null; }
 }
 
@@ -103,6 +130,19 @@ export const fc = (v: number | null | undefined, sign = false): string => {
     ? `${parseFloat((abs / 1000).toFixed(1))}k`
     : `${Math.round(abs)}`;
   const prefix = sign ? (v >= 0 ? '+' : '-') : (v < 0 ? '-' : '');
+  return `${prefix}${s}c`;
+};
+
+/** DISPLAY-ONLY: thousands-separated chaos (`+107,047c`). NEVER use this in
+ *  the Discord export wire format — the bot + all 3 client parsers expect
+ *  plain digits there (session 17; large raw values were unreadable). */
+export const fcSep = (v: number | null | undefined, sign = false, decimals = 0): string => {
+  if (v == null) return '\u2014';
+  const prefix = sign ? (v >= 0 ? '+' : '-') : (v < 0 ? '-' : '');
+  const abs = Math.abs(v);
+  const s = decimals > 0
+    ? abs.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: decimals })
+    : Math.round(abs).toLocaleString('en-US');
   return `${prefix}${s}c`;
 };
 

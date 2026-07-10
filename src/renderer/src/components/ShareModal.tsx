@@ -1,12 +1,16 @@
 import {
-  Modal, Stack, Text, Alert, TextInput, MultiSelect,
-  Textarea, Group, Switch, Divider, Button, CopyButton,
+  Modal, Stack, Text, Alert, TextInput, NumberInput, MultiSelect,
+  Textarea, Group, SegmentedControl, Divider, Button, CopyButton,
 } from '@mantine/core';
-import { useMemo, useState } from 'react';
-import { FaDiscord } from 'react-icons/fa';
-import { useSessionStore } from '../store/useSessionStore';
-import { generateRunRegex, generateSlamRegex, trimmedMean } from '../utils/priceUtils';
+import { useEffect, useMemo, useState } from 'react';
+import { IconBrandDiscord, IconCheck } from '@tabler/icons-react';
+import { useSessionKeys } from '../store/useSessionStore';
+import { buildDiscordExport } from '../utils/discordExport';
+import { computeRollingSessionTotal } from '../utils/profit';
+import { parseTimeInput } from '../utils/sessionTime';
+import { computeTimeEstimate, formatActiveTime } from '../utils/timeEstimate';
 import { ALL_TYPE_TAGS } from '../utils/strategyConstants';
+import { COLOR, FONT } from '../utils/uiTokens'
 
 interface Props {
   opened: boolean;
@@ -16,96 +20,56 @@ interface Props {
 }
 
 export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
-  const { maps, settings, lootItems, baselineTotal, updateSetting } = useSessionStore();
+  const {
+    maps, settings, lootItems, baselineTotal,
+    investmentNeutralization, discordTag, setDiscordTag, updateAdvSetting,
+  } = useSessionKeys(
+    'maps', 'settings', 'lootItems', 'baselineTotal',
+    'investmentNeutralization', 'discordTag', 'setDiscordTag', 'updateAdvSetting',
+  );
 
   const [shareTags,  setShareTags]  = useState<string[]>(initialTags);
   const [stratName,  setStratName]  = useState('');
   const [stratNotes, setStratNotes] = useState('');
   const [isGroupPlay, setIsGroupPlay] = useState(false);
+  const [groupSize,  setGroupSize]  = useState(2);
+  const [timeText,   setTimeText]   = useState('');
 
   // Re-sync tags when the modal is opened with new initial tags
   // (parent calls onOpen which triggers a new initialTags value)
-  useMemo(() => { setShareTags(initialTags); }, [initialTags]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setShareTags(initialTags); }, [initialTags]);
 
-  const discordExport = useMemo(() => {
-    const excludedItems = lootItems.filter((l) => l.excluded);
-    const gemNetPL  = (settings.advGemCount * settings.advGemSellPrice) - (settings.advGemCount * settings.advGemBuyPrice);
-    const chiselCost = settings.chiselType && settings.chiselPrice > 0 ? settings.chiselPrice : 0;
-    const scarabCost = settings.scarabs.reduce((acc, s) => acc + (s.cost || 0), 0);
-    const league     = settings.leagueName;
-    let perMap = settings.baseMapCost + chiselCost + scarabCost;
-    if (settings.advSplitPrice > 0) perMap = (settings.baseMapCost + chiselCost + settings.advSplitPrice) / 2 + scarabCost;
-    const n               = maps.length;
-    const totalInvestment = perMap * n + settings.rollingCostPerMap;
-    const gemBuyOffset    = (settings.advGemName?.trim() && settings.advGemCount > 0 && settings.advGemBuyPrice > 0)
-      ? settings.advGemCount * settings.advGemBuyPrice : 0;
-    const rawReturn  = lootItems.filter((l) => !l.excluded).reduce((a, b) => a + b.total, 0);
-    const hasBl      = baselineTotal > 0 && lootItems.length > 0;
-    const totalReturn = rawReturn + gemBuyOffset - (hasBl ? baselineTotal : 0);
-    const netProfit  = totalReturn - totalInvestment;
-    const divPrice   = settings.divinePrice || 1;
-    const divPerMap  = n > 0 ? (netProfit / divPrice) / n : 0;
-    const scarabOfRiskCount = settings.scarabs.filter((s) => s.name.toLowerCase().includes('of risk')).length * 2;
-    const baseModCount = settings.mapType === '8-mod' ? 8 : 6;
-    const mountBonus   = settings.mountingModifiers ? (baseModCount + scarabOfRiskCount) * 2 : 0;
-    const multiplier   = 1 + (settings.fragmentsUsed * 3 + settings.smallNodesAllocated * 2 + mountBonus) / 100;
-    const avgQuant   = trimmedMean(maps.map((m) => m.quantity));
-    const avgPack    = trimmedMean(maps.map((m) => m.packSize));
-    const avgCurr    = trimmedMean(maps.map((m) => m.moreCurrency));
-    const avgRarity  = trimmedMean(maps.map((m) => m.rarity));
-    const avgScarabs = trimmedMean(maps.map((m) => m.moreScarabs));
-    const chiselLine  = settings.chiselType
-      ? '🪨 **Chisel:** ' + settings.chiselType + ' (' + settings.chiselPrice + 'c)'
-      : '🪨 **Chisel:** None';
-    const scarabLines = settings.scarabs.filter((s) => s.name).map((s) => `  - ${s.name} (${s.cost}c)`).join('\n');
-    const deliLine    = settings.advDeliOrbType && settings.advDeliOrbQtyPerMap > 0
-      ? '🌫️ **Delirium Orbs:** ' + settings.advDeliOrbQtyPerMap + 'x ' + settings.advDeliOrbType +
-        ' (' + (settings.advDeliOrbQtyPerMap * 20) + '% delirious, ' +
-        settings.advDeliOrbPriceEach.toFixed(1) + 'c each = ' +
-        (settings.advDeliOrbQtyPerMap * settings.advDeliOrbPriceEach).toFixed(1) + 'c/map)'
-      : null;
-    const astroLine = settings.advAstrolabeType
-      ? '🌍 **Astrolabe:** ' + settings.advAstrolabeType +
-        ' (' + settings.advAstrolabeCount + 'x, ' + settings.advAstrolabePrice.toFixed(0) + 'c each)'
-      : null;
-    const atlasUrl = settings.atlasTreeUrl?.includes('#') ? settings.atlasTreeUrl : null;
-    let regexBlock = '';
-    if (n > 0) {
-      const avg    = { avgQuant, avgPack, avgCurr, avgRarity, avgScarabs };
-      const is8mod = settings.mapType === '8-mod';
-      regexBlock = ['', `🔍 **Generated Regex (${n} maps, trimmed avg)**`,
-        `Avg: ${avgQuant.toFixed(0)}%Q · ${avgRarity.toFixed(0)}%R · ${avgPack.toFixed(0)}%P · ${avgCurr.toFixed(0)}% Curr`,
-        `*Brick exclusion is build-dependent — edit in settings*`,
-        `🟢 Run: \`${generateRunRegex(avg, settings.regexExclusions)}\``,
-        ...(!is8mod ? [`🟠 Slam: \`${generateSlamRegex(avg, settings.regexExclusions)}\` *(open slots only)*`] : []),
-      ].join('\n');
-    }
-    return [
-      `[WraeclastLedger Session]`, `**Map Session — WraeclastLedger**`,
-      `📦 **Maps:** ${n} | **Type:** ${settings.mapType} | **Multiplier:** ${multiplier.toFixed(2)}×`,
-      chiselLine,
-      `📊 **Avg Quant:** ${avgQuant.toFixed(0)}% | **Avg Rarity:** ${avgRarity.toFixed(0)}% | **Avg Pack:** ${avgPack.toFixed(0)}% | **Avg Currency:** ${avgCurr.toFixed(0)}%`,
-      `💰 **Per Map Cost:** ${perMap.toFixed(1)}c | **Total Invest:** ${totalInvestment.toFixed(1)}c`,
-      `🎯 **Total Return:** ${totalReturn.toFixed(1)}c | **Net Profit:** ${netProfit >= 0 ? '+' : ''}${netProfit.toFixed(1)}c`,
-      `📈 **Div / Map:** ${divPerMap.toFixed(3)}d | **Divine Price:** ${divPrice}c`,
-      ...(scarabLines ? ['🦂 **Scarabs:**\n' + scarabLines] : []),
-      ...(deliLine  ? [deliLine]  : []),
-      ...(astroLine ? [astroLine] : []),
-      ...(atlasUrl  ? [`🌳 **Atlas Tree:** ${atlasUrl}`] : []),
-      ...(league    ? [`🏆 **League:** ${league}`] : []),
-      ...(stratName.trim()   ? [`📝 **Strategy:** ${stratName.trim()}`] : []),
-      ...(shareTags.length > 0 ? [`🏷️ **Tags:** ${shareTags.join(', ')}`] : []),
-      ...(stratNotes.trim()  ? [`📋 **Notes:** ${stratNotes.trim()}`] : []),
-      ...(isGroupPlay ? [`👥 **Party Play:** Yes`] : []),
-      ...(excludedItems.length > 0 ? [
-        `⛔ **Excluded drops (${excludedItems.length}):** ${excludedItems.map((i) => `${i.name} (${i.total.toFixed(0)}c)`).join(', ')}`
-      ] : []),
-      ...(settings.advGemCount > 0 ? [
-        `💫 **Gem leveling:** ${settings.advGemCount} gems | buy ${(settings.advGemCount * settings.advGemBuyPrice).toFixed(0)}c | sell ${(settings.advGemCount * settings.advGemSellPrice).toFixed(0)}c | net ${gemNetPL >= 0 ? '+' : ''}${gemNetPL.toFixed(0)}c *(excluded from map profit)*`
-      ] : []),
-      ...(regexBlock ? [regexBlock] : []),
-    ].join('\n');
-  }, [maps, settings, lootItems, baselineTotal, shareTags, stratName, stratNotes, isGroupPlay]);
+  // Prefill the session-time input from the Tier-1 local estimate (WP9):
+  // computeTimeEstimate's activeMs already excludes break-like gaps, so the
+  // prefill is ACTIVE mapping time. It is an ESTIMATE the user can edit or
+  // clear — empty means "no claim" and the export line is suppressed entirely.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately only on open
+  useEffect(() => {
+    if (!opened) return;
+    const est = computeTimeEstimate(maps);
+    setTimeText(est ? String(Math.round(est.activeMs / 60_000)) : '');
+  }, [opened]);
+
+  // Canonical wire value (minutes) derived from the flexible input; null when
+  // empty or unparseable.
+  const sessionMinutes = parseTimeInput(timeText);
+  const timeCaption = timeText.trim() === ''
+    ? 'Empty — time will not be shared'
+    : sessionMinutes != null
+      ? `Shared as ${sessionMinutes} min (${formatActiveTime(sessionMinutes * 60_000)})`
+      : 'Not recognized — use minutes (245) or hours (4h / 4.5h)';
+
+  // All math lives in utils/profit.ts via buildDiscordExport (WP1) — the export
+  // is guaranteed to match the Dashboard.
+  const discordExport = useMemo(() => buildDiscordExport({
+    maps, settings, lootItems, baselineTotal, investmentNeutralization,
+    stratName, stratNotes, shareTags, isGroupPlay,
+    groupSize: isGroupPlay ? groupSize : null,
+    sessionMinutes,
+  }), [maps, settings, lootItems, baselineTotal, investmentNeutralization,
+       stratName, stratNotes, shareTags, isGroupPlay, groupSize, sessionMinutes]);
+
+  const rollingSessionTotal = computeRollingSessionTotal(settings, maps.length);
 
   return (
     <Modal opened={opened} onClose={onClose} title="Share My Session" size="md">
@@ -117,23 +81,36 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
           size="xs"
           label="Your Discord tag"
           description="Used to highlight your own strategies in the Strategy Browser"
-          placeholder="e.g. traceur"
-          value={settings.discordTag}
-          onChange={(e) => updateSetting('discordTag', e.currentTarget.value)}
+          placeholder="e.g. your-discord-name"
+          value={discordTag}
+          onChange={(e) => setDiscordTag(e.currentTarget.value)}
         />
         {maps.length === 0 && (
           <Alert color="orange" variant="light" p="xs">
             <Text size="xs">No maps parsed yet — parse some maps in Map Log first for complete stats.</Text>
           </Alert>
         )}
-        {settings.baseMapCost === 0 && settings.rollingCostPerMap === 0 && (
+        {settings.baseMapCost === 0 && rollingSessionTotal === 0 && (
           <Alert color="yellow" variant="light" p="xs">
-            <Text size="xs">⚠️ No investment costs set. Fill in Advanced Costs before sharing.</Text>
+            <Text size="xs">No investment costs set. Fill in Advanced Costs before sharing.</Text>
           </Alert>
         )}
-        {settings.advAstrolabeType && settings.advAstrolabeCount > 0 && (
+        {settings.advAstrolabeType && (
           <Alert color="teal" variant="light" p="xs">
-            <Text size="xs">🌍 Astrolabe: <Text span fw={700}>{settings.advAstrolabeType}</Text> × {settings.advAstrolabeCount} at {settings.advAstrolabePrice.toFixed(0)}c each. Is this count still accurate?</Text>
+            <Text size="xs" mb={4}>
+              Astrolabe: <Text span fw={700}>{settings.advAstrolabeType}</Text> at {settings.advAstrolabePrice.toFixed(0)}c each — the count drifts over a session, so double-check how many you actually used before sharing:
+            </Text>
+            <Group gap={6} align="center" wrap="nowrap">
+              <NumberInput
+                size="xs"
+                w={90}
+                min={0}
+                value={settings.advAstrolabeCount}
+                onChange={(v) => updateAdvSetting('advAstrolabeCount', Number(v))}
+                aria-label="Astrolabe count used"
+              />
+              <Text size="xs" c="dimmed">used</Text>
+            </Group>
           </Alert>
         )}
         <TextInput size="xs" label="Strategy name (optional)"
@@ -147,24 +124,54 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
           placeholder="e.g. Div Scarabs were cheap this week, Divine was 280c"
           value={stratNotes} onChange={(e) => setStratNotes(e.currentTarget.value)}
           autosize minRows={2} maxRows={4} />
-        <Group gap={8} align="center">
-          <Switch size="sm" checked={isGroupPlay} onChange={(e) => setIsGroupPlay(e.currentTarget.checked)} />
-          <Stack gap={0}>
-            <Text size="xs" fw={500}>Party / Group play</Text>
-            <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>Additional players increase loot. Mark this so others know the strategy scales with a group.</Text>
-          </Stack>
-        </Group>
+        <Stack gap={4}>
+          <Group gap={8} align="center" wrap="nowrap">
+            <Text size="xs" fw={500} style={{ flexShrink: 0 }}>Play style</Text>
+            <SegmentedControl
+              size="xs"
+              value={isGroupPlay ? 'group' : 'solo'}
+              onChange={(v) => setIsGroupPlay(v === 'group')}
+              data={[
+                { value: 'solo', label: 'Solo' },
+                { value: 'group', label: 'Group / Party' },
+              ]}
+            />
+          </Group>
+          <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>
+            If others mapped with you, choose Group / Party — it flags that the loot numbers assume more than one player.
+          </Text>
+          {isGroupPlay && (
+            <Group gap={6} align="center" wrap="nowrap" mt={2}>
+              <NumberInput
+                size="xs" w={70} min={2} max={6}
+                value={groupSize}
+                onChange={(v) => setGroupSize(Math.min(6, Math.max(2, Number(v) || 2)))}
+                aria-label="Party size including you"
+              />
+              <Text size="xs" c="dimmed">players (including you)</Text>
+            </Group>
+          )}
+        </Stack>
+        <Stack gap={2}>
+          <TextInput size="xs" label="Session time (optional)"
+            description="Prefilled with your estimated ACTIVE mapping time (breaks excluded) when available — adjust, or clear to not share it"
+            placeholder="e.g. 245 or 4h"
+            value={timeText} onChange={(e) => setTimeText(e.currentTarget.value)} />
+          <Text size="xs" c={timeText.trim() !== '' && sessionMinutes == null ? 'orange' : 'dimmed'} style={{ fontSize: FONT.small }}>
+            {timeCaption}
+          </Text>
+        </Stack>
         <Divider label="Preview" labelPosition="left" />
-        <div style={{ background: '#0d0e10', borderRadius: 6, padding: '8px 10px', maxHeight: 200, overflowY: 'auto' }}>
-          <Text size="xs" style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', color: '#ccc', fontSize: 10, lineHeight: 1.5 }}>
+        <div style={{ background: COLOR.bgDeep, borderRadius: 6, padding: '8px 10px', maxHeight: 200, overflowY: 'auto' }}>
+          <Text size="xs" style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', color: COLOR.textSoft, fontSize: FONT.small, lineHeight: 1.5 }}>
             {discordExport}
           </Text>
         </div>
         <CopyButton value={discordExport} timeout={2000}>
           {({ copied, copy }) => (
-            <Button leftSection={<FaDiscord size={12} />} onClick={copy}
+            <Button leftSection={copied ? <IconCheck size={14} /> : <IconBrandDiscord size={14} />} onClick={copy}
               color={copied ? 'teal' : 'indigo'} variant="light" fullWidth>
-              {copied ? '✓ Copied to clipboard!' : 'Copy to Discord'}
+              {copied ? 'Copied to clipboard!' : 'Copy to Discord'}
             </Button>
           )}
         </CopyButton>

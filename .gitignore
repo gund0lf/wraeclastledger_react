@@ -8,10 +8,13 @@ BUILD.md
 CLAUDE.md
 HANDOVER.md
 LEAGUE_ROLLOVER_PLAN.md
+IMPROVEMENT_PLAN.md
 EXTERNAL_APIS.md
-
-# Server-side code — not part of the public client repo
+BACKLOG.md
+DEPLOY.md
+PROJECT_MEMORY_SYNC.md
+docs/HANDOVER_ARCHIVE.md
+docs/GAME_DATA_ENDPOINT_SPEC.md
 traceuer-server-side/
-
 # Lock file — regenerated on install, no need to track
 package-lock.json

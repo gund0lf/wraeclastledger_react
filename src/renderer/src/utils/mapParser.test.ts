@@ -548,3 +548,66 @@ describe('parseMapClipboard — fallback mod count', () => {
     expect(map!.modCount).toBeGreaterThan(0);
   });
 });
+
+// Real Ancestors-event clipboard captures, provided by Sad 2026-07-06.
+// Unidentified maps: the "Unidentified" line occupies the mod-section slot and
+// must not be counted as a mod (regression: it parsed as modCount 1).
+const UNID_RARE_NIGHTMARE = [
+  'Item Class: Maps',
+  'Rarity: Rare',
+  'Nightmare Map',
+  '--------',
+  'Item Level: 84',
+  '--------',
+  'Monster Level: 83',
+  '--------',
+  'Unidentified',
+  '--------',
+  'Travel to a Map of this tier or lower by using this in a personal Map Device. Maps can only be used once. ',
+  '--------',
+  'Modifiable only with Chaos Orbs, Vaal Orbs, Delirium Orbs and Chisels',
+].join('\n');
+
+const UNID_MAGIC_T13 = [
+  'Item Class: Maps',
+  'Rarity: Magic',
+  'Map (Tier 13)',
+  '--------',
+  'Item Level: 82',
+  '--------',
+  'Monster Level: 80',
+  '--------',
+  'Unidentified',
+  '--------',
+  'Travel to a Map of this tier or lower by using this in a personal Map Device. Maps can only be used once. ',
+].join('\n');
+
+describe('parseMapClipboard — unidentified maps', () => {
+  it('unid rare Nightmare: flag set, modCount 0, tier-16 fallback, no false corruption', () => {
+    const map = parseMapClipboard(UNID_RARE_NIGHTMARE);
+    expect(map).not.toBe(null);
+    expect(map!.isUnidentified).toBe(true);
+    expect(map!.modCount).toBe(0);
+    expect(map!.tier).toBe(16);          // Nightmare tier fallback
+    expect(map!.name).toBe('Nightmare Map'); // rare name hidden until identified
+    expect(map!.isNightmare).toBe(true);
+    expect(map!.isCorrupted).toBe(false); // restriction footer is not a corruption signal
+    expect(map!.quantity).toBe(0);
+  });
+
+  it('unid magic T13: flag set, modCount 0, tier from name line', () => {
+    const map = parseMapClipboard(UNID_MAGIC_T13);
+    expect(map).not.toBe(null);
+    expect(map!.isUnidentified).toBe(true);
+    expect(map!.modCount).toBe(0);
+    expect(map!.tier).toBe(13);
+    expect(map!.isNightmare).toBe(false);
+    expect(map!.isCorrupted).toBe(false);
+  });
+
+  it('identified maps report isUnidentified false', () => {
+    const map = parseMapClipboard(NIGHTMARE_1_UNCORRUPTED);
+    expect(map).not.toBe(null);
+    expect(map!.isUnidentified).toBe(false);
+  });
+});

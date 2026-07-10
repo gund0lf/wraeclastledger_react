@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Button, Group, Text, Stack, List, Badge, Collapse, ActionIcon } from '@mantine/core';
-import { FaChevronDown, FaChevronRight } from 'react-icons/fa';
+import { IconChevronDown, IconChevronRight, IconX } from '@tabler/icons-react';
 import { CHANGELOG } from './utils/changelog';
+import pkg from '../../../package.json';
 
-export const APP_VERSION = '1.0.62';
+// WP3: single source of truth — electron-vite resolves the JSON import at
+// build time, so bumping package.json is the ONLY version bump needed
+// (plus the changelog entry).
+export const APP_VERSION: string = pkg.version;
 const SEEN_KEY = 'wraeclast-seen-version';
 
 const VersionEntry = ({ entry, defaultOpen }: { entry: typeof CHANGELOG[0]; defaultOpen: boolean }) => {
@@ -16,7 +20,7 @@ const VersionEntry = ({ entry, defaultOpen }: { entry: typeof CHANGELOG[0]; defa
         style={{ cursor: 'pointer', userSelect: 'none' }}
       >
         <ActionIcon size={14} variant="transparent" c="dimmed">
-          {open ? <FaChevronDown size={9} /> : <FaChevronRight size={9} />}
+          {open ? <IconChevronDown size={9} /> : <IconChevronRight size={9} />}
         </ActionIcon>
         <Text size="xs" fw={700} c="blue">v{entry.version}</Text>
         <Text size="xs" c="dimmed">{entry.date}</Text>
@@ -87,7 +91,7 @@ export const UpdateBanner = () => {
               <Text fw={700} size="sm">What's New</Text>
               <Badge size="xs" color="blue" variant="light">v{APP_VERSION}</Badge>
             </Group>
-            <Button size="xs" variant="subtle" color="gray" onClick={() => { setShowChangelog(false); setShowHistory(false); }}>×</Button>
+            <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => { setShowChangelog(false); setShowHistory(false); }}><IconX size={12} /></ActionIcon>
           </Group>
 
           <div style={{ maxHeight: 320, overflowY: 'auto', paddingRight: 4 }}>
@@ -104,7 +108,7 @@ export const UpdateBanner = () => {
                     size="xs"
                     variant="subtle"
                     color="gray"
-                    leftSection={showHistory ? <FaChevronDown size={9} /> : <FaChevronRight size={9} />}
+                    leftSection={showHistory ? <IconChevronDown size={9} /> : <IconChevronRight size={9} />}
                     onClick={() => setShowHistory((v) => !v)}
                     style={{ alignSelf: 'flex-start', fontSize: 10 }}
                   >
@@ -135,7 +139,7 @@ export const UpdateBanner = () => {
           background: '#1e1f22', border: '1px solid #40c057',
           borderRadius: 6, padding: '6px 12px', boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
         }}>
-          <Text size="xs" c="green">✓ Already on the latest version</Text>
+          <Text size="xs" c="green">Already on the latest version</Text>
         </div>
       )}
 
@@ -151,7 +155,7 @@ export const UpdateBanner = () => {
               {downloaded ? `v${updateVersion} Ready` : `v${updateVersion} Downloading…`}
             </Text>
             {!downloaded && (
-              <Button size="xs" variant="subtle" color="gray" onClick={() => setUpdateVersion(null)}>×</Button>
+              <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => setUpdateVersion(null)}><IconX size={12} /></ActionIcon>
             )}
           </Group>
           {downloaded ? (

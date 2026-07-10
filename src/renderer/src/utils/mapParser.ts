@@ -53,6 +53,7 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
   const moreCurrency = extractPct(/More Currency: \+(\d+)%/);
   const moreMaps     = extractPct(/More Maps: \+(\d+)%/);
   const moreScarabs  = extractPct(/More Scarabs: \+(\d+)%/);
+  const moreDivCards = extractPct(/More Divination Cards: \+(\d+)%/);
 
   let quality = 0, qualityType = 'Standard';
   const qualMatch = clean.match(/Quality \(([^)]+)\): \+(\d+)%/);
@@ -69,6 +70,9 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
   const isEmpoweredMirage = clean.includes('Empowered Mirage which covers the entire Map');
   const isNightmare     = clean.includes('Nightmare Map');
   const isCorrupted     = /\bCorrupted\b/.test(clean);
+  // Unidentified maps: mods are unrevealed — the "Unidentified" line sits where
+  // the mod section would be and must NOT count as a mod.
+  const isUnidentified  = lines.includes('Unidentified');
 
   // ── Explicit mod count ─────────────────────────────────────────────────────
   // Find the section just BEFORE "Travel to a Map" — this is always the
@@ -85,7 +89,7 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
   const modLines = modSec
     .split('\n')
     .map((l) => l.trim())
-    .filter((l) => l.length > 0 && !l.startsWith('Area is Influenced'));
+    .filter((l) => l.length > 0 && !l.startsWith('Area is Influenced') && l !== 'Unidentified');
   let modCount = modLines.length;
 
   // Fallback: if the section was empty or mis-detected, derive from stat presence
@@ -96,12 +100,13 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
     if (moreCurrency > 0) modCount++;
     if (moreMaps > 0)     modCount++;
     if (moreScarabs > 0)  modCount++;
+    if (moreDivCards > 0) modCount++;
   }
 
   return {
     tier, name, quantity, rarity, packSize, quality, qualityType,
-    moreCurrency, moreMaps, moreScarabs, modCount,
-    isOriginator, isEmpoweredMirage, isNightmare, isCorrupted,
+    moreCurrency, moreMaps, moreScarabs, moreDivCards, modCount,
+    isOriginator, isEmpoweredMirage, isNightmare, isCorrupted, isUnidentified,
     rawText: text,
   };
 };

@@ -1,61 +1,40 @@
 import {
-  Card, Text, Group, Stack, Badge, Divider, Collapse, ActionIcon,
+  Card, Text, Group, Stack, Badge, Divider, ActionIcon,
   Button, SegmentedControl, Table, Checkbox, TextInput,
   Progress, Image, Skeleton, Tooltip, Modal, SimpleGrid, Anchor,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import { useSessionStore } from '../store/useSessionStore';
+import { useSessionKeys } from '../store/useSessionStore';
 import { QUALITY_STAT_EFFECTS, CHISEL_TYPES, DELIRIUM_ORB_LIST } from '../utils/constants';
 import { MapData, LootItem } from '../types';
 import { parseLootCsv, diffLootItems } from '../utils/lootUtils';
-import { FaChevronDown, FaChevronRight, FaTrash, FaFileImport, FaSearch } from 'react-icons/fa';
-import { getItemIcons } from '../utils/itemIcons';
+import { IconTrash, IconFileImport, IconSearch, IconPackage, IconCoins } from '@tabler/icons-react';
+import { getItemIcons, chiselItemName } from '../utils/itemIcons';
+import { PoeItemIcon } from '../components/ui/PoeItemIcon';
+import { computeProfit, computeMultiplier } from '../utils/profit';
+import { fcSep } from '../utils/parseDiscordExport';
+import { computeTimeEstimate, formatActiveTime } from '../utils/timeEstimate';
 import { buildCategoryBreakdown, ItemCategory, CAT_COLORS } from '../utils/lootCategories';
+import { StatTile } from '../components/ui/StatTile';
+import { GettingStartedCard } from '../components/GettingStartedCard';
+import { CollapsibleSection as Section } from '../components/ui/CollapsibleSection';
+import { COLOR, FONT } from '../utils/uiTokens'
 
 // Smart page size: show INITIAL rows, user can load more in STEP increments
 const INITIAL_ROWS = 25;
 const STEP_ROWS    = 25;
 
-const Section = ({
-  title, children, defaultOpen = true, right,
-}: {
-  title: string; children: React.ReactNode;
-  defaultOpen?: boolean; right?: React.ReactNode;
-}) => {
-  const [open, setOpen] = useState(defaultOpen);
-  const toggle = () => setOpen((n) => !n);
-  return (
-    <Stack gap={0}>
-      <Group justify="space-between" onClick={toggle}
-        style={{ cursor: 'pointer', padding: '5px 0', userSelect: 'none' }}>
-        <Text size="xs" fw={700} c="dimmed"
-          style={{ textTransform: 'uppercase', letterSpacing: 1, fontSize: 10 }}>
-          {title}
-        </Text>
-        <Group gap={6} onClick={(e) => e.stopPropagation()}>
-          {right}
-          <ActionIcon size="xs" variant="transparent" c="dimmed" onClick={toggle}>
-            {open ? <FaChevronDown size={8} /> : <FaChevronRight size={8} />}
-          </ActionIcon>
-        </Group>
-      </Group>
-      <Collapse in={open}>
-        <div style={{ paddingBottom: 6 }}>{children}</div>
-      </Collapse>
-    </Stack>
-  );
-};
-
 const STAT_KEYS: (keyof MapData)[] = [
-  'quantity', 'rarity', 'packSize', 'moreCurrency', 'moreMaps', 'moreScarabs',
+  'quantity', 'rarity', 'packSize', 'moreCurrency', 'moreMaps', 'moreScarabs', 'moreDivCards',
 ];
 const STAT_LABELS: Record<string, string> = {
   quantity: 'Quantity', rarity: 'Rarity', packSize: 'Pack Size',
   moreCurrency: 'Currency', moreMaps: 'Maps', moreScarabs: 'Scarabs',
+  moreDivCards: 'Div Cards',
 };
 
-const ICON_SIZE = 20;
+const ICON_SIZE = 24; // density pass: 20 was undersized next to 12px row text
 
 export const DashboardModule = () => {
   const {
@@ -63,18 +42,19 @@ export const DashboardModule = () => {
     setLootItems, setBaselineItems, toggleLootItemExcluded, clearLoot,
     investmentNeutralization, setInvestmentNeutralization,
     investmentDismissed, setInvestmentDismissed,
-  } = useSessionStore();
+    onboardingDismissed, dismissOnboarding,
+  } = useSessionKeys(
+    'maps', 'settings', 'lootItems', 'baselineItems', 'baselineTotal',
+    'setLootItems', 'setBaselineItems', 'toggleLootItemExcluded', 'clearLoot',
+    'investmentNeutralization', 'setInvestmentNeutralization',
+    'investmentDismissed', 'setInvestmentDismissed',
+    'onboardingDismissed', 'dismissOnboarding',
+  );
 
   const stats = useMemo(() => {
     const count = maps.length;
     if (count === 0) return null;
-    const fragEffect = settings.fragmentsUsed * 3;
-    const nodeEffect = settings.smallNodesAllocated * 2;
-    const riskCount  = settings.scarabs.filter((s) => s.name.toLowerCase().includes('of risk')).length * 2;
-    const baseMods   = settings.mapType === '8-mod' ? 8 : 6;
-    const effMods    = baseMods + riskCount;
-    const mountBonus = settings.mountingModifiers ? effMods * 2 : 0;
-    const multiplier = 1 + (fragEffect + nodeEffect + mountBonus) / 100;
+    const { multiplier } = computeMultiplier(settings);
     const qualBonuses: Record<string, number> = {};
     for (const map of maps) {
       const e = QUALITY_STAT_EFFECTS[map.qualityType];
@@ -97,36 +77,17 @@ export const DashboardModule = () => {
     return { count, multiplier, stats: result };
   }, [maps, settings]);
 
-  const profit = useMemo(() => {
-    const chiselCost      = settings.chiselType && settings.chiselPrice > 0 ? settings.chiselPrice : 0;
-    const hasPreservation  = settings.scarabs.some((s) => s.name.toLowerCase().includes('preservation'));
-    const perMapScarabs    = hasPreservation
-      ? settings.scarabs.filter((s) =>  s.name.toLowerCase().includes('preservation')).reduce((a, s) => a + (s.cost || 0), 0)
-      : settings.scarabs.reduce((a, s) => a + (s.cost || 0), 0);
-    const oneTimeScarabs   = hasPreservation
-      ? settings.scarabs.filter((s) => !s.name.toLowerCase().includes('preservation')).reduce((a, s) => a + (s.cost || 0), 0)
-      : 0;
-    const count            = stats?.count ?? 0;
-    let perMap = settings.baseMapCost + chiselCost + perMapScarabs;
-    if (settings.advSplitPrice > 0) perMap = (settings.baseMapCost + chiselCost + settings.advSplitPrice) / 2 + perMapScarabs;
-    const totalInvest = perMap * count + settings.rollingCostPerMap + oneTimeScarabs;
-    const rawReturn   = lootItems.filter((l) => !l.excluded).reduce((a, b) => a + b.total, 0);
-    const hasReturn   = lootItems.length > 0;
-    const hasBl       = baselineTotal > 0 && hasReturn;
-    // gemBuyOffset is only relevant when a baseline exists — the offset corrects for gem cost
-    // appearing as a diff loss; without a baseline there's no diff to neutralise.
-    const gemBuyOffset = hasBl && (settings.advGemName?.trim() && settings.advGemCount > 0 && settings.advGemBuyPrice > 0)
-      ? settings.advGemCount * settings.advGemBuyPrice
-      : 0;
-    const adjReturn   = rawReturn + gemBuyOffset + investmentNeutralization;
-    const lootGain    = hasReturn ? (hasBl ? adjReturn - baselineTotal : adjReturn) : 0;
-    const net         = lootGain - totalInvest;
-    const div         = settings.divinePrice || 1;
-    return { totalInvest, lootGain, net,
-             divPerMap: count > 0 ? (net / div) / count : 0,
-             cPerMap: count > 0 ? net / count : 0,
-             div, hasReturn, hasBl };
-  }, [stats, settings, lootItems, baselineTotal]);
+  // All profit math lives in utils/profit.ts (WP1) - single source of truth
+  // shared with ShareModal/discordExport and InvestmentModule. The rolling
+  // session total is derived LIVE from settings + map count (the stored
+  // settings.rollingCostPerMap was stale and is removed in migration v16).
+  const profit = useMemo(() => computeProfit({
+    settings, mapCount: maps.length, lootItems, baselineTotal, investmentNeutralization,
+  }), [maps.length, settings, lootItems, baselineTotal, investmentNeutralization]);
+
+  // WP9 Tier 1: local pace estimate from parsedAt gaps. Null until >= 5
+  // timestamped maps; never persisted, never shared, never load-bearing.
+  const pace = useMemo(() => computeTimeEstimate(maps), [maps]);
 
   const fileInputRef   = useRef<HTMLInputElement>(null);
   const pendingRoleRef = useRef<'baseline' | 'current' | null>(null);
@@ -141,6 +102,8 @@ export const DashboardModule = () => {
   const [iconsLoading, setIconsLoading] = useState(false);
   const [visibleListRows, setVisibleListRows] = useState(INITIAL_ROWS);
   const [visibleDiffRows, setVisibleDiffRows] = useState(INITIAL_ROWS);
+  const [hoveredLootClear, setHoveredLootClear] = useState(false); // loot-clear icon red hover (Sessions pattern)
+  const [dragOver, setDragOver] = useState(false); // CSV drag-and-drop highlight
 
   const hasBaseline = baselineItems.length > 0 || baselineTotal > 0;
   const hasCurrent  = lootItems.length > 0;
@@ -199,6 +162,12 @@ export const DashboardModule = () => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    processCsvFile(file);
+    e.target.value = '';
+  };
+  // Shared by the file picker and drag-and-drop. Role comes from
+  // pendingRoleRef: null -> the "baseline or loot?" modal asks.
+  const processCsvFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const items = parseLootCsv(ev.target?.result as string);
@@ -209,7 +178,14 @@ export const DashboardModule = () => {
       setPendingItems(items); setPendingTotal(total); openBl();
     };
     reader.readAsText(file, 'utf-8');
-    e.target.value = '';
+  };
+  const handleCsvDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = Array.from(e.dataTransfer.files).find((f) => f.name.toLowerCase().endsWith('.csv'));
+    if (!file) return;
+    pendingRoleRef.current = null; // dropped files always ask their role
+    processCsvFile(file);
   };
   const triggerImport = (role: 'baseline' | 'current' | null = null) => {
     pendingRoleRef.current = role; fileInputRef.current?.click();
@@ -221,13 +197,13 @@ export const DashboardModule = () => {
     return (
       <Tooltip label={name} openDelay={500} withinPortal>
         <Image src={url} w={ICON_SIZE} h={ICON_SIZE}
-          style={{ imageRendering: 'pixelated', flexShrink: 0 }}
+          style={{ flexShrink: 0 }}
           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
       </Tooltip>
     );
   }, [resolver, iconsLoading]);
 
-  const pc = (v: number) => v >= 0 ? '#51cf66' : '#ff6b6b';
+  const pc = (v: number) => v >= 0 ? COLOR.profit : COLOR.loss;
 
   return (
     <>
@@ -235,9 +211,9 @@ export const DashboardModule = () => {
 
       <Modal opened={blOpen} onClose={closeBl} title="How should this CSV be used?" size="sm">
         <Stack gap="md">
-          <Text size="sm"><Text span fw={700}>{pendingItems.length} items</Text> worth <Text span fw={700} c="teal">{pendingTotal.toFixed(1)}c</Text></Text>
-          <Button variant="light" color="yellow" onClick={() => { setBaselineItems(pendingItems); setPendingItems([]); closeBl(); }} fullWidth>📦 Set as Baseline ({pendingTotal.toFixed(1)}c)</Button>
-          <Button variant="light" color="teal" onClick={() => { setLootItems(pendingItems); setPendingItems([]); closeBl(); if (hasBaseline) { setLootView('diff'); setDiffTab('gains'); } }} fullWidth>💰 Use as Session Loot</Button>
+          <Text size="sm"><Text span fw={700}>{pendingItems.length} items</Text> worth <Text span fw={700} c="teal">{fcSep(pendingTotal, false, 1)}</Text></Text>
+          <Button variant="light" color="yellow" leftSection={<IconPackage size={13} />} onClick={() => { setBaselineItems(pendingItems); setPendingItems([]); closeBl(); }} fullWidth>Set as Baseline ({fcSep(pendingTotal, false, 1)})</Button>
+          <Button variant="light" color="teal" leftSection={<IconCoins size={13} />} onClick={() => { setLootItems(pendingItems); setPendingItems([]); closeBl(); if (hasBaseline) { setLootView('diff'); setDiffTab('gains'); } }} fullWidth>Use as Session Loot</Button>
           <Button variant="subtle" color="gray" onClick={closeBl} fullWidth>Cancel</Button>
         </Stack>
       </Modal>
@@ -253,87 +229,116 @@ export const DashboardModule = () => {
       </Modal>
 
       <Card shadow="sm" padding="sm" radius="md" withBorder h="100%"
-        style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleCsvDrop}
+        style={{
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          outline: dragOver ? '2px dashed var(--mantine-color-blue-5)' : undefined,
+          outlineOffset: -2,
+        }}>
 
-        <Group justify="space-between" mb={4} style={{ flexShrink: 0 }}>
-          <Text fw={700} size="sm">Dashboard</Text>
-          {stats && (
-            <Group gap={4}>
-              <Badge variant="light" size="sm">{stats.count} maps</Badge>
-              <Badge color="blue" variant="outline" size="sm">{stats.multiplier.toFixed(3)}×</Badge>
-            </Group>
-          )}
-        </Group>
+        {/* session-16: "Dashboard" title dropped (redundant with the tab
+            label). session-17 review: the leftover right-aligned badge row is
+            gone too — both pills moved into the Map Multipliers section
+            header, where the multiplier is that section's summary number and
+            the count contextualises its averages. Frees a full row. */}
+
+        {!onboardingDismissed && maps.length === 0 && !hasCurrent && !hasBaseline && (
+          <GettingStartedCard onDismiss={dismissOnboarding} />
+        )}
 
         <div style={{ flexShrink: 0 }}>
           <Section title="Profit Overview">
             <SimpleGrid cols={2} spacing="xs" mb={6}>
               <div style={{ background: profit.net >= 0 ? 'rgba(81,207,102,0.08)' : 'rgba(255,107,107,0.10)', border: `1px solid ${profit.net >= 0 ? 'rgba(81,207,102,0.3)' : 'rgba(255,107,107,0.3)'}`, borderRadius: 8, padding: '8px', textAlign: 'center' }}>
                 <Text size="xs" c="dimmed" mb={2}>Total Net Profit</Text>
-                <Text style={{ fontSize: 18, fontWeight: 800, color: pc(profit.net), fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{profit.net >= 0 ? '+' : ''}{profit.net.toFixed(0)}c</Text>
+                <Text style={{ fontSize: FONT.xl, fontWeight: 800, color: pc(profit.net), fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{fcSep(profit.net, true)}</Text>
                 <Text size="xs" c="dimmed">({(profit.net / profit.div).toFixed(2)}d)</Text>
               </div>
               <div style={{ background: profit.cPerMap >= 0 ? 'rgba(81,207,102,0.08)' : 'rgba(255,107,107,0.10)', border: `1px solid ${profit.cPerMap >= 0 ? 'rgba(81,207,102,0.3)' : 'rgba(255,107,107,0.3)'}`, borderRadius: 8, padding: '8px', textAlign: 'center' }}>
                 <Text size="xs" c="dimmed" mb={2}>Per Map</Text>
-                <Text style={{ fontSize: 18, fontWeight: 800, color: pc(profit.cPerMap), fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{profit.cPerMap >= 0 ? '+' : ''}{profit.cPerMap.toFixed(0)}c</Text>
+                <Text style={{ fontSize: FONT.xl, fontWeight: 800, color: pc(profit.cPerMap), fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{fcSep(profit.cPerMap, true)}</Text>
                 <Text size="xs" c="dimmed">({profit.divPerMap.toFixed(3)}d)</Text>
               </div>
             </SimpleGrid>
-            <Group justify="space-between" py={3} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-              <Text size="sm" c="dimmed">Investment</Text>
-              <Group gap={4} align="baseline">
-                <Text size="sm" fw={600}>{profit.totalInvest.toFixed(0)}c</Text>
-                <Text size="xs" c="dimmed">({(profit.totalInvest / profit.div).toFixed(2)}d)</Text>
-              </Group>
-            </Group>
-            {profit.hasBl && (
+            {/* session-17 experiment: Investment + Loot gain as a second,
+                QUIETER tile row (neutral surface, compact) under the two big
+                tinted decision tiles — same shape family, preserved hierarchy. */}
+            <SimpleGrid cols={profit.hasBl ? 2 : 1} spacing="xs" mb={2}>
+              <div style={{ background: 'var(--mantine-color-dark-6)', border: '1px solid var(--mantine-color-dark-4)', borderRadius: 8, padding: '5px 8px', textAlign: 'center' }}>
+                <Text size="xs" c="dimmed" mb={1}>Investment</Text>
+                <Group gap={4} justify="center" align="baseline" wrap="nowrap">
+                  <Text size="sm" fw={600} style={{ fontVariantNumeric: 'tabular-nums' }}>{fcSep(profit.totalInvest)}</Text>
+                  <Text size="xs" c="dimmed">({(profit.totalInvest / profit.div).toFixed(2)}d)</Text>
+                </Group>
+              </div>
+              {profit.hasBl && (
+                <div style={{ background: 'var(--mantine-color-dark-6)', border: '1px solid var(--mantine-color-dark-4)', borderRadius: 8, padding: '5px 8px', textAlign: 'center' }}>
+                  <Text size="xs" c="dimmed" mb={1}>Loot gain (vs baseline)</Text>
+                  <Group gap={4} justify="center" align="baseline" wrap="nowrap">
+                    <Text size="sm" fw={600} c={profit.lootGain >= 0 ? 'teal' : 'red'} style={{ fontVariantNumeric: 'tabular-nums' }}>{fcSep(profit.lootGain, true)}</Text>
+                    <Text size="xs" style={{ color: COLOR.dim }}>({(profit.lootGain / profit.div).toFixed(2)}d)</Text>
+                  </Group>
+                </div>
+              )}
+            </SimpleGrid>
+            {!profit.hasReturn && <Text size="xs" c="dimmed" fs="italic" pt={2}>No return CSV — loot not in profit</Text>}
+            {pace && (
               <Group justify="space-between" py={3} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                <Text size="sm" c="dimmed">Loot gain (vs baseline)</Text>
+                <Tooltip multiline w={260} label={`Measures your first captured map to your last activity, from the time between parsed maps (${pace.countedGaps} gaps counted; ${pace.excludedGaps} break-like gaps excluded). Needs 5+ captured maps. Rough local estimate — never shared.`}>
+                  <Text size="sm" c="dimmed" style={{ cursor: 'help' }}>Pace (estimate)</Text>
+                </Tooltip>
                 <Group gap={4} align="baseline">
-                  <Text size="sm" fw={600} c={profit.lootGain >= 0 ? 'teal' : 'red'}>{profit.lootGain >= 0 ? '+' : ''}{profit.lootGain.toFixed(0)}c</Text>
-                  <Text size="xs" style={{ color: '#555' }}>({(profit.lootGain / profit.div).toFixed(2)}d)</Text>
+                  <Text size="sm" fw={600}>{pace.mapsPerHour.toFixed(1)} maps/h</Text>
+                  <Text size="xs" c="dimmed">· {formatActiveTime(pace.activeMs)} active</Text>
                 </Group>
               </Group>
             )}
-            {!profit.hasReturn && <Text size="xs" c="dimmed" fs="italic" pt={2}>No return CSV — loot not in profit</Text>}
           </Section>
 
           <Divider my={4} />
 
           {stats && (
             <Section title="Map Multipliers"
-              right={settings.chiselType
-                ? <Badge size="xs" color="yellow" variant="light">🪨 {settings.chiselType}</Badge>
-                : undefined}>
+              right={
+                <Group gap={4} wrap="nowrap">
+                  <Badge color="gray" variant="outline" size="sm">{stats.count} maps</Badge>
+                  <Badge color="blue" variant="outline" size="sm">{stats.multiplier.toFixed(3)}×</Badge>
+                  {settings.chiselType && (
+                    <Badge size="sm" color="yellow" variant="light"
+                      leftSection={<PoeItemIcon name={chiselItemName(settings.chiselType)} size={14} />}>
+                      {settings.chiselType}
+                    </Badge>
+                  )}
+                </Group>
+              }>
               <SimpleGrid cols={2} spacing={5} mt={2}>
                 {STAT_KEYS.map((key) => {
                   const d = stats.stats[key as string];
                   if (!d || (d.avg === 0 && d.proj === 0)) return null;
                   return (
-                    <div key={key as string} style={{
-                      background: 'rgba(255,255,255,0.04)',
-                      border: '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: 6, padding: '4px 8px 6px',
-                      display: 'flex', flexDirection: 'column',
-                    }}>
-                      <Text style={{ fontSize: 9, color: '#555', textTransform: 'uppercase',
-                        letterSpacing: 0.8, marginBottom: 2, lineHeight: 1 }}>
-                        {STAT_LABELS[key as string]}
-                      </Text>
-                      <Group gap={4} justify="center" align="center" wrap="nowrap" style={{ flex: 1 }}>
-                        <Text fw={500} style={{ fontSize: 14, color: '#666', fontVariantNumeric: 'tabular-nums' }}>
-                          {d.avg.toFixed(1)}%
-                        </Text>
-                        <Text style={{ fontSize: 10, color: '#444' }}>→</Text>
-                        <Text fw={600} style={{
-                          fontSize: 16,
-                          color: d.hasChisel ? '#ffd43b' : '#74c0fc',
-                          fontVariantNumeric: 'tabular-nums',
-                        }}>
-                          {d.proj.toFixed(1)}%{d.hasChisel ? ' 🪨' : ''}
-                        </Text>
-                      </Group>
-                    </div>
+                    <StatTile
+                      key={key as string}
+                      boxed
+                      labelStyle={{ marginBottom: 2, lineHeight: 1 }}
+                      label={STAT_LABELS[key as string]}
+                      value={
+                        <Group gap={4} justify="center" align="center" wrap="nowrap" style={{ flex: 1 }}>
+                          <Text fw={500} style={{ fontSize: FONT.stat, color: COLOR.textMuted, fontVariantNumeric: 'tabular-nums' }}>
+                            {d.avg.toFixed(1)}%
+                          </Text>
+                          <Text style={{ fontSize: FONT.small, color: COLOR.borderSoft }}>→</Text>
+                          <Text fw={600} style={{
+                            fontSize: FONT.lg,
+                            color: d.hasChisel ? COLOR.warning : COLOR.accent,
+                            fontVariantNumeric: 'tabular-nums',
+                          }}>
+                            {d.proj.toFixed(1)}%
+                          </Text>
+                        </Group>
+                      }
+                    />
                   );
                 })}
               </SimpleGrid>
@@ -350,66 +355,80 @@ export const DashboardModule = () => {
               style={{ background: 'rgba(255,200,0,0.07)', border: '1px solid rgba(255,200,0,0.25)', borderRadius: 6, flexShrink: 0 }}>
               <Group justify="space-between" align="flex-start">
                 <Stack gap={2} style={{ flex: 1 }}>
-                  <Text size="xs" fw={600} c="yellow">⚠ Investment detected in baseline diff</Text>
-                  <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>
-                    These items disappeared from your stash and match your investment setup:
+                  <Text size="xs" fw={600} c="yellow">Investment items found in your loot diff</Text>
+                  <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>
+                    These items left your stash during the session and match your investment setup — so their cost is being counted twice (once as investment, once as "lost" loot):
                   </Text>
                   {detectedMatches.map((m) => (
-                    <Text key={m.name} size="xs" c="dimmed" style={{ fontSize: 10 }}>
+                    <Text key={m.name} size="xs" c="dimmed" style={{ fontSize: FONT.small }}>
                       · {m.name}: <Text span c="red">−{m.value.toFixed(1)}c</Text>
                     </Text>
                   ))}
-                  <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>
-                    If these were in your tracked tabs at baseline time they are double-counted.
-                    Neutralising adds <Text span c="teal">+{detectedTotal.toFixed(1)}c</Text> back to loot gain.
+                  <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>
+                    Correcting this adds <Text span c="teal">+{detectedTotal.toFixed(1)}c</Text> back to your loot gain so the profit numbers are right.
                   </Text>
                 </Stack>
               </Group>
               <Group gap={4}>
                 <Button size="xs" variant="light" color="yellow"
                   onClick={() => setInvestmentNeutralization(detectedTotal)}>
-                  Neutralise +{detectedTotal.toFixed(1)}c
+                  Correct double-count (+{detectedTotal.toFixed(1)}c)
                 </Button>
                 <Button size="xs" variant="subtle" color="gray"
                   onClick={() => setInvestmentDismissed(true)}>
-                  Dismiss
+                  These weren't double-counted
                 </Button>
               </Group>
             </Stack>
           )}
+          {detectedMatches.length > 0 && investmentNeutralization === 0 && investmentDismissed && (
+            <Group gap={4} mb={4} align="center" style={{ flexShrink: 0 }}>
+              <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>
+                Double-count check dismissed — {detectedMatches.length} investment item{detectedMatches.length > 1 ? 's' : ''} still detected in the diff.
+              </Text>
+              <Button size="compact-xs" variant="subtle" color="yellow"
+                onClick={() => setInvestmentDismissed(false)} style={{ fontSize: FONT.label, padding: '0 4px' }}>
+                Recheck
+              </Button>
+            </Group>
+          )}
           {investmentNeutralization > 0 && (
             <Group gap={4} mb={4} style={{ flexShrink: 0 }}>
               <Badge color="teal" variant="light" size="xs">
-                ✓ +{investmentNeutralization.toFixed(1)}c investment neutralised
+                +{investmentNeutralization.toFixed(1)}c double-count corrected
               </Badge>
               {/* compact prop was removed in Mantine v8 — use size="compact-xs" instead */}
               <Button size="compact-xs" variant="subtle" color="gray"
-                onClick={() => setInvestmentNeutralization(0)} style={{ fontSize: 9, padding: '0 4px' }}>
+                onClick={() => setInvestmentNeutralization(0)} style={{ fontSize: FONT.label, padding: '0 4px' }}>
                 undo
               </Button>
             </Group>
           )}
           <Group justify="space-between" mb={4} style={{ flexShrink: 0 }}>
-            <Text size="xs" fw={700} c="dimmed" style={{ textTransform: 'uppercase', letterSpacing: 1, fontSize: 10 }}>
+            <Text size="xs" fw={700} c="dimmed" style={{ textTransform: 'uppercase', letterSpacing: 1, fontSize: FONT.small }}>
               Loot Tracker
             </Text>
             <Group gap={4}>
-              <Tooltip label="Import baseline">
-                <Button size="xs" variant={hasBaseline ? 'filled' : 'default'} color={hasBaseline ? 'yellow' : undefined}
-                  onClick={() => triggerImport('baseline')}>
-                  📦 {hasBaseline ? 'Re-baseline' : 'Baseline'}
+              <Tooltip label="Import your stash CSV from before the session">
+                <Button size="xs" variant={hasBaseline ? 'light' : 'default'} color={hasBaseline ? 'yellow' : undefined}
+                  leftSection={<IconPackage size={12} />} onClick={() => triggerImport('baseline')}>
+                  {hasBaseline ? 'Re-baseline' : 'Baseline'}
                 </Button>
               </Tooltip>
-              <Tooltip label="Import return CSV">
-                <Button size="xs" variant={hasCurrent ? 'filled' : 'default'} color={hasCurrent ? 'teal' : undefined}
-                  leftSection={<FaFileImport size={9} />} onClick={() => triggerImport('current')}>
+              <Tooltip label="Import your stash CSV from after the session">
+                <Button size="xs" variant={hasCurrent ? 'light' : 'default'} color={hasCurrent ? 'teal' : undefined}
+                  leftSection={<IconFileImport size={12} />} onClick={() => triggerImport('current')}>
                   Return
                 </Button>
               </Tooltip>
               {(hasCurrent || hasBaseline) && (
                 <Tooltip label="Clear all loot data">
-                  <ActionIcon size="sm" color="red" variant="subtle" onClick={openClear}>
-                    <FaTrash size={10} />
+                  <ActionIcon size="md" variant="default" aria-label="Clear all loot data"
+                    onMouseEnter={() => setHoveredLootClear(true)}
+                    onMouseLeave={() => setHoveredLootClear(false)}
+                    style={hoveredLootClear ? { color: 'var(--mantine-color-red-4)', borderColor: 'var(--mantine-color-red-7)' } : undefined}
+                    onClick={() => { setHoveredLootClear(false); openClear(); }}>
+                    <IconTrash size={15} />
                   </ActionIcon>
                 </Tooltip>
               )}
@@ -420,10 +439,10 @@ export const DashboardModule = () => {
             {!hasCurrent && !hasBaseline && (
               <Stack align="center" justify="center" style={{ flex: 1 }} gap="xs">
                 <Text size="xs" c="dimmed" ta="center">Import a baseline before your session, then a return CSV to see your gains.</Text>
-                <Text size="xs" c="dimmed" ta="center" style={{ fontStyle: 'italic', fontSize: 10 }}>
+                <Text size="xs" c="dimmed" ta="center" style={{ fontStyle: 'italic', fontSize: FONT.small }}>
                   Tip: before importing a baseline, move your investment items (maps, scarabs etc.) out of any WealthyExile-monitored tab into your inventory or an unmonitored tab, then change zones so WealthyExile updates, then refresh and import. Otherwise your investment will be counted twice.
                 </Text>
-                <Text size="xs" c="dimmed" ta="center" style={{ fontSize: 10 }}>
+                <Text size="xs" c="dimmed" ta="center" style={{ fontSize: FONT.small }}>
                   Export from{' '}
                   <Anchor href="#" size="xs" onClick={(e) => { e.preventDefault(); window.open('https://wealthyexile.com', '_blank'); }}>
                     WealthyExile
@@ -434,7 +453,7 @@ export const DashboardModule = () => {
             )}
             {!hasCurrent && hasBaseline && (
               <Stack align="center" justify="center" style={{ flex: 1 }} gap="xs">
-                <Badge color="yellow" variant="light">Baseline: {baselineTotal.toFixed(1)}c</Badge>
+                <Badge color="yellow" variant="light">Baseline: {fcSep(baselineTotal, false, 1)}</Badge>
                 <Text size="xs" c="dimmed">Go map. Import a return CSV to see your gains.</Text>
                 <Button size="xs" variant="light" color="teal" onClick={() => triggerImport('current')}>Import Return CSV</Button>
               </Stack>
@@ -443,19 +462,19 @@ export const DashboardModule = () => {
             {(hasCurrent || hasBoth) && (
               <Stack gap={4} style={{ flex: 1, minHeight: 0 }}>
                 <SegmentedControl value={lootView} onChange={(v) => setLootView(v as any)}
-                  data={[{ value: 'list', label: 'List' }, { value: 'diff', label: hasBoth ? '🔍 Diff' : 'Diff', disabled: !hasBoth }, { value: 'breakdown', label: '📊' }]}
+                  data={[{ value: 'list', label: 'List' }, { value: 'diff', label: 'Diff', disabled: !hasBoth }, { value: 'breakdown', label: 'Breakdown' }]}
                   size="xs" fullWidth style={{ flexShrink: 0 }} />
 
                 {lootView === 'list' && (
                   <Stack gap={4} style={{ flex: 1, minHeight: 0 }}>
-                    <TextInput size="xs" placeholder="Filter items..." leftSection={<FaSearch size={10} />}
+                    <TextInput size="xs" placeholder="Filter items..." leftSection={<IconSearch size={11} />}
                       value={search} onChange={(e) => setSearch(e.currentTarget.value)}
                       style={{ flexShrink: 0 }} />
                     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
                       <Table stickyHeader>
                         <Table.Thead>
                           <Table.Tr>
-                            <Table.Th style={{ width: 24 }}>✓</Table.Th>
+                            <Table.Th style={{ width: 24 }}></Table.Th>
                             <Table.Th>Item</Table.Th>
                             <Table.Th>Qty</Table.Th>
                             <Table.Th>Value</Table.Th>
@@ -467,7 +486,7 @@ export const DashboardModule = () => {
                               <Table.Td><Checkbox checked={!item.excluded} onChange={() => toggleLootItemExcluded(item.id)} size="xs" /></Table.Td>
                               <Table.Td><Group gap={6} wrap="nowrap"><ItemIcon name={item.name} /><Text size="xs" lineClamp={1}>{item.name}</Text></Group></Table.Td>
                               <Table.Td><Text size="xs">{item.quantity}</Text></Table.Td>
-                              <Table.Td><Text size="xs" fw={600} c={item.excluded ? 'dimmed' : 'teal'}>{item.total.toFixed(1)}c</Text></Table.Td>
+                              <Table.Td><Text size="xs" fw={600} c={item.excluded ? 'dimmed' : 'teal'}>{fcSep(item.total, false, 1)}</Text></Table.Td>
                             </Table.Tr>
                           ))}
                         </Table.Tbody>
@@ -486,8 +505,8 @@ export const DashboardModule = () => {
                         {visibleListRows < filteredItems.length && ` (showing ${visibleListRows})`}
                       </Text>
                       <Group gap={4}>
-                        <Badge color="teal" variant="light" size="xs">{inclTotal.toFixed(1)}c</Badge>
-                        <Badge color="yellow" variant="light" size="xs">{(inclTotal / divPrice).toFixed(2)}d</Badge>
+                        <Badge color="teal" variant="light" size="sm">{fcSep(inclTotal, false, 1)}</Badge>
+                        <Badge color="yellow" variant="light" size="sm">{(inclTotal / divPrice).toFixed(2)}d</Badge>
                       </Group>
                     </Group>
                   </Stack>
@@ -497,10 +516,10 @@ export const DashboardModule = () => {
                   <Stack gap={4} style={{ flex: 1, minHeight: 0 }}>
                     <Group justify="space-between" style={{ flexShrink: 0 }}>
                       <Text size="xs" c="dimmed">Net Gain</Text>
-                      <Text size="sm" fw={700} c={netGain >= 0 ? 'green' : 'red'}>{netGain >= 0 ? '+' : ''}{netGain.toFixed(1)}c</Text>
+                      <Text size="sm" fw={700} c={netGain >= 0 ? 'green' : 'red'}>{fcSep(netGain, true, 1)}</Text>
                     </Group>
                     <SegmentedControl value={diffTab} onChange={(v) => setDiffTab(v as any)}
-                      data={[{ value: 'gains', label: `✅ Gained (${gains.length})` }, { value: 'losses', label: `📦 Spent (${losses.length})` }]}
+                      data={[{ value: 'gains', label: `Gained (${gains.length})` }, { value: 'losses', label: `Spent (${losses.length})` }]}
                       size="xs" fullWidth style={{ flexShrink: 0 }} />
                     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
                       <Table stickyHeader>
@@ -510,7 +529,7 @@ export const DashboardModule = () => {
                             <Table.Tr key={r.name}>
                               <Table.Td><Group gap={6} wrap="nowrap"><ItemIcon name={r.name} /><Text size="xs" lineClamp={1}>{r.name}</Text></Group></Table.Td>
                               <Table.Td><Text size="xs" c="dimmed">{r.baseQty} → {r.currQty}</Text></Table.Td>
-                              <Table.Td><Text size="xs" fw={600} c={r.delta > 0 ? 'green' : 'red'}>{r.delta > 0 ? '+' : ''}{r.delta.toFixed(1)}c</Text></Table.Td>
+                              <Table.Td><Text size="xs" fw={600} c={r.delta > 0 ? 'green' : 'red'}>{fcSep(r.delta, true, 1)}</Text></Table.Td>
                             </Table.Tr>
                           ))}
                         </Table.Tbody>
@@ -526,21 +545,28 @@ export const DashboardModule = () => {
                   </Stack>
                 )}
 
-                {lootView === 'breakdown' && (
-                  <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-                    <Stack gap={6}>
-                      {sortedCats.map(([cat, value]) => (
-                        <Stack key={cat} gap={2}>
-                          <Group justify="space-between">
-                            <Badge color={CAT_COLORS[cat as ItemCategory] ?? 'gray'} size="xs" variant="light">{cat}</Badge>
-                            <Text size="xs" fw={600} c="teal">{value.toFixed(1)}c</Text>
-                          </Group>
-                          <Progress value={(value / maxCat) * 100} size={4} color={CAT_COLORS[cat as ItemCategory] ?? 'gray'} />
-                        </Stack>
-                      ))}
-                    </Stack>
-                  </div>
-                )}
+                {lootView === 'breakdown' && (() => {
+                  const catTotal = sortedCats.reduce((a, [, v]) => a + v, 0) || 1;
+                  return (
+                    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+                      <Stack gap={4}>
+                        {sortedCats.map(([cat, value]) => (
+                          <Stack key={cat} gap={3} p={6}
+                            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6 }}>
+                            <Group justify="space-between">
+                              <Badge color={CAT_COLORS[cat as ItemCategory] ?? 'gray'} size="xs" variant="light">{cat}</Badge>
+                              <Group gap={6} align="baseline">
+                                <Text size="xs" c="dimmed" style={{ fontVariantNumeric: 'tabular-nums' }}>{((value / catTotal) * 100).toFixed(0)}%</Text>
+                                <Text size="xs" fw={600} c="teal" style={{ fontVariantNumeric: 'tabular-nums' }}>{fcSep(value, false, 1)}</Text>
+                              </Group>
+                            </Group>
+                            <Progress value={(value / maxCat) * 100} size={6} radius="xl" color={CAT_COLORS[cat as ItemCategory] ?? 'gray'} />
+                          </Stack>
+                        ))}
+                      </Stack>
+                    </div>
+                  );
+                })()}
               </Stack>
             )}
           </div>

@@ -1,37 +1,30 @@
 import {
   Card, Text, NumberInput, Divider, Group, Stack,
   Select, Button, Modal, SimpleGrid, Autocomplete, Badge,
-  ActionIcon, TextInput, Menu, Alert, Collapse, Tooltip,
+  ActionIcon, TextInput, Menu, Alert, Tooltip,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { useState, useEffect } from 'react';
-import { useSessionStore } from '../store/useSessionStore';
+import { useState, useEffect, useMemo } from 'react';
+import { useSessionKeys } from '../store/useSessionStore';
 import { SCARAB_LIST, DELIRIUM_ORB_LIST, ASTROLABE_LIST, CHISEL_SELECT_DATA } from '../utils/constants';
+import { isMechanicActive } from '../utils/gameData';
 import { parsePriceInput } from '../utils/priceUtils';
-import { FaTrash, FaSave, FaChevronDown, FaChevronRight, FaSync, FaTimes } from 'react-icons/fa';
+import { computeCosts } from '../utils/profit';
+import { fcSep } from '../utils/parseDiscordExport';
+import { KNOWN_LEAGUES, fetchSelectableLeagues } from '../utils/league';
+import { chiselItemName, deliOrbItemName } from '../utils/itemIcons';
+import { PoeItemIcon } from '../components/ui/PoeItemIcon';
+import { IconTrash, IconDeviceFloppy, IconChevronDown, IconRefresh, IconX, IconSettings, IconLock } from '@tabler/icons-react';
+import { CollapsibleSection } from '../components/ui/CollapsibleSection';
+import { COLOR, FONT } from '../utils/uiTokens'
 
 const AdvSection = ({ title, filled, children }: {
   title: string; filled: boolean; children: React.ReactNode;
-}) => {
-  const [open, setOpen] = useState(false);
-  return (
-    <Stack gap={0}>
-      <Group justify="space-between" onClick={() => setOpen((o) => !o)}
-        style={{ cursor: 'pointer', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.06)', userSelect: 'none' }}>
-        <Group gap={6}>
-          <Text size="xs" fw={700}>{title}</Text>
-          {filled && !open && <Badge size="xs" color="green" variant="dot">filled</Badge>}
-        </Group>
-        <ActionIcon size="xs" variant="transparent" c="dimmed">
-          {open ? <FaChevronDown size={8} /> : <FaChevronRight size={8} />}
-        </ActionIcon>
-      </Group>
-      <Collapse in={open}>
-        <Stack gap="xs" pt="xs" pb={4}>{children}</Stack>
-      </Collapse>
-    </Stack>
-  );
-};
+}) => (
+  <CollapsibleSection title={title} variant="group" filled={filled}>
+    {children}
+  </CollapsibleSection>
+);
 
 const PriceInput = ({
   label, description, value, onChange, divinePrice, placeholder = '0', style,
@@ -67,39 +60,71 @@ const PriceInput = ({
 export const InvestmentModule = () => {
   const {
     maps, settings, updateSetting, updateAdvSetting, updateScarab, clearScarab, initDivinePrice,
+    setDivinePriceManual, leagueOverride, setLeagueOverride,
     scarabPresets, saveScarabPreset, loadScarabPreset, deleteScarabPreset, activeSessionId,
-  } = useSessionStore();
+  } = useSessionKeys(
+    'maps', 'settings', 'updateSetting', 'updateAdvSetting', 'updateScarab', 'clearScarab', 'initDivinePrice',
+    'setDivinePriceManual', 'leagueOverride', 'setLeagueOverride',
+    'scarabPresets', 'saveScarabPreset', 'loadScarabPreset', 'deleteScarabPreset', 'activeSessionId',
+  );
   const [advOpen, { open: openAdv, close: closeAdv }] = useDisclosure(false);
-  const [presetName, setPresetName] = useState('');
+  const [presetSaveOpen, setPresetSaveOpen] = useState(false); // scarab preset "Save current as…" dialog
+  const [presetSaveName, setPresetSaveName] = useState('');
   const [fetchingPrice, setFetchingPrice] = useState(false);
+  const [hoveredReset, setHoveredReset] = useState(false); // reset-costs icon red hover (Sessions pattern)
+  const [hoveredPresetTrashId, setHoveredPresetTrashId] = useState<string | null>(null); // preset delete red hover
+  // League-override dropdown (rollover D4/D5). Options start with the curated
+  // KNOWN_LEAGUES and are replaced by the poe.ninja index list on first
+  // dropdown open (one attempt per mount; fetchSelectableLeagues falls back to
+  // KNOWN_LEAGUES with a loud console.warn if the endpoint fails).
+  const [leagueList, setLeagueList] = useState<string[]>(KNOWN_LEAGUES);
+  const [leagueListRequested, setLeagueListRequested] = useState(false);
+  const loadLeagueOptions = async () => {
+    if (leagueListRequested) return;
+    setLeagueListRequested(true);
+    setLeagueList(await fetchSelectableLeagues());
+  };
+  const leagueOptions = useMemo(() => {
+    const names = [...leagueList];
+    // The persisted override must always be selectable, even if the index
+    // no longer lists it (e.g. an ended event league).
+    if (leagueOverride && !names.includes(leagueOverride)) names.unshift(leagueOverride);
+    return [
+      { value: '', label: !leagueOverride && settings.leagueName ? `Auto: ${settings.leagueName}` : 'Auto-detect' },
+      ...names.map((n) => ({ value: n, label: n })),
+    ];
+  }, [leagueList, leagueOverride, settings.leagueName]);
 
-  const divinePrice   = settings.divinePrice || 1;
-  const chiselCost      = settings.chiselType && settings.chiselPrice > 0 ? settings.chiselPrice : 0;
-  const hasPreservation  = settings.scarabs.some((s) => s.name.toLowerCase().includes('preservation'));
-  const perMapScarabs    = hasPreservation
-    ? settings.scarabs.filter((s) =>  s.name.toLowerCase().includes('preservation')).reduce((acc, s) => acc + (s.cost || 0), 0)
-    : settings.scarabs.reduce((acc, s) => acc + (s.cost || 0), 0);
-  const oneTimeScarabs   = hasPreservation
-    ? settings.scarabs.filter((s) => !s.name.toLowerCase().includes('preservation')).reduce((acc, s) => acc + (s.cost || 0), 0)
-    : 0;
-  const mapCount         = maps.length || 1;
-  const isSplit          = settings.advSplitPrice > 0;
-  const perMapBase       = isSplit
-    ? (settings.baseMapCost + chiselCost + settings.advSplitPrice) / 2 + perMapScarabs
-    : settings.baseMapCost + chiselCost + perMapScarabs;
-  const rollingPerMap   = settings.rollingCostPerMap / mapCount;
-  const totalPerMapFull = perMapBase + rollingPerMap;
+  const divinePrice = settings.divinePrice || 1;
+
+  // All cost math lives in utils/profit.ts (WP1). The session total is derived
+  // LIVE from settings + map count — the stored settings.rollingCostPerMap was
+  // stale (froze at the map count of the last Advanced Costs edit) and is
+  // removed in store migration v16.
+  const mapCount = maps.length || 1;
+  const costs = computeCosts(settings, mapCount);
+  const { hasPreservation, oneTimeScarabs, rollingSessionTotal } = costs;
+  const isSplit         = settings.advSplitPrice > 0;
+  // ALL-IN cost per map: total investment (incl. one-time scarabs and session
+  // costs) spread over parsed maps — badge x maps always equals the Dashboard's
+  // Investment figure. One definition, no gaps.
+  const totalPerMapFull = costs.totalInvest / mapCount;
   const deliPerMap      = settings.advDeliOrbQtyPerMap * settings.advDeliOrbPriceEach;
   const astrolabeTotal  = settings.advAstrolabePrice * settings.advAstrolabeCount;
+  // Mechanic gate (rollover §5.3): if 3.29 removes astrolabes, hide the NEW-input
+  // section — UNLESS this session already has astrolabe data, so an in-progress
+  // session is never disrupted mid-edit (read-time visibility, non-destructive).
+  const astrolabeHasData = !!settings.advAstrolabeType || settings.advAstrolabeCount > 0 || settings.advAstrolabePrice > 0;
+  const showAstrolabe   = isMechanicActive('astrolabe') || astrolabeHasData;
   const gemBuyTotal     = settings.advGemCount * settings.advGemBuyPrice;
   const gemSellTotal    = settings.advGemCount * settings.advGemSellPrice;
   const gemNetPL        = gemSellTotal - gemBuyTotal;
 
-  // Auto-init on mount: cooldown-gated. If poe.ninja is unreachable and the
-  // price stays 0, we don't retry on every remount — the cooldown in
-  // tryFetchDivinePrice (60s) prevents the storm.
+  // Auto-init on mount. The unset/legacy-200/30-min-staleness guard lives in
+  // the store (WP4.2); the 60s cooldown in tryFetchDivinePrice prevents remount
+  // retry storms when poe.ninja is unreachable.
   useEffect(() => {
-    if (settings.divinePrice === 0 || settings.divinePrice === 200) initDivinePrice();
+    initDivinePrice();
   }, []);
 
   // Re-fetch when a new session is started (activeSessionId transitions to null)
@@ -118,6 +143,13 @@ export const InvestmentModule = () => {
   };
 
   const baseMapFilled   = settings.baseMapCost > 0;
+  const doPresetSave = () => {
+    const name = presetSaveName.trim();
+    if (!name) return;
+    saveScarabPreset(name);
+    setPresetSaveName('');
+    setPresetSaveOpen(false);
+  };
   const chiselFilled    = !!settings.chiselType && settings.chiselPrice > 0;
   const rollingFilled   = settings.advChaos > 0 || settings.advExaltPrice > 0 || settings.advScourPrice > 0 || settings.advAlchPrice > 0;
   const deliFilled      = deliPerMap > 0;
@@ -131,7 +163,7 @@ export const InvestmentModule = () => {
         styles={{ body: { maxHeight: '78vh', overflowY: 'auto' } }}>
         <Stack gap={4} pb="md">
           <Alert color="blue" variant="light" p="xs">
-            <Text size="xs">Use <Text span c="yellow">.7d</Text> for divine prices. Click a section to expand. Rolling Cost updates live.</Text>
+            <Text size="xs">Use <Text span c="yellow">.7d</Text> for divine prices. Click a section to expand. Session costs update live.</Text>
           </Alert>
           <AdvSection title="Base Map Cost" filled={baseMapFilled}>
             <PriceInput value={settings.baseMapCost} onChange={(v) => updateSetting('baseMapCost', v)} divinePrice={divinePrice} placeholder="e.g. 900c" />
@@ -140,7 +172,14 @@ export const InvestmentModule = () => {
             <SimpleGrid cols={2} style={{ alignItems: 'flex-end' }}>
               <Select label="Type" data={CHISEL_SELECT_DATA} value={settings.chiselType || null}
                 onChange={(v) => { const t = v ?? ''; updateSetting('chiselType', t); updateSetting('chiselUsed', t.length > 0); }}
-                size="xs" clearable placeholder="— None —" />
+                size="xs" clearable placeholder="— None —"
+                leftSection={settings.chiselType ? <PoeItemIcon name={chiselItemName(settings.chiselType)} size={16} /> : undefined}
+                renderOption={({ option }) => (
+                  <Group gap={6} wrap="nowrap">
+                    <PoeItemIcon name={chiselItemName(option.value)} size={16} />
+                    <Text size="xs">{option.label}</Text>
+                  </Group>
+                )} />
               <PriceInput label="Price per map" value={settings.chiselPrice}
                 onChange={(v) => updateSetting('chiselPrice', v)} divinePrice={divinePrice}
                 placeholder={settings.chiselType ? 'e.g. 150c' : '—'} />
@@ -154,30 +193,37 @@ export const InvestmentModule = () => {
               <Text size="xs" fw={600} c="dimmed">Total paid</Text>
             </SimpleGrid>
             <SimpleGrid cols={3} style={{ alignItems: 'center' }}>
-              <Text size="xs">Chaos</Text>
+              <Group gap={4} wrap="nowrap"><PoeItemIcon name="Chaos Orb" size={16} /><Text size="xs">Chaos</Text></Group>
               <NumberInput size="xs" value={settings.advChaos} onChange={(v) => updateAdvSetting('advChaos', Number(v))} min={0} />
               <Text size="xs" c="dimmed">{settings.advChaos}c</Text>
             </SimpleGrid>
             <SimpleGrid cols={3} style={{ alignItems: 'flex-end' }}>
-              <Text size="xs">Exalted</Text>
+              <Group gap={4} wrap="nowrap"><PoeItemIcon name="Exalted Orb" size={16} /><Text size="xs">Exalted</Text></Group>
               <NumberInput size="xs" value={settings.advExalt} onChange={(v) => updateAdvSetting('advExalt', Number(v))} min={0} />
               <PriceInput value={settings.advExaltPrice} onChange={(v) => updateAdvSetting('advExaltPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
             </SimpleGrid>
             {settings.advExalt > 0 && settings.advExaltPrice > 0 && <Text size="xs" c="dimmed">→ {(settings.advExaltPrice / settings.advExalt).toFixed(2)}c each</Text>}
             <SimpleGrid cols={3} style={{ alignItems: 'flex-end' }}>
-              <Text size="xs">Scour</Text>
+              <Group gap={4} wrap="nowrap"><PoeItemIcon name="Orb of Scouring" size={16} /><Text size="xs">Scour</Text></Group>
               <NumberInput size="xs" value={settings.advScour} onChange={(v) => updateAdvSetting('advScour', Number(v))} min={0} />
               <PriceInput value={settings.advScourPrice} onChange={(v) => updateAdvSetting('advScourPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
             </SimpleGrid>
             <SimpleGrid cols={3} style={{ alignItems: 'flex-end' }}>
-              <Text size="xs">Alch</Text>
+              <Group gap={4} wrap="nowrap"><PoeItemIcon name="Orb of Alchemy" size={16} /><Text size="xs">Alch</Text></Group>
               <NumberInput size="xs" value={settings.advAlch} onChange={(v) => updateAdvSetting('advAlch', Number(v))} min={0} />
               <PriceInput value={settings.advAlchPrice} onChange={(v) => updateAdvSetting('advAlchPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
             </SimpleGrid>
           </AdvSection>
           <AdvSection title="Delirium Orbs" filled={deliFilled}>
             <Select label="Orb Type" data={DELIRIUM_ORB_LIST} value={settings.advDeliOrbType || null}
-              onChange={(v) => updateAdvSetting('advDeliOrbType', v ?? '')} size="xs" placeholder="Type to search..." searchable clearable />
+              onChange={(v) => updateAdvSetting('advDeliOrbType', v ?? '')} size="xs" placeholder="Type to search..." searchable clearable
+              leftSection={settings.advDeliOrbType ? <PoeItemIcon name={deliOrbItemName(settings.advDeliOrbType)} size={16} /> : undefined}
+              renderOption={({ option }) => (
+                <Group gap={6} wrap="nowrap">
+                  <PoeItemIcon name={deliOrbItemName(option.value)} size={16} />
+                  <Text size="xs">{option.label}</Text>
+                </Group>
+              )} />
             <SimpleGrid cols={2} style={{ alignItems: 'flex-end' }}>
               <NumberInput label="Per map (1–5)" size="xs" value={settings.advDeliOrbQtyPerMap}
                 onChange={(v) => updateAdvSetting('advDeliOrbQtyPerMap', Number(v))} min={0} max={5} />
@@ -186,10 +232,18 @@ export const InvestmentModule = () => {
             </SimpleGrid>
             {deliPerMap > 0 && <Text size="xs" c="teal">→ {deliPerMap.toFixed(2)}c per map</Text>}
           </AdvSection>
+          {showAstrolabe && (
           <AdvSection title="Astrolabe" filled={astrolabeFilled}>
             <Text size="xs" c="dimmed">Random duration. Enter price each + count used this session.</Text>
             <Select label="Type" data={ASTROLABE_LIST} value={settings.advAstrolabeType || null}
-              onChange={(v) => updateAdvSetting('advAstrolabeType', v ?? '')} size="xs" placeholder="Select astrolabe..." clearable />
+              onChange={(v) => updateAdvSetting('advAstrolabeType', v ?? '')} size="xs" placeholder="Select astrolabe..." clearable
+              leftSection={settings.advAstrolabeType ? <PoeItemIcon name={settings.advAstrolabeType} size={16} /> : undefined}
+              renderOption={({ option }) => (
+                <Group gap={6} wrap="nowrap">
+                  <PoeItemIcon name={option.value} size={16} />
+                  <Text size="xs">{option.label}</Text>
+                </Group>
+              )} />
             <SimpleGrid cols={2} style={{ alignItems: 'flex-end' }}>
               <PriceInput label="Price each" value={settings.advAstrolabePrice}
                 onChange={(v) => updateAdvSetting('advAstrolabePrice', v)} divinePrice={divinePrice} placeholder="e.g. 1d" />
@@ -198,6 +252,7 @@ export const InvestmentModule = () => {
             </SimpleGrid>
             {astrolabeTotal > 0 && <Text size="xs" c="teal">→ {astrolabeTotal.toFixed(1)}c total ({settings.advAstrolabeCount} × {settings.advAstrolabePrice.toFixed(1)}c)</Text>}
           </AdvSection>
+          )}
           <AdvSection title="Gem Leveling" filled={gemFilled}>
             <Text size="xs" c="dimmed">
               Tracked separately — gem buy cost and sell value are both excluded from map profit.
@@ -210,6 +265,7 @@ export const InvestmentModule = () => {
               value={settings.advGemName}
               onChange={(e) => updateAdvSetting('advGemName', e.currentTarget.value)}
               size="xs"
+              leftSection={settings.advGemName ? <PoeItemIcon name={settings.advGemName} size={16} /> : undefined}
             />
             <NumberInput label="Gems leveled" size="xs" value={settings.advGemCount}
               onChange={(v) => updateAdvSetting('advGemCount', Number(v))} min={0} />
@@ -246,9 +302,16 @@ export const InvestmentModule = () => {
             )}
           </AdvSection>
           <AdvSection title="Split Session" filled={splitFilled}>
-            <Text size="xs" c="dimmed">Running split maps? Each map is split from a base map (costs 1 split op). Formula: (map + chisel + split cost) ÷ 2 per map. Deli orbs and rolling costs are NOT halved.</Text>
+            <Group gap={6} wrap="nowrap">
+              {/* Fractured Fossil = the actual split fossil (session-16 review
+                  correction; Shuddering was wrong). The beast-orb icon was
+                  dropped: beasts aren't reliably in the economy icon cache and
+                  a wrong/absent icon confuses more than it helps. */}
+              <PoeItemIcon name="Fractured Fossil" size={16} />
+              <Text size="xs" c="dimmed">Running split maps? Each map is split from a base map (costs 1 split op). Formula: (map + chisel + split cost) ÷ 2 per map. Deli orbs and rolling costs are NOT halved.</Text>
+            </Group>
             <SimpleGrid cols={2} style={{ alignItems: 'flex-end' }}>
-              <PriceInput label="Price per split" description="beast ≈ 1–2c, fossil varies"
+              <PriceInput label="Price per split" description="cost of your split method (beast or fossil)"
                 value={settings.advSplitPrice} onChange={(v) => updateAdvSetting('advSplitPrice', v)}
                 divinePrice={divinePrice} placeholder="0 = disabled" />
               <Stack gap={0}>
@@ -262,48 +325,51 @@ export const InvestmentModule = () => {
           </AdvSection>
           <Divider />
           <Group justify="space-between">
-            <Text size="sm" fw={700}>Rolling Cost (session total)</Text>
-            <Text size="sm" fw={700} c="orange">{settings.rollingCostPerMap.toFixed(2)}c</Text>
+            <Text size="sm" fw={700}>Session costs (total)</Text>
+            <Text size="sm" fw={700} style={{ fontVariantNumeric: 'tabular-nums' }}>{fcSep(rollingSessionTotal, false, 2)}</Text>
           </Group>
+          <Text size="xs" c="dimmed">
+            Chaos, exalt, scour, alch, astrolabes, and delirium orbs ({settings.advDeliOrbQtyPerMap > 0 ? `${deliPerMap.toFixed(0)}c/map × ${maps.length || 1} maps` : 'none'}). Updates live as maps are parsed.
+          </Text>
           <Button color="blue" onClick={closeAdv}>Done</Button>
+        </Stack>
+      </Modal>
+
+      {/* ── Scarab-preset save modal (name only; Sad 2026-07-09 — replaces the
+          always-visible name field, consolidated with Load into one menu) ── */}
+      <Modal opened={presetSaveOpen} onClose={() => { setPresetSaveOpen(false); setPresetSaveName(''); }} title="Save Scarab Preset" size="sm">
+        <Stack gap="sm">
+          <TextInput label="Name" placeholder="e.g. Deli farming" autoFocus
+            value={presetSaveName} onChange={(e) => setPresetSaveName(e.currentTarget.value)}
+            onKeyDown={(e) => e.key === 'Enter' && doPresetSave()} />
+          <Text size="xs" c="dimmed">
+            {settings.scarabs.filter((s) => s.name.trim()).map((s) => s.name).join(', ') || 'No scarabs set'}
+          </Text>
+          <Button onClick={doPresetSave} disabled={!presetSaveName.trim()}>Save</Button>
         </Stack>
       </Modal>
 
       <Card shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ overflow: 'auto' }}>
         <Group justify="space-between" mb={8}>
-          <Text fw={700} size="sm">Investment</Text>
+          {/* Panel title removed (redundant with the tab label — same call as the
+              Sessions panel). The header slot hosts the league override instead
+              (rollover D4/D5): '' = auto-detect via poe.ninja probe; anything
+              else bypasses the probe entirely — including the D5 case of
+              detection sticking on an ended event. */}
+          <Select
+            size="xs" searchable
+            data={leagueOptions}
+            value={leagueOverride ?? ''}
+            onChange={(v) => setLeagueOverride(v || null)}
+            onDropdownOpen={loadLeagueOptions}
+            comboboxProps={{ withinPortal: true }}
+            title="League — leave on Auto unless detection picks the wrong league (e.g. you are mapping in the parent league during an event)"
+            style={{ width: 170 }}
+          />
           <Group gap={4}>
-            <Tooltip label="Reset all costs (keeps divine price)">
-              <ActionIcon size="xs" variant="subtle" color="red"
-                onClick={() => {
-                  updateSetting('baseMapCost', 0);
-                  updateSetting('chiselUsed', false);
-                  updateSetting('chiselType', '');
-                  updateSetting('chiselPrice', 0);
-                  updateSetting('scarabs', Array(5).fill(null).map(() => ({ name: '', cost: 0 })));
-                  updateAdvSetting('advChaos', 0);
-                  updateAdvSetting('advExalt', 0);
-                  updateAdvSetting('advExaltPrice', 0);
-                  updateAdvSetting('advScour', 0);
-                  updateAdvSetting('advScourPrice', 0);
-                  updateAdvSetting('advAlch', 0);
-                  updateAdvSetting('advAlchPrice', 0);
-                  updateAdvSetting('advDeliOrbType', '');
-                  updateAdvSetting('advDeliOrbQtyPerMap', 0);
-                  updateAdvSetting('advDeliOrbPriceEach', 0);
-                  updateAdvSetting('advSplitPrice', 0);
-                  updateAdvSetting('advAstrolabeType', '');
-                  updateAdvSetting('advAstrolabePrice', 0);
-                  updateAdvSetting('advAstrolabeCount', 0);
-                  updateAdvSetting('advGemCount', 0);
-                  updateAdvSetting('advGemBuyPrice', 0);
-                  updateAdvSetting('advGemSellPrice', 0);
-                  updateAdvSetting('advGemName', '');
-                }}>
-                <FaTimes size={9} />
-              </ActionIcon>
+            <Tooltip label="All-in cost per map: total investment (base map + chisel + scarabs incl. one-time + session costs) divided by parsed maps. Equals Dashboard Investment / maps.">
+              <Badge color="gray" variant="outline" style={{ fontVariantNumeric: 'tabular-nums' }}>{totalPerMapFull.toFixed(1)}c/map</Badge>
             </Tooltip>
-            <Badge color="red" variant="light">{totalPerMapFull.toFixed(1)}c/map</Badge>
           </Group>
         </Group>
 
@@ -320,69 +386,128 @@ export const InvestmentModule = () => {
               <Stack gap={4} align="center">
                 <Text size="xs" c="dimmed">Divine Price</Text>
                 {/* Input + icon on same row, input fills available space */}
-                <Group gap={4} align="center" wrap="nowrap" style={{ width: '100%' }}>
-                  <NumberInput
-                    value={settings.divinePrice}
-                    onChange={(v) => updateSetting('divinePrice', Number(v))}
-                    suffix="c" size="sm" hideControls style={{ flex: 1 }}
-                    styles={{ input: { textAlign: 'center', fontWeight: 700, fontSize: 14 } }}
-                  />
-                  <ActionIcon size="sm" variant="subtle" color="blue" loading={fetchingPrice}
-                    onClick={handleFetchPrice} title="Fetch from poe.ninja" style={{ flexShrink: 0 }}>
-                    <FaSync size={10} />
-                  </ActionIcon>
-                </Group>
+                {/* session-16: refresh lives INSIDE the price input (it belongs to
+                    that value; also removes the uneven spacing vs Session costs) */}
+                <NumberInput
+                  value={settings.divinePrice}
+                  onChange={(v) => setDivinePriceManual(Number(v))}
+                  suffix="c" size="sm" hideControls style={{ width: '100%' }}
+                  styles={{ input: { textAlign: 'center', fontWeight: 700, fontSize: FONT.stat } }}
+                  rightSection={
+                    <ActionIcon size="sm" variant="subtle" color="gray" loading={fetchingPrice}
+                      onClick={handleFetchPrice} aria-label="Fetch divine price from poe.ninja"
+                      title="Fetch from poe.ninja">
+                      <IconRefresh size={13} />
+                    </ActionIcon>
+                  }
+                  rightSectionPointerEvents="all"
+                />
+                {/* WP4.3: which league's price? Cue only when it differs from the
+                    EXPECTED league — the override when set, else the newest known. */}
+                {settings.leagueName && settings.leagueName !== (leagueOverride ?? KNOWN_LEAGUES[0]) && (
+                  <Tooltip label={`This price was fetched for the ${settings.leagueName} league, not ${leagueOverride ?? KNOWN_LEAGUES[0]}. Use the refresh button to re-fetch.`} withArrow multiline w={220}>
+                    <Text size="xs" c="yellow" style={{ fontSize: FONT.label, cursor: 'help' }}>price: {settings.leagueName}</Text>
+                  </Tooltip>
+                )}
               </Stack>
 
-              {/* Total Cost (was Rolling Cost) */}
+              {/* Session costs — live derived total of Advanced Costs (WP1) */}
               <Stack gap={4} align="center">
-                <Text size="xs" c="dimmed">Total Cost</Text>
+                <Text size="xs" c="dimmed">Session costs</Text>
+                {/* session-16: match the Divine Price input's surface (dark-6/dark-4)
+                    and drop the orange value — both boxes now read as one family */}
                 <div style={{
                   height: 34, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: 'rgba(255,255,255,0.05)', borderRadius: 4,
-                  border: '1px solid rgba(255,255,255,0.08)',
+                  background: 'var(--mantine-color-dark-6)', borderRadius: 4,
+                  border: '1px solid var(--mantine-color-dark-4)',
                 }}>
                   <Text fw={700} style={{
-                    fontSize: 14, fontVariantNumeric: 'tabular-nums',
-                    color: settings.rollingCostPerMap > 0 ? '#fd7e14' : '#555',
+                    fontSize: FONT.stat, fontVariantNumeric: 'tabular-nums',
+                    color: rollingSessionTotal > 0 ? COLOR.text : COLOR.dim,
                   }}>
-                    {settings.rollingCostPerMap > 0 ? `${settings.rollingCostPerMap.toFixed(0)}c` : '—'}
+                    {rollingSessionTotal > 0 ? fcSep(rollingSessionTotal) : '—'}
                   </Text>
                 </div>
               </Stack>
             </Group>
 
-            <Button variant="light" color="blue" fullWidth size="xs" onClick={openAdv}>
-              ⚙ Advanced Costs
-            </Button>
+            {/* session-16: the reset lives IN the box it resets, beside the
+                button that configures those costs (Sad asked for in-box; the
+                literal top-right corner would collide with the centered
+                column labels — flag it if this placement doesn't read). */}
+            <Group gap={4} wrap="nowrap">
+              {/* session-17 review: variant="default" — the blue light button
+                  was the odd one out vs the reference language (neutral
+                  surfaces; colour = status/destructive-hover only). */}
+              <Button variant="default" size="xs" leftSection={<IconSettings size={12} />} onClick={openAdv} style={{ flex: 1 }}>
+                Advanced Costs
+              </Button>
+              <Tooltip label="Reset all costs (keeps divine price)">
+                <ActionIcon size="30" variant="default" aria-label="Reset all costs"
+                  onMouseEnter={() => setHoveredReset(true)}
+                  onMouseLeave={() => setHoveredReset(false)}
+                  style={hoveredReset ? { color: 'var(--mantine-color-red-4)', borderColor: 'var(--mantine-color-red-7)' } : undefined}
+                  onClick={() => {
+                    setHoveredReset(false);
+                    updateSetting('baseMapCost', 0);
+                    updateSetting('chiselUsed', false);
+                    updateSetting('chiselType', '');
+                    updateSetting('chiselPrice', 0);
+                    updateSetting('scarabs', Array(5).fill(null).map(() => ({ name: '', cost: 0 })));
+                    updateAdvSetting('advChaos', 0);
+                    updateAdvSetting('advExalt', 0);
+                    updateAdvSetting('advExaltPrice', 0);
+                    updateAdvSetting('advScour', 0);
+                    updateAdvSetting('advScourPrice', 0);
+                    updateAdvSetting('advAlch', 0);
+                    updateAdvSetting('advAlchPrice', 0);
+                    updateAdvSetting('advDeliOrbType', '');
+                    updateAdvSetting('advDeliOrbQtyPerMap', 0);
+                    updateAdvSetting('advDeliOrbPriceEach', 0);
+                    updateAdvSetting('advSplitPrice', 0);
+                    updateAdvSetting('advAstrolabeType', '');
+                    updateAdvSetting('advAstrolabePrice', 0);
+                    updateAdvSetting('advAstrolabeCount', 0);
+                    updateAdvSetting('advGemCount', 0);
+                    updateAdvSetting('advGemBuyPrice', 0);
+                    updateAdvSetting('advGemSellPrice', 0);
+                    updateAdvSetting('advGemName', '');
+                  }}>
+                  <IconTrash size={15} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
           </div>
 
           {/* Active cost indicators — CENTERED */}
           {(settings.chiselType || isSplit || deliPerMap > 0 || astrolabeTotal > 0) && (
             <Group gap={4} wrap="wrap" justify="center">
               {settings.chiselType && (
-                <Badge size="xs" color="yellow" variant="light" style={{ cursor: 'pointer' }} onClick={openAdv}>
-                  🪨 {settings.chiselType}{settings.chiselPrice > 0 ? ` ${settings.chiselPrice}c` : ''}
+                <Badge size="sm" color="yellow" variant="light" style={{ cursor: 'pointer' }} onClick={openAdv}
+                  leftSection={<PoeItemIcon name={chiselItemName(settings.chiselType)} size={16} />}>
+                  {settings.chiselType}{settings.chiselPrice > 0 ? ` ${settings.chiselPrice}c` : ''}
                 </Badge>
               )}
               {isSplit && (
-                <Badge size="xs" color="cyan" variant="light" style={{ cursor: 'pointer' }} onClick={openAdv}>
-                  ✂ Split {settings.advSplitPrice}c
+                <Badge size="sm" color="cyan" variant="light" style={{ cursor: 'pointer' }} onClick={openAdv}>
+                  Split {settings.advSplitPrice}c
                 </Badge>
               )}
               {deliPerMap > 0 && (
-                <Badge size="xs" color="grape" variant="light" style={{ cursor: 'pointer' }} onClick={openAdv}>
-                  🌫 Deli {deliPerMap.toFixed(1)}c
+                <Badge size="sm" color="grape" variant="light" style={{ cursor: 'pointer' }} onClick={openAdv}
+                  leftSection={<PoeItemIcon name={deliOrbItemName(settings.advDeliOrbType)} size={16} />}>
+                  Deli {deliPerMap.toFixed(1)}c
                 </Badge>
               )}
               {astrolabeTotal > 0 && (
-                <Badge size="xs" color="teal" variant="light" style={{ cursor: 'pointer' }} onClick={openAdv}>
+                <Badge size="sm" color="teal" variant="light" style={{ cursor: 'pointer' }} onClick={openAdv}
+                  leftSection={<PoeItemIcon name={settings.advAstrolabeType} size={16} />}>
                   Astro {astrolabeTotal.toFixed(0)}c
                 </Badge>
               )}
               {oneTimeScarabs > 0 && (
-                <Badge size="xs" color="teal" variant="outline">
-                  🔒 Preserved {oneTimeScarabs.toFixed(0)}c
+                <Badge size="sm" color="teal" variant="outline" leftSection={<IconLock size={11} />}>
+                  Preserved {oneTimeScarabs.toFixed(0)}c
                 </Badge>
               )}
             </Group>
@@ -391,47 +516,59 @@ export const InvestmentModule = () => {
           {/* Gem P&L — separate row, not mixed with investment */}
           {settings.advGemCount > 0 && (
             <Group gap={4} justify="center">
-              <Badge size="xs" color={gemNetPL >= 0 ? 'green' : 'red'} variant="light" style={{ cursor: 'pointer' }} onClick={openAdv}>
+              <Badge size="sm" color={gemNetPL >= 0 ? 'green' : 'red'} variant="light" style={{ cursor: 'pointer' }} onClick={openAdv}>
                 Gems: {gemNetPL >= 0 ? '+' : ''}{gemNetPL.toFixed(0)}c net ({settings.advGemCount} leveled)
               </Badge>
             </Group>
           )}
 
-          <Divider label={
+          <Divider labelPosition="center" label={
             <Group gap={4}>
               <Text size="xs" c="dimmed">Scarabs</Text>
               {hasPreservation && (
                 <Tooltip
                   label="Horned Scarab of Preservation detected — only Preservation scarabs are counted per-map. All other scarabs are treated as a one-time cost."
                   withArrow multiline w={240}>
-                  <Text size="xs" c="teal" style={{ cursor: 'help' }}>🔒 preservation active</Text>
+                  <Text size="xs" c="teal" style={{ cursor: 'help', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    <IconLock size={10} /> preservation active
+                  </Text>
                 </Tooltip>
               )}
             </Group>
           } />
-          <Group gap="xs" align="flex-end">
-            <TextInput placeholder="Preset name" value={presetName}
-              onChange={(e) => setPresetName(e.currentTarget.value)} size="xs" style={{ flex: 1 }} />
-            <Button size="xs" variant="light" disabled={!presetName.trim()}
-              onClick={() => { saveScarabPreset(presetName.trim()); setPresetName(''); }}>
-              <FaSave size={10} />
-            </Button>
-            {scarabPresets.length > 0 && (
-              <Menu shadow="md" width={200}>
-                <Menu.Target>
-                  <Button size="xs" variant="default" rightSection={<FaChevronDown size={8} />}>Load</Button>
-                </Menu.Target>
-                <Menu.Dropdown>
-                  {scarabPresets.map((p) => (
-                    <Menu.Item key={p.id}
-                      rightSection={<ActionIcon size="xs" color="red" variant="subtle"
-                        onClick={(e) => { e.stopPropagation(); deleteScarabPreset(p.id); }}>
-                        <FaTrash size={8} /></ActionIcon>}
-                      onClick={() => loadScarabPreset(p.id)}>{p.name}</Menu.Item>
-                  ))}
-                </Menu.Dropdown>
-              </Menu>
-            )}
+          <Group justify="flex-end">
+            <Menu shadow="md" width={220} position="bottom-end">
+              <Menu.Target>
+                <Button size="xs" variant="default" rightSection={<IconChevronDown size={10} />}>Presets</Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item leftSection={<IconDeviceFloppy size={13} />}
+                  disabled={!settings.scarabs.some((s) => s.name.trim())}
+                  onClick={() => setPresetSaveOpen(true)}>
+                  Save current as…
+                </Menu.Item>
+                {scarabPresets.length > 0 && (
+                  <>
+                    <Menu.Divider />
+                    <Menu.Label>Load preset</Menu.Label>
+                    {scarabPresets.map((p) => (
+                      <Menu.Item key={p.id}
+                        rightSection={<ActionIcon size="sm" variant="subtle" aria-label={`Delete preset ${p.name}`}
+                          onMouseEnter={() => setHoveredPresetTrashId(p.id)}
+                          onMouseLeave={() => setHoveredPresetTrashId(null)}
+                          style={{ color: hoveredPresetTrashId === p.id ? 'var(--mantine-color-red-4)' : 'var(--mantine-color-dimmed)' }}
+                          onClick={(e) => { e.stopPropagation(); setHoveredPresetTrashId(null); deleteScarabPreset(p.id); }}>
+                          <IconTrash size={13} /></ActionIcon>}
+                        onClick={() => loadScarabPreset(p.id)}>
+                        <Tooltip label={p.scarabs.filter((s) => s.name.trim()).map((s) => s.name).join(', ') || '(empty)'} withArrow position="left">
+                          <Text size="xs" lineClamp={1}>{p.name}</Text>
+                        </Tooltip>
+                      </Menu.Item>
+                    ))}
+                  </>
+                )}
+              </Menu.Dropdown>
+            </Menu>
           </Group>
 
           {settings.scarabs.map((scarab, i) => (
@@ -439,10 +576,11 @@ export const InvestmentModule = () => {
               <Autocomplete placeholder={`Scarab ${i + 1}`} value={scarab.name}
                 onChange={(v) => updateScarab(i, 'name', v)}
                 data={SCARAB_LIST} size="xs" style={{ flex: 1, minWidth: 0 }}
+                leftSection={scarab.name ? <PoeItemIcon name={scarab.name} size={16} /> : undefined}
                 rightSection={scarab.name
                   ? <ActionIcon size="xs" variant="transparent" c="dimmed"
                       onMouseDown={(e) => { e.preventDefault(); clearScarab(i); }}>
-                      <FaTimes size={8} />
+                      <IconX size={10} />
                     </ActionIcon>
                   : undefined}
                 rightSectionPointerEvents={scarab.name ? 'all' : 'none'}

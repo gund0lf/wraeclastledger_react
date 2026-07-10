@@ -5,7 +5,8 @@ import {
 import { useState, useMemo, useEffect } from 'react';
 import { analyzeMap } from '../utils/uberMapMods';
 import { analyzeRegularMap } from '../utils/regularMapMods';
-import { useSessionStore } from '../store/useSessionStore';
+import { useSessionKeys } from '../store/useSessionStore';
+import { COLOR, FONT } from '../utils/uiTokens'
 
 type TabLayout = 'map-tab' | 'regular' | 'quad' | 'map-device';
 
@@ -18,16 +19,16 @@ const LAYOUTS: Record<TabLayout, { label: string; cols: number; rows: number; ce
 
 // ─── Quality tiers (based on combined S+A mod count) ─────────────────────────
 const QUAL = {
-  excellent: { color: '#ffd700', label: 'Excellent (4+ top mods)', bg: '#2d2a10' },
-  good:      { color: '#51cf66', label: 'Good (2 top mods)',       bg: '#1a2d1a' },
-  decent:    { color: '#74c0fc', label: 'Decent (1 top mod)',      bg: '#1a2a3d' },
-  standard:  { color: '#555',    label: 'Standard',                bg: '#1a1b1e' },
+  excellent: { color: COLOR.gold, label: 'Excellent (4+ top mods)', bg: COLOR.tintGoldBg },
+  good:      { color: COLOR.profit, label: 'Good (2 top mods)',       bg: COLOR.tintGreenBg },
+  decent:    { color: COLOR.accent, label: 'Decent (1 top mod)',      bg: COLOR.tintBlueBg },
+  standard:  { color: COLOR.dim,    label: 'Standard',                bg: COLOR.bgInset },
 } as const;
 type QualKey = keyof typeof QUAL;
 
 // ─── Stash Grid ───────────────────────────────────────────────────────────────
 const StashGrid = ({ layout }: { layout: TabLayout }) => {
-  const { maps } = useSessionStore();
+  const { maps } = useSessionKeys('maps');
   const [hovered,    setHovered]    = useState<number | null>(null);
   const [currentTab, setCurrentTab] = useState(0);
 
@@ -111,16 +112,16 @@ const StashGrid = ({ layout }: { layout: TabLayout }) => {
         {(Object.entries(QUAL) as [QualKey, typeof QUAL[QualKey]][]).map(([key, val]) => (
           <Group key={key} gap={4}>
             <div style={{ width: 8, height: 8, borderRadius: 2, background: val.color }} />
-            <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>{val.label}</Text>
+            <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>{val.label}</Text>
           </Group>
         ))}
         <Group gap={4}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ffd700' }} />
-          <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>Avarice chisel</Text>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: COLOR.gold }} />
+          <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>Avarice chisel</Text>
         </Group>
         <Group gap={4}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#74c0fc' }} />
-          <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>Proliferation chisel</Text>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: COLOR.accent }} />
+          <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>Proliferation chisel</Text>
         </Group>
       </Group>
 
@@ -141,12 +142,12 @@ const StashGrid = ({ layout }: { layout: TabLayout }) => {
                       return (
                         <td key={cIdx} style={{ padding: 0 }}>
                           <Tooltip withinPortal disabled={!map || isCompact} position="top"
-                            styles={{ tooltip: { background: '#0e0f11', border: '1px solid #333', color: '#c9cace' } }}
+                            styles={{ tooltip: { background: COLOR.bgDeep, border: `1px solid ${COLOR.borderFaint}`, color: COLOR.textSoft } }}
                             label={map ? (
                               <Stack gap={2} p={2}>
                                 <Group gap={4}>
                                   <Text size="xs" fw={700}>{map.name}</Text>
-                                  <Badge size="xs" color={map.isOriginator ? 'orange' : 'blue'} variant="dot" style={{ fontSize: 7 }}>
+                                  <Badge size="xs" color={map.isOriginator ? 'orange' : 'blue'} variant="dot" style={{ fontSize: FONT.micro }}>
                                     {map.isOriginator ? 'Orig' : 'T16'}
                                   </Badge>
                                 </Group>
@@ -155,7 +156,7 @@ const StashGrid = ({ layout }: { layout: TabLayout }) => {
                                   <Text size="xs">{map.rarity}%R</Text>
                                   <Text size="xs">{map.packSize}%P</Text>
                                   {map.moreCurrency > 0 && (
-                                    <Text size="xs" style={{ color: '#fbbf24', fontWeight: 600 }}>
+                                    <Text size="xs" style={{ color: COLOR.amber, fontWeight: 600 }}>
                                       +{map.moreCurrency}% Curr
                                     </Text>
                                   )}
@@ -174,8 +175,8 @@ const StashGrid = ({ layout }: { layout: TabLayout }) => {
                               onMouseLeave={() => setHovered(null)}
                               style={{
                                 width: cellSize, height: cellSize, borderRadius: isCompact ? 2 : 4,
-                                background: qual ? qual.bg : (map ? '#1e1f22' : '#16171a'),
-                                border: `${isCompact ? 1 : 2}px solid ${isHov ? '#fff' : (qual ? qual.color : '#333')}`,
+                                background: qual ? qual.bg : (map ? COLOR.bgRaised : COLOR.bgPanel),
+                                border: `${isCompact ? 1 : 2}px solid ${isHov ? COLOR.white : (qual ? qual.color : COLOR.borderFaint)}`,
                                 display: 'flex', flexDirection: 'column',
                                 alignItems: 'center', justifyContent: 'center',
                                 cursor: map ? 'pointer' : 'default',
@@ -183,20 +184,20 @@ const StashGrid = ({ layout }: { layout: TabLayout }) => {
                               }}>
                               {map && !isCompact ? (
                                 <>
-                                  <Text style={{ color: qual?.color ?? '#aaa', fontSize: 9, lineHeight: 1, fontWeight: 700 }}>XVI</Text>
-                                  <Text style={{ color: '#888', fontSize: 8, lineHeight: 1, marginTop: 2 }}>{map.quantity}%Q</Text>
+                                  <Text style={{ color: qual?.color ?? COLOR.textDim, fontSize: FONT.label, lineHeight: 1, fontWeight: 700 }}>XVI</Text>
+                                  <Text style={{ color: COLOR.textFaint, fontSize: FONT.tiny, lineHeight: 1, marginTop: 2 }}>{map.quantity}%Q</Text>
                                   {analysis && analysis.chiselRec !== 'none' && (
                                     <div style={{
                                       position: 'absolute', bottom: 2, right: 2, width: 5, height: 5,
                                       borderRadius: '50%',
-                                      background: analysis.chiselRec === 'Avarice' ? '#ffd700' : '#74c0fc',
+                                      background: analysis.chiselRec === 'Avarice' ? COLOR.gold : COLOR.accent,
                                     }} />
                                   )}
                                 </>
                               ) : map && isCompact ? (
-                                <div style={{ width: cellSize - 4, height: cellSize - 4, borderRadius: 1, background: qual?.color ?? '#888', opacity: 0.7 }} />
+                                <div style={{ width: cellSize - 4, height: cellSize - 4, borderRadius: 1, background: qual?.color ?? COLOR.textFaint, opacity: 0.7 }} />
                               ) : !isCompact ? (
-                                <Text style={{ fontSize: 8, color: '#444' }}>{globalIdx + 1}</Text>
+                                <Text style={{ fontSize: FONT.tiny, color: COLOR.borderSoft }}>{globalIdx + 1}</Text>
                               ) : null}
                             </div>
                           </Tooltip>
@@ -214,8 +215,8 @@ const StashGrid = ({ layout }: { layout: TabLayout }) => {
       {/* Detail bar */}
       <div style={{
         flexShrink: 0, minHeight: 60,
-        background: hoveredQual ? hoveredQual.bg : '#1a1b1e',
-        border: `1px solid ${hoveredQual ? hoveredQual.color : '#333'}`,
+        background: hoveredQual ? hoveredQual.bg : COLOR.bgInset,
+        border: `1px solid ${hoveredQual ? hoveredQual.color : COLOR.borderFaint}`,
         borderRadius: 6, padding: '8px 10px',
       }}>
         {hoveredMap && hoveredAnalysis && hoveredQual ? (
@@ -284,7 +285,7 @@ const StashGrid = ({ layout }: { layout: TabLayout }) => {
       {maps.length === 0 && (
         <Alert color="blue" variant="light" p="xs" style={{ flexShrink: 0 }}>
           <Text size="xs">
-            Enable <Text span fw={600}>Live</Text> in Map Log, Ctrl+C each map.
+            Enable <Text span fw={600}>Capture</Text> in Map Log, Ctrl+C each map.
             Go <Text span fw={600}>down</Text> each column, then right.
           </Text>
         </Alert>
@@ -296,7 +297,7 @@ const StashGrid = ({ layout }: { layout: TabLayout }) => {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export const MapAnalyzerModule = () => {
   const [layout, setLayout] = useState<TabLayout>('map-tab');
-  const { maps } = useSessionStore();
+  const { maps } = useSessionKeys('maps');
 
   // Build layout options — disable Map Device when more than 20 maps are parsed
   const layoutSelectData = useMemo(() =>
@@ -317,12 +318,9 @@ export const MapAnalyzerModule = () => {
   return (
     <Card shadow="sm" padding="sm" radius="md" withBorder h="100%"
       style={{ display: 'flex', flexDirection: 'column' }}>
-      <Group justify="space-between" mb="xs" style={{ flexShrink: 0 }}>
-        <Text fw={700} size="sm">Map Analyzer</Text>
-        <Text size="xs" c="dimmed">Map quality &amp; chisel guide</Text>
-      </Group>
-
-      <Group gap="xs" mb="xs" style={{ flexShrink: 0 }}>
+      {/* session-16: "Map Analyzer" title dropped (redundant with the tab
+          label); the layout select takes the header row, subtitle stays. */}
+      <Group gap="xs" mb="xs" style={{ flexShrink: 0 }} wrap="nowrap">
         <Select
           data={layoutSelectData}
           value={layout}
@@ -330,6 +328,7 @@ export const MapAnalyzerModule = () => {
           size="xs"
           style={{ flex: 1 }}
         />
+        <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>Map quality &amp; chisel guide</Text>
       </Group>
 
       <StashGrid layout={layout} />

@@ -1,7 +1,8 @@
 {
   "name": "WraeclastLedger",
-  "version": "1.0.62",
+  "version": "1.0.63",
   "description": "WraeclastLedger",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "main": "./out/main/index.js",
   "author": "gund0lf",
   "homepage": "https://github.com/gund0lf/wraeclastledger_react",
@@ -32,9 +33,9 @@
     "@electron-toolkit/utils": "^4.0.0",
     "@mantine/core": "^8.3.9",
     "@mantine/hooks": "^8.3.9",
+    "@tabler/icons-react": "^3.44.0",
     "electron-updater": "^6.8.3",
     "flexlayout-react": "^0.8.17",
-    "react-icons": "^5.5.0",
     "uuid": "^13.0.0",
     "zustand": "^5.0.8"
   },

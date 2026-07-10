@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseDiscordExport, fc, f1 } from './parseDiscordExport';
+import { EXPORT_EMOJI, stripExportDecoration } from './discordEmoji';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -152,6 +153,57 @@ describe('parseDiscordExport', () => {
     expect(r!.gemInfo).toBeNull();
     expect(r!.deliOrbQty).toBe(0);
     expect(r!.astroType).toBe('');
+  });
+});
+
+describe('parseDiscordExport - decoration-agnostic import (Part 1)', () => {
+  it('ignores custom / application emoji refs prefixed on labels', () => {
+    const decorated = FULL_EXPORT
+      .replace('Maps:', '<:wl_maps:123456789012345678> Maps:')
+      .replace('Multiplier:', '<:wl_mult:222> Multiplier:')
+      .replace('Net Profit:', '<a:wl_spin:333> Net Profit:')
+      .replace('Total Invest:', '<:wl_cost:444> Total Invest:');
+    const r = parseDiscordExport(decorated);
+    expect(r).not.toBeNull();
+    expect(r!.mapCount).toBe(42);
+    expect(r!.multiplier).toBe(4.82);
+    expect(r!.netProfit).toBe(8643);
+    expect(r!.totalInvest).toBe(1197);
+  });
+
+  it('ignores unicode emoji decoration from the registry', () => {
+    const decorated = FULL_EXPORT
+      .replace('Maps:', EXPORT_EMOJI.maps.uni + ' Maps:')
+      .replace('Multiplier:', EXPORT_EMOJI.stats.uni + ' Multiplier:')
+      .replace('Total Return:', EXPORT_EMOJI.returns.uni + ' Total Return:');
+    const r = parseDiscordExport(decorated);
+    expect(r).not.toBeNull();
+    expect(r!.mapCount).toBe(42);
+    expect(r!.multiplier).toBe(4.82);
+    expect(r!.totalReturn).toBe(9840);
+  });
+
+  it('parses the same fields with decoration and pre-stripped', () => {
+    const withDecoration = parseDiscordExport(EXPORT_WITH_EXTRAS);
+    const preStripped    = parseDiscordExport(stripExportDecoration(EXPORT_WITH_EXTRAS));
+    expect(preStripped).toEqual(withDecoration);
+    // run/slam still recovered once the status circles are gone
+    expect(preStripped!.runRegex).toBe('ter D|lid');
+    expect(preStripped!.slamRegex).toBe('lid');
+  });
+
+  it('preserves load-bearing punctuation (multiplier x, em-dash)', () => {
+    // stripExportDecoration must leave U+00D7 and U+2014 alone, only kill emoji.
+    const s = stripExportDecoration('a \u00D7 b \u2014 c \uD83D\uDCE6 d');
+    expect(s).toBe('a \u00D7 b \u2014 c  d');
+  });
+
+  it('does not mistake label lines for scarabs (structural, not decoration)', () => {
+    // "Excluded drops (2):" starts with a capital and ends in " (N" but is NOT a
+    // scarab bullet - scarab detection requires the leading "- ".
+    const r = parseDiscordExport(EXPORT_WITH_EXTRAS);
+    expect(r!.scarabs).toEqual([]);
+    expect(r!.scarabCosts).toEqual([]);
   });
 });
 

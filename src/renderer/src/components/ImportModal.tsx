@@ -4,9 +4,15 @@ import {
 } from '@mantine/core';
 import { useState } from 'react';
 import { useSessionStore } from '../store/useSessionStore';
+// (scalar selector below — this modal only needs the divine price)
 import { parseDiscordExport } from '../utils/parseDiscordExport';
 import type { DiscordImport } from '../utils/parseDiscordExport';
-import { CopyRegex } from './StrategyCard';
+import { RegexLine } from './ui/RegexLine';
+import { SectionLabel } from './ui/SectionLabel';
+import { PoeItemIcon } from './ui/PoeItemIcon';
+import { chiselItemName, deliOrbItemName } from '../utils/itemIcons';
+import { formatActiveTime } from '../utils/timeEstimate';
+import { COLOR, FONT } from '../utils/uiTokens'
 
 interface Props {
   opened: boolean;
@@ -15,12 +21,13 @@ interface Props {
 }
 
 export const ImportModal = ({ opened, onClose, onLoadBuild }: Props) => {
-  const { settings } = useSessionStore();
+  // Scalar selector: only re-render when the divine price itself changes.
+  const divinePrice = useSessionStore((s) => s.settings.divinePrice);
 
   const [importText,     setImportText]     = useState('');
   const [importResult,   setImportResult]   = useState<DiscordImport | null>(null);
   const [parseError,     setParseError]     = useState(false);
-  const [importDivPrice, setImportDivPrice] = useState(settings.divinePrice || 300);
+  const [importDivPrice, setImportDivPrice] = useState(divinePrice || 300);
 
   const handleClose = () => {
     onClose();
@@ -56,7 +63,7 @@ export const ImportModal = ({ opened, onClose, onLoadBuild }: Props) => {
         <Text size="xs" c="dimmed">Paste any WraeclastLedger export to see how it performs at your current divine price.</Text>
         <Textarea placeholder="Paste export here — auto-parses as you type..."
           value={importText} onChange={(e) => handleTextChange(e.currentTarget.value)}
-          autosize minRows={4} maxRows={8} styles={{ input: { fontFamily: 'monospace', fontSize: 11 } }} />
+          autosize minRows={4} maxRows={8} styles={{ input: { fontFamily: 'monospace', fontSize: FONT.body } }} />
         {parseError && (
           <Alert color="red" variant="light" p="xs">
             <Text size="xs">Could not parse — paste the full export including the [WraeclastLedger Session] line.</Text>
@@ -65,18 +72,43 @@ export const ImportModal = ({ opened, onClose, onLoadBuild }: Props) => {
         {importResult && repriced && (
           <Stack gap="xs">
             <Divider label="Parsed" labelPosition="left" />
+            {importResult.strategyName && (
+              <Text size="sm" fw={600}>{importResult.strategyName}</Text>
+            )}
             <Group gap="xs" wrap="wrap">
               <Badge variant="light">{importResult.mapCount} maps</Badge>
               {importResult.mapType && <Badge variant="light" color="blue">{importResult.mapType}</Badge>}
               <Badge variant="light" color="blue">{importResult.multiplier.toFixed(2)}×</Badge>
               {importResult.chisel && importResult.chisel !== 'None' && (
-                <Badge variant="light" color="yellow">🪨 {importResult.chisel}</Badge>
+                <Badge variant="light" color="yellow"
+                  leftSection={<PoeItemIcon name={chiselItemName(importResult.chisel)} size={14} />}>
+                  {importResult.chisel}
+                </Badge>
               )}
               {importResult.deliOrbType && (
-                <Badge variant="light" color="grape">🌫️ {importResult.deliOrbQty}x {importResult.deliOrbType} ({importResult.deliOrbQty * 20}%)</Badge>
+                <Badge variant="light" color="grape"
+                  leftSection={<PoeItemIcon name={deliOrbItemName(importResult.deliOrbType)} size={14} />}>
+                  {importResult.deliOrbQty}x {importResult.deliOrbType} ({importResult.deliOrbQty * 20}%)
+                </Badge>
               )}
               {importResult.astroType && (
-                <Badge variant="light" color="teal">🌍 {importResult.astroType}</Badge>
+                <Badge variant="light" color="teal"
+                  leftSection={<PoeItemIcon name={importResult.astroType} size={14} />}>
+                  {importResult.astroType}
+                </Badge>
+              )}
+              {/* Optional author-declared metadata (shared-metadata batch
+                  2026-07): party / time / atlas points. Absent = no badge. */}
+              {importResult.isGroupPlay && (
+                <Badge variant="light" color="cyan">
+                  Group{importResult.groupSize != null ? ` (${importResult.groupSize} players)` : ''}
+                </Badge>
+              )}
+              {/* Session time lives in the stats row below, not as a badge. */}
+              {importResult.atlasPoints != null && importResult.atlasPointsMax != null && (
+                <Badge variant="light" color="gray">
+                  Atlas {importResult.atlasPoints}/{importResult.atlasPointsMax}
+                </Badge>
               )}
             </Group>
             <Group gap="xs" wrap="wrap">
@@ -86,18 +118,28 @@ export const ImportModal = ({ opened, onClose, onLoadBuild }: Props) => {
               <Badge variant="dot" color="yellow">Curr: {importResult.avgCurr}%</Badge>
             </Group>
             {importResult.scarabs.length > 0 && (
-              <Text size="xs" c="dimmed">Scarabs: {importResult.scarabs.join(', ')}</Text>
+              <div>
+                <SectionLabel mb={4}>Scarabs</SectionLabel>
+                <Group gap={4} wrap="wrap">
+                  {importResult.scarabs.map((name, i) => (
+                    <Badge key={name} variant="light" color="orange"
+                      leftSection={<PoeItemIcon name={name} size={14} />}>
+                      {name}{importResult.scarabCosts[i] > 0 ? ` (${importResult.scarabCosts[i]}c)` : ''}
+                    </Badge>
+                  ))}
+                </Group>
+              </div>
             )}
             {importResult.strategyNotes && (
               <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '6px 8px', borderLeft: '2px solid rgba(255,255,255,0.15)' }}>
-                <Text size="xs" c="dimmed" mb={2} style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.8 }}>Notes from author</Text>
-                <Text size="xs" style={{ color: '#aaa', lineHeight: 1.5 }}>{importResult.strategyNotes}</Text>
+                <SectionLabel mb={2}>Notes from author</SectionLabel>
+                <Text size="xs" style={{ color: COLOR.textDim, lineHeight: 1.5 }}>{importResult.strategyNotes}</Text>
               </div>
             )}
             {importResult.excludedDrops.length > 0 && (
               <div style={{ background: 'rgba(255,107,107,0.04)', borderRadius: 4, padding: '6px 8px', borderLeft: '2px solid rgba(255,107,107,0.3)' }}>
-                <Text size="xs" c="dimmed" mb={2} style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.8 }}>Excluded drops ({importResult.excludedDrops.length})</Text>
-                <Text size="xs" style={{ color: '#aaa', lineHeight: 1.5 }}>
+                <SectionLabel mb={2}>Excluded drops ({importResult.excludedDrops.length})</SectionLabel>
+                <Text size="xs" style={{ color: COLOR.textDim, lineHeight: 1.5 }}>
                   {importResult.excludedDrops.map((d) => `${d.name} (${d.value.toFixed(0)}c)`).join(', ')}
                 </Text>
               </div>
@@ -120,13 +162,16 @@ export const ImportModal = ({ opened, onClose, onLoadBuild }: Props) => {
                 </Text>
               </Stack>
               <Stack gap={0}><Text size="xs" c="dimmed">Divine at time</Text><Text size="sm" fw={600}>~{repriced.impliedDivPrice}c</Text></Stack>
+              {importResult.sessionMinutes != null && importResult.sessionMinutes > 0 && (
+                <Stack gap={0}><Text size="xs" c="dimmed">Session time</Text><Text size="sm" fw={600}>{formatActiveTime(importResult.sessionMinutes * 60_000)}</Text></Stack>
+              )}
             </Group>
 
             <Divider label="At Your Divine Price" labelPosition="left" />
             <Group gap="xs" align="flex-end">
               <NumberInput label="Current divine price" value={importDivPrice}
                 onChange={(v) => setImportDivPrice(Number(v))} suffix="c" size="xs" w={140} />
-              <Text size="xs" c="dimmed" mb={4}>Your panel: {settings.divinePrice}c</Text>
+              <Text size="xs" c="dimmed" mb={4}>Your panel: {divinePrice}c</Text>
             </Group>
             <Group gap="lg" wrap="wrap">
               <Stack gap={0}>
@@ -153,20 +198,8 @@ export const ImportModal = ({ opened, onClose, onLoadBuild }: Props) => {
             {(importResult.runRegex || importResult.slamRegex) && (
               <>
                 <Divider label="Their Regex" labelPosition="left" />
-                {importResult.runRegex && (
-                  <Group gap={4} wrap="nowrap">
-                    <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>🟢</Text>
-                    <Text size="xs" c="teal" style={{ fontFamily: 'monospace', fontSize: 10, flex: 1, wordBreak: 'break-all' }}>{importResult.runRegex}</Text>
-                    <CopyRegex value={importResult.runRegex} label="run" />
-                  </Group>
-                )}
-                {importResult.slamRegex && (
-                  <Group gap={4} wrap="nowrap">
-                    <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>🟠</Text>
-                    <Text size="xs" c="orange" style={{ fontFamily: 'monospace', fontSize: 10, flex: 1, wordBreak: 'break-all' }}>{importResult.slamRegex}</Text>
-                    <CopyRegex value={importResult.slamRegex} label="slam" />
-                  </Group>
-                )}
+                {importResult.runRegex && <RegexLine value={importResult.runRegex} badge="Run" badgeColor="green" c="teal" />}
+                {importResult.slamRegex && <RegexLine value={importResult.slamRegex} badge="Slam" badgeColor="orange" c="orange" />}
               </>
             )}
 

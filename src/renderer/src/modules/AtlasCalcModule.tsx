@@ -1,14 +1,20 @@
-import { Card, Text, Stack, Group, Divider, Slider, Badge, Tooltip, Button, Switch } from '@mantine/core';
-import { useSessionStore } from '../store/useSessionStore';
+import { Card, Text, Stack, Group, Divider, Slider, Badge, Tooltip, Button } from '@mantine/core';
+import { useSessionKeys } from '../store/useSessionStore';
 import { useMemo, useState, useEffect, useRef } from 'react';
+import { computeMultiplier } from '../utils/profit';
+import { ModuleHeader } from '../components/ui/ModuleHeader';
+import { CollapsibleSection } from '../components/ui/CollapsibleSection';
+import { COLOR, FONT } from '../utils/uiTokens'
 
+// session-16 density pass 2: config pills share the map-type selector's blue
+// active treatment — one accent per panel instead of the old orange/blue mix.
 const Pill = ({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) => (
   <div onClick={onClick} style={{
     padding: '2px 8px', borderRadius: 10, cursor: 'pointer',
-    background: active ? 'rgba(255,147,43,0.15)' : 'rgba(100,100,100,0.15)',
-    border: `1px solid ${active ? '#ff932b' : '#555'}`,
-    color: active ? '#ff932b' : '#888',
-    fontSize: 11, fontWeight: 600, transition: 'all 0.1s', whiteSpace: 'nowrap',
+    background: active ? 'rgba(51,154,240,0.2)' : 'rgba(100,100,100,0.15)',
+    border: `1px solid ${active ? COLOR.info : COLOR.dim}`,
+    color: active ? COLOR.info : COLOR.textFaint,
+    fontSize: FONT.body, fontWeight: 600, transition: 'all 0.1s', whiteSpace: 'nowrap',
   }}>
     {label}
   </div>
@@ -29,7 +35,8 @@ const Question = ({ question, hint, onYes, onNo }: {
 );
 
 export const AtlasCalcModule = () => {
-  const { maps, settings, updateSetting, activeSessionId, sessionNonce } = useSessionStore();
+  const { maps, settings, updateSetting, activeSessionId, sessionNonce } =
+    useSessionKeys('maps', 'settings', 'updateSetting', 'activeSessionId', 'sessionNonce');
 
   // ── Derived: always fresh from real settings ──────────────────────────────
   const isConfigured = settings.mountingModifiers || settings.fragmentsUsed > 0 || settings.smallNodesAllocated > 0;
@@ -104,17 +111,11 @@ export const AtlasCalcModule = () => {
     return undefined;
   }, [maps.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const scarabOfRiskCount = useMemo(
-    () => settings.scarabs.filter((s) => s.name.toLowerCase().includes('of risk')).length * 2,
-    [settings.scarabs]
-  );
-
-  const baseModCount   = settings.mapType === '8-mod' ? 8 : 6;
-  const effectiveMods  = baseModCount + scarabOfRiskCount;
-  const fragmentEffect = settings.fragmentsUsed * 3;
-  const nodeEffect     = settings.smallNodesAllocated * 2;
-  const mountBonus     = settings.mountingModifiers ? effectiveMods * 2 : 0;
-  const multiplier     = 1 + (fragmentEffect + nodeEffect + mountBonus) / 100;
+  // WP1: single source of truth for multiplier math (utils/profit.ts)
+  const { multiplier, fragmentEffect, nodeEffect, scarabOfRiskMods, effectiveMods, mountBonus } = useMemo(
+    () => computeMultiplier(settings),
+    [settings.fragmentsUsed, settings.smallNodesAllocated, settings.mountingModifiers, settings.mapType, settings.scarabs] // eslint-disable-line react-hooks/exhaustive-deps
+    );
 
   // ── Wizard answer handlers ────────────────────────────────────────────────
   const finishWizard = () => {
@@ -151,46 +152,45 @@ export const AtlasCalcModule = () => {
 
   return (
     <Card shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ overflow: 'auto' }}>
-      <Group justify="space-between" mb="xs">
-        <Text fw={700} size="sm">Atlas Calc</Text>
-        <Tooltip label={[
-          fragmentEffect ? `${fragmentEffect}% frags` : '',
-          nodeEffect     ? `${nodeEffect}% nodes` : '',
-          mountBonus     ? `${mountBonus}% mounting` : '',
-        ].filter(Boolean).join(' + ') || 'No bonuses active'}>
-          <Badge color="blue" variant="light" style={{ cursor: 'default', fontVariantNumeric: 'tabular-nums' }}>
-            {multiplier.toFixed(3)}×
-          </Badge>
-        </Tooltip>
-      </Group>
-
-      <Stack gap={8}>
-        <Group justify="space-between" align="center">
-          <Group gap={4}>
+      <ModuleHeader
+        mb="xs"
+        title={
+          /* session-16: Map Type moved into the header slot — the in-panel
+             "Atlas Calc" title was redundant with the tab label. */
+          <Group gap={4} wrap="nowrap">
             <Text size="xs" fw={500}>Map Type</Text>
-            {autoDetectMsg && <Text size="xs" c="teal">✓ {autoDetectMsg}</Text>}
-          </Group>
-          <Group gap={4}>
             {(['6-mod', '8-mod'] as const).map((v) => (
               <div key={v} onClick={() => updateSetting('mapType', v)} style={{
-                padding: '2px 10px', borderRadius: 10, cursor: 'pointer', fontSize: 11, fontWeight: 600,
+                padding: '2px 10px', borderRadius: 10, cursor: 'pointer', fontSize: FONT.body, fontWeight: 600,
                 background: settings.mapType === v ? 'rgba(51,154,240,0.2)' : 'rgba(100,100,100,0.1)',
-                border: `1px solid ${settings.mapType === v ? '#339af0' : '#555'}`,
-                color: settings.mapType === v ? '#339af0' : '#888', transition: 'all 0.1s',
+                border: `1px solid ${settings.mapType === v ? COLOR.info : COLOR.dim}`,
+                color: settings.mapType === v ? COLOR.info : COLOR.textFaint, transition: 'all 0.1s',
               }}>{v}</div>
             ))}
           </Group>
-        </Group>
+        }
+        right={
+          <Tooltip label={[
+            fragmentEffect ? `${fragmentEffect}% frags` : '',
+            nodeEffect     ? `${nodeEffect}% nodes` : '',
+            mountBonus     ? `${mountBonus}% mounting` : '',
+            settings.atlasBonus ? '+25% flat IIQ (atlas bonus)' : '',
+          ].filter(Boolean).join(' + ') || 'No bonuses active'}>
+            <Badge color="blue" variant="outline" size="sm" style={{ cursor: 'default', fontVariantNumeric: 'tabular-nums' }}>
+              {multiplier.toFixed(3)}×
+            </Badge>
+          </Tooltip>
+        }
+      />
 
-        {scarabOfRiskCount > 0 && (
-          <Text size="xs" c="orange">Scarab of Risk: +{scarabOfRiskCount} mods → {effectiveMods} effective</Text>
-        )}
-
-        <Divider />
+      <Stack gap={8}>
+        {autoDetectMsg && <Text size="xs" c="teal">{autoDetectMsg}</Text>}
 
         {showPills && (
-          <Stack gap={6}>
-            <Text size="xs" c="dimmed" fw={500}>Click to edit</Text>
+          /* session-16: configuration collapses once set up — saves vertical
+             space; the title doubles as the instruction. Atlas Bonus is now a
+             pill here too (direct toggle) instead of a bottom-row switch. */
+          <CollapsibleSection variant="group" title="Click to edit" defaultOpen={false}>
             <Group gap={6} wrap="wrap">
               <Pill label={settings.mountingModifiers ? `Mounting +${mountBonus}%` : 'Mounting Off'}
                 active={settings.mountingModifiers} onClick={() => editPill('mounting')} />
@@ -202,15 +202,23 @@ export const AtlasCalcModule = () => {
                   setShowNodeSlider(settings.smallNodesAllocated > 0 && settings.smallNodesAllocated < 16);
                   editPill('nodes');
                 }} />
+              <Tooltip multiline w={230}
+                label="Completing all 100 Atlas Bonus Objectives grants a flat +25% IIQ (Quantity only). Turn this on once your Atlas is complete. It starts off each new league/event because Atlas progress resets to zero.">
+                <div>
+                  <Pill label={settings.atlasBonus ? 'Atlas Bonus +25% IIQ' : 'Atlas Bonus Off'}
+                    active={settings.atlasBonus}
+                    onClick={() => updateSetting('atlasBonus', !settings.atlasBonus)} />
+                </div>
+              </Tooltip>
             </Group>
-          </Stack>
+          </CollapsibleSection>
         )}
 
         {showWizard && !editingPill && (
           <Group justify="flex-end">
             <Tooltip label="Skip the setup — configure manually by clicking the Atlas Tree and using Apply to Calc, or click the pills above after loading a build" withArrow multiline w={240}>
               <Button size="xs" variant="subtle" color="gray" onClick={() => setDismissed(true)}>
-                Skip →
+                Skip
               </Button>
             </Tooltip>
           </Group>
@@ -238,7 +246,7 @@ export const AtlasCalcModule = () => {
                   marks={[1,2,3,4,5].map((v) => ({ value: v, label: String(v) }))}
                   size="xs" mb={6} />
                 <Button size="xs" variant="subtle" onClick={() => editingPill ? finishWizard() : setWizardStep('nodes')}>
-                  {editingPill ? 'Done ✓' : 'Next →'}
+                  {editingPill ? 'Done' : 'Next'}
                 </Button>
               </Stack>
             )}
@@ -258,7 +266,7 @@ export const AtlasCalcModule = () => {
                   min={0} max={16} step={1} label={(v) => `${v} nodes (+${v * 2}%)`}
                   marks={[{ value: 0, label: '0' }, { value: 8, label: '8' }, { value: 16, label: '16' }]}
                   size="xs" mb={6} />
-                <Button size="xs" variant="subtle" onClick={finishWizard}>Done ✓</Button>
+                <Button size="xs" variant="subtle" onClick={finishWizard}>Done</Button>
               </Stack>
             )}
             {showWizard && !editingPill && <Text size="xs" c="dimmed" ta="center">Step 3 of 3</Text>}
@@ -268,6 +276,14 @@ export const AtlasCalcModule = () => {
         <Divider />
 
         <Stack gap={3}>
+          {scarabOfRiskMods > 0 && (
+            <Group justify="space-between">
+              {/* session-16: subtle accent — this row appears by scarab choice,
+                  not panel config, so it reads as "external" at a glance */}
+              <Text size="xs" style={{ color: COLOR.accent }}>Scarab of Risk (+{scarabOfRiskMods} mods)</Text>
+              <Text size="xs" style={{ color: COLOR.accent }}>{effectiveMods} effective</Text>
+            </Group>
+          )}
           {fragmentEffect > 0 && (
             <Group justify="space-between">
               <Text size="xs" c="dimmed">Fragments ({settings.fragmentsUsed} × 3%)</Text>
@@ -283,23 +299,18 @@ export const AtlasCalcModule = () => {
           {mountBonus > 0 && (
             <Group justify="space-between">
               <Text size="xs" c="dimmed">Mounting ({effectiveMods} mods × 2%)</Text>
-              <Text size="xs" c="orange">+{mountBonus}%</Text>
+              <Text size="xs">+{mountBonus}%</Text>
+            </Group>
+          )}
+          {settings.atlasBonus && (
+            <Group justify="space-between">
+              <Text size="xs" c="dimmed">Atlas Bonus (Quantity only)</Text>
+              <Text size="xs">+25% flat IIQ</Text>
             </Group>
           )}
           <Group justify="space-between">
             <Text size="sm" fw={700}>Multiplier</Text>
             <Text size="sm" fw={700} c="blue">{multiplier.toFixed(3)}×</Text>
-          </Group>
-          <Group justify="space-between" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 4, marginTop: 2 }}>
-            <Tooltip multiline w={230}
-              label="Completing all 100 Atlas Bonus Objectives grants a flat +25% IIQ (Quantity only). Turn this on once your Atlas is complete. It starts off each new league/event because Atlas progress resets to zero.">
-              <Text size="xs" c="dimmed" style={{ cursor: 'help' }}>Atlas Bonus (Quantity only)</Text>
-            </Tooltip>
-            <Group gap={6}>
-              {settings.atlasBonus && <Text size="xs" c="grape">+25% flat IIQ</Text>}
-              <Switch size="xs" color="grape" checked={settings.atlasBonus}
-                onChange={(e) => updateSetting('atlasBonus', e.currentTarget.checked)} />
-            </Group>
           </Group>
         </Stack>
       </Stack>

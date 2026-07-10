@@ -3,9 +3,42 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { autoUpdater } from 'electron-updater'
+import { BRICK_MOD_DEFS, brickRegexTerm } from '../shared/brickMods'
 
 let clipboardInterval: NodeJS.Timeout | null = null;
 let lastClipboardText = '';
+let watchWindow: BrowserWindow | null = null;
+
+// ── WP13: clipboard polling lifecycle ────────────────────────────────────────
+// Polling only runs while the renderer's Capture toggle is ON (previously it
+// ran every 200ms forever and the renderer filtered by isWatching). Turning
+// the watch ON resets lastClipboardText, so content identical to what was in
+// the clipboard before also fires. This kills the cross-toggle half of the
+// "skips identical content" wart; copying the SAME map twice in a row while
+// watching still yields identical text and is still skipped — the manual
+// Paste button remains the answer for that case. Side effect (intended):
+// enabling Capture with map text already in the clipboard logs that map
+// immediately.
+function setClipboardWatch(on: boolean): void {
+  if (on) {
+    lastClipboardText = '';
+    if (clipboardInterval) return; // already polling
+    clipboardInterval = setInterval(() => {
+      const win = watchWindow;
+      if (!win || win.isDestroyed()) return;
+      const text = clipboard.readText();
+      if (text !== lastClipboardText) {
+        lastClipboardText = text;
+        win.webContents.send('on-clipboard-capture', text);
+      }
+    }, 200);
+  } else if (clipboardInterval) {
+    clearInterval(clipboardInterval);
+    clipboardInterval = null;
+  }
+}
+
+ipcMain.on('clipboard:set-watch', (_event, on: boolean) => setClipboardWatch(!!on));
 
 function setupAutoUpdater(mainWindow: BrowserWindow): void {
   if (is.dev) return;
@@ -65,152 +98,9 @@ const STAT_LOOKUPS: Record<string, string> = {
   deli_talismans:  'enchant:Delirium Reward Type: Talismans',
 };
 
-// ── Brick mod definitions ─────────────────────────────────────────────────────
-// regexTerm: short substring used in the in-game stash highlight regex
-// needle:    text to match against the PoE stats API (explicit group)
-interface BrickModDef {
-  label:     string;
-  needle:    string;
-  regexTerm: string; // short unique substring for in-game stash regex (case-insensitive match)
-  category:  'regular' | 'nightmare';
-}
-
-const BRICK_MOD_DEFS: BrickModDef[] = [
-  // ── Regular ──
-  { label: 'Reflect Physical Damage',             needle: 'Monsters reflect #% of Physical Damage',                        regexTerm: 's ref',    category: 'regular' },
-  { label: 'Reflect Elemental Damage',            needle: 'Monsters reflect #% of Elemental Damage',                       regexTerm: 'f ele',    category: 'regular' },
-  { label: 'Reduced Non-Curse Aura Effect',       needle: 'Non-Curse Auras',                                               regexTerm: 'non-c',   category: 'regular' },
-  { label: 'Reduced Max Resistances',             needle: 'to all maximum Resistances',                                    regexTerm: 'um re',   category: 'regular' },
-  { label: 'Cannot Regenerate Life/Mana/ES',      needle: 'cannot Regenerate Life, Mana',                                  regexTerm: 'reg',     category: 'regular' },
-  { label: 'Less Recovery Rate',                  needle: 'Recovery Rate of Life and Energy Shield',                       regexTerm: 'covery',  category: 'regular' },
-  { label: 'Cannot Be Leeched From',              needle: 'cannot be Leeched from',                                        regexTerm: 'eche',    category: 'regular' },
-  { label: 'High Crit Chance + Multiplier',       needle: 'Monster Critical Strike Multiplier',                            regexTerm: 'ike m',   category: 'regular' },
-  { label: 'Extra Chaos Damage + Withered',       needle: 'Physical Damage as Extra Chaos Damage',                         regexTerm: 'withe',   category: 'regular' },
-  { label: 'Extra Fire Damage',                   needle: 'extra Physical Damage as Fire',                                 regexTerm: 'fire',    category: 'regular' },
-  { label: 'Extra Cold Damage',                   needle: 'extra Physical Damage as Cold',                                 regexTerm: 'as col',  category: 'regular' },
-  { label: 'Extra Lightning Damage',              needle: 'extra Physical Damage as Lightning',                            regexTerm: 'ghtnin',  category: 'regular' },
-  { label: 'Monsters Fire Extra Projectiles',     needle: 'Monsters fire # additional Projectiles',                        regexTerm: 'onal pr', category: 'regular' },
-  { label: 'Boss Damage + Attack Speed',          needle: 'Unique Boss deals #% increased Damage',                         regexTerm: 'oss de',  category: 'regular' },
-  { label: 'Monster Speed (Move/Attack/Cast)',    needle: 'increased Monster Movement Speed',                              regexTerm: 'ster mo', category: 'regular' },
-  { label: 'Boss More Life + AoE',                needle: 'Unique Boss has #% increased Life',                             regexTerm: 'oss ha',  category: 'regular' },
-  { label: 'Monsters Increased AoE',              needle: 'Monsters have #% increased Area of Effect',                     regexTerm: 'rea of e',category: 'regular' },
-  { label: 'Avoid Poison/Impale/Bleed',           needle: 'chance to avoid Poison, Impale, and Bleeding',                  regexTerm: 'mpale',   category: 'regular' },
-  { label: 'Monsters Poison on Hit',              needle: 'Monsters Poison on Hit',                                        regexTerm: 'n on hi', category: 'regular' },
-  { label: 'Skills Chain Additional Times',       needle: 'Chain # additional times',                                      regexTerm: 'hain 2',  category: 'regular' },
-  { label: 'Increased Monster Damage',            needle: 'increased Monster Damage',                                      regexTerm: 'ster da', category: 'regular' },
-  { label: 'Players Less Suppressed Spell Damage',      needle: 'Prevent +#% of Suppressed Spell Damage',                  regexTerm: 'uppres',  category: 'regular' },
-  { label: 'Monsters Increased Accuracy Rating',        needle: 'Monsters have #% increased Accuracy Rating',              regexTerm: 'ccurac',  category: 'regular' },
-  { label: 'Monsters Suppress Spell Damage Chance',     needle: 'chance to Suppress Spell Damage',                         regexTerm: 'ppress',  category: 'regular' },
-  { label: 'Less Curse Effect',                   needle: 'less effect of Curses on Monsters',                             regexTerm: 'f curs',  category: 'regular' },
-  { label: 'Cursed with Enfeeble',                needle: 'Cursed with Enfeeble',                                          regexTerm: 'feebl',   category: 'regular' },
-  { label: 'Cursed with Vulnerability',           needle: 'Cursed with Vulnerability',                                     regexTerm: 'ulnera',  category: 'regular' },
-  { label: 'Cursed with Temporal Chains',         needle: 'Cursed with Temporal Chains',                                   regexTerm: 'empor',   category: 'regular' },
-  { label: 'Cursed with Elemental Weakness',      needle: 'Cursed with Elemental Weakness',                                regexTerm: 'al wea',  category: 'regular' },
-  { label: 'Consecrated Ground',                  needle: 'patches of Consecrated Ground',                                 regexTerm: 'onsecr',  category: 'regular' },
-  { label: 'Desecrated Ground',                   needle: 'patches of desecrated ground',                                  regexTerm: 'esecr',   category: 'regular' },
-  { label: 'Shocked Ground',                      needle: 'patches of Shocked Ground',                                     regexTerm: 'hocked g',category: 'regular' },
-  { label: 'Chilled Ground',                      needle: 'patches of Chilled Ground',                                     regexTerm: 'hilled g',category: 'regular' },
-  { label: 'Burning Ground',                      needle: 'patches of Burning Ground',                                     regexTerm: 'urning g',category: 'regular' },
-  { label: 'Reduced Block + Less Armour',         needle: 'reduced Chance to Block',                                       regexTerm: 'nce to b',category: 'regular' },
-  { label: 'Reduced Crit Damage Taken',           needle: 'reduced Extra Damage from Critical Strikes',                    regexTerm: 'uced ext',category: 'regular' },
-  { label: 'Extra Energy Shield from Life',       needle: 'Maximum Life as Extra Maximum Energy Shield',                   regexTerm: 'ife as e',category: 'regular' },
-  { label: 'Reduced Flask Charges',               needle: 'reduced Flask Charges',                                         regexTerm: 'sk char', category: 'regular' },
-  { label: 'Avoid Elemental Ailments',            needle: 'chance to Avoid Elemental Ailments',                            regexTerm: 'oid ele', category: 'regular' },
-  { label: 'Physical Damage Reduction',           needle: 'Monster Physical Damage Reduction',                             regexTerm: 'ysic',    category: 'regular' },
-  { label: 'Cannot Inflict Exposure',             needle: 'Players cannot inflict Exposure',                               regexTerm: 'posure',  category: 'regular' },
-  { label: 'Monsters Hexproof',                   needle: 'Monsters are Hexproof',                                         regexTerm: 'xpro',    category: 'regular' },
-  { label: 'Chaos + Elemental Resistances',       needle: 'Monster Chaos Resistance',                                      regexTerm: 'haos re', category: 'regular' },
-  { label: 'More Monster Life',                   needle: 'more Monster Life',                                             regexTerm: 're mon',  category: 'regular' },
-  // KNOWN OVERLAP: 'tunn' also matches uber 'of the Juggernaut' (identical mod text). Both tiers are brick — intentional.
-  { label: 'Cannot Be Stunned',                   needle: 'Monsters cannot be Stunned',                                    regexTerm: 'tun',     category: 'regular' },
-  { label: 'All Damage Ignites',                  needle: 'All Monster Damage from Hits always Ignites',                   regexTerm: 'lways i', category: 'regular' },
-  { label: 'Impale on Hit',                       needle: 'chance to Impale on Hit',                                       regexTerm: 'pale on', category: 'regular' },
-  { label: 'Ignite/Freeze/Shock Chance',          needle: 'chance to Ignite, Freeze and Shock on Hit',                     regexTerm: 'hock on', category: 'regular' },
-  // KNOWN OVERLAP: 'yers e' also matches uber 'of Transience' (100% faster vs 70% faster — same token, different values). Both are brick — intentional.
-  { label: 'Buffs on Players Expire Faster',      needle: 'Buffs on Players expire',                                       regexTerm: 'yers e', category: 'regular' },
-  { label: 'Less Cooldown Recovery',              needle: 'Cooldown Recovery',                                             regexTerm: 'coo',     category: 'regular' },
-  // KNOWN OVERLAP: 'poss' also matches uber 'Enthralled' (identical mod text, different quant/pack values). Both are brick — intentional.
-  { label: 'Unique Bosses Possessed',             needle: 'Unique Bosses are Possessed',                                   regexTerm: 'poss',    category: 'regular' },
-  { label: 'Two Unique Bosses',                   needle: 'Area contains two Unique Bosses',                               regexTerm: 'o uniqu', category: 'regular' },
-  { label: 'Cannot Be Taunted/Slowed',            needle: 'cannot be Taunted',                                             regexTerm: 'aunted',  category: 'regular' },
-  { label: 'Players Less Accuracy',               needle: 'Accuracy Rating',                                               regexTerm: 'ss acc',  category: 'regular' },
-  { label: 'Monsters Steal Charges',              needle: 'steal Power, Frenzy and Endurance charges',                     regexTerm: 'teal p',  category: 'regular' },
-  // MINOR OVERLAP: 'renz' also matches 'Monsters Steal Charges' (steal Power, Frenzy... — 'Frenzy' contains 'renz'). Steal-charges is also brick; overlap is acceptable.
-  { label: 'Monsters Gain Frenzy Charges',        needle: 'gain a Frenzy Charge on Hit',                                   regexTerm: 'renz',    category: 'regular' },
-  { label: 'Monsters Gain Endurance Charges',     needle: 'gain an Endurance Charge on Hit',                               regexTerm: 'ndur',    category: 'regular' },
-  { label: 'Monsters Gain Power Charges',         needle: 'gain a Power Charge on Hit',                                    regexTerm: 'ower c',  category: 'regular' },
-  { label: 'Players Less Area of Effect',         needle: 'Players have #% less Area of Effect',                           regexTerm: 'ss are',  category: 'regular' },
-  { label: 'Monsters Maim on Hit',                needle: 'Maim on Hit',                                                   regexTerm: 'aim on',  category: 'regular' },
-  { label: 'Monsters Hinder on Hit',              needle: 'Hinder on Hit',                                                 regexTerm: 'inder',   category: 'regular' },
-  { label: 'Monsters Blind on Hit',               needle: 'Blind on Hit',                                                  regexTerm: 'lind o',  category: 'regular' },
-  { label: 'Area Contains Many Totems',           needle: 'Area contains many Totems',                                     regexTerm: 'otems',   category: 'regular' },
-  { label: 'Area Has Increased Monster Variety',  needle: 'Area has increased monster variety',                            regexTerm: 'ariety',  category: 'regular' },
-  { label: 'Inhabited by Cultists of Kitava',     needle: 'Area is inhabited by Cultists of Kitava',                       regexTerm: 'itava',   category: 'regular' },
-  { label: 'Inhabited by Ranged Monsters',        needle: 'Area is inhabited by ranged monsters',                          regexTerm: 'ranged',  category: 'regular' },
-  { label: 'Inhabited by Lunaris Fanatics',       needle: 'Area is inhabited by Lunaris fanatics',                         regexTerm: 'unar',    category: 'regular' },
-  { label: 'Inhabited by Undead',                 needle: 'Area is inhabited by Undead',                                   regexTerm: 'ndead',   category: 'regular' },
-  { label: 'Inhabited by Humanoids',              needle: 'Area is inhabited by Humanoids',                                regexTerm: 'umano',   category: 'regular' },
-  { label: 'Inhabited by Goatmen',                needle: 'Area is inhabited by Goatmen',                                  regexTerm: 'oatme',   category: 'regular' },
-  { label: 'Inhabited by Skeletons',              needle: 'Area is inhabited by Skeletons',                                regexTerm: 'kelet',   category: 'regular' },
-  { label: 'Inhabited by Solaris Fanatics',       needle: 'Area is inhabited by Solaris fanatics',                         regexTerm: 'olari',   category: 'regular' },
-  { label: 'Inhabited by Sea Witches',            needle: 'Area is inhabited by Sea Witches',                              regexTerm: 'ea wi',   category: 'regular' },
-  { label: 'Inhabited by Demons',                 needle: 'Area is inhabited by Demons',                                   regexTerm: 'by dem',  category: 'regular' },
-  { label: 'Inhabited by Abominations',           needle: 'Area is inhabited by Abominations',                             regexTerm: 'bomin',   category: 'regular' },
-  { label: 'Inhabited by Animals',                needle: 'Area is inhabited by Animals',                                  regexTerm: 'nimal',   category: 'regular' },
-  { label: 'Inhabited by Ghosts',                 needle: 'Area is inhabited by Ghosts',                                   regexTerm: 'host',    category: 'regular' },
-  { label: 'Increased Rare Monsters',             needle: 'increased number of Rare Monsters',                             regexTerm: 'rare mo', category: 'regular' },
-  { label: 'Increased Magic Monsters',            needle: 'increased Magic Monsters',                                      regexTerm: 'agic mo', category: 'regular' },
-
-  // ── Nightmare ──
-  { label: 'Synthesis Boss',                      needle: 'accompanied by a Synthesis Boss',                               regexTerm: 'yn',      category: 'nightmare' },
-  { label: '-20% Max Resistances',                needle: 'Players have -20% to all maximum Resistances',                  regexTerm: 'um re',   category: 'nightmare' },
-  { label: '+50% Monster Block Chance',           needle: 'Chance to Block Attack Damage',                                 regexTerm: 'k d',     category: 'nightmare' },
-  { label: 'Rare Monsters Shaper-Touched',        needle: 'Shaper-Touched',                                                regexTerm: '-t',      category: 'nightmare' },
-  // FIXED: was 'ditio' which collides with 'additional Projectiles' and 'additional times' (any mod containing 'additional').
-  // '1 add' uniquely targets '+1 additional Modifier' vs '2 additional Projectiles' / '3 additional times'.
-  { label: 'Rare Monsters +1 Modifier',           needle: 'additional Modifier',                                           regexTerm: '1 add',   category: 'nightmare' },
-  { label: 'Unstable Tentacle Fiends',            needle: 'Unstable Tentacle Fiends',                                      regexTerm: 'nsta',    category: 'nightmare' },
-  // 'm f' from 'Maximum Frenzy' — position 6-8 of 'Maximum': 'm[space]F'. Clean: 'gain a Frenzy' has no 'm' before the 'F'.
-  { label: 'Frenzy Charge + Max Frenzy',          needle: 'Maximum Frenzy Charges',                                        regexTerm: 'mum f',   category: 'nightmare' },
-  { label: 'Reflect 20% Physical + Elemental',    needle: 'Monsters reflect 20% of Physical Damage',                       regexTerm: 't 20',    category: 'nightmare' },
-  { label: 'Penetrates Elemental Resistances',    needle: 'Penetrates',                                                    regexTerm: 'net',     category: 'nightmare' },
-  { label: 'Skills Chain + Terrain Chain',        needle: 'Chain when colliding',                                          regexTerm: 'lid',     category: 'nightmare' },
-  { label: 'Grasping Vines on Hit',               needle: 'Grasping Vine',                                                 regexTerm: 'rasp',    category: 'nightmare' },
-  { label: 'Drowning Orbs',                       needle: 'Drowning Orbs',                                                 regexTerm: 'wni',     category: 'nightmare' },
-  { label: 'Random Elemental Damage',             needle: 'Extra Damage of a random Element',                              regexTerm: 'andom E', category: 'nightmare' },
-  { label: 'Massive All Resistances',             needle: 'Monster Physical Damage Reduction',                             regexTerm: 'uct',     category: 'nightmare' },
-  // FIXED: 'll dam' was wrong ('All Monster Damage' has 'll M' not 'll D'). 'n ig' from 'can Ignite' — aligns with uber token.
-  { label: 'All Damage Can Ignite/Freeze/Shock',  needle: 'All Monster Damage can Ignite, Freeze and Shock',               regexTerm: 'n ig',    category: 'nightmare' },
-  // FIXED: 'sk ef' was wrong ('Flasks applied' has 'sks a' not 'sks e'). 'sks' from 'Flasks' — aligns with uber token.
-  { label: 'Less Flask Effect',                   needle: 'Flasks applied to them',                                        regexTerm: 'sks',     category: 'nightmare' },
-  // 'm end' from 'Maximum Endurance' — 'm[space]End' at positions 6-10. Clean: 'gain an Endurance' has 'an End' not 'm End'.
-  { label: 'Endurance Charges + Max Endurance',   needle: 'Maximum Endurance Charges',                                     regexTerm: 'm End',   category: 'nightmare' },
-  { label: 'Shrine Buff on Unique Monsters',      needle: 'random Shrine Buff',                                            regexTerm: 'ne b',    category: 'nightmare' },
-  { label: 'Triple Curse (Vuln/Temporal/Elem)',   needle: 'Cursed with Vulnerability',                                     regexTerm: 'oral',    category: 'nightmare' },
-  // 'n sp' from 'Action Speed' — 'action[space]speed' has 'n[space]sp' at positions 5-8.
-  // Clean: 'Movement Speed' = 'nt[space]sp' (not 'n[space]sp'); 'Modifier'/'modified' contain no 'n sp'.
-  // Catches both uber (Juggernaut: Stunned+ActionSpd) and regular (Unstoppable: Taunted+ActionSpd) — same mod slot.
-  { label: 'Stunned + Action/Move Speed Floor',   needle: 'Action Speed cannot be modified',                               regexTerm: 'tun',     category: 'nightmare' },
-  { label: 'Searing Exarch Runes',                needle: 'Runes of the Searing Exarch',                                   regexTerm: 'rch',     category: 'nightmare' },
-  { label: 'Rare Monsters Temporarily Revive',    needle: 'Temporarily Revive on death',                                   regexTerm: 'evive',   category: 'nightmare' },
-  // FIXED: 'oisona' never appeared in 'Poison Duration'. 'on du' from 'Poison Duration' — unique.
-  { label: 'Poison + Duration + All Can Poison',  needle: 'increased Poison Duration',                                     regexTerm: 'an Poi',  category: 'nightmare' },
-  { label: 'Bloodstained Sawblades',              needle: 'Bloodstained Sawblades',                                        regexTerm: 'wb',      category: 'nightmare' },
-  { label: 'Debuffs Expire Faster',               needle: 'Debuffs on Monsters expire',                                    regexTerm: 'deb',     category: 'nightmare' },
-  // FIXED: 'each re' was wrong ('Leech' is e,e,c,h — no 'a'). 'eech' from 'Leech' — aligns with uber token.
-  { label: 'Reduced Leech Recovery',              needle: 'Recovery per second from Leech',                                regexTerm: 'eech',    category: 'nightmare' },
-  { label: 'Rare Monsters Fracture on Death',     needle: 'Fracture on death',                                             regexTerm: 'ractu',   category: 'nightmare' },
-  { label: 'Flask Triggers Meteor',               needle: 'targeted by a Meteor',                                          regexTerm: 'eor',     category: 'nightmare' },
-  { label: 'Players Less Defences',               needle: 'more Defences',                                                 regexTerm: 'fenc',    category: 'nightmare' },
-  { label: 'Extra Projectiles + Massive AoE',     needle: 'additional Projectiles',                                        regexTerm: '2 a',     category: 'nightmare' },
-  // 'm po' from 'Maximum Power' — 'm[space]Po' at positions 6-9. Clean: 'gain a Power Charge' has 'a Po' not 'm Po'.
-  { label: 'Power Charges + Max Power',           needle: 'Maximum Power Charges',                                         regexTerm: 'um p',    category: 'nightmare' },
-  { label: 'Labyrinth Hazards',                   needle: 'Labyrinth Hazards',                                             regexTerm: 'az',      category: 'nightmare' },
-  { label: 'Rare Monsters Volatile Cores',        needle: 'Volatile Core',                                                 regexTerm: 'vol',     category: 'nightmare' },
-  { label: 'The Maven Interferes',                needle: 'The Maven interferes',                                          regexTerm: 'mav',     category: 'nightmare' },
-  { label: 'Auras Affect Enemies',                needle: 'Auras from Player Skills which affect Allies also affect Enemies',   regexTerm: 'lies',    category: 'nightmare' },
-  { label: 'Moving Marked Ground',                needle: 'patches of moving Marked Ground',                               regexTerm: 'rke',     category: 'nightmare' },
-];
+// Brick mod catalogue (id/label/needle/category) + the regexTerm resolver now
+// live in src/shared/brickMods.ts so main and the renderer share ONE definition
+// and the stash tokens are defined once, in shared/modTokens.ts (WP12).
 
 // Resolved brick mod cache: label → statId
 const BRICK_MOD_CACHE = new Map<string, string>();
@@ -264,7 +154,7 @@ ipcMain.handle('trade:get-brick-mods', async () => {
     .map((def) => ({
       label:     def.label,
       statId:    BRICK_MOD_CACHE.get(def.label)!,
-      regexTerm: def.regexTerm,
+      regexTerm: brickRegexTerm(def),
       category:  def.category,
     }));
 });
@@ -417,6 +307,71 @@ ipcMain.handle('poeninja:currency-overview', async (_event, league: string) => {
   }
 });
 
+// poe.ninja league index (index-state) — feeds the manual league-override
+// dropdown (league.ts fetchSelectableLeagues). Routed through main (CORS).
+// SHAPE UNVERIFIED (EXTERNAL_APIS.md poe.ninja §C / rollover plan D4): parse
+// defensively across the plausible shapes and return a flat name list; the
+// renderer falls back to KNOWN_LEAGUES with a loud warn when this comes back
+// null. Verify the real shape once in dev (open the League dropdown, check
+// the list is longer than KNOWN_LEAGUES) and tighten the parse then.
+ipcMain.handle('poeninja:league-index', async () => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5_000);
+  try {
+    const res = await fetch('https://poe.ninja/poe1/api/data/index-state', { signal: controller.signal });
+    if (!res.ok) return { leagues: null, error: `poe.ninja ${res.status}` };
+    const data = await res.json() as any;
+    const raw: unknown[] = Array.isArray(data?.economyLeagues) ? data.economyLeagues
+      : Array.isArray(data?.leagues) ? data.leagues
+      : Array.isArray(data) ? data
+      : [];
+    const names = raw
+      .map((l: any) => (typeof l === 'string' ? l : typeof l?.name === 'string' ? l.name : null))
+      .filter((n: string | null): n is string => !!n && n.trim().length > 0);
+    if (names.length === 0) return { leagues: null, error: 'index-state parsed to 0 leagues (shape changed?)' };
+    return { leagues: names, error: null };
+  } catch (err: any) {
+    return { leagues: null, error: err?.message ?? 'fetch failed' };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+});
+
+// Game-data manifest disk cache (rollover Phase 1 step 2, decision D1):
+// server-fetched manifest revisions persist as a JSON file in userData —
+// NOT localStorage (its budget is already strained by saved sessions).
+// read returns { manifest: null, error: null } for a fresh install (no file
+// yet — normal, not an error); real IO/parse failures populate error.
+ipcMain.handle('gamedata:read-cache', async () => {
+  try {
+    const { app } = await import('electron');
+    const { promises: fsp } = await import('fs');
+    const path = await import('path');
+    const file = path.join(app.getPath('userData'), 'game-data-manifest.json');
+    const raw = await fsp.readFile(file, 'utf-8').catch((e: any) =>
+      e?.code === 'ENOENT' ? null : Promise.reject(e));
+    if (raw === null) return { manifest: null, error: null };
+    return { manifest: JSON.parse(raw), error: null };
+  } catch (err: any) {
+    return { manifest: null, error: err?.message ?? 'cache read failed' };
+  }
+});
+
+// Writer for the above — called by the renderer when a NEWER manifest revision
+// arrives from the server (endpoint not live yet; the loader hook is dormant).
+ipcMain.handle('gamedata:write-cache', async (_event, manifest: unknown) => {
+  try {
+    const { app } = await import('electron');
+    const { promises: fsp } = await import('fs');
+    const path = await import('path');
+    const file = path.join(app.getPath('userData'), 'game-data-manifest.json');
+    await fsp.writeFile(file, JSON.stringify(manifest), 'utf-8');
+    return { ok: true, error: null };
+  } catch (err: any) {
+    return { ok: false, error: err?.message ?? 'cache write failed' };
+  }
+});
+
 // poe.ninja icon source. Both economy families carry per-item icons, but in
 // different places, so the family is passed in:
 //   exchange -> top-level items[] { name, image: "/gen/image/..." (relative) }
@@ -479,16 +434,11 @@ function createWindow(): void {
   mainWindow.on('page-title-updated', (e) => e.preventDefault());
   mainWindow.webContents.setWindowOpenHandler((details) => { shell.openExternal(details.url); return { action: 'deny' }; });
 
-  clipboardInterval = setInterval(() => {
-    if (mainWindow.isDestroyed()) return;
-    const text = clipboard.readText();
-    if (text !== lastClipboardText) {
-      lastClipboardText = text;
-      mainWindow.webContents.send('on-clipboard-capture', text);
-    }
-  }, 200);
+  // Clipboard polling no longer auto-starts — the renderer drives it via
+  // 'clipboard:set-watch' when the Capture toggle changes (WP13).
+  watchWindow = mainWindow;
 
-  mainWindow.on('closed', () => { if (clipboardInterval) { clearInterval(clipboardInterval); clipboardInterval = null; } });
+  mainWindow.on('closed', () => { setClipboardWatch(false); watchWindow = null; });
 
   ensureStatsLoaded().catch(() => {});
 
