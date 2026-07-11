@@ -30,6 +30,7 @@ const PANEL_STYLE = { flexGrow: 1, minHeight: 0, overflow: 'hidden' } as const;
 
 const RegexPanelModule = ({ initialTab = 'session' }: { initialTab?: TabKey }) => {
   const [tab, setTab] = useState<string>(initialTab);
+  const [clearHover, setClearHover] = useState(false);
   // Default-exclusions badge lives in the tab bar (Sad 2026-07-09): it is
   // user-scoped panel state, the spot is otherwise dead space, and it no
   // longer pushes the From Session content down. × clears the default.
@@ -62,8 +63,16 @@ const RegexPanelModule = ({ initialTab = 'session' }: { initialTab?: TabKey }) =
                 label={`Default exclusions (auto-applied when you load a strategy): ${defaultExclusionPreset.map((t) => `!${t}`).join(' ')}`}>
                 <Badge size="sm" color="teal" variant="dot" style={{ cursor: 'default' }}
                   rightSection={
-                    <ActionIcon size={16} variant="transparent" color="teal" aria-label="Clear default exclusions"
-                      onClick={clearDefaultPreset} style={{ marginLeft: 2 }}>
+                    // WP6 convention: destructive control = neutral, red on
+                    // hover (JS hover state — Mantine v8 ignores &:hover in
+                    // inline styles; reset in onClick, unmount skips mouseleave).
+                    <ActionIcon size={16} variant="transparent"
+                      color={clearHover ? 'red' : 'gray'}
+                      aria-label="Clear default exclusions"
+                      onMouseEnter={() => setClearHover(true)}
+                      onMouseLeave={() => setClearHover(false)}
+                      onClick={() => { setClearHover(false); clearDefaultPreset(); }}
+                      style={{ marginLeft: 2 }}>
                       <IconX size={12} />
                     </ActionIcon>
                   }>

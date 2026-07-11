@@ -5,6 +5,16 @@
  * No React dependencies — safe to import from any component or util.
  */
 
+// ─── Strategy server base URL ─────────────────────────────────────────────────
+// Single home for the API base (Browser fetches + game-data manifest fetch).
+// Dev override for local end-to-end testing against the docker-compose stack
+// (e.g. `set VITE_STRATEGY_API_URL=http://localhost:3000` before `npm run dev`).
+// Never set in production builds — the default stays the live API.
+
+const DEFAULT_API_URL = 'https://wledger.richardpruett.com';
+export const STRATEGY_API_URL: string =
+  (import.meta.env.VITE_STRATEGY_API_URL as string | undefined) || DEFAULT_API_URL;
+
 // ─── Server types ─────────────────────────────────────────────────────────────
 
 export interface Strategy {

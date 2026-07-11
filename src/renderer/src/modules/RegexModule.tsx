@@ -491,6 +491,110 @@ export const FromSessionTab = () => {
       <ScrollArea style={{ flex: 1, minHeight: 0 }}>
         <Stack gap="xs">
 
+          {/* ── OUTPUT FIRST (Sad 2026-07-11): the generated/loaded regex +
+              copy/save/Open Trade actions are what the tab exists for, so they
+              stay pinned at the top; growing Brick Exclusions config can no
+              longer push them out of view. ── */}
+
+          {/* ── Generated from session ── */}
+          {generatedRegex && (
+            <Stack gap="xs" p="xs" style={{ background: COLOR.tintTealBg, borderRadius: 6, border: `1px solid ${COLOR.tintTealBorder}` }}>
+              <Group gap="xs">
+                <IconWand size={12} color={COLOR.accentStrong} />
+                <Text size="xs" fw={700} c="blue">Generated from {generatedRegex.n} maps (trimmed avg)</Text>
+              </Group>
+              <Text size="xs" c="dimmed">
+                {generatedRegex.avg.avgQuant.toFixed(0)}%Q · {generatedRegex.avg.avgRarity.toFixed(0)}%R · {generatedRegex.avg.avgPack.toFixed(0)}%P · {generatedRegex.avg.avgCurr.toFixed(0)}% Curr
+              </Text>
+              <Stack gap={4}>
+                <RegexLine value={generatedRegex.run} badge="Run" badgeColor="green" badgeTooltip={RUN_TOOLTIP} />
+                {generatedRegex.slam ? (
+                  <RegexLine value={generatedRegex.slam} badge="Slam" badgeColor="orange" badgeTooltip={SLAM_TOOLTIP} />
+                ) : (
+                  <Text size="xs" c="dimmed" fs="italic">8-mod / Nightmare maps are corrupted — slam not applicable.</Text>
+                )}
+              </Stack>
+              <Group gap={4}>
+                <Button size="xs" variant="default"
+                  onClick={() => openSaveAsModal(generatedRegex.run, 'run')}>
+                  Save Run As…
+                </Button>
+                {generatedRegex.slam && (
+                  <Button size="xs" variant="default"
+                    onClick={() => openSaveAsModal(generatedRegex.slam!, 'slam')}>
+                    Save Slam As…
+                  </Button>
+                )}
+                <Button size="xs" variant="light" color="orange" ml="auto"
+                  leftSection={<IconExternalLink size={12} />} onClick={handleOpenTradeModal}>
+                  Open Trade
+                </Button>
+              </Group>
+            </Stack>
+          )}
+
+          {/* ── Loaded from strategy ── */}
+          {!generatedRegex && loadedStrategyInfo && (() => {
+            const run  = applyUserExclusionsToRegex(loadedStrategyInfo.runRegex, exclusions);
+            const slam = loadedStrategyInfo.slamRegex ? applyUserExclusionsToRegex(loadedStrategyInfo.slamRegex, exclusions) : null;
+            return (
+              <Stack gap="xs" p="xs" style={{ background: COLOR.tintTealBg, borderRadius: 6, border: `1px solid ${COLOR.tintTealBorder}` }}>
+                <Group gap="xs">
+                  <IconWand size={12} color={COLOR.accentStrong} />
+                  <Text size="xs" fw={700} c="blue">From {loadedStrategyInfo.authorName} · {loadedStrategyInfo.mapCount} maps</Text>
+                  {loadedStrategyInfo.mapType && (
+                    <Badge size="xs" color="gray" variant="outline">{loadedStrategyInfo.mapType}</Badge>
+                  )}
+                </Group>
+                <Text size="xs" c="dimmed">
+                  {loadedStrategyInfo.avgQuant.toFixed(0)}%Q · {loadedStrategyInfo.avgRarity.toFixed(0)}%R · {loadedStrategyInfo.avgPack.toFixed(0)}%P · {loadedStrategyInfo.avgCurr.toFixed(0)}% Curr
+                </Text>
+                <Stack gap={4}>
+                  <RegexLine value={run} badge="Run" badgeColor="green" badgeTooltip={RUN_TOOLTIP} />
+                  {slam && <RegexLine value={slam} badge="Slam" badgeColor="orange" badgeTooltip={SLAM_TOOLTIP} />}
+                </Stack>
+                {exclusions.length > 0
+                  ? <Text size="xs" c="dimmed" style={{ fontSize: FONT.label }}>Your exclusions applied. Click Set Default to make these permanent.</Text>
+                  : <Text size="xs" c="orange" style={{ fontSize: FONT.label }}>No exclusions set — set a default preset or pick mods below.</Text>
+                }
+                <Group gap={4}>
+                  <Button size="xs" variant="default"
+                    onClick={() => {
+                      setParsedRegex(loadedStrategyInfo.runRegex);
+                      setParsedTerms(parseExclusionsFromRegex(loadedStrategyInfo.runRegex));
+                    }}>
+                    Show their exclusions
+                  </Button>
+                  <Button size="xs" variant="default"
+                    onClick={() => openSaveAsModal(run, 'run')}>
+                    Save Run As…
+                  </Button>
+                  {slam && (
+                    <Button size="xs" variant="default"
+                      onClick={() => openSaveAsModal(slam, 'slam')}>
+                      Save Slam As…
+                    </Button>
+                  )}
+                  <Button size="xs" variant="light" color="orange" ml="auto"
+                    leftSection={<IconExternalLink size={12} />} onClick={handleOpenTradeModal}>
+                    Open Trade
+                  </Button>
+                </Group>
+              </Stack>
+            );
+          })()}
+
+          {/* session-16: Open Trade lives with the regex boxes above when one is
+              showing; this standalone fallback only renders when neither is. */}
+          {!generatedRegex && !loadedStrategyInfo && (
+            <Group gap={4} justify="flex-end">
+              <Button size="xs" variant="light" color="orange"
+                leftSection={<IconExternalLink size={12} />} onClick={handleOpenTradeModal}>
+                Open Trade
+              </Button>
+            </Group>
+          )}
+
           {/* ── Brick Exclusions ── */}
           <Stack gap={4} p="xs" style={{ background: COLOR.tintOliveBg, borderRadius: 6, border: `1px solid ${COLOR.tintOliveBorder}` }}>
             <Group justify="space-between">
@@ -574,7 +678,13 @@ export const FromSessionTab = () => {
                   value={selectedIdsOf('regular')}
                   onChange={handleCategoryChange('regular')}
                   maxDropdownHeight={220}
-                  styles={{ label: { fontSize: FONT.label, color: 'var(--mantine-color-dimmed)' } }} />
+                  styles={{
+                    label: { fontSize: FONT.label, color: 'var(--mantine-color-dimmed)' },
+                    // Pin clear ×/chevron to the TOP right — the section is
+                    // absolutely positioned full-height and centers its content,
+                    // so it drifted as picked mods grew the field (Sad 2026-07-10).
+                    section: { alignItems: 'flex-start', paddingTop: 5 },
+                  }} />
                 <MultiSelect size="xs" label="Nightmare mods" placeholder="Search…" searchable clearable
                   data={brickMods.filter((m) => m.category === 'nightmare').map((m) => ({ value: m.statId, label: m.label }))}
                   filter={brickModFilter}
@@ -584,7 +694,10 @@ export const FromSessionTab = () => {
                     <Text size="xs" style={{ color: COLOR.nightmare }}>{option.label}</Text>
                   )}
                   maxDropdownHeight={220}
-                  styles={{ label: { fontSize: FONT.label, color: COLOR.nightmare } }} />
+                  styles={{
+                    label: { fontSize: FONT.label, color: COLOR.nightmare },
+                    section: { alignItems: 'flex-start', paddingTop: 5 }, // see Regular picker note
+                  }} />
               </SimpleGrid>
             )}
 
@@ -635,105 +748,6 @@ export const FromSessionTab = () => {
               </Code>
             </Text>
           </Stack>
-
-          {/* ── Loaded from strategy ── */}
-          {!generatedRegex && loadedStrategyInfo && (() => {
-            const run  = applyUserExclusionsToRegex(loadedStrategyInfo.runRegex, exclusions);
-            const slam = loadedStrategyInfo.slamRegex ? applyUserExclusionsToRegex(loadedStrategyInfo.slamRegex, exclusions) : null;
-            return (
-              <Stack gap="xs" p="xs" style={{ background: COLOR.tintTealBg, borderRadius: 6, border: `1px solid ${COLOR.tintTealBorder}` }}>
-                <Group gap="xs">
-                  <IconWand size={12} color={COLOR.accentStrong} />
-                  <Text size="xs" fw={700} c="blue">From {loadedStrategyInfo.authorName} · {loadedStrategyInfo.mapCount} maps</Text>
-                  {loadedStrategyInfo.mapType && (
-                    <Badge size="xs" color="gray" variant="outline">{loadedStrategyInfo.mapType}</Badge>
-                  )}
-                </Group>
-                <Text size="xs" c="dimmed">
-                  {loadedStrategyInfo.avgQuant.toFixed(0)}%Q · {loadedStrategyInfo.avgRarity.toFixed(0)}%R · {loadedStrategyInfo.avgPack.toFixed(0)}%P · {loadedStrategyInfo.avgCurr.toFixed(0)}% Curr
-                </Text>
-                <Stack gap={4}>
-                  <RegexLine value={run} badge="Run" badgeColor="green" badgeTooltip={RUN_TOOLTIP} />
-                  {slam && <RegexLine value={slam} badge="Slam" badgeColor="orange" badgeTooltip={SLAM_TOOLTIP} />}
-                </Stack>
-                {exclusions.length > 0
-                  ? <Text size="xs" c="dimmed" style={{ fontSize: FONT.label }}>Your exclusions applied. Click Set Default to make these permanent.</Text>
-                  : <Text size="xs" c="orange" style={{ fontSize: FONT.label }}>No exclusions set — set a default preset or pick mods above.</Text>
-                }
-                <Group gap={4}>
-                  <Button size="xs" variant="default"
-                    onClick={() => {
-                      setParsedRegex(loadedStrategyInfo.runRegex);
-                      setParsedTerms(parseExclusionsFromRegex(loadedStrategyInfo.runRegex));
-                    }}>
-                    Show their exclusions
-                  </Button>
-                  <Button size="xs" variant="default"
-                    onClick={() => openSaveAsModal(run, 'run')}>
-                    Save Run As…
-                  </Button>
-                  {slam && (
-                    <Button size="xs" variant="default"
-                      onClick={() => openSaveAsModal(slam, 'slam')}>
-                      Save Slam As…
-                    </Button>
-                  )}
-                  <Button size="xs" variant="light" color="orange" ml="auto"
-                    leftSection={<IconExternalLink size={12} />} onClick={handleOpenTradeModal}>
-                    Open Trade
-                  </Button>
-                </Group>
-              </Stack>
-            );
-          })()}
-
-          {/* ── Generated from session ── */}
-          {generatedRegex && (
-            <Stack gap="xs" p="xs" style={{ background: COLOR.tintTealBg, borderRadius: 6, border: `1px solid ${COLOR.tintTealBorder}` }}>
-              <Group gap="xs">
-                <IconWand size={12} color={COLOR.accentStrong} />
-                <Text size="xs" fw={700} c="blue">Generated from {generatedRegex.n} maps (trimmed avg)</Text>
-              </Group>
-              <Text size="xs" c="dimmed">
-                {generatedRegex.avg.avgQuant.toFixed(0)}%Q · {generatedRegex.avg.avgRarity.toFixed(0)}%R · {generatedRegex.avg.avgPack.toFixed(0)}%P · {generatedRegex.avg.avgCurr.toFixed(0)}% Curr
-              </Text>
-              <Stack gap={4}>
-                <RegexLine value={generatedRegex.run} badge="Run" badgeColor="green" badgeTooltip={RUN_TOOLTIP} />
-                {generatedRegex.slam ? (
-                  <RegexLine value={generatedRegex.slam} badge="Slam" badgeColor="orange" badgeTooltip={SLAM_TOOLTIP} />
-                ) : (
-                  <Text size="xs" c="dimmed" fs="italic">8-mod / Nightmare maps are corrupted — slam not applicable.</Text>
-                )}
-              </Stack>
-              <Group gap={4}>
-                <Button size="xs" variant="default"
-                  onClick={() => openSaveAsModal(generatedRegex.run, 'run')}>
-                  Save Run As…
-                </Button>
-                {generatedRegex.slam && (
-                  <Button size="xs" variant="default"
-                    onClick={() => openSaveAsModal(generatedRegex.slam!, 'slam')}>
-                    Save Slam As…
-                  </Button>
-                )}
-                <Button size="xs" variant="light" color="orange" ml="auto"
-                  leftSection={<IconExternalLink size={12} />} onClick={handleOpenTradeModal}>
-                  Open Trade
-                </Button>
-              </Group>
-            </Stack>
-          )}
-
-          {/* session-16: Open Trade lives with the regex boxes above when one is
-              showing; this standalone fallback only renders when neither is. */}
-          {!generatedRegex && !loadedStrategyInfo && (
-            <Group gap={4} justify="flex-end">
-              <Button size="xs" variant="light" color="orange"
-                leftSection={<IconExternalLink size={12} />} onClick={handleOpenTradeModal}>
-                Open Trade
-              </Button>
-            </Group>
-          )}
 
         </Stack>
       </ScrollArea>

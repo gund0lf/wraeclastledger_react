@@ -10,6 +10,19 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.64',
+    date: '2026-07-11',
+    changes: [
+      'League detection knows when events end: once the Ancestors event closes (~July 16), the app automatically moves to Mirage for prices, trade links, and the Strategy Browser default — no more being stuck on a dead league until the next app update. The ended event stays selectable manually if you need it.',
+      'Game-data hotfix channel is live: the app now checks the strategy server for a newer game-data revision at startup (scarab/orb/chisel lists, mechanic flags) and adopts it without needing an app update. Server unreachable or nothing newer = exactly the behavior you had before, silently.',
+      'Click the version number in the title bar to reopen this What\'s New panel any time — it no longer disappears forever after the first dismiss.',
+      'Strategy Browser refreshes itself every 5 minutes (first page only, and never while you\'ve paged deeper into the list), so new shares and votes show up without hitting Refresh.',
+      'Regex — From Session reordered: the generated (or loaded-strategy) regex with its copy / save / Open Trade actions now sits at the TOP of the tab, so filling out Brick Exclusions can no longer push your output out of view. The exclusion mod pickers\' clear × and dropdown arrow stay pinned to the top-right as the field grows.',
+      'Regex panel: the × on the "Default set" badge joins the standard neutral style (red on hover) instead of teal.',
+      'Advanced Costs: the Rolling Costs rows are aligned again — the per-orb "each" caption under Exalted now sits in the price column instead of shoving the icons around.',
+    ],
+  },
+  {
     version: '1.0.63',
     date: '2026-07-10',
     changes: [

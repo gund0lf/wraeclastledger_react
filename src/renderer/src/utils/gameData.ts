@@ -17,6 +17,7 @@
  */
 import { GameDataManifest, GameEntity, ChiselEntity } from '../../../shared/gameData/types';
 import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
+import { STRATEGY_API_URL } from './strategyConstants';
 
 let active: GameDataManifest = BUNDLED_MANIFEST;
 let initPromise: Promise<GameDataManifest> | null = null;
@@ -68,9 +69,30 @@ export async function initGameData(): Promise<GameDataManifest> {
       } catch (err) {
         console.warn('[GameData] Cache read failed — staying on bundled revision', err);
       }
-      // SERVER HOOK (dormant): when Traceur's GET /game-data/latest ships (§6),
-      // fetch here, validate with isValidManifest, adopt if revision > active,
-      // and persist via window.api.writeGameDataCache for the next start.
+      // SERVER HOOK (live 2026-07-11): GET /game-data/latest via the main
+      // process (CORS). Adopt if valid AND newer than whatever won above
+      // (bundled or cache); persist so the NEXT start needs no network.
+      // Every failure path is non-fatal — bundled/cache remain the floor.
+      try {
+        const res = await window.api?.fetchGameDataLatest?.(STRATEGY_API_URL);
+        if (res?.payload) {
+          const { revision, manifest } = res.payload;
+          if (isValidManifest(manifest) && manifest.revision === revision && manifest.revision > active.revision) {
+            active = manifest;
+            console.log(`[GameData] Adopted server manifest revision ${revision}`);
+            const w = await window.api?.writeGameDataCache?.(manifest);
+            if (w && !w.ok) console.warn('[GameData] Could not cache server manifest:', w.error);
+          } else if (!isValidManifest(manifest) || manifest.revision !== revision) {
+            console.warn('[GameData] Server manifest failed validation — ignoring');
+          } // else: not newer — normal, no log spam
+        } else if (res?.error) {
+          // Server down / endpoint not deployed yet — quiet by design (§1 of
+          // the endpoint spec: the client must work fully without it).
+          console.log('[GameData] Server manifest unavailable:', res.error);
+        }
+      } catch (err) {
+        console.log('[GameData] Server manifest fetch failed — staying on', active.revision, err);
+      }
       return active;
     })();
   }

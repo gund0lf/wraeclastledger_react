@@ -34,6 +34,8 @@ const api = {
     ipcRenderer.invoke('gamedata:read-cache'),
   writeGameDataCache: (manifest: unknown): Promise<{ ok: boolean; error: string | null }> =>
     ipcRenderer.invoke('gamedata:write-cache', manifest),
+  fetchGameDataLatest: (baseUrl: string): Promise<{ payload: { revision: number; manifest: unknown } | null; error: string | null }> =>
+    ipcRenderer.invoke('gamedata:fetch-latest', baseUrl),
 }
 
 if (process.contextIsolated) {

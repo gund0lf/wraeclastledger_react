@@ -25,6 +25,7 @@ declare global {
       fetchLeagueIndex: () => Promise<{ leagues: string[] | null; error: string | null }>
       readGameDataCache: () => Promise<{ manifest: unknown | null; error: string | null }>
       writeGameDataCache: (manifest: unknown) => Promise<{ ok: boolean; error: string | null }>
+      fetchGameDataLatest: (baseUrl: string) => Promise<{ payload: { revision: number; manifest: unknown } | null; error: string | null }>
     }
   }
 }

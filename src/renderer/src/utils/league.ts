@@ -35,12 +35,40 @@ export const CURRENT_LEAGUE = 'Ancestors';
 export const KNOWN_LEAGUES: string[] = [
   // Return of the Ancestors event (live Jun 25 2026, ends ~Jul 16). poe.ninja's
   // league string is the plain "Ancestors" (trade: /trade/search/Ancestors).
-  // KNOWN_LEAGUES[0] also drives the Strategy Browser default filter.
+  // activeKnownLeagues()[0] drives the Strategy Browser default filter.
   'Ancestors',                // event — 3.28-based economy; MUST stay above Mirage
   'Mirage',                   // 3.28 — parent league, kept as a live-data fallback
   // Standard intentionally removed: never a trackable league for this app.
   // (itemIcons.ts fetches Standard separately for legacy item icons only.)
 ];
+
+// D5(b) — rollover plan: leagues with a known end date. After endsAt, the
+// detection probe and the "current league" defaults SKIP the entry, so users
+// are not stuck on a dead event if poe.ninja keeps serving its frozen data
+// (the Jul 16-24 interregnum problem). The entry STAYS in KNOWN_LEAGUES:
+// icon-cache parent derivation, the Browser filter dropdown and the manual
+// override still legitimately reference an ended league. Date is intentionally
+// end-of-day-generous: being hours late off a dead event beats being hours
+// early off a live one, and the manual override remains the escape hatch.
+export const LEAGUE_ENDS_AT: Record<string, string> = {
+  Ancestors: '2026-07-17T00:00:00Z',
+};
+
+/** Has this league's known end date passed? Unknown end = never ended. */
+export function isLeagueEnded(name: string, now: number = Date.now()): boolean {
+  const ends = LEAGUE_ENDS_AT[name];
+  return !!ends && now >= Date.parse(ends);
+}
+
+/**
+ * KNOWN_LEAGUES minus ended entries — what detection and defaults iterate.
+ * FAIL-OPEN: if everything is marked ended (bad data / far future), return the
+ * full list rather than an empty one; a wrong league beats no league.
+ */
+export function activeKnownLeagues(now: number = Date.now()): string[] {
+  const alive = KNOWN_LEAGUES.filter((l) => !isLeagueEnded(l, now));
+  return alive.length > 0 ? alive : [...KNOWN_LEAGUES];
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type LeagueSource = 'override' | 'detected' | 'fallback';
@@ -76,7 +104,9 @@ async function detect(): Promise<ActiveContext> {
   // not the renderer, to avoid CORS: poe.ninja sends no Access-Control-Allow-Origin
   // header, so a renderer-origin fetch (localhost in dev) is blocked by the browser.
   // The per-request timeout lives in the main-process handler.
-  for (const name of KNOWN_LEAGUES) {
+  // D5(b): ended leagues are skipped — poe.ninja may keep serving frozen data
+  // for a dead event, which would otherwise win the probe forever.
+  for (const name of activeKnownLeagues()) {
     try {
       const res = await window.api?.fetchCurrencyOverview(name);
       if (res?.lines && res.lines.length > 5) {
@@ -85,8 +115,10 @@ async function detect(): Promise<ActiveContext> {
       }
     } catch { /* network error: fall through to the next league */ }
   }
-  console.warn('[League] Could not detect, falling back to:', CURRENT_LEAGUE);
-  return { leagueName: CURRENT_LEAGUE, source: 'fallback' };
+  // Fallback also respects endsAt: first non-ended entry, else CURRENT_LEAGUE.
+  const fallback = activeKnownLeagues()[0] ?? CURRENT_LEAGUE;
+  console.warn('[League] Could not detect, falling back to:', fallback);
+  return { leagueName: fallback, source: 'fallback' };
 }
 
 export async function getActiveContext(): Promise<ActiveContext> {

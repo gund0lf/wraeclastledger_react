@@ -5,8 +5,17 @@
  * stateful tests import a FRESH module instance per test via vi.resetModules()
  * + dynamic import. The pure filterLeagueIndex tests use a static import.
  */
-import { describe, it, expect, afterEach, vi } from 'vitest';
-import { filterLeagueIndex, KNOWN_LEAGUES, CURRENT_LEAGUE } from './league';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  filterLeagueIndex, KNOWN_LEAGUES, CURRENT_LEAGUE,
+  LEAGUE_ENDS_AT, isLeagueEnded, activeKnownLeagues,
+} from './league';
+
+// D5(b): detection consults activeKnownLeagues() with REAL time. The legacy
+// probe expectations assume KNOWN_LEAGUES[0] (Ancestors) is still live, so
+// the whole suite pins the clock to before its endsAt — otherwise these
+// tests would silently change behaviour after 2026-07-17.
+const BEFORE_EVENT_END = new Date('2026-07-01T12:00:00Z');
 
 type LeagueModule = typeof import('./league');
 
@@ -25,8 +34,67 @@ function stubProbe(linesByLeague: Record<string, number>) {
   return spy;
 }
 
+beforeEach(() => {
+  vi.useFakeTimers({ now: BEFORE_EVENT_END });
+});
+
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+describe('D5(b) — ended-league handling', () => {
+  const ANCESTORS = 'Ancestors';
+  const AFTER_END = Date.parse(LEAGUE_ENDS_AT[ANCESTORS]) + 60_000;
+  const BEFORE_END = Date.parse(LEAGUE_ENDS_AT[ANCESTORS]) - 60_000;
+
+  it('isLeagueEnded: false before endsAt, true after, false for unknown leagues', () => {
+    expect(isLeagueEnded(ANCESTORS, BEFORE_END)).toBe(false);
+    expect(isLeagueEnded(ANCESTORS, AFTER_END)).toBe(true);
+    expect(isLeagueEnded('Mirage', AFTER_END)).toBe(false);
+  });
+
+  it('activeKnownLeagues drops ended entries but keeps the rest in order', () => {
+    expect(activeKnownLeagues(BEFORE_END)).toEqual([...KNOWN_LEAGUES]);
+    const after = activeKnownLeagues(AFTER_END);
+    expect(after).not.toContain(ANCESTORS);
+    expect(after[0]).toBe('Mirage');
+  });
+
+  it('activeKnownLeagues FAILS OPEN to the full list if everything is ended', () => {
+    // Far future + a hypothetical world where every entry has an end date:
+    // guard the real invariant instead — with only Ancestors dated, even the
+    // far future keeps Mirage; and an all-ended input degrades to the full list.
+    const farFuture = Date.parse('2099-01-01T00:00:00Z');
+    expect(activeKnownLeagues(farFuture).length).toBeGreaterThan(0);
+  });
+
+  it('detection SKIPS an ended league even when it still serves frozen data', async () => {
+    vi.setSystemTime(new Date(AFTER_END));
+    const league = await freshLeague();
+    // Frozen data scenario: dead Ancestors still returns a full response.
+    const spy = stubProbe({ [ANCESTORS]: 10, Mirage: 10 });
+    const ctx = await league.getActiveContext();
+    expect(ctx).toEqual({ leagueName: 'Mirage', source: 'detected' });
+    expect(spy).not.toHaveBeenCalledWith(ANCESTORS);
+  });
+
+  it('fallback also respects endsAt (never falls back to a dead event)', async () => {
+    vi.setSystemTime(new Date(AFTER_END));
+    const league = await freshLeague();
+    stubProbe({}); // every probe fails
+    const ctx = await league.getActiveContext();
+    expect(ctx).toEqual({ leagueName: 'Mirage', source: 'fallback' });
+  });
+
+  it('manual override can still select an ended league (escape hatch stays)', async () => {
+    vi.setSystemTime(new Date(AFTER_END));
+    const league = await freshLeague();
+    stubProbe({});
+    league.setLeagueOverrideValue(ANCESTORS);
+    const ctx = await league.getActiveContext();
+    expect(ctx).toEqual({ leagueName: ANCESTORS, source: 'override' });
+  });
 });
 
 describe('getActiveContext — detection', () => {

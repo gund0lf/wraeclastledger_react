@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button, Group, Text, Stack, List, Badge, Collapse, ActionIcon } from '@mantine/core';
 import { IconChevronDown, IconChevronRight, IconX } from '@tabler/icons-react';
 import { CHANGELOG } from './utils/changelog';
+import { useUIStore } from './store/useUIStore';
 import pkg from '../../../package.json';
 
 // WP3: single source of truth — electron-vite resolves the JSON import at
@@ -51,6 +52,14 @@ export const UpdateBanner = () => {
       localStorage.setItem(SEEN_KEY, APP_VERSION);
     }
   }, []);
+
+  // Title-bar version badge clicked -> reopen What's New (Sad 2026-07-10).
+  const { changelogRequested, clearChangelogRequest } = useUIStore();
+  useEffect(() => {
+    if (!changelogRequested) return;
+    setShowChangelog(true);
+    clearChangelogRequest();
+  }, [changelogRequested]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const ipc = window.electron?.ipcRenderer;

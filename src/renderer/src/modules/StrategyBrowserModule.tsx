@@ -3,15 +3,15 @@ import {
   ActionIcon, Loader, Alert, Tooltip,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { IconRefresh, IconBrandDiscord, IconShare2, IconCalendar } from '@tabler/icons-react';
 import { useSessionKeys } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
-import { KNOWN_LEAGUES } from '../utils/league';
+import { KNOWN_LEAGUES, activeKnownLeagues } from '../utils/league';
 import { parseDiscordExport } from '../utils/parseDiscordExport';
 import {
   Strategy, ApiResponse, ALL_TYPE_TAGS, BROWSER_COLS, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X,
-  SortKey, SortOrder, SORT_DEFAULT_DIR, SORT_OPTIONS,
+  SortKey, SortOrder, SORT_DEFAULT_DIR, SORT_OPTIONS, STRATEGY_API_URL,
 } from '../utils/strategyConstants';
 import { StrategyCard } from '../components/StrategyCard';
 import { ModuleHeader } from '../components/ui/ModuleHeader';
@@ -20,11 +20,8 @@ import { ImportModal } from '../components/ImportModal';
 import type { DiscordImport } from '../utils/parseDiscordExport';
 import { FONT } from '../utils/uiTokens'
 
-const DEFAULT_API_URL = 'https://wledger.richardpruett.com';
-// Dev override for local end-to-end testing against the docker-compose stack
-// (e.g. `set VITE_STRATEGY_API_URL=http://localhost:3000` before `npm run dev`).
-// Never set in production builds — the default stays the live API.
-const API_URL_OVERRIDE = import.meta.env.VITE_STRATEGY_API_URL as string | undefined;
+// API base (incl. the VITE_STRATEGY_API_URL dev override) moved to
+// strategyConstants.STRATEGY_API_URL — shared with the game-data loader.
 
 // ─── Main module ───────────────────────────────────────────────────────────────
 export const StrategyBrowserModule = () => {
@@ -36,7 +33,7 @@ export const StrategyBrowserModule = () => {
     'updateSetting', 'updateAdvSetting', 'updateScarab', 'newSession', 'setLoadedStrategyInfo',
   );
 
-  const apiUrl = API_URL_OVERRIDE || DEFAULT_API_URL;
+  const apiUrl = STRATEGY_API_URL;
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [total,      setTotal]      = useState(0);
   const [loading,    setLoading]    = useState(false);
@@ -47,7 +44,9 @@ export const StrategyBrowserModule = () => {
   // Default filter follows the active context: manual override wins, else the
   // newest known league/event (rollover D4). Initial value only — changing the
   // override mid-session doesn't yank an already-chosen filter.
-  const [leagueFilter, setLeagueFilter] = useState<string>(leagueOverride ?? KNOWN_LEAGUES[0]);
+  // Default follows the first NON-ENDED league (D5b) — a dead event stays
+  // selectable in the dropdown but stops being the default.
+  const [leagueFilter, setLeagueFilter] = useState<string>(leagueOverride ?? activeKnownLeagues()[0]);
   const [minDiv,     setMinDiv]     = useState('');
   const [sortBy,     setSortBy]     = useState<SortKey>('posted_at');
   // null = server default direction for the active sort; only an explicit
@@ -57,6 +56,13 @@ export const StrategyBrowserModule = () => {
   const [showDate,   setShowDate]   = useState(false);
   const [hideGroup,  setHideGroup]  = useState(false);
   const LIMIT = 20;
+
+  // Refs mirroring loading/offset for the background-refresh interval —
+  // keeps the interval effect off those fast-changing deps (no re-arm churn).
+  const loadingRef = useRef(false);
+  const offsetRef  = useRef(0);
+  loadingRef.current = loading;
+  offsetRef.current  = offset;
 
   // ── Share modal ───────────────────────────────────────────────────────────────
   const [shareOpen, { open: openShare, close: closeShare }] = useDisclosure(false);
@@ -245,6 +251,19 @@ export const StrategyBrowserModule = () => {
 
   useEffect(() => { fetchStrategies(0); }, [fetchStrategies]);
 
+  // Background refresh (Sad 2026-07-10): re-pull the first page every 5 min so
+  // fresh shares/votes appear without manual refresh. Skipped while a fetch is
+  // in flight or the user has paginated past page 1 (a refresh would discard
+  // their loaded rows); the interval keys on fetchStrategies, so filter/sort
+  // changes reset the timer naturally.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (loadingRef.current || offsetRef.current > 0) return;
+      fetchStrategies(0);
+    }, 5 * 60_000);
+    return () => clearInterval(id);
+  }, [fetchStrategies]);
+
   const hasMore = offset + LIMIT < total;
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -285,7 +304,7 @@ export const StrategyBrowserModule = () => {
           <Select size="xs" style={{ width: 110 }}
             data={[...new Set([...(leagueOverride ? [leagueOverride] : []), ...KNOWN_LEAGUES])]
               .filter((l) => l !== 'Standard').map((l) => ({ value: l, label: l }))}
-            value={leagueFilter} onChange={(v) => setLeagueFilter(v ?? leagueOverride ?? KNOWN_LEAGUES[0])} />
+            value={leagueFilter} onChange={(v) => setLeagueFilter(v ?? leagueOverride ?? activeKnownLeagues()[0])} />
           <TextInput size="xs" placeholder="Min d/map" style={{ width: 80 }}
             value={minDiv} onChange={(e) => setMinDiv(e.currentTarget.value)} />
           <Select size="xs" style={{ width: 90 }}

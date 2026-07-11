@@ -149,6 +149,79 @@ describe('loader (initGameData)', () => {
     await initGameData();
     expect(read).toHaveBeenCalledTimes(1);
   });
+
+  // ── Server fetch (hook went live 2026-07-11) ────────────────────────────
+
+  const apiWith = (overrides: Record<string, unknown>) => ({
+    readGameDataCache:  vi.fn(async () => ({ manifest: null, error: null })),
+    writeGameDataCache: vi.fn(async () => ({ ok: true, error: null })),
+    ...overrides,
+  });
+
+  it('adopts a NEWER server manifest and persists it to the cache', async () => {
+    const newer = { ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 5 };
+    const write = vi.fn(async () => ({ ok: true, error: null }));
+    vi.stubGlobal('window', { api: apiWith({
+      writeGameDataCache: write,
+      fetchGameDataLatest: vi.fn(async () => ({ payload: { revision: newer.revision, manifest: newer }, error: null })),
+    }) });
+    const m = await initGameData();
+    expect(m.revision).toBe(newer.revision);
+    expect(write).toHaveBeenCalledWith(newer);
+  });
+
+  it('ignores a server manifest that is not newer (no write)', async () => {
+    const write = vi.fn(async () => ({ ok: true, error: null }));
+    vi.stubGlobal('window', { api: apiWith({
+      writeGameDataCache: write,
+      fetchGameDataLatest: vi.fn(async () => ({ payload: { revision: BUNDLED_MANIFEST.revision, manifest: { ...BUNDLED_MANIFEST } }, error: null })),
+    }) });
+    await initGameData();
+    expect(getManifest()).toBe(BUNDLED_MANIFEST);
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('rejects a server payload whose top-level revision disagrees with the manifest field', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const lying = { ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 2 };
+    vi.stubGlobal('window', { api: apiWith({
+      fetchGameDataLatest: vi.fn(async () => ({ payload: { revision: lying.revision + 9, manifest: lying }, error: null })),
+    }) });
+    await initGameData();
+    expect(getManifest()).toBe(BUNDLED_MANIFEST);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('rejects an INVALID server manifest and stays on the active revision', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('window', { api: apiWith({
+      fetchGameDataLatest: vi.fn(async () => ({ payload: { revision: 99, manifest: { revision: 99 } }, error: null })),
+    }) });
+    await initGameData();
+    expect(getManifest()).toBe(BUNDLED_MANIFEST);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('treats a server error as non-fatal (endpoint not deployed / server down)', async () => {
+    vi.stubGlobal('window', { api: apiWith({
+      fetchGameDataLatest: vi.fn(async () => ({ payload: null, error: 'game-data 404' })),
+    }) });
+    const m = await initGameData();
+    expect(m).toBe(BUNDLED_MANIFEST);
+  });
+
+  it('server beats cache only by revision: cache r+1 adopted, server r+2 wins over it', async () => {
+    const cached = { ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 1 };
+    const served = { ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 2 };
+    vi.stubGlobal('window', { api: apiWith({
+      readGameDataCache: vi.fn(async () => ({ manifest: cached, error: null })),
+      fetchGameDataLatest: vi.fn(async () => ({ payload: { revision: served.revision, manifest: served }, error: null })),
+    }) });
+    const m = await initGameData();
+    expect(m.revision).toBe(served.revision);
+  });
 });
 
 describe('derived view helpers (call-time, revision-aware)', () => {

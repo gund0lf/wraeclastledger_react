@@ -372,6 +372,31 @@ ipcMain.handle('gamedata:write-cache', async (_event, manifest: unknown) => {
   }
 });
 
+// Game-data manifest server fetch (rollover step 2 server hook, live 2026-07).
+// Routed through main like every external call (CORS). baseUrl comes from the
+// renderer (same strategy-API base incl. the VITE_STRATEGY_API_URL dev
+// override); validated to http(s) before use. Returns the spec's
+// { revision, manifest } payload verbatim — the renderer validates content
+// (isValidManifest) and decides adoption; main only moves bytes.
+ipcMain.handle('gamedata:fetch-latest', async (_event, baseUrl: string) => {
+  if (typeof baseUrl !== 'string' || !/^https?:\/\//.test(baseUrl))
+    return { payload: null, error: 'invalid base url' };
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5_000);
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/$/, '')}/game-data/latest`, { signal: controller.signal });
+    if (!res.ok) return { payload: null, error: `game-data ${res.status}` };
+    const data = await res.json() as { revision?: number; manifest?: unknown };
+    if (typeof data?.revision !== 'number' || !data?.manifest)
+      return { payload: null, error: 'malformed game-data response' };
+    return { payload: data as { revision: number; manifest: unknown }, error: null };
+  } catch (err: any) {
+    return { payload: null, error: err?.message ?? 'fetch failed' };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+});
+
 // poe.ninja icon source. Both economy families carry per-item icons, but in
 // different places, so the family is passed in:
 //   exchange -> top-level items[] { name, image: "/gen/image/..." (relative) }

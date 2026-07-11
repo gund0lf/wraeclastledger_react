@@ -11,7 +11,7 @@ import { isMechanicActive } from '../utils/gameData';
 import { parsePriceInput } from '../utils/priceUtils';
 import { computeCosts } from '../utils/profit';
 import { fcSep } from '../utils/parseDiscordExport';
-import { KNOWN_LEAGUES, fetchSelectableLeagues } from '../utils/league';
+import { KNOWN_LEAGUES, activeKnownLeagues, fetchSelectableLeagues } from '../utils/league';
 import { chiselItemName, deliOrbItemName } from '../utils/itemIcons';
 import { PoeItemIcon } from '../components/ui/PoeItemIcon';
 import { IconTrash, IconDeviceFloppy, IconChevronDown, IconRefresh, IconX, IconSettings, IconLock } from '@tabler/icons-react';
@@ -197,18 +197,26 @@ export const InvestmentModule = () => {
               <NumberInput size="xs" value={settings.advChaos} onChange={(v) => updateAdvSetting('advChaos', Number(v))} min={0} />
               <Text size="xs" c="dimmed">{settings.advChaos}c</Text>
             </SimpleGrid>
-            <SimpleGrid cols={3} style={{ alignItems: 'flex-end' }}>
+            <SimpleGrid cols={3} style={{ alignItems: 'center' }}>
               <Group gap={4} wrap="nowrap"><PoeItemIcon name="Exalted Orb" size={16} /><Text size="xs">Exalted</Text></Group>
               <NumberInput size="xs" value={settings.advExalt} onChange={(v) => updateAdvSetting('advExalt', Number(v))} min={0} />
               <PriceInput value={settings.advExaltPrice} onChange={(v) => updateAdvSetting('advExaltPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
             </SimpleGrid>
-            {settings.advExalt > 0 && settings.advExaltPrice > 0 && <Text size="xs" c="dimmed">→ {(settings.advExaltPrice / settings.advExalt).toFixed(2)}c each</Text>}
-            <SimpleGrid cols={3} style={{ alignItems: 'flex-end' }}>
+            {settings.advExalt > 0 && settings.advExaltPrice > 0 && (
+              // Per-orb caption lives in the grid too, under the Total paid
+              // column — a full-width line here knocked the row icons out of
+              // alignment (Sad observation 2026-07-10).
+              <SimpleGrid cols={3}>
+                <div /><div />
+                <Text size="xs" c="dimmed">→ {(settings.advExaltPrice / settings.advExalt).toFixed(2)}c each</Text>
+              </SimpleGrid>
+            )}
+            <SimpleGrid cols={3} style={{ alignItems: 'center' }}>
               <Group gap={4} wrap="nowrap"><PoeItemIcon name="Orb of Scouring" size={16} /><Text size="xs">Scour</Text></Group>
               <NumberInput size="xs" value={settings.advScour} onChange={(v) => updateAdvSetting('advScour', Number(v))} min={0} />
               <PriceInput value={settings.advScourPrice} onChange={(v) => updateAdvSetting('advScourPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
             </SimpleGrid>
-            <SimpleGrid cols={3} style={{ alignItems: 'flex-end' }}>
+            <SimpleGrid cols={3} style={{ alignItems: 'center' }}>
               <Group gap={4} wrap="nowrap"><PoeItemIcon name="Orb of Alchemy" size={16} /><Text size="xs">Alch</Text></Group>
               <NumberInput size="xs" value={settings.advAlch} onChange={(v) => updateAdvSetting('advAlch', Number(v))} min={0} />
               <PriceInput value={settings.advAlchPrice} onChange={(v) => updateAdvSetting('advAlchPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
@@ -404,8 +412,8 @@ export const InvestmentModule = () => {
                 />
                 {/* WP4.3: which league's price? Cue only when it differs from the
                     EXPECTED league — the override when set, else the newest known. */}
-                {settings.leagueName && settings.leagueName !== (leagueOverride ?? KNOWN_LEAGUES[0]) && (
-                  <Tooltip label={`This price was fetched for the ${settings.leagueName} league, not ${leagueOverride ?? KNOWN_LEAGUES[0]}. Use the refresh button to re-fetch.`} withArrow multiline w={220}>
+                {settings.leagueName && settings.leagueName !== (leagueOverride ?? activeKnownLeagues()[0]) && (
+                  <Tooltip label={`This price was fetched for the ${settings.leagueName} league, not ${leagueOverride ?? activeKnownLeagues()[0]}. Use the refresh button to re-fetch.`} withArrow multiline w={220}>
                     <Text size="xs" c="yellow" style={{ fontSize: FONT.label, cursor: 'help' }}>price: {settings.leagueName}</Text>
                   </Tooltip>
                 )}

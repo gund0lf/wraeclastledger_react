@@ -5,6 +5,7 @@ import { getModuleComponent } from './layout/Registry';
 import { defaultLayout } from './layout/defaultLayout';
 import { Box, Button, Menu, Text, ActionIcon, Tooltip, Badge, Alert } from '@mantine/core';
 import { useSessionStore } from './store/useSessionStore';
+import { useUIStore } from './store/useUIStore';
 import { parseMapClipboard } from './utils/mapParser';
 import { initGameData } from './utils/gameData';
 import { UpdateBanner, APP_VERSION } from './UpdateBanner';
@@ -202,9 +203,13 @@ function App(): JSX.Element {
         </Text>
         {/* session-17 review: was color="dark" outline at raw fontSize 9 —
             near-invisible on the dark surface (and a uiTokens violation). */}
-        <Badge size="xs" color="gray" variant="outline" style={{ fontSize: FONT.small, fontVariantNumeric: 'tabular-nums' }}>
-          v{APP_VERSION}
-        </Badge>
+        <Tooltip label="View changelog" position="bottom">
+          <Badge size="xs" color="gray" variant="outline"
+            style={{ fontSize: FONT.small, fontVariantNumeric: 'tabular-nums', cursor: 'pointer' }}
+            onClick={() => useUIStore.getState().requestChangelog()}>
+            v{APP_VERSION}
+          </Badge>
+        </Tooltip>
         <Tooltip label="Check for updates" position="bottom">
           <ActionIcon size="xs" variant="subtle" color="gray" loading={checking}
             onClick={handleCheckForUpdates} aria-label="Check for updates">
