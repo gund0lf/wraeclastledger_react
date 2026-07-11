@@ -10,6 +10,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.65',
+    date: '2026-07-11',
+    changes: [
+      'Saved sessions are now protected from silent repricing: opening a saved session no longer auto-refreshes its divine price or re-stamps its league — a session\'s numbers stay exactly as you saved them, whether it\'s from this league or an old one. The refresh button on a saved session now asks first ("Reprice using current economy") and never touches the league.',
+      'Sessions from a previous league show a "Historical session" notice on the Dashboard and Investment panels, and their atlas point counts can no longer be overwritten by opening their tree under a newer patch.',
+      'A failed divine-price fetch can no longer wipe a valid price — the old value is always kept until a fetch actually succeeds.',
+    ],
+  },
+  {
     version: '1.0.64',
     date: '2026-07-11',
     changes: [

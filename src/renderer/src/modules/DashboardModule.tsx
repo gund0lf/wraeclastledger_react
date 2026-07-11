@@ -20,6 +20,7 @@ import { StatTile } from '../components/ui/StatTile';
 import { GettingStartedCard } from '../components/GettingStartedCard';
 import { CollapsibleSection as Section } from '../components/ui/CollapsibleSection';
 import { COLOR, FONT } from '../utils/uiTokens'
+import { isCrossLeagueSession } from '../utils/historicalSession';
 
 // Smart page size: show INITIAL rows, user can load more in STEP increments
 const INITIAL_ROWS = 25;
@@ -42,14 +43,19 @@ export const DashboardModule = () => {
     setLootItems, setBaselineItems, toggleLootItemExcluded, clearLoot,
     investmentNeutralization, setInvestmentNeutralization,
     investmentDismissed, setInvestmentDismissed,
-    onboardingDismissed, dismissOnboarding,
+    onboardingDismissed, dismissOnboarding, activeSessionId,
   } = useSessionKeys(
     'maps', 'settings', 'lootItems', 'baselineItems', 'baselineTotal',
     'setLootItems', 'setBaselineItems', 'toggleLootItemExcluded', 'clearLoot',
     'investmentNeutralization', 'setInvestmentNeutralization',
     'investmentDismissed', 'setInvestmentDismissed',
-    'onboardingDismissed', 'dismissOnboarding',
+    'onboardingDismissed', 'dismissOnboarding', 'activeSessionId',
   );
+
+  // Phase 1.5 (rollover plan): cross-league loaded session banner. The
+  // store-level guards already freeze prices/league/points; this is the
+  // visible explanation.
+  const crossLeague = isCrossLeagueSession(activeSessionId, settings.leagueName);
 
   const stats = useMemo(() => {
     const count = maps.length;
@@ -207,6 +213,13 @@ export const DashboardModule = () => {
 
   return (
     <>
+      {crossLeague && (
+        <Tooltip label="Divine price, league and atlas points of this session are frozen — live refreshes never touch loaded sessions from another league. Start a new session to track the current league." withArrow multiline w={280}>
+          <Badge color="yellow" variant="light" size="sm" mb={6} style={{ cursor: 'help' }}>
+            Historical session — {settings.leagueName}
+          </Badge>
+        </Tooltip>
+      )}
       <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFileChange} />
 
       <Modal opened={blOpen} onClose={closeBl} title="How should this CSV be used?" size="sm">

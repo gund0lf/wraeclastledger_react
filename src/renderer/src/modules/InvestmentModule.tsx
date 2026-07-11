@@ -11,7 +11,8 @@ import { isMechanicActive } from '../utils/gameData';
 import { parsePriceInput } from '../utils/priceUtils';
 import { computeCosts } from '../utils/profit';
 import { fcSep } from '../utils/parseDiscordExport';
-import { KNOWN_LEAGUES, activeKnownLeagues, fetchSelectableLeagues } from '../utils/league';
+import { KNOWN_LEAGUES, activeKnownLeagues, fetchSelectableLeagues, currentLeagueSync } from '../utils/league';
+import { isCrossLeagueSession } from '../utils/historicalSession';
 import { chiselItemName, deliOrbItemName } from '../utils/itemIcons';
 import { PoeItemIcon } from '../components/ui/PoeItemIcon';
 import { IconTrash, IconDeviceFloppy, IconChevronDown, IconRefresh, IconX, IconSettings, IconLock } from '@tabler/icons-react';
@@ -135,12 +136,27 @@ export const InvestmentModule = () => {
 
   // Manual refresh button: bypasses the cooldown via { force: true }, since
   // an explicit user action shouldn't be silently skipped.
+  // Phase 1.5 (2026-07-11): on a LOADED saved session this becomes an
+  // explicit, confirmed "reprice" action (the store guard blocks everything
+  // else). The old pre-zeroing of divinePrice is GONE — fetch-first, a
+  // failed fetch must never destroy a valid price.
+  const [repriceConfirmOpen, setRepriceConfirmOpen] = useState(false);
   const handleFetchPrice = async () => {
+    if (activeSessionId !== null) { setRepriceConfirmOpen(true); return; }
     setFetchingPrice(true);
-    updateSetting('divinePrice', 0);
     await initDivinePrice({ force: true });
     setFetchingPrice(false);
   };
+  const confirmReprice = async () => {
+    setRepriceConfirmOpen(false);
+    setFetchingPrice(true);
+    await initDivinePrice({ force: true, repriceLoaded: true });
+    setFetchingPrice(false);
+  };
+  // Cross-league loaded session (e.g. an Ancestors session opened under
+  // 3.29): show the historical banner. The price guard above is stricter
+  // (any loaded session); this banner only flags the league mismatch case.
+  const crossLeague = isCrossLeagueSession(activeSessionId, settings.leagueName);
 
   const baseMapFilled   = settings.baseMapCost > 0;
   const doPresetSave = () => {
@@ -357,7 +373,33 @@ export const InvestmentModule = () => {
         </Stack>
       </Modal>
 
+      {/* Phase 1.5: explicit reprice confirmation for LOADED sessions — the
+          only sanctioned way live prices reach a saved session's economics. */}
+      <Modal opened={repriceConfirmOpen} onClose={() => setRepriceConfirmOpen(false)}
+        title="Reprice saved session?" size="sm">
+        <Stack gap="sm">
+          <Text size="xs">
+            This is a saved session{settings.leagueName ? ` from the ${settings.leagueName} league` : ''}.
+            Fetching the current divine price will change its historical
+            profit numbers. The session&apos;s league is never changed.
+          </Text>
+          <Group justify="flex-end" gap="xs">
+            <Button size="xs" variant="default" onClick={() => setRepriceConfirmOpen(false)}>Cancel</Button>
+            <Button size="xs" color="yellow" onClick={confirmReprice}>Reprice using current economy</Button>
+          </Group>
+        </Stack>
+      </Modal>
+
       <Card shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ overflow: 'auto' }}>
+        {crossLeague && (
+          <Alert color="yellow" variant="light" p="xs" mb={8}>
+            <Text size="xs">
+              Historical session ({settings.leagueName}) — prices and league are
+              frozen. Current league is {currentLeagueSync()}. Start a new
+              session to track {currentLeagueSync()}.
+            </Text>
+          </Alert>
+        )}
         <Group justify="space-between" mb={8}>
           {/* Panel title removed (redundant with the tab label — same call as the
               Sessions panel). The header slot hosts the league override instead

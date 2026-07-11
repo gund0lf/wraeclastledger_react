@@ -248,7 +248,13 @@ interface SessionState {
   clearLoot: () => void;
   // initDivinePrice: cooldown-gated by default. Pass { force: true } to bypass
   // the 60s cooldown — used by the manual refresh button in InvestmentModule.
-  initDivinePrice: (opts?: { force?: boolean }) => Promise<void>;
+  // HISTORICAL-SESSION PROTECTION (rollover plan Phase 1.5, 2026-07-11): a
+  // LOADED saved session (activeSessionId set) is historical data and is
+  // NEVER auto-repriced — same league or not; prices move within a league
+  // too. Only the explicit reprice confirmation flow passes
+  // { repriceLoaded: true }, and even then leagueName stays untouched
+  // (league is session provenance, never a side effect of a price quote).
+  initDivinePrice: (opts?: { force?: boolean; repriceLoaded?: boolean }) => Promise<void>;
   /** Manual divine-price entry — sets the price AND marks it fresh so the
    *  30-min staleness auto-refresh doesn't overwrite a hand-typed value. */
   setDivinePriceManual: (v: number) => void;
@@ -350,13 +356,23 @@ export const useSessionStore = create<SessionState>()(
         // auto-refreshed — even days later. Now: fetch when the price is
         // unset/legacy OR the last successful fetch is older than 30 min.
         // `force` (manual refresh button) always fetches.
-        const { settings: st, divinePriceFetchedAt } = get();
+        const { settings: st, divinePriceFetchedAt, activeSessionId } = get();
+        // Historical-session guard (Phase 1.5): a loaded saved session is
+        // never auto-mutated — the audit found this exact path repricing AND
+        // re-stamping the league of old sessions, with the WP10 auto-save
+        // then persisting the corruption. Guarded HERE (store level) so no
+        // UI surface can forget. `repriceLoaded` = the explicit, confirmed
+        // "reprice this saved session" action, the only sanctioned override.
+        const loaded = activeSessionId !== null;
+        if (loaded && !opts.repriceLoaded) return;
         const isUnset = st.divinePrice === 0 || st.divinePrice === 200;
         const isStale = Date.now() - divinePriceFetchedAt > DIVINE_PRICE_STALE_MS;
         if (!opts.force && !isUnset && !isStale) return;
         // Fetch league and price in parallel — both use poe.ninja.
         // Price is cooldown-gated unless `force` is set; league has its own
         // in-memory cache and falls back to CURRENT_LEAGUE on failure.
+        // FETCH-FIRST safety: nothing is mutated unless the fetch succeeded
+        // (a failed refresh preserves the old price everywhere).
         const [league, price] = await Promise.all([
           getCurrentLeague(),
           tryFetchDivinePrice(opts.force === true),
@@ -369,7 +385,9 @@ export const useSessionStore = create<SessionState>()(
           settings: {
             ...s.settings,
             ...(price && price > 0 ? { divinePrice: Math.round(price) } : {}),
-            ...(league ? { leagueName: league } : {}),
+            // League is session PROVENANCE: only a live (unsaved) session is
+            // ever stamped by a fetch. A loaded session keeps its league.
+            ...(!loaded && league ? { leagueName: league } : {}),
           },
         }));
       },

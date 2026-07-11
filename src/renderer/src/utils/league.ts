@@ -139,6 +139,17 @@ export async function getCurrentLeague(): Promise<string> {
   return (await getActiveContext()).leagueName;
 }
 
+/**
+ * SYNCHRONOUS current-league view: override, else the cached detection
+ * result, else null (= unknown; detection not resolved yet). For banner /
+ * guard logic that cannot await — callers must treat null as "cannot
+ * compare" (fail-open: no flag), NEVER as "no league". (Rollover plan
+ * Phase 1.5, historical-session protection.)
+ */
+export function currentLeagueSync(): string | null {
+  return leagueOverride ?? cachedContext?.leagueName ?? null;
+}
+
 export function clearLeagueCache(): void {
   cachedContext = null;
   cachedFetchPromise = null;

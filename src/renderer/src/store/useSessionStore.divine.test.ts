@@ -97,4 +97,75 @@ describe('WP4.2 divine price staleness', () => {
     // leagueName still updated from detection even when the price fetch fails
     expect(useSessionStore.getState().settings.leagueName).toBe('Ancestors');
   });
+
+  it('failed fetch never clears an already-set price (fetch-first safety)', async () => {
+    fetchMock.mockResolvedValue(null);
+    resetStore(300, Date.now() - THIRTY_MIN - 1000); // stale -> fetch attempted
+    await useSessionStore.getState().initDivinePrice();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(useSessionStore.getState().settings.divinePrice).toBe(300); // preserved
+  });
+});
+
+// ── Phase 1.5: historical-session protection (rollover plan, 2026-07-11) ────
+// A LOADED saved session (activeSessionId set) is historical data: never
+// auto-repriced (same league or not), never league-re-stamped by a fetch.
+// Only the explicit confirmed reprice ({ repriceLoaded: true }) may touch
+// its price — and even that leaves leagueName alone.
+describe('historical-session protection', () => {
+  const loadSessionState = (divinePrice: number, leagueName: string, fetchedAt: number): void => {
+    useSessionStore.setState({
+      settings: { ...DEFAULT_SETTINGS, divinePrice, leagueName },
+      divinePriceFetchedAt: fetchedAt,
+      activeSessionId: 'sess-1', activeSessionName: 'Old run', savedSessions: {},
+    });
+  };
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(250);
+  });
+
+  it('loaded session: stale auto-refresh does NOT fetch or mutate anything', async () => {
+    loadSessionState(180, 'Mirage', Date.now() - THIRTY_MIN - 1000); // stale on purpose
+    await useSessionStore.getState().initDivinePrice();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(useSessionStore.getState().settings.divinePrice).toBe(180);
+    expect(useSessionStore.getState().settings.leagueName).toBe('Mirage');
+  });
+
+  it('loaded session: force alone (old manual-refresh path) is also blocked', async () => {
+    loadSessionState(180, 'Mirage', 0);
+    await useSessionStore.getState().initDivinePrice({ force: true });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(useSessionStore.getState().settings.divinePrice).toBe(180);
+  });
+
+  it('explicit reprice updates the price but NEVER the league (provenance)', async () => {
+    loadSessionState(180, 'Mirage', 0);
+    await useSessionStore.getState().initDivinePrice({ force: true, repriceLoaded: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(useSessionStore.getState().settings.divinePrice).toBe(250);
+    expect(useSessionStore.getState().settings.leagueName).toBe('Mirage'); // untouched
+  });
+
+  it('explicit reprice with a failed fetch preserves the old price', async () => {
+    fetchMock.mockResolvedValue(null);
+    loadSessionState(180, 'Mirage', 0);
+    await useSessionStore.getState().initDivinePrice({ force: true, repriceLoaded: true });
+    expect(useSessionStore.getState().settings.divinePrice).toBe(180);
+    expect(useSessionStore.getState().settings.leagueName).toBe('Mirage');
+  });
+
+  it('a live (unsaved) session still auto-refreshes and stamps the league', async () => {
+    useSessionStore.setState({
+      settings: { ...DEFAULT_SETTINGS, divinePrice: 0, leagueName: '' },
+      divinePriceFetchedAt: 0,
+      activeSessionId: null, activeSessionName: null, savedSessions: {},
+    });
+    await useSessionStore.getState().initDivinePrice();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(useSessionStore.getState().settings.divinePrice).toBe(250);
+    expect(useSessionStore.getState().settings.leagueName).toBe('Ancestors');
+  });
 });

@@ -4,6 +4,7 @@ import { IconRefresh, IconCopy, IconCheck, IconChartBar, IconLink, IconX } from 
 import { useSessionStore, useSessionKeys } from '../store/useSessionStore';
 import { getManifest } from '../utils/gameData';
 import { atlasVersionOf } from '../utils/strategyCompat';
+import { isCrossLeagueSession } from '../utils/historicalSession';
 import { SectionLabel } from '../components/ui/SectionLabel';
 import { COLOR, FONT } from '../utils/uiTokens'
 
@@ -109,7 +110,17 @@ export const AtlasTreeModule = () => {
             })()
           `);
           if (r && typeof r.allocated === 'number' && typeof r.max === 'number') {
-            const s = useSessionStore.getState().settings;
+            const st = useSessionStore.getState();
+            // Phase 1.5 historical guard (rollover plan, 2026-07-11): a
+            // cross-league loaded session's stored tree may render under a
+            // NEWER patch's ?v= — its point counts must never overwrite the
+            // historical session's data. Same-league tree edits still
+            // capture (a deliberate user action on their own session).
+            if (isCrossLeagueSession(st.activeSessionId, st.settings.leagueName)) {
+              console.log('[AtlasTree] point capture skipped — historical session');
+              return;
+            }
+            const s = st.settings;
             if (s.atlasPoints !== r.allocated || s.atlasPointsMax !== r.max) {
               updateSetting('atlasPoints', r.allocated);
               updateSetting('atlasPointsMax', r.max);
