@@ -604,9 +604,9 @@ export const FromSessionTab = () => {
                   label={
                     <Stack gap={3} p={2}>
                       <Text size="xs" fw={700}>Mods you refuse to run.</Text>
-                      <Text size="xs">These terms are prepended to every generated regex as "!a|b", so maps with a matching mod never highlight in your stash.</Text>
+                      <Text size="xs">These terms are prepended to every generated regex as &quot;!a|b&quot;, so maps with a matching mod never highlight in your stash.</Text>
                       <Text size="xs">Add them from the mod pickers below, or paste an existing regex to import its exclusions.</Text>
-                      <Text size="xs">Presets (top right): save named term lists to rotate between setups; "Set current as default" auto-applies the current terms whenever you load a strategy.</Text>
+                      <Text size="xs">Presets (top right): save named term lists to rotate between setups; &quot;Set current as default&quot; auto-applies the current terms whenever you load a strategy.</Text>
                     </Stack>
                   } withArrow>
                   <Badge size="xs" color="gray" variant="outline" style={{ cursor: 'help' }}>?</Badge>

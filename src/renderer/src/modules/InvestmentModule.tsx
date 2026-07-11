@@ -303,7 +303,7 @@ export const InvestmentModule = () => {
                 </Group>
                 {settings.advGemName && (
                   <Text size="xs" c="violet" style={{ fontStyle: 'italic' }}>
-                    CSV auto-excludes: "{settings.advGemName}"
+                    CSV auto-excludes: &quot;{settings.advGemName}&quot;
                   </Text>
                 )}
               </Stack>

@@ -97,7 +97,7 @@ export const UpdateBanner = () => {
         }}>
           <Group justify="space-between" mb={8}>
             <Group gap={6}>
-              <Text fw={700} size="sm">What's New</Text>
+              <Text fw={700} size="sm">What&apos;s New</Text>
               <Badge size="xs" color="blue" variant="light">v{APP_VERSION}</Badge>
             </Group>
             <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => { setShowChangelog(false); setShowHistory(false); }}><IconX size={12} /></ActionIcon>

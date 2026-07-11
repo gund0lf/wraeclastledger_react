@@ -43,11 +43,11 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   // computeTimeEstimate's activeMs already excludes break-like gaps, so the
   // prefill is ACTIVE mapping time. It is an ESTIMATE the user can edit or
   // clear — empty means "no claim" and the export line is suppressed entirely.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately only on open
   useEffect(() => {
     if (!opened) return;
     const est = computeTimeEstimate(maps);
     setTimeText(est ? String(Math.round(est.activeMs / 60_000)) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately only on open
   }, [opened]);
 
   // Canonical wire value (minutes) derived from the flexible input; null when

@@ -415,7 +415,7 @@ export const BuilderTab = () => {
             <Collapse in={howOpen}>
               <Stack gap={2} p="xs" style={{ background: COLOR.bgSunken, borderRadius: 6 }}>
                 <Text size="xs" c="dimmed" style={{ fontSize: FONT.small, lineHeight: 1.5 }}>
-                  PoE's engine is <Text span c="orange">line-by-line</Text> — .* across lines doesn't work.
+                  PoE&apos;s engine is <Text span c="orange">line-by-line</Text> — .* across lines doesn&apos;t work.
                   <Text span c="teal"> Spaces between quoted blocks = AND</Text>, <Text span c="teal">pipes inside = OR</Text>.
                   This generates the minimum blocks so a map highlights only when it has at least K of your chosen mods.
                   Add multiple groups to require different conditions simultaneously.

@@ -663,11 +663,11 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Export: excluded drops listed in the Discord export with names and values',
       'Export: gem leveling shown as optional income note when filled',
       'Share modal: warning when investment costs are 0',
-      'Strategy Browser: map count column no longer shows \"m\" suffix',
+      'Strategy Browser: map count column no longer shows "m" suffix',
       'Strategy Browser: Eater of Worlds + Searing Exarch tags added',
       'Atlas Tree: Eater/Exarch auto-detected from tree node group titles',
       'Atlas Calc: wizard now skips to done when a real tree URL is loaded (fixes Load Build Settings annoyance)',
-      'Regex: exclusion list is now configurable per session (\"regexExclusions\" in settings)',
+      'Regex: exclusion list is now configurable per session ("regexExclusions" in settings)',
     ],
   },
   {

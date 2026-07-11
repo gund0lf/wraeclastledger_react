@@ -48,7 +48,7 @@ export const GettingStartedCard = ({ onDismiss }: { onDismiss: () => void }) => 
       </Tooltip>
     </Group>
     <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>
-      Track a mapping session's profit in six steps:
+      Track a mapping session&apos;s profit in six steps:
     </Text>
     <Stack gap={3}>
       {STEPS.map((step, i) => (

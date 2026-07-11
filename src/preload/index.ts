@@ -44,8 +44,8 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('api', api)
   } catch (error) { console.error(error) }
 } else {
-  // @ts-ignore
+  // @ts-ignore -- non-isolated fallback: window typing doesn't know these globals
   window.electron = electronAPI
-  // @ts-ignore
+  // @ts-ignore -- same as above
   window.api = api
 }

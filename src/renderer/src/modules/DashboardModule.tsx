@@ -357,7 +357,7 @@ export const DashboardModule = () => {
                 <Stack gap={2} style={{ flex: 1 }}>
                   <Text size="xs" fw={600} c="yellow">Investment items found in your loot diff</Text>
                   <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>
-                    These items left your stash during the session and match your investment setup — so their cost is being counted twice (once as investment, once as "lost" loot):
+                    These items left your stash during the session and match your investment setup — so their cost is being counted twice (once as investment, once as &quot;lost&quot; loot):
                   </Text>
                   {detectedMatches.map((m) => (
                     <Text key={m.name} size="xs" c="dimmed" style={{ fontSize: FONT.small }}>
@@ -376,7 +376,7 @@ export const DashboardModule = () => {
                 </Button>
                 <Button size="xs" variant="subtle" color="gray"
                   onClick={() => setInvestmentDismissed(true)}>
-                  These weren't double-counted
+                  These weren&apos;t double-counted
                 </Button>
               </Group>
             </Stack>

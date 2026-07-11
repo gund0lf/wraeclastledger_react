@@ -263,7 +263,7 @@ export const AtlasTreeModule = () => {
           console.error('[AtlasTree] failed to close stats panel:', closeErr);
         }
       }
-    } catch (err: any) {
+    } catch {
       setStatsError('Could not read stats — try navigating the tree first. If this keeps happening, pathofpathing may have changed its layout; please report it.');
       if (!autoApply) setStatsOpen(true);
     }
