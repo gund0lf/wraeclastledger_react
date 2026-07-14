@@ -10,7 +10,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
 import { slugifyEntityId, GameEntity } from '../../../shared/gameData/types';
 import {
-  getManifest, initGameData, isValidManifest, __resetGameDataForTests,
+  getGameDataStatus, getManifest, initGameData, isApplicableManifest, isValidManifest, __resetGameDataForTests,
   activeScarabNames, activeDeliriumOrbList, activeAstrolabeList, activeChiselTypes,
   mechanicStatus, isMechanicActive,
 } from './gameData';
@@ -74,6 +74,14 @@ describe('bundled manifest invariants', () => {
     expect(isValidManifest(null)).toBe(false);
     expect(isValidManifest({ revision: 'x' })).toBe(false);
   });
+
+  it('accepts immutable legacy revision 1 but requires declared compatibility after it', () => {
+    expect(isApplicableManifest(BUNDLED_MANIFEST)).toBe(true);
+    expect(isApplicableManifest({ ...BUNDLED_MANIFEST, revision: 2 })).toBe(false);
+    expect(isApplicableManifest({
+      ...BUNDLED_MANIFEST, revision: 2, schemaVersion: 1, contextKey: 'poe1-challenge',
+    })).toBe(true);
+  });
 });
 
 describe('legacy constants are 1:1 derived views (migration lock)', () => {
@@ -107,7 +115,7 @@ describe('loader (initGameData)', () => {
   });
 
   it('adopts a cached manifest with a HIGHER revision', async () => {
-    const newer = { ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 1 };
+    const newer = { ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge', revision: BUNDLED_MANIFEST.revision + 1 };
     vi.stubGlobal('window', {
       api: { readGameDataCache: vi.fn(async () => ({ manifest: newer, error: null })) },
     });
@@ -159,7 +167,7 @@ describe('loader (initGameData)', () => {
   });
 
   it('adopts a NEWER server manifest and persists it to the cache', async () => {
-    const newer = { ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 5 };
+    const newer = { ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge', revision: BUNDLED_MANIFEST.revision + 5 };
     const write = vi.fn(async () => ({ ok: true, error: null }));
     vi.stubGlobal('window', { api: apiWith({
       writeGameDataCache: write,
@@ -168,6 +176,19 @@ describe('loader (initGameData)', () => {
     const m = await initGameData();
     expect(m.revision).toBe(newer.revision);
     expect(write).toHaveBeenCalledWith(newer);
+    expect(getGameDataStatus()).toMatchObject({ source: 'server', warning: null, revision: newer.revision });
+  });
+
+  it('rejects an incompatible newer server manifest and exposes the warning', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const incompatible = { ...BUNDLED_MANIFEST, revision: 8, schemaVersion: 2, contextKey: 'poe1-challenge' };
+    vi.stubGlobal('window', { api: apiWith({
+      fetchGameDataLatest: vi.fn(async () => ({ payload: { revision: 8, manifest: incompatible }, error: null })),
+    }) });
+    await initGameData();
+    expect(getManifest()).toBe(BUNDLED_MANIFEST);
+    expect(getGameDataStatus().warning).toContain('incompatible');
+    warn.mockRestore();
   });
 
   it('ignores a server manifest that is not newer (no write)', async () => {
@@ -183,7 +204,7 @@ describe('loader (initGameData)', () => {
 
   it('rejects a server payload whose top-level revision disagrees with the manifest field', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const lying = { ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 2 };
+    const lying = { ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge', revision: BUNDLED_MANIFEST.revision + 2 };
     vi.stubGlobal('window', { api: apiWith({
       fetchGameDataLatest: vi.fn(async () => ({ payload: { revision: lying.revision + 9, manifest: lying }, error: null })),
     }) });
@@ -210,11 +231,12 @@ describe('loader (initGameData)', () => {
     }) });
     const m = await initGameData();
     expect(m).toBe(BUNDLED_MANIFEST);
+    expect(getGameDataStatus()).toMatchObject({ source: 'bundled', warning: expect.stringContaining('unavailable') });
   });
 
   it('server beats cache only by revision: cache r+1 adopted, server r+2 wins over it', async () => {
-    const cached = { ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 1 };
-    const served = { ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 2 };
+    const cached = { ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge', revision: BUNDLED_MANIFEST.revision + 1 };
+    const served = { ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge', revision: BUNDLED_MANIFEST.revision + 2 };
     vi.stubGlobal('window', { api: apiWith({
       readGameDataCache: vi.fn(async () => ({ manifest: cached, error: null })),
       fetchGameDataLatest: vi.fn(async () => ({ payload: { revision: served.revision, manifest: served }, error: null })),
@@ -234,7 +256,7 @@ describe('derived view helpers (call-time, revision-aware)', () => {
 
   it('exclude non-active entities (removed/renamed stay resolvable but unpickable)', async () => {
     const modified = {
-      ...BUNDLED_MANIFEST,
+      ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge',
       revision: BUNDLED_MANIFEST.revision + 1,
       scarabs: BUNDLED_MANIFEST.scarabs.map((s, i) =>
         i === 0 ? { ...s, status: 'removed' as const } : s),
@@ -259,7 +281,7 @@ describe('mechanic flags (step 5, §5.3)', () => {
   });
 
   it('an OMITTED mechanic defaults to active (fail-open, no silent hide)', async () => {
-    const noMech = { ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 1, mechanics: {} };
+    const noMech = { ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge', revision: BUNDLED_MANIFEST.revision + 1, mechanics: {} };
     vi.stubGlobal('window', {
       api: { readGameDataCache: vi.fn(async () => ({ manifest: noMech, error: null })) },
     });
@@ -270,7 +292,7 @@ describe('mechanic flags (step 5, §5.3)', () => {
 
   it('a removed mechanic reports removed + inactive (3.29-style)', async () => {
     const removed = {
-      ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 1,
+      ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge', revision: BUNDLED_MANIFEST.revision + 1,
       mechanics: { ...BUNDLED_MANIFEST.mechanics, astrolabe: 'removed' as const },
     };
     vi.stubGlobal('window', {
@@ -283,7 +305,7 @@ describe('mechanic flags (step 5, §5.3)', () => {
 
   it('a reworked mechanic stays active/visible but reports reworked', async () => {
     const reworked = {
-      ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 1,
+      ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge', revision: BUNDLED_MANIFEST.revision + 1,
       mechanics: { ...BUNDLED_MANIFEST.mechanics, astrolabe: 'reworked' as const },
     };
     vi.stubGlobal('window', {

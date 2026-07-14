@@ -10,9 +10,11 @@
  */
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 
+const iconLeagueState = vi.hoisted(() => ({ current: 'Ancestors' }));
+
 vi.mock('./league', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./league')>();
-  return { ...actual, getCurrentLeague: async () => 'Ancestors' };
+  return { ...actual, getCurrentLeague: async () => iconLeagueState.current };
 });
 
 const CHAOS_URL  = 'https://web.poecdn.com/gen/image/chaos.png';
@@ -40,12 +42,14 @@ const FLAME_URL        = 'https://web.poecdn.com/gen/image/PuzzlePieceJewel_Clea
 const FLESH_URL        = 'https://web.poecdn.com/gen/image/PuzzlePieceJewel_Chaos.png';
 
 const fetchedLeagues = new Set<string>();
+const fetchCounts = new Map<string, number>();
 
 beforeAll(() => {
   (globalThis as any).window = {
     api: {
       fetchEconomyIcons: async (_family: string, league: string, type: string) => {
         fetchedLeagues.add(league);
+        fetchCounts.set(league, (fetchCounts.get(league) ?? 0) + 1);
         if (type === 'Currency') return { icons: [
           // Standard serves DIFFERENT art for the same key — first-write-wins
           // means the challenge league's CHAOS_URL must survive.
@@ -152,6 +156,18 @@ describe('itemIcons resolve()', () => {
     // Mirage below it. buildCache must fetch all three — event economies are
     // thin, the parent league carries the icon coverage.
     expect([...fetchedLeagues].sort()).toEqual(['Ancestors', 'Mirage', 'Standard']);
+  });
+
+  it('rebuilds the cache when the active league changes', async () => {
+    await getItemIcons();
+    const mirageFetchesBefore = fetchCounts.get('Mirage') ?? 0;
+
+    iconLeagueState.current = 'Mirage';
+    await getItemIcons();
+
+    expect(fetchCounts.get('Mirage')).toBeGreaterThan(mirageFetchesBefore);
+    iconLeagueState.current = 'Ancestors';
+    clearIconCache();
   });
 
   it('known div-card names resolve to the generic card icon', async () => {

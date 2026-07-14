@@ -13,6 +13,7 @@ import { ALL_TYPE_TAGS, STRATEGY_API_URL, type Strategy } from '../utils/strateg
 import { parseDiscordExport } from '../utils/parseDiscordExport';
 import { buildUpdateComparison, rowDirection } from '../utils/updateCompare';
 import { COLOR, FONT } from '../utils/uiTokens'
+import { getManifest } from '../utils/gameData';
 
 interface Props {
   opened: boolean;
@@ -72,6 +73,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   // Canonical wire value (minutes) derived from the flexible input; null when
   // empty or unparseable.
   const sessionMinutes = parseTimeInput(timeText);
+  const activeManifest = getManifest();
   const timeCaption = timeText.trim() === ''
     ? 'Empty — time will not be shared'
     : sessionMinutes != null
@@ -86,9 +88,11 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     groupSize: isGroupPlay ? groupSize : null,
     sessionMinutes,
     updateStrategyId: updateTargetId,
+    gameDataRevision: activeManifest.revision,
+    gameDataPatchVersion: activeManifest.patchVersion,
   }), [maps, settings, lootItems, baselineTotal, investmentNeutralization,
        stratName, stratNotes, shareTags, isGroupPlay, groupSize, sessionMinutes,
-       updateTargetId]);
+       updateTargetId, activeManifest.revision, activeManifest.patchVersion]);
 
   const rollingSessionTotal = computeRollingSessionTotal(settings, maps.length);
 

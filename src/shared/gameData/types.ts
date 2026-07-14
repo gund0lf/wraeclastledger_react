@@ -45,6 +45,12 @@ export interface ChiselEntity extends GameEntity {
 
 export interface GameDataManifest {
   revision: number;        // monotonic, mid-league bumps allowed
+  /** Legacy revision 1 predates these fields. Every revision >= 2 must declare
+   *  both so incompatible future wire formats cannot be silently adopted. */
+  schemaVersion?: number;
+  /** Product/game context rather than a league name: newer PoE1 challenge
+   *  manifests remain eligible for older clients. */
+  contextKey?: string;
   patchVersion: string;    // "3.28", "3.29"
   /** pathofpathing ?v= string. '' = not yet observed for this patch (loud
    *  unknown, NOT a guess) — §5.4 Tier 1 fills this per rollover. */

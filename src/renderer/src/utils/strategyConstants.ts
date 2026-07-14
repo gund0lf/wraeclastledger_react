@@ -55,6 +55,8 @@ export interface Strategy {
   // updated_at is null until the first update. Both public + safe.
   current_revision?: number | null;
   updated_at?: string | null;
+  game_data_revision?: number | null;
+  game_data_patch_version?: string | null;
 }
 
 export interface ApiResponse {

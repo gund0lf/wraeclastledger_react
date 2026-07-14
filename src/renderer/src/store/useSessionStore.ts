@@ -407,18 +407,22 @@ export const useSessionStore = create<SessionState>()(
         // "reprice this saved session" action, the only sanctioned override.
         const loaded = activeSessionId !== null;
         if (loaded && !opts.repriceLoaded) return;
+        // Resolve the league BEFORE applying price freshness. A price fetched
+        // moments before a league boundary is fresh in time but stale in
+        // context; skipping here used to carry the ended league's value for up
+        // to 30 minutes. A context change also bypasses the one-minute retry
+        // cooldown because that cooldown belongs to the previous league.
+        const league = await getCurrentLeague();
+        const leagueChanged = st.leagueName.trim() !== '' && st.leagueName !== league;
         const isUnset = st.divinePrice === 0 || st.divinePrice === 200;
         const isStale = Date.now() - divinePriceFetchedAt > DIVINE_PRICE_STALE_MS;
-        if (!opts.force && !isUnset && !isStale) return;
-        // Fetch league and price in parallel — both use poe.ninja.
-        // Price is cooldown-gated unless `force` is set; league has its own
-        // in-memory cache and falls back to CURRENT_LEAGUE on failure.
+        if (!opts.force && !leagueChanged && !isUnset && !isStale) return;
+        // Price is cooldown-gated unless explicitly forced or the league
+        // changed. League detection has its own in-memory cache and falls back
+        // to CURRENT_LEAGUE on failure.
         // FETCH-FIRST safety: nothing is mutated unless the fetch succeeded
         // (a failed refresh preserves the old price everywhere).
-        const [league, price] = await Promise.all([
-          getCurrentLeague(),
-          tryFetchDivinePrice(opts.force === true),
-        ]);
+        const price = await tryFetchDivinePrice(opts.force === true || leagueChanged);
         set((s) => {
           const priceOk = !!(price && price > 0);
           const stillLive = s.activeSessionId === null;

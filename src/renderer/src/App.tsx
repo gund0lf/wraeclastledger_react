@@ -7,7 +7,7 @@ import { Box, Button, Menu, Text, ActionIcon, Tooltip, Badge, Alert } from '@man
 import { useSessionStore } from './store/useSessionStore';
 import { useUIStore } from './store/useUIStore';
 import { parseMapClipboard } from './utils/mapParser';
-import { initGameData } from './utils/gameData';
+import { getGameDataStatus, initGameData } from './utils/gameData';
 import { UpdateBanner, APP_VERSION } from './UpdateBanner';
 import { IconRefresh } from '@tabler/icons-react';
 import { FONT } from './utils/uiTokens';
@@ -84,6 +84,7 @@ function App(): JSX.Element {
   const [, setModelVersion] = useState(0);
   const [checking, setChecking] = useState(false);
   const [quotaError, setQuotaError] = useState(false);
+  const [gameDataStatus, setGameDataStatus] = useState(getGameDataStatus);
 
   const addMapRef      = useRef(useSessionStore.getState().addMap);
   const isWatchingRef  = useRef(useSessionStore.getState().isWatching);
@@ -92,7 +93,7 @@ function App(): JSX.Element {
     // Game-data manifest: adopt a newer cached revision if one exists
     // (rollover Phase 1 step 2). Fire-and-forget — bundled data is the
     // always-working floor; failures warn loudly inside initGameData.
-    initGameData();
+    initGameData().finally(() => setGameDataStatus(getGameDataStatus()));
     const unsub = useSessionStore.subscribe((state) => {
       addMapRef.current = state.addMap;
       // WP13: the Capture toggle drives the main-process polling lifecycle —
@@ -208,6 +209,15 @@ function App(): JSX.Element {
             style={{ fontSize: FONT.small, fontVariantNumeric: 'tabular-nums', cursor: 'pointer' }}
             onClick={() => useUIStore.getState().requestChangelog()}>
             v{APP_VERSION}
+          </Badge>
+        </Tooltip>
+        <Tooltip
+          label={`Game data revision ${gameDataStatus.revision} · patch ${gameDataStatus.patchVersion} · ${gameDataStatus.source}${gameDataStatus.warning ? ` — ${gameDataStatus.warning}` : ''}`}
+          position="bottom"
+        >
+          <Badge size="xs" color={gameDataStatus.warning ? 'yellow' : 'gray'} variant="outline"
+            style={{ fontSize: FONT.small, fontVariantNumeric: 'tabular-nums' }}>
+            DATA R{gameDataStatus.revision}
           </Badge>
         </Tooltip>
         <Tooltip label="Check for updates" position="bottom">

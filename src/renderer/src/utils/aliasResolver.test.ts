@@ -57,6 +57,8 @@ describe('resolver across a renamed alias edge (synthetic 3.29-style manifest)',
   // "Old Name Scarab" (renamed) -> "New Name Scarab" (active).
   const renamed: GameDataManifest = {
     ...BUNDLED_MANIFEST,
+    schemaVersion: 1,
+    contextKey: 'poe1-challenge',
     revision: BUNDLED_MANIFEST.revision + 1,
     scarabs: [
       { id: 'new-name-scarab', name: 'New Name Scarab', status: 'active' },
@@ -108,6 +110,8 @@ describe('resolver guards against a malformed alias chain', () => {
   it('a dangling aliasOf resolves to the renamed node itself, not a crash', async () => {
     const bad: GameDataManifest = {
       ...BUNDLED_MANIFEST,
+      schemaVersion: 1,
+      contextKey: 'poe1-challenge',
       revision: BUNDLED_MANIFEST.revision + 1,
       scarabs: [
         { id: 'orphan-scarab', name: 'Orphan Scarab', status: 'renamed', aliasOf: 'does-not-exist' },

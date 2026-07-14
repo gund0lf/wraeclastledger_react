@@ -194,13 +194,14 @@ async function fetchCategory(
 let exactMap:  Map<string, string> | null = null;
 let normMap:   Map<string, string> | null = null;
 let fetchProm: Promise<void>       | null = null;
+let cacheLeague: string | null = null;
 // Tier -> MapNumbersN-style icon, built from every cached "... Map (Tier N)"
 // key (session 17 map audit). Plain "Map (Tier N)" keys win over prefixed
 // ones (Blighted/conqueror), but ANY tier-N map key supplies correct
 // tier-band art on a miss.
 let mapTierIcons: Map<number, string> = new Map();
 
-async function buildCache(): Promise<void> {
+async function buildCache(challenge: string): Promise<void> {
   const exact      = new Map<string, string>();
   const normalized = new Map<string, string>();
   divCardSet.clear();
@@ -225,7 +226,6 @@ async function buildCache(): Promise<void> {
   // has far better economy coverage than the thin event economy), plus
   // Standard for legacy items. KNOWN_LEAGUES-driven, deduped. `add` is
   // FIRST-write-wins, so this fetch order IS the art-priority order.
-  const challenge = await getCurrentLeague();
   const knownIdx = KNOWN_LEAGUES.indexOf(challenge);
   const parents = knownIdx >= 0 ? KNOWN_LEAGUES.slice(knownIdx + 1) : [];
   const leagues = challenge === 'Standard'
@@ -351,9 +351,17 @@ async function buildCache(): Promise<void> {
 export async function getItemIcons(): Promise<{
   resolve: (name: string) => string | undefined;
 }> {
-  if (!exactMap) {
-    if (!fetchProm) fetchProm = buildCache().finally(() => { fetchProm = null; });
+  const league = await getCurrentLeague();
+  if (!exactMap || cacheLeague !== league) {
+    if (!fetchProm) {
+      fetchProm = buildCache(league)
+        .then(() => { cacheLeague = league; })
+        .finally(() => { fetchProm = null; });
+    }
     await fetchProm;
+    // If the override changed again while a build was in flight, immediately
+    // rebuild for the latest context rather than exposing the intermediate one.
+    if (cacheLeague !== league) return getItemIcons();
   }
 
   return {
@@ -450,6 +458,7 @@ export function clearIconCache(): void {
   exactMap  = null;
   normMap   = null;
   fetchProm = null;
+  cacheLeague = null;
   mapTierIcons = new Map();
   divCardSet.clear();
   for (const k in GENERIC) delete GENERIC[k];

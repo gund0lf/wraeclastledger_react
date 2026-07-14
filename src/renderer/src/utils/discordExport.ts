@@ -47,6 +47,10 @@ export interface DiscordExportInput {
    *  header. Legacy-safe — every pre-versioning parser ignores unknown lines.
    *  null/undefined = normal share, no marker. */
   updateStrategyId?: string | null;
+  /** Manifest provenance active when the author shares. Both fields must be
+   * present or the line is suppressed (legacy/test callers remain valid). */
+  gameDataRevision?: number | null;
+  gameDataPatchVersion?: string | null;
 }
 
 export function buildDiscordExport(input: DiscordExportInput): string {
@@ -113,6 +117,10 @@ export function buildDiscordExport(input: DiscordExportInput): string {
   const allInPerMap = n > 0 ? profit.totalInvest / n : profit.perMapBase;
 
   const updateStrategyId = input.updateStrategyId ?? null;
+  const gameDataRevision = input.gameDataRevision ?? null;
+  const gameDataPatchVersion = input.gameDataPatchVersion?.trim() ?? '';
+  const hasGameDataProvenance = Number.isInteger(gameDataRevision)
+    && gameDataRevision! > 0 && gameDataPatchVersion.length > 0;
 
   return [
     `[WraeclastLedger Session]`,
@@ -136,6 +144,9 @@ export function buildDiscordExport(input: DiscordExportInput): string {
     ...(atlasUrl  ? [`${E.atlas.uni} **Atlas Tree:** ${atlasUrl}`] : []),
     ...(hasPoints ? [`${E.points.uni} **Atlas Points:** ${atlasPts}/${atlasPtsMax}`] : []),
     ...(league    ? [`${E.league.uni} **League:** ${league}`] : []),
+    ...(hasGameDataProvenance
+      ? [`**Game Data:** r${gameDataRevision} \u00B7 patch ${gameDataPatchVersion}`]
+      : []),
     ...(stratName   ? [`${E.strategy.uni} **Strategy:** ${stratName}`] : []),
     ...(shareTags.length > 0 ? [`${E.tags.uni} **Tags:** ${shareTags.join(', ')}`] : []),
     ...(stratNotes  ? [`${E.notes.uni} **Notes:** ${stratNotes}`] : []),

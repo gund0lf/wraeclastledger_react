@@ -124,6 +124,10 @@ async function detect(): Promise<ActiveContext> {
 export async function getActiveContext(): Promise<ActiveContext> {
   // Override wins outright — no probe, no cache involvement.
   if (leagueOverride) return { leagueName: leagueOverride, source: 'override' };
+  // A process may stay open across an event boundary. Do not let a context
+  // detected before `endsAt` live forever in memory; the next consumer after
+  // the boundary must re-probe and flow the new league into price/icon caches.
+  if (cachedContext && isLeagueEnded(cachedContext.leagueName)) clearLeagueCache();
   if (cachedContext) return cachedContext;
   if (cachedFetchPromise) return cachedFetchPromise;
   cachedFetchPromise = detect().then((ctx) => {

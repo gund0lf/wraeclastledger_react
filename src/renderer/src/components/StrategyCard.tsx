@@ -292,6 +292,11 @@ export const StrategyCard = ({ strategy, onLoadBuild, onUpdateStrategy, discordT
               <Group gap={4}><SectionLabel>Last updated</SectionLabel><Text size="xs" c="dimmed">{updatedDate}</Text></Group>
             )}
             {strategy.divine_price != null && <Group gap={4}><SectionLabel>Divine at time</SectionLabel><Text size="xs" c="dimmed">{strategy.divine_price.toFixed(0)}c</Text></Group>}
+            {strategy.game_data_revision != null && (
+              <Tooltip label="The game-data snapshot active when this result was shared" withArrow>
+                <Group gap={4}><SectionLabel>Game data</SectionLabel><Text size="xs" c="dimmed">r{strategy.game_data_revision}{strategy.game_data_patch_version ? ` · ${strategy.game_data_patch_version}` : ''}</Text></Group>
+              </Tooltip>
+            )}
             {strategy.total_invest != null && <Group gap={4}><SectionLabel>Total invest</SectionLabel><Text size="xs" c="dimmed">{fcSep(strategy.total_invest)}{strategy.divine_price ? ` (${(strategy.total_invest / strategy.divine_price).toFixed(1)}d)` : ''}</Text></Group>}
           </Group>
           {(() => {

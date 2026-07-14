@@ -9,7 +9,8 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-const fetchMock = vi.fn<[], Promise<number | null>>();
+const fetchMock = vi.fn<[boolean?], Promise<number | null>>();
+const leagueState = vi.hoisted(() => ({ current: 'Ancestors' }));
 
 vi.mock('../utils/priceUtils', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/priceUtils')>();
@@ -17,12 +18,12 @@ vi.mock('../utils/priceUtils', async (importOriginal) => {
     ...actual,
     // The store calls tryFetchDivinePrice; the real one has its own 60s
     // cooldown which would interfere with these tests, so replace it.
-    tryFetchDivinePrice: (..._args: unknown[]) => fetchMock(),
+    tryFetchDivinePrice: (force?: boolean) => fetchMock(force),
   };
 });
 vi.mock('../utils/league', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/league')>();
-  return { ...actual, getCurrentLeague: async () => 'Ancestors' };
+  return { ...actual, getCurrentLeague: async () => leagueState.current };
 });
 
 import { useSessionStore, DEFAULT_SETTINGS } from './useSessionStore';
@@ -39,6 +40,7 @@ const resetStore = (divinePrice: number, fetchedAt: number): void => {
 
 describe('WP4.2 divine price staleness', () => {
   beforeEach(() => {
+    leagueState.current = 'Ancestors';
     fetchMock.mockReset();
     fetchMock.mockResolvedValue(250);
   });
@@ -77,6 +79,18 @@ describe('WP4.2 divine price staleness', () => {
     await useSessionStore.getState().initDivinePrice({ force: true });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(useSessionStore.getState().settings.divinePrice).toBe(250);
+  });
+
+  it('fresh price from a different league refetches and bypasses the cooldown', async () => {
+    resetStore(300, Date.now());
+    useSessionStore.setState((s) => ({ settings: { ...s.settings, leagueName: 'Ancestors' } }));
+    leagueState.current = 'Curse of the Allflame';
+
+    await useSessionStore.getState().initDivinePrice();
+
+    expect(fetchMock).toHaveBeenCalledWith(true);
+    expect(useSessionStore.getState().settings.divinePrice).toBe(250);
+    expect(useSessionStore.getState().settings.leagueName).toBe('Curse of the Allflame');
   });
 
   it('setDivinePriceManual marks the price fresh — next init skips', async () => {

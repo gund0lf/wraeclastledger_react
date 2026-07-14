@@ -70,6 +70,20 @@ const build = () => buildDiscordExport({
 /* ------------------------------------------------------------------ */
 
 describe('buildDiscordExport — corrected money lines (Sad fixture parity)', () => {
+  it('round-trips optional game-data authoring provenance', () => {
+    const out = buildDiscordExport({
+      maps, settings: settings(), lootItems, baselineTotal,
+      investmentNeutralization: 0,
+      gameDataRevision: 2,
+      gameDataPatchVersion: '3.29',
+    });
+    expect(out).toContain('**Game Data:** r2 · patch 3.29');
+    expect(parseDiscordExport(out)).toMatchObject({
+      gameDataRevision: 2,
+      gameDataPatchVersion: '3.29',
+    });
+  });
+
   it('emits Dashboard-parity figures, ignoring the stale stored rollingCostPerMap', () => {
     const out = build();
     // Per Map Cost is ALL-IN (totalInvest / maps = 80081 / 38) — one definition everywhere

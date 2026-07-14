@@ -22,6 +22,26 @@ import { STRATEGY_API_URL } from './strategyConstants';
 let active: GameDataManifest = BUNDLED_MANIFEST;
 let initPromise: Promise<GameDataManifest> | null = null;
 
+export const GAME_DATA_SCHEMA_VERSION = 1;
+export const GAME_DATA_CONTEXT_KEY = 'poe1-challenge';
+export type GameDataSource = 'bundled' | 'cache' | 'server';
+export interface GameDataStatus {
+  revision: number;
+  patchVersion: string;
+  source: GameDataSource;
+  warning: string | null;
+}
+let status: GameDataStatus = {
+  revision: active.revision,
+  patchVersion: active.patchVersion,
+  source: 'bundled',
+  warning: null,
+};
+
+export function getGameDataStatus(): GameDataStatus {
+  return { ...status };
+}
+
 /** The active manifest. Synchronous — safe to call anywhere after App mount. */
 export function getManifest(): GameDataManifest {
   return active;
@@ -45,6 +65,15 @@ export function isValidManifest(m: unknown): m is GameDataManifest {
     && Array.isArray(x.chisels);
 }
 
+export function isApplicableManifest(m: GameDataManifest): boolean {
+  if (m.revision === 1 && m.schemaVersion === undefined && m.contextKey === undefined) return true;
+  return m.schemaVersion === GAME_DATA_SCHEMA_VERSION && m.contextKey === GAME_DATA_CONTEXT_KEY;
+}
+
+function syncStatus(source: GameDataSource, warning = status.warning): void {
+  status = { revision: active.revision, patchVersion: active.patchVersion, source, warning };
+}
+
 /**
  * Adopt a newer revision if the disk cache has one. Idempotent; runs once per
  * app lifetime (App mount). Failures are LOUD but never fatal — the bundled
@@ -56,11 +85,16 @@ export async function initGameData(): Promise<GameDataManifest> {
       try {
         const res = await window.api?.readGameDataCache?.();
         if (res?.manifest) {
-          if (isValidManifest(res.manifest) && res.manifest.revision > active.revision) {
+          if (isValidManifest(res.manifest) && isApplicableManifest(res.manifest) && res.manifest.revision > active.revision) {
             active = res.manifest;
+            syncStatus('cache');
             console.log(`[GameData] Adopted cached manifest revision ${active.revision} (bundled: ${BUNDLED_MANIFEST.revision})`);
           } else if (!isValidManifest(res.manifest)) {
+            syncStatus(status.source, 'Cached game data failed validation');
             console.warn('[GameData] Cached manifest failed validation — staying on bundled revision', BUNDLED_MANIFEST.revision);
+          } else if (!isApplicableManifest(res.manifest)) {
+            syncStatus(status.source, 'Cached game data is incompatible with this app');
+            console.warn('[GameData] Cached manifest is incompatible — ignoring revision', res.manifest.revision);
           }
         } else if (res?.error) {
           // 'no cache file' is the normal fresh-install case; main returns error: null for it.
@@ -77,21 +111,28 @@ export async function initGameData(): Promise<GameDataManifest> {
         const res = await window.api?.fetchGameDataLatest?.(STRATEGY_API_URL);
         if (res?.payload) {
           const { revision, manifest } = res.payload;
-          if (isValidManifest(manifest) && manifest.revision === revision && manifest.revision > active.revision) {
+          if (isValidManifest(manifest) && isApplicableManifest(manifest) && manifest.revision === revision && manifest.revision > active.revision) {
             active = manifest;
+            syncStatus('server', null);
             console.log(`[GameData] Adopted server manifest revision ${revision}`);
             const w = await window.api?.writeGameDataCache?.(manifest);
             if (w && !w.ok) console.warn('[GameData] Could not cache server manifest:', w.error);
           } else if (!isValidManifest(manifest) || manifest.revision !== revision) {
+            syncStatus(status.source, 'Server game data failed validation');
             console.warn('[GameData] Server manifest failed validation — ignoring');
+          } else if (!isApplicableManifest(manifest)) {
+            syncStatus(status.source, 'Server game data is incompatible with this app');
+            console.warn('[GameData] Server manifest is incompatible — ignoring revision', revision);
           } // else: not newer — normal, no log spam
         } else if (res?.error) {
           // Server down / endpoint not deployed yet — quiet by design (§1 of
           // the endpoint spec: the client must work fully without it).
           console.log('[GameData] Server manifest unavailable:', res.error);
+          syncStatus(status.source, `Game-data server unavailable; using ${status.source} data`);
         }
       } catch (err) {
         console.log('[GameData] Server manifest fetch failed — staying on', active.revision, err);
+        syncStatus(status.source, `Game-data server unavailable; using ${status.source} data`);
       }
       return active;
     })();
@@ -103,6 +144,7 @@ export async function initGameData(): Promise<GameDataManifest> {
 export function __resetGameDataForTests(): void {
   active = BUNDLED_MANIFEST;
   initPromise = null;
+  status = { revision: active.revision, patchVersion: active.patchVersion, source: 'bundled', warning: null };
 }
 
 // ─── Derived views (read the ACTIVE manifest at call time) ───────────────────

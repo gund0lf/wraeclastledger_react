@@ -71,6 +71,8 @@ describe('compat on the bundled manifest (everything current -> ok)', () => {
 describe('compat against a synthetic 3.29-style manifest', () => {
   const m: GameDataManifest = {
     ...BUNDLED_MANIFEST,
+    schemaVersion: 1,
+    contextKey: 'poe1-challenge',
     revision: BUNDLED_MANIFEST.revision + 1,
     atlasTreeVersion: '3.29',
     scarabs: [
@@ -130,6 +132,8 @@ describe('compat against a synthetic 3.29-style manifest', () => {
     // name-differs guard must suppress the rename issue rather than emit noise.
     const dangling: GameDataManifest = {
       ...BUNDLED_MANIFEST,
+      schemaVersion: 1,
+      contextKey: 'poe1-challenge',
       revision: BUNDLED_MANIFEST.revision + 1,
       scarabs: [{ id: 'orphan-scarab', name: 'Orphan Scarab', status: 'renamed', aliasOf: 'does-not-exist' }],
     };

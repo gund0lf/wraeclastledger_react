@@ -14,6 +14,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Image } from '@mantine/core';
 import { getItemIcons } from '../../utils/itemIcons';
+import { useSessionStore } from '../../store/useSessionStore';
 
 type Resolver = (name: string) => string | undefined;
 let cachedResolver: Resolver | null = null;
@@ -23,13 +24,14 @@ export const PoeItemIcon = ({ name, size = 14, fallback = null }: {
   size?: number;
   fallback?: ReactNode;
 }) => {
+  const leagueOverride = useSessionStore((s) => s.leagueOverride);
+  const sessionLeague = useSessionStore((s) => s.settings.leagueName);
   // NOTE: the lazy-initializer form is REQUIRED here — cachedResolver is a
   // function, and useState(fn) would CALL it as an initializer (resolve(undefined)
   // -> crash on later mounts once the cache is warm).
   const [resolver, setResolver] = useState<Resolver | null>(() => cachedResolver);
 
   useEffect(() => {
-    if (cachedResolver) return;
     let alive = true;
     getItemIcons()
       .then((c) => {
@@ -38,7 +40,7 @@ export const PoeItemIcon = ({ name, size = 14, fallback = null }: {
       })
       .catch(() => {}); // offline / poe.ninja down -> stay on fallback
     return () => { alive = false; };
-  }, []);
+  }, [leagueOverride, sessionLeague]);
 
   const url = name ? resolver?.(name) : undefined;
   if (!url) return <>{fallback}</>;

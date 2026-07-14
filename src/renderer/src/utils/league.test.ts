@@ -87,6 +87,18 @@ describe('D5(b) — ended-league handling', () => {
     expect(ctx).toEqual({ leagueName: 'Mirage', source: 'fallback' });
   });
 
+  it('invalidates a cached context when its league ends while the app stays open', async () => {
+    const league = await freshLeague();
+    const spy = stubProbe({ [ANCESTORS]: 10, Mirage: 10 });
+    expect(await league.getCurrentLeague()).toBe(ANCESTORS);
+
+    vi.setSystemTime(new Date(AFTER_END));
+
+    expect(await league.getCurrentLeague()).toBe('Mirage');
+    expect(spy).toHaveBeenCalledWith(ANCESTORS);
+    expect(spy).toHaveBeenCalledWith('Mirage');
+  });
+
   it('manual override can still select an ended league (escape hatch stays)', async () => {
     vi.setSystemTime(new Date(AFTER_END));
     const league = await freshLeague();

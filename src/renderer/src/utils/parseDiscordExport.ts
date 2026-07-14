@@ -30,6 +30,8 @@ export interface DiscordImport {
    *  own update target (design v3.1 round-2 point 3d). null = no marker or
    *  malformed uuid. */
   updateStrategyId: string | null;
+  gameDataRevision: number | null;
+  gameDataPatchVersion: string | null;
 }
 
 export function parseDiscordExport(raw: string): DiscordImport | null {
@@ -126,6 +128,9 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     const ptsM           = text.match(/Atlas Points:\s*(\d+)\s*\/\s*(\d+)/i);
     const atlasPoints    = ptsM ? parseInt(ptsM[1]) : null;
     const atlasPointsMax = ptsM ? parseInt(ptsM[2]) : null;
+    const gameDataM = text.match(/Game Data:\s*r(\d+)\s*(?:[·-]\s*)?patch\s+([\w.-]+)/i);
+    const gameDataRevision = gameDataM ? parseInt(gameDataM[1]) : null;
+    const gameDataPatchVersion = gameDataM ? gameDataM[2] : null;
     if (mapCount === 0) return null;
     return { mapCount, mapType, multiplier, avgQuant, avgRarity, avgPack, avgCurr,
              perMapCost, totalInvest, totalReturn, netProfit, divPerMap, divPrice,
@@ -133,7 +138,7 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
              deliOrbQty, deliOrbType, deliOrbPrice, astroType, astroCount, astroPrice,
              excludedDrops, gemInfo, isGroupPlay,
              groupSize, sessionMinutes, atlasPoints, atlasPointsMax,
-             updateStrategyId };
+             updateStrategyId, gameDataRevision, gameDataPatchVersion };
   } catch { return null; }
 }
 

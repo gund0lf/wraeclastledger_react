@@ -43,13 +43,13 @@ export const DashboardModule = () => {
     setLootItems, setBaselineItems, toggleLootItemExcluded, clearLoot,
     investmentNeutralization, setInvestmentNeutralization,
     investmentDismissed, setInvestmentDismissed,
-    onboardingDismissed, dismissOnboarding, activeSessionId,
+    onboardingDismissed, dismissOnboarding, activeSessionId, leagueOverride,
   } = useSessionKeys(
     'maps', 'settings', 'lootItems', 'baselineItems', 'baselineTotal',
     'setLootItems', 'setBaselineItems', 'toggleLootItemExcluded', 'clearLoot',
     'investmentNeutralization', 'setInvestmentNeutralization',
     'investmentDismissed', 'setInvestmentDismissed',
-    'onboardingDismissed', 'dismissOnboarding', 'activeSessionId',
+    'onboardingDismissed', 'dismissOnboarding', 'activeSessionId', 'leagueOverride',
   );
 
   // Phase 1.5 (rollover plan): cross-league loaded session banner. The
@@ -120,7 +120,7 @@ export const DashboardModule = () => {
     if (!hasCurrent && !hasBaseline) return;
     setIconsLoading(true);
     getItemIcons().then((c) => setResolver(() => c.resolve)).catch(() => {}).finally(() => setIconsLoading(false));
-  }, [hasCurrent, hasBaseline]);
+  }, [hasCurrent, hasBaseline, settings.leagueName, leagueOverride]);
 
   useEffect(() => { setVisibleListRows(INITIAL_ROWS); }, [lootView, search]);
   useEffect(() => { setVisibleDiffRows(INITIAL_ROWS); }, [lootView, diffTab]);
