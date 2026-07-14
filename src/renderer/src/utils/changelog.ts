@@ -11,7 +11,7 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '1.0.68',
-    date: '2026-07-14',
+    date: 'UNRELEASED',
     changes: [
       'League rollover caches are now context-safe: an event ending while the app remains open triggers a fresh league probe, a divine price from the previous league is never treated as fresh for the new one, and item icons rebuild after automatic or manual league changes.',
       'The title bar now shows the active game-data revision and its source on hover, and turns the badge yellow when the remote or cached manifest is unavailable, invalid, or incompatible. Future manifest revisions declare a schema and PoE context before the app will adopt them.',
