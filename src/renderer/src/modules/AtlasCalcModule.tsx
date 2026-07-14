@@ -1,7 +1,9 @@
-import { Card, Text, Stack, Group, Divider, Slider, Badge, Tooltip, Button } from '@mantine/core';
+import { Card, Text, Stack, Group, Divider, Slider, Tooltip, Button } from '@mantine/core';
 import { useSessionKeys } from '../store/useSessionStore';
+import { useElementSize } from '@mantine/hooks';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { computeMultiplier } from '../utils/profit';
+import { inferMapType } from '../utils/mapTypeDetection';
 import { confirmedLeagueSync } from '../utils/league';
 import { ModuleHeader } from '../components/ui/ModuleHeader';
 import { CollapsibleSection } from '../components/ui/CollapsibleSection';
@@ -36,6 +38,8 @@ const Question = ({ question, hint, onYes, onNo }: {
 );
 
 export const AtlasCalcModule = () => {
+  const { ref: panelRef, width: panelWidth } = useElementSize();
+  const compactPanel = panelWidth > 0 && panelWidth < 280;
   const { maps, settings, updateSetting, setAtlasBonus, atlasBonusByLeague, activeSessionId, sessionNonce } =
     useSessionKeys('maps', 'settings', 'updateSetting', 'setAtlasBonus', 'atlasBonusByLeague', 'activeSessionId', 'sessionNonce');
 
@@ -100,9 +104,7 @@ export const AtlasCalcModule = () => {
   // auto-detects as 8-mod content correctly.
   useEffect(() => {
     if (maps.length < 4) return undefined;
-    const eightModCount = maps.filter((m) => m.modCount > 6 && (m.isCorrupted || m.isNightmare)).length;
-    const ratio = eightModCount / maps.length;
-    const inferred: '6-mod' | '8-mod' = ratio > 0.6 ? '8-mod' : ratio < 0.4 ? '6-mod' : settings.mapType;
+    const inferred = inferMapType(maps, settings.mapType);
     if (inferred !== settings.mapType) {
       updateSetting('mapType', inferred);
       setAutoDetectMsg(`Auto-detected ${inferred} from ${maps.length} maps`);
@@ -113,9 +115,12 @@ export const AtlasCalcModule = () => {
   }, [maps.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // WP1: single source of truth for multiplier math (utils/profit.ts)
-  const { multiplier, fragmentEffect, nodeEffect, scarabOfRiskMods, effectiveMods, mountBonus } = useMemo(
-    () => computeMultiplier(settings),
-    [settings.fragmentsUsed, settings.smallNodesAllocated, settings.mountingModifiers, settings.mapType, settings.scarabs] // eslint-disable-line react-hooks/exhaustive-deps
+  const {
+    multiplier, fragmentEffect, nodeEffect, scarabOfRiskMods, effectiveMods, mountBonus,
+    observedModAverage, observedSampleSize, usesObservedMods,
+  } = useMemo(
+    () => computeMultiplier(settings, maps),
+    [settings.fragmentsUsed, settings.smallNodesAllocated, settings.mountingModifiers, settings.mapType, settings.scarabs, maps] // eslint-disable-line react-hooks/exhaustive-deps
     );
 
   // ── Wizard answer handlers ────────────────────────────────────────────────
@@ -182,35 +187,41 @@ export const AtlasCalcModule = () => {
   };
 
   return (
-    <Card shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ overflow: 'auto' }}>
+    <Card ref={panelRef} shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ overflow: 'auto' }}>
       <ModuleHeader
         mb="xs"
         title={
           /* session-16: Map Type moved into the header slot — the in-panel
              "Atlas Calc" title was redundant with the tab label. */
-          <Group gap={4} wrap="nowrap">
-            <Text size="xs" fw={500}>Map Type</Text>
-            {(['6-mod', '8-mod'] as const).map((v) => (
-              <div key={v} onClick={() => updateSetting('mapType', v)} style={{
-                padding: '2px 10px', borderRadius: 10, cursor: 'pointer', fontSize: FONT.body, fontWeight: 600,
-                background: settings.mapType === v ? 'rgba(51,154,240,0.2)' : 'rgba(100,100,100,0.1)',
-                border: `1px solid ${settings.mapType === v ? COLOR.info : COLOR.dim}`,
-                color: settings.mapType === v ? COLOR.info : COLOR.textFaint, transition: 'all 0.1s',
+          <Group gap={4} wrap="nowrap" justify="space-between" style={{ flex: 1, minWidth: 0 }}>
+            <Text size="xs" fw={500} style={{ whiteSpace: 'nowrap' }}>Map Type</Text>
+            <Group gap={4} wrap="nowrap" justify="flex-end">
+            {!(compactPanel && observedModAverage != null) && (['6-mod', '8-mod'] as const).map((v) => (
+              <Tooltip key={v} disabled={observedModAverage == null}
+                label="Observed exact map data is available, so this fallback is locked.">
+                <div onClick={() => {
+                  if (observedModAverage == null) updateSetting('mapType', v);
+                }} aria-disabled={observedModAverage != null} style={{
+                padding: '2px 8px', borderRadius: 10, cursor: observedModAverage != null ? 'not-allowed' : 'pointer', fontSize: FONT.body, fontWeight: 600,
+                background: !usesObservedMods && settings.mapType === v ? 'rgba(51,154,240,0.2)' : 'rgba(100,100,100,0.1)',
+                border: `1px solid ${!usesObservedMods && settings.mapType === v ? COLOR.info : COLOR.dim}`,
+                color: !usesObservedMods && settings.mapType === v ? COLOR.info : COLOR.textFaint,
+                opacity: observedModAverage != null ? 0.55 : 1, transition: 'all 0.1s', whiteSpace: 'nowrap',
               }}>{v}</div>
+              </Tooltip>
             ))}
+            {observedModAverage != null && (
+              <Tooltip multiline w={280} label={`Exact Ctrl+Alt+C coverage: ${observedSampleSize}/${maps.length} maps. Scarab of Risk modifiers are added after this observed average.`}>
+                <div style={{
+                  padding: '2px 8px', borderRadius: 10, cursor: 'help', fontSize: FONT.body, fontWeight: 600,
+                  background: usesObservedMods ? 'rgba(51,154,240,0.2)' : 'rgba(100,100,100,0.1)',
+                  border: `1px solid ${usesObservedMods ? COLOR.info : COLOR.dim}`,
+                  color: usesObservedMods ? COLOR.info : COLOR.textFaint, transition: 'all 0.1s', whiteSpace: 'nowrap',
+                }}>Observed {observedModAverage.toFixed(1)}</div>
+              </Tooltip>
+            )}
+            </Group>
           </Group>
-        }
-        right={
-          <Tooltip label={[
-            fragmentEffect ? `${fragmentEffect}% frags` : '',
-            nodeEffect     ? `${nodeEffect}% nodes` : '',
-            mountBonus     ? `${mountBonus}% mounting` : '',
-            settings.atlasBonus ? '+25% flat IIQ (atlas bonus)' : '',
-          ].filter(Boolean).join(' + ') || 'No bonuses active'}>
-            <Badge color="blue" variant="outline" size="sm" style={{ cursor: 'default', fontVariantNumeric: 'tabular-nums' }}>
-              {multiplier.toFixed(3)}×
-            </Badge>
-          </Tooltip>
         }
       />
 

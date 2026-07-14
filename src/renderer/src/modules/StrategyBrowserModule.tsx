@@ -11,6 +11,7 @@ import { KNOWN_LEAGUES, activeKnownLeagues } from '../utils/league';
 import { parseDiscordExport } from '../utils/parseDiscordExport';
 import {
   Strategy, ApiResponse, ALL_TYPE_TAGS, BROWSER_COLS, BROWSER_GRID_TEMPLATE, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X,
+  BROWSER_MIN_CONTENT_WIDTH,
   SortKey, SortOrder, SORT_DEFAULT_DIR, SORT_OPTIONS, STRATEGY_API_URL,
 } from '../utils/strategyConstants';
 import { StrategyCard } from '../components/StrategyCard';
@@ -318,7 +319,8 @@ export const StrategyBrowserModule = () => {
         </Stack>
       </Modal>
 
-      <Card shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ display: 'flex', flexDirection: 'column' }}>
+      <div style={{ height: '100%', overflowX: 'auto', overflowY: 'hidden' }}>
+      <Card shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ display: 'flex', flexDirection: 'column', minWidth: BROWSER_MIN_CONTENT_WIDTH }}>
         {/* session-16: "Strategy Browser" title dropped (redundant with the
             tab label); the count badge anchors the left. */}
         <ModuleHeader
@@ -436,6 +438,7 @@ export const StrategyBrowserModule = () => {
           Vote with the thumbs reactions in Discord · Share submits your session · Load Build starts a new session
         </Text>
       </Card>
+      </div>
     </>
   );
 };

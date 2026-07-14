@@ -17,6 +17,9 @@ export interface MapData {
   moreCurrency: number; moreMaps: number; moreScarabs: number;
   moreDivCards: number; // "More Divination Cards: +N%" — its own drop pool, NOT currency (added post-1.0.62; old persisted maps lack it, consumers must ?? 0)
   modCount: number;
+  /** Exact explicit affix count from Ctrl+Alt+C advanced tooltip headers.
+   * Undefined for normal Ctrl+C and old maps; never infer it from text-line count. */
+  explicitModCount?: number;
   /** Epoch ms when the map was parsed from the clipboard (WP9 Tier 0, added post-1.0.62).
    *  Additive — old persisted maps lack it; consumers must treat it as optional. */
   parsedAt?: number;

@@ -48,11 +48,18 @@ describe('markPossibleDuplicates', () => {
     expect(dup.has('b')).toBe(true);
   });
 
-  it('identical but non-adjacent maps are NOT marked', () => {
+  it('marks the later occurrence of an exact non-adjacent repeat', () => {
     const a = base({ id: 'a' });
     const other = base({ id: 'x', name: 'Dune Map' });
     const c = base({ id: 'c' });
-    expect(markPossibleDuplicates([a, other, c]).size).toBe(0);
+    expect([...markPossibleDuplicates([a, other, c])]).toEqual(['c']);
+  });
+
+  it('does not flag maps that differ in any parsed display/stat field', () => {
+    const a = base({ id: 'a' });
+    const quantityDiff = base({ id: 'b', quantity: 93 });
+    const divCardDiff = base({ id: 'c', moreDivCards: 1 });
+    expect(markPossibleDuplicates([a, quantityDiff, divCardDiff]).size).toBe(0);
   });
 
   it('a run of N identical maps marks maps 2..N', () => {

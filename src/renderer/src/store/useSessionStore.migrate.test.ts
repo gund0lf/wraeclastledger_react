@@ -14,13 +14,22 @@
  * no-op storage), so only migrateState/DEFAULT_SETTINGS are exercised here.
  */
 import { describe, it, expect } from 'vitest';
-import { migrateState, DEFAULT_SETTINGS } from './useSessionStore';
+import { migrateState, DEFAULT_SETTINGS, mergePersistedSessionState } from './useSessionStore';
 
 /** Minimal persisted-state factory. Fields mimic real localStorage payloads. */
 const persisted = (over: Record<string, any> = {}): Record<string, any> => ({
   settings: { ...DEFAULT_SETTINGS },
   savedSessions: {},
   ...over,
+});
+
+describe('runtime-only state hydration', () => {
+  it('always starts clipboard capture paused even when persisted active', () => {
+    const current = { isWatching: false, maps: [] } as unknown as Parameters<typeof mergePersistedSessionState>[1];
+    const merged = mergePersistedSessionState({ isWatching: true, maps: [{ id: 'saved' }] }, current);
+    expect(merged.isWatching).toBe(false);
+    expect(merged.maps).toEqual([{ id: 'saved' }]);
+  });
 });
 
 describe('migrateState — v15 -> v16 lift (discordTag / regexSets / rollingCostPerMap)', () => {

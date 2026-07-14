@@ -19,7 +19,7 @@
  *     count of the last Advanced Costs edit) and must not be read anywhere.
  *     It is removed entirely in store migration v16 (WP2).
  */
-import { SessionSettings, LootItem, ScarabSlot } from '../types';
+import { SessionSettings, LootItem, ScarabSlot, MapData } from '../types';
 
 /* ------------------------------------------------------------------ */
 /* Scarabs                                                             */
@@ -153,19 +153,49 @@ export interface MultiplierResult {
   fragmentEffect: number;   // fragmentsUsed x 3
   nodeEffect: number;       // smallNodesAllocated x 2
   scarabOfRiskMods: number; // +2 mods per "...of Risk" scarab
-  effectiveMods: number;    // base mods (6 or 8) + scarabOfRiskMods
+  effectiveMods: number;    // selected/observed base mods + scarabOfRiskMods
   mountBonus: number;       // effectiveMods x 2 when Mounting Modifiers is allocated
+  observedModAverage: number | null;
+  observedSampleSize: number;
+  usesObservedMods: boolean;
+}
+
+export const MIN_OBSERVED_MOD_SAMPLE = 4;
+
+export interface ObservedModSample {
+  average: number;
+  sampleSize: number;
+}
+
+/** Exact observed mode is deliberately all-or-nothing: a partial advanced-copy
+ * sample could be biased toward whichever maps the user happened to copy that
+ * way. Unidentified maps also make the session incomplete. */
+type ObservedModMap = Pick<MapData, 'explicitModCount' | 'isUnidentified'>;
+
+export function computeObservedModSample(maps: readonly ObservedModMap[]): ObservedModSample | null {
+  if (maps.length < MIN_OBSERVED_MOD_SAMPLE) return null;
+  if (maps.some((map) => map.isUnidentified || map.explicitModCount == null)) return null;
+  const total = maps.reduce((sum, map) => sum + map.explicitModCount!, 0);
+  return { average: total / maps.length, sampleSize: maps.length };
 }
 
 export function computeMultiplier(
-  settings: Pick<SessionSettings, 'fragmentsUsed' | 'smallNodesAllocated' | 'mountingModifiers' | 'mapType' | 'scarabs'>
+  settings: Pick<SessionSettings, 'fragmentsUsed' | 'smallNodesAllocated' | 'mountingModifiers' | 'mapType' | 'scarabs'>,
+  maps: readonly ObservedModMap[] = [],
 ): MultiplierResult {
   const fragmentEffect   = settings.fragmentsUsed * 3;
   const nodeEffect       = settings.smallNodesAllocated * 2;
   const scarabOfRiskMods = settings.scarabs.filter((s) => s.name.toLowerCase().includes('of risk')).length * 2;
-  const baseMods         = settings.mapType === '8-mod' ? 8 : 6;
+  const observed         = computeObservedModSample(maps);
+  const usesObservedMods = observed !== null;
+  const baseMods         = usesObservedMods ? observed.average : settings.mapType === '8-mod' ? 8 : 6;
   const effectiveMods    = baseMods + scarabOfRiskMods;
   const mountBonus       = settings.mountingModifiers ? effectiveMods * 2 : 0;
   const multiplier       = 1 + (fragmentEffect + nodeEffect + mountBonus) / 100;
-  return { multiplier, fragmentEffect, nodeEffect, scarabOfRiskMods, effectiveMods, mountBonus };
+  return {
+    multiplier, fragmentEffect, nodeEffect, scarabOfRiskMods, effectiveMods, mountBonus,
+    observedModAverage: observed?.average ?? null,
+    observedSampleSize: observed?.sampleSize ?? 0,
+    usesObservedMods,
+  };
 }

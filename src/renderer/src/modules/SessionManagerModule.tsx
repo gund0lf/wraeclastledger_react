@@ -1,8 +1,8 @@
 import {
   Card, Text, Button, Group, Stack, Select, TextInput, ActionIcon,
-  Badge, Modal, Divider, Tooltip, Checkbox, Radio, Alert, ScrollArea,
+  Badge, Modal, Divider, Tooltip, Checkbox, Radio, Alert, ScrollArea, SimpleGrid,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
+import { useDisclosure, useElementSize } from '@mantine/hooks';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useSessionKeys } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
@@ -14,6 +14,8 @@ import { CollapsibleSection } from '../components/ui/CollapsibleSection';
 const TILE_STYLES = { inner: { width: '100%' }, label: { flex: 1, textAlign: 'center' as const } };
 
 export const SessionManagerModule = () => {
+  const { ref: panelRef, width: panelWidth } = useElementSize();
+  const compactPanel = panelWidth > 0 && panelWidth < 285;
   const {
     maps, savedSessions, activeSessionId, activeSessionName,
     saveAsNewSession, loadSession, deleteSession, renameSession, newSession,
@@ -325,7 +327,7 @@ export const SessionManagerModule = () => {
         initialSelectedIds={[...selected]}
       />
 
-      <Card shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ overflow: 'auto' }}>
+      <Card ref={panelRef} shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ overflow: 'auto' }}>
         <Stack gap={6}>
           <Group justify="space-between" gap={6} wrap="nowrap">
             {/* Storage indicator lives LEFT (Sad 2026-07-06: balance — right side
@@ -382,19 +384,19 @@ export const SessionManagerModule = () => {
               </>
             )}
           </Group>
-          <Group gap={4} grow>
+          <SimpleGrid cols={2} spacing={4}>
             <Button size="xs" variant={savedFlash ? 'light' : 'default'} color={savedFlash ? 'green' : undefined}
               leftSection={savedFlash ? <IconCheck size={12} /> : <IconDeviceFloppy size={12} />}
-              rightSection={<span style={{ width: 12 }} aria-hidden="true" />}
+              rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
               styles={TILE_STYLES}
               onClick={() => { setNameInput(''); openSave(); }}>
-              {savedFlash ? 'Saved' : 'Save as'}
+              {savedFlash ? 'Saved' : compactPanel ? 'Save' : 'Save as'}
             </Button>
             <Tooltip label={sessionEntries.length < 2 ? 'Save at least 2 sessions to compare' : 'Compare 2-3 saved sessions side by side'} withArrow>
               <span style={{ display: 'flex', flex: 1 }}>
                 <Button size="xs" variant="default"
                   leftSection={<IconArrowsLeftRight size={12} />}
-                  rightSection={<span style={{ width: 12 }} aria-hidden="true" />}
+                  rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
                   styles={TILE_STYLES}
                   disabled={sessionEntries.length < 2}
                   onClick={openCompare} style={{ flex: 1 }}>
@@ -402,23 +404,23 @@ export const SessionManagerModule = () => {
                 </Button>
               </span>
             </Tooltip>
-          </Group>
-          <Group gap={4} grow>
+          </SimpleGrid>
+          <SimpleGrid cols={2} spacing={4}>
             <Button size="xs" variant="default"
               leftSection={<IconBrandDiscord size={12} />}
-              rightSection={<span style={{ width: 12 }} aria-hidden="true" />}
+              rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
               styles={TILE_STYLES}
               onClick={() => triggerStrategyAction('import')}>
-              Import Strategy
+              {compactPanel ? 'Import' : 'Import Strategy'}
             </Button>
             <Button size="xs" variant="default"
               leftSection={<IconShare2 size={12} />}
-              rightSection={<span style={{ width: 12 }} aria-hidden="true" />}
+              rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
               styles={TILE_STYLES}
               onClick={() => triggerStrategyAction('share')}>
-              Share Strategy
+              {compactPanel ? 'Share' : 'Share Strategy'}
             </Button>
-          </Group>
+          </SimpleGrid>
           {sessionEntries.length > 0 && (
             <CollapsibleSection variant="group" defaultOpen={false} title="History"
               right={<Badge size="xs" variant="light" color="gray">{sessionEntries.length}</Badge>}>

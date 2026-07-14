@@ -102,6 +102,24 @@ describe('buildDiscordExport — corrected money lines (Sad fixture parity)', ()
     expect(out).toContain('**Total Return:** 104985.7c | **Net Profit:** +24904.7c');
   });
 
+  it('exports observed mixed-map math without changing the 6/8-mod wire field', () => {
+    const observedMaps: ExportMapStats[] = [3, 4, 5, 6].map((explicitModCount) => ({
+      quantity: 80, rarity: 50, packSize: 40, moreCurrency: 100, moreScarabs: 0,
+      explicitModCount,
+    }));
+    const out = buildDiscordExport({
+      maps: observedMaps,
+      settings: settings({
+        fragmentsUsed: 0, smallNodesAllocated: 0, mountingModifiers: true,
+        scarabs: [],
+      }),
+      lootItems: [], baselineTotal: 0, investmentNeutralization: 0,
+    });
+    expect(out).toContain('**Type:** 6-mod | **Multiplier:** 1.09');
+    expect(out).toContain('**Observed Mods:** 4.5 average (4/4 exact maps)');
+    expect(parseDiscordExport(out)?.mapType).toBe('6-mod');
+  });
+
   it('does not apply the gem offset without a baseline (bug #2 regression)', () => {
     const out = buildDiscordExport({
       maps, settings: settings(), lootItems, baselineTotal: 0,

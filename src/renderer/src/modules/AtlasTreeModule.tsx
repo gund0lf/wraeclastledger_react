@@ -1,5 +1,5 @@
 import { Card, ActionIcon, Group, Tooltip, CopyButton, Text, Badge, ScrollArea, Stack, TextInput, Button } from '@mantine/core';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { IconRefresh, IconCopy, IconCheck, IconChartBar, IconLink, IconX } from '@tabler/icons-react';
 import { useSessionStore, useSessionKeys } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
@@ -63,6 +63,26 @@ export const AtlasTreeModule = () => {
   const [calcApplied, setCalcApplied] = useState<string | null>(null);
   const [webviewReady, setWebviewReady] = useState(false);
 
+  // A key change alone reloads immediately and can still let Pixi construct
+  // while FlexLayout is settling after a session/strategy switch. Deliberate
+  // reloads therefore unmount the guest first, then remount it only after two
+  // frames with real host bounds — the same protection as hidden-tab activation.
+  const remountAfterLayout = useCallback(() => {
+    setWebviewReady(false);
+    visibleRef.current = false;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const host = webviewHostRef.current;
+        if (!host) return;
+        const rect = host.getBoundingClientRect();
+        if (rect.width < 80 || rect.height < 80) return;
+        visibleRef.current = true;
+        setKey((k) => k + 1);
+        setWebviewReady(true);
+      });
+    });
+  }, []);
+
   // FlexLayout keeps inactive tabs mounted but gives their content display:none.
   // Path of Pathing's Pixi viewport centres only at construction, so loading the
   // guest at 0x0 permanently puts the tree off-screen. Unmount while hidden and
@@ -122,10 +142,10 @@ export const AtlasTreeModule = () => {
     const next = isPathofpathingUrl(url) ? url : BASE_URL;
     setSrcUrl(next);
     setCapturedUrl(next);
-    setKey((k) => k + 1);
+    remountAfterLayout();
     setStatGroups([]);
     setStatsOpen(false); // close stats panel on session change
-  }, [activeSessionId, sessionNonce]);
+  }, [activeSessionId, sessionNonce, remountAfterLayout]);
 
   // ── Reload when atlasTreeUrl is set externally (Load Build Settings) ───────
   useEffect(() => {
@@ -135,9 +155,9 @@ export const AtlasTreeModule = () => {
     setSrcUrl(stored);
     setCapturedUrl(stored);
     autoApplyRef.current = true; // auto-apply calc after load
-    setKey((k) => k + 1);
+    remountAfterLayout();
     setStatGroups([]);
-  }, [atlasTreeUrl]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [atlasTreeUrl, remountAfterLayout]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Force re-apply on Load Build even when the URL is UNCHANGED ────────────
   // Loading the same strategy twice sets atlasTreeUrl to the same value, so the
@@ -157,9 +177,9 @@ export const AtlasTreeModule = () => {
     setSrcUrl(url);
     setCapturedUrl(url);
     autoApplyRef.current = true;
-    setKey((k) => k + 1);
+    remountAfterLayout();
     setStatGroups([]);
-  }, [atlasApplyNonce]);
+  }, [atlasApplyNonce, remountAfterLayout]);
 
   // ── Attach navigation + finish-load listeners ─────────────────────────────
   useEffect(() => {
@@ -355,7 +375,7 @@ export const AtlasTreeModule = () => {
     }
   };
 
-  const reload  = () => { setKey((k) => k + 1); setStatGroups([]); };
+  const reload  = () => { remountAfterLayout(); setStatGroups([]); };
 
   const hasTree = capturedUrl !== BASE_URL && capturedUrl.includes('#');
   const urlShort = capturedUrl.replace('https://pathofpathing.com', '') || '/';
@@ -377,7 +397,7 @@ export const AtlasTreeModule = () => {
     setCapturedUrl(url);
     updateSetting('atlasTreeUrl', url);
     autoApplyRef.current = true; // auto-apply calc after load
-    setKey((k) => k + 1);
+    remountAfterLayout();
     setStatGroups([]);
     setImportUrl('');
     setShowImport(false);

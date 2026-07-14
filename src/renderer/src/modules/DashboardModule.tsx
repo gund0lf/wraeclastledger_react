@@ -37,6 +37,12 @@ const STAT_LABELS: Record<string, string> = {
 
 const ICON_SIZE = 24; // density pass: 20 was undersized next to 12px row text
 
+interface CsvCandidate {
+  name: string;
+  items: LootItem[];
+  total: number;
+}
+
 export const DashboardModule = () => {
   const {
     maps, settings, lootItems, baselineItems, baselineTotal,
@@ -60,7 +66,7 @@ export const DashboardModule = () => {
   const stats = useMemo(() => {
     const count = maps.length;
     if (count === 0) return null;
-    const { multiplier } = computeMultiplier(settings);
+    const { multiplier, usesObservedMods, observedModAverage } = computeMultiplier(settings, maps);
     const qualBonuses: Record<string, number> = {};
     for (const map of maps) {
       const e = QUALITY_STAT_EFFECTS[map.qualityType];
@@ -80,7 +86,7 @@ export const DashboardModule = () => {
       result[key as string] = { avg, proj: (avg - qBonus) * multiplier + qBonus + atlasQFlat,
         hasChisel: !!(chiselInfo?.statKey === key as string) };
     }
-    return { count, multiplier, stats: result };
+    return { count, multiplier, usesObservedMods, observedModAverage, stats: result };
   }, [maps, settings]);
 
   // All profit math lives in utils/profit.ts (WP1) - single source of truth
@@ -100,6 +106,8 @@ export const DashboardModule = () => {
   const [pendingItems, setPendingItems] = useState<LootItem[]>([]);
   const [pendingTotal, setPendingTotal] = useState(0);
   const [blOpen,     { open: openBl,   close: closeBl   }] = useDisclosure(false);
+  const [pairOpen,   { open: openPair, close: closePair }] = useDisclosure(false);
+  const [pairCandidates, setPairCandidates] = useState<CsvCandidate[]>([]);
   const [clearOpen,  { open: openClear, close: closeClear }] = useDisclosure(false);
   const [lootView,  setLootView]  = useState<'list' | 'diff' | 'breakdown'>('list');
   const [search,    setSearch]    = useState('');
@@ -185,13 +193,53 @@ export const DashboardModule = () => {
     };
     reader.readAsText(file, 'utf-8');
   };
+  const readCsvCandidate = (file: File): Promise<CsvCandidate | null> => new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const items = parseLootCsv(ev.target?.result as string);
+      resolve(items.length > 0
+        ? { name: file.name, items, total: items.reduce((sum, item) => sum + item.total, 0) }
+        : null);
+    };
+    reader.onerror = () => {
+      console.error(`[Loot CSV] Failed to read dropped file: ${file.name}`);
+      resolve(null);
+    };
+    reader.readAsText(file, 'utf-8');
+  });
+  const applyCsvPair = (baselineIndex: number) => {
+    const baseline = pairCandidates[baselineIndex];
+    const current = pairCandidates[baselineIndex === 0 ? 1 : 0];
+    if (!baseline || !current) return;
+    setBaselineItems(baseline.items);
+    setLootItems(current.items);
+    setLootView('diff');
+    setDiffTab('gains');
+    setPairCandidates([]);
+    closePair();
+  };
+  const cancelCsvPair = () => {
+    setPairCandidates([]);
+    closePair();
+  };
   const handleCsvDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const file = Array.from(e.dataTransfer.files).find((f) => f.name.toLowerCase().endsWith('.csv'));
-    if (!file) return;
+    const files = Array.from(e.dataTransfer.files).filter((f) => f.name.toLowerCase().endsWith('.csv'));
+    if (files.length === 0) return;
     pendingRoleRef.current = null; // dropped files always ask their role
-    processCsvFile(file);
+    if (files.length === 2) {
+      Promise.all(files.map(readCsvCandidate)).then((candidates) => {
+        if (candidates.every((candidate): candidate is CsvCandidate => candidate !== null)) {
+          setPairCandidates(candidates);
+          openPair();
+        } else {
+          console.error('[Loot CSV] One or both dropped CSV files contained no recognized items');
+        }
+      });
+      return;
+    }
+    processCsvFile(files[0]);
   };
   const triggerImport = (role: 'baseline' | 'current' | null = null) => {
     pendingRoleRef.current = role; fileInputRef.current?.click();
@@ -238,6 +286,26 @@ export const DashboardModule = () => {
             <Button variant="default" onClick={closeClear}>Cancel</Button>
             <Button color="red" onClick={() => { clearLoot(); setSearch(''); setLootView('list'); closeClear(); }}>Clear All</Button>
           </Group>
+        </Stack>
+      </Modal>
+
+      <Modal opened={pairOpen} onClose={cancelCsvPair} title="Choose the Baseline CSV" size="md">
+        <Stack gap="sm">
+          {pairCandidates.map((candidate, index) => {
+            const other = pairCandidates[index === 0 ? 1 : 0];
+            return (
+              <Button key={candidate.name} variant="default" h="auto" py="xs"
+                onClick={() => applyCsvPair(index)}>
+                <Stack gap={2} align="flex-start" style={{ width: '100%' }}>
+                  <Text size="xs" fw={700}>{candidate.name}</Text>
+                  <Text size="xs" c="dimmed">
+                    {fcSep(candidate.total, false, 1)} · Other file becomes Return: {other ? `${other.name} (${fcSep(other.total, false, 1)})` : '—'}
+                  </Text>
+                </Stack>
+              </Button>
+            );
+          })}
+          <Button variant="subtle" color="gray" onClick={cancelCsvPair}>Cancel</Button>
         </Stack>
       </Modal>
 
@@ -299,7 +367,7 @@ export const DashboardModule = () => {
             {!profit.hasReturn && <Text size="xs" c="dimmed" fs="italic" pt={2}>No return CSV — loot not in profit</Text>}
             {pace && (
               <Group justify="space-between" py={3} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                <Tooltip multiline w={260} label={`Measures your first captured map to your last activity, from the time between parsed maps (${pace.countedGaps} gaps counted; ${pace.excludedGaps} break-like gaps excluded). Needs 5+ captured maps. Rough local estimate — never shared.`}>
+                <Tooltip multiline w={280} label={`Measures the gaps between maps captured as you play: copy one before running it, then copy the next after finishing (${pace.countedGaps} gaps counted; ${pace.excludedGaps} break-like gaps excluded). Pasting an old batch cannot reconstruct playtime. Needs 5+ captured maps. Rough local estimate — never shared.`}>
                   <Text size="sm" c="dimmed" style={{ cursor: 'help' }}>Pace (estimate)</Text>
                 </Tooltip>
                 <Group gap={4} align="baseline">
@@ -317,7 +385,11 @@ export const DashboardModule = () => {
               right={
                 <Group gap={4} wrap="nowrap">
                   <Badge color="gray" variant="outline" size="sm">{stats.count} maps</Badge>
-                  <Badge color="blue" variant="outline" size="sm">{stats.multiplier.toFixed(3)}×</Badge>
+                  <Tooltip label={stats.usesObservedMods && stats.observedModAverage != null
+                    ? `Multiplier uses ${stats.observedModAverage.toFixed(1)} observed explicit mods per map`
+                    : `Multiplier uses the ${settings.mapType} fallback`}>
+                    <Badge color="blue" variant="outline" size="sm">{stats.multiplier.toFixed(3)}×</Badge>
+                  </Tooltip>
                   {settings.chiselType && (
                     <Badge size="sm" color="yellow" variant="light"
                       leftSection={<PoeItemIcon name={chiselItemName(settings.chiselType)} size={14} />}>

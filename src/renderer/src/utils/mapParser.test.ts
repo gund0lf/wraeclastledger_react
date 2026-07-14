@@ -1,6 +1,22 @@
 import { describe, it, expect } from 'vitest';
 import { parseMapClipboard } from './mapParser';
 
+const ADVANCED_8_AFFIX_CORRUPTED = [
+  'Item Class: Maps', 'Rarity: Rare', 'Unstable Gulf', 'Map (Tier 16)', '--------',
+  'Item Quantity: +104% (augmented)', 'Item Rarity: +62% (augmented)', 'Monster Pack Size: +40% (augmented)', '--------',
+  'Item Level: 85', '--------', 'Monster Level: 83', '--------',
+  '{ Prefix Modifier "Chaining" (Tier: 1) }', "Monsters' skills Chain 2 additional times",
+  '{ Prefix Modifier "Unwavering" (Tier: 1) — Life }', '29% more Monster Life', 'Monsters cannot be Stunned',
+  '{ Prefix Modifier "Antagonist\'s" (Tier: 1) }', '22% increased number of Rare Monsters',
+  '{ Prefix Modifier "Profane" (Tier: 1) — Damage, Physical, Chaos }', 'Monsters gain Physical Damage as Extra Chaos Damage', 'Monsters Inflict Withered for 2 seconds on Hit',
+  '{ Suffix Modifier "of Lightning" (Tier: 1) }', 'Area has patches of Shocked Ground',
+  '{ Suffix Modifier "of Vulnerability" (Tier: 1) — Caster, Curse }', 'Players are Cursed with Vulnerability',
+  '{ Suffix Modifier "of Transience" (Tier: 1) }', 'Buffs on Players expire 70% faster',
+  '{ Suffix Modifier "of Frenzy" (Tier: 1) }', 'Monsters gain a Frenzy Charge on Hit',
+  '--------', 'Travel to a Map of this tier or lower by using this in a personal Map Device. Maps can only be used once.',
+  '--------', 'Corrupted',
+].join('\n');
+
 // All fixtures below are copy-pasted from real Mirage league clipboard captures.
 // Edit cautiously: layout (extra blank lines, section ordering) reflects real
 // game behaviour, not arbitrary formatting.
@@ -450,6 +466,19 @@ describe('parseMapClipboard — regular 8-mod corrupted', () => {
 
   it('extracts T16 from "Map (Tier 16)" pattern', () => {
     expect(map!.tier).toBe(16);
+  });
+});
+
+describe('parseMapClipboard — advanced Ctrl+Alt+C explicit affix count', () => {
+  it('counts modifier headers, not their multi-line descriptions', () => {
+    const map = parseMapClipboard(ADVANCED_8_AFFIX_CORRUPTED);
+    expect(map).not.toBeNull();
+    expect(map!.explicitModCount).toBe(8);
+    expect(map!.modCount).toBeGreaterThan(8);
+  });
+
+  it('leaves exact count unknown for a normal Ctrl+C copy', () => {
+    expect(parseMapClipboard(REGULAR_8MOD_CORRUPTED)!.explicitModCount).toBeUndefined();
   });
 });
 

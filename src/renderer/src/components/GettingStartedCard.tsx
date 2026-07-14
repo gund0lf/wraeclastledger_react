@@ -8,7 +8,7 @@ import { COLOR, FONT } from '../utils/uiTokens'
 // store so it never reappears once closed.
 const STEPS: string[] = [
   'Turn on Capture in the Map Log panel.',
-  'Press Ctrl+C on each map in-game - it logs automatically.',
+  'Copy a map before running it; after finishing, copy the next map. Each capture logs automatically.',
   'Set your costs in the Investment panel (scarabs, chisels, orbs).',
   'Import a WealthyExile stash CSV as your baseline before mapping.',
   'Run your maps.',
@@ -20,6 +20,7 @@ const STEPS: string[] = [
 // design gap (BACKLOG, real fix post-WP14); Atlas Bonus = discoverability for
 // the pill that lives inside the collapsed "Click to edit" section.
 const GOOD_TO_KNOW: string[] = [
+  'Pace uses the time between captures. Pasting an old batch cannot reconstruct how long those maps took.',
   'Loaded sessions auto-save as you edit - use Save as New in Sessions to fork before experimenting.',
   'Completed all 100 Atlas objectives? Toggle Atlas Bonus in the Multiplier panel - it starts off each new league.'
 ]

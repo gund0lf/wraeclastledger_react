@@ -8,7 +8,7 @@
  *   astrolabe 7x10 = 70c, deli 4/map x 100c -> live rolling @38 maps = 16920c.
  */
 import { describe, it, expect } from 'vitest';
-import { SessionSettings, LootItem } from '../types';
+import { SessionSettings, LootItem, MapData } from '../types';
 import {
   computeCosts, computeProfit, computeMultiplier,
   computeRollingSessionTotal, isPreservationScarab,
@@ -44,6 +44,14 @@ const baseSettings = (over: Partial<SessionSettings> = {}): SessionSettings => (
 
 const loot = (total: number, excluded = false, name = 'Divine Orb'): LootItem => ({
   id: name + total, name, tab: 'curr', quantity: '1', price: '', total, excluded,
+});
+
+const observedMap = (explicitModCount?: number, isUnidentified = false): MapData => ({
+  id: crypto.randomUUID(), tier: 16, name: 'Observed Map', quantity: 0, rarity: 0,
+  packSize: 0, quality: 0, qualityType: '', moreCurrency: 0, moreMaps: 0,
+  moreScarabs: 0, moreDivCards: 0, modCount: explicitModCount ?? 0,
+  explicitModCount, isOriginator: false, isEmpoweredMirage: false,
+  isNightmare: false, isCorrupted: false, isUnidentified,
 });
 
 /** The Sad fixture — preservation variant. */
@@ -290,5 +298,33 @@ describe('computeMultiplier', () => {
     }));
     expect(m.effectiveMods).toBe(12);  // 8 + 2 + 2
     expect(m.mountBonus).toBe(24);
+  });
+
+  it('uses the exact observed average for a complete four-map sample', () => {
+    const maps = [3, 4, 5, 6].map((count) => observedMap(count));
+    const m = computeMultiplier(baseSettings({ mountingModifiers: true }), maps);
+    expect(m.usesObservedMods).toBe(true);
+    expect(m.observedModAverage).toBe(4.5);
+    expect(m.effectiveMods).toBe(4.5);
+    expect(m.mountBonus).toBe(9);
+    expect(m.multiplier).toBeCloseTo(1.09, 6);
+  });
+
+  it('adds Risk modifiers after the observed average', () => {
+    const maps = [4, 4, 5, 5].map((count) => observedMap(count));
+    const m = computeMultiplier(baseSettings({
+      mountingModifiers: true,
+      scarabs: [{ name: 'Cartography Scarab of Risk', cost: 1 }],
+    }), maps);
+    expect(m.observedModAverage).toBe(4.5);
+    expect(m.effectiveMods).toBe(6.5);
+    expect(m.mountBonus).toBe(13);
+  });
+
+  it('falls back when coverage is incomplete, unidentified, or too small', () => {
+    const settings = baseSettings({ mapType: '8-mod', mountingModifiers: true });
+    expect(computeMultiplier(settings, [3, 4, 5].map((n) => observedMap(n))).usesObservedMods).toBe(false);
+    expect(computeMultiplier(settings, [3, 4, 5, undefined].map((n) => observedMap(n))).effectiveMods).toBe(8);
+    expect(computeMultiplier(settings, [3, 4, 5].map((n) => observedMap(n)).concat(observedMap(6, true))).usesObservedMods).toBe(false);
   });
 });

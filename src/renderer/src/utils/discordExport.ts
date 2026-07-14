@@ -23,6 +23,8 @@ import { EXPORT_EMOJI as E } from './discordEmoji';
 export interface ExportMapStats {
   quantity: number; rarity: number; packSize: number;
   moreCurrency: number; moreScarabs: number;
+  explicitModCount?: number;
+  isUnidentified?: boolean;
 }
 
 export interface DiscordExportInput {
@@ -71,7 +73,7 @@ export function buildDiscordExport(input: DiscordExportInput): string {
   const profit = computeProfit({
     settings, mapCount: n, lootItems, baselineTotal, investmentNeutralization,
   });
-  const { multiplier } = computeMultiplier(settings);
+  const { multiplier, usesObservedMods, observedModAverage } = computeMultiplier(settings, maps);
 
   const excludedItems = lootItems.filter((l) => l.excluded);
   const gemNetPL = (settings.advGemCount * settings.advGemSellPrice) - (settings.advGemCount * settings.advGemBuyPrice);
@@ -131,6 +133,9 @@ export function buildDiscordExport(input: DiscordExportInput): string {
     ...(updateStrategyId ? [`Update strategy: ${updateStrategyId}`] : []),
     `**Map Session \u2014 WraeclastLedger**`,
     `${E.maps.uni} **Maps:** ${n} | **Type:** ${settings.mapType} | **Multiplier:** ${multiplier.toFixed(2)}\u00D7`,
+    ...(usesObservedMods && observedModAverage != null
+      ? [`**Observed Mods:** ${observedModAverage.toFixed(1)} average (${n}/${n} exact maps)`]
+      : []),
     chiselLine,
     `${E.stats.uni} **Avg Quant:** ${avgQuant.toFixed(0)}% | **Avg Rarity:** ${avgRarity.toFixed(0)}% | **Avg Pack:** ${avgPack.toFixed(0)}% | **Avg Currency:** ${avgCurr.toFixed(0)}%`,
     `${E.cost.uni} **Per Map Cost:** ${allInPerMap.toFixed(1)}c | **Total Invest:** ${profit.totalInvest.toFixed(1)}c`,

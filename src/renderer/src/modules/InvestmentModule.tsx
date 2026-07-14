@@ -3,11 +3,13 @@ import {
   Select, Button, Modal, SimpleGrid, Autocomplete, Badge,
   ActionIcon, TextInput, Menu, Alert, Tooltip,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
+import { useDisclosure, useElementSize } from '@mantine/hooks';
 import { useState, useEffect, useMemo } from 'react';
 import { useSessionKeys } from '../store/useSessionStore';
-import { SCARAB_LIST, DELIRIUM_ORB_LIST, ASTROLABE_LIST, CHISEL_SELECT_DATA } from '../utils/constants';
-import { isMechanicActive } from '../utils/gameData';
+import {
+  entityLifecycleStatus, isMechanicActive, selectableAstrolabeList,
+  selectableChiselList, selectableDeliriumOrbList, selectableScarabOptions,
+} from '../utils/gameData';
 import { parsePriceInput } from '../utils/priceUtils';
 import { computeCosts } from '../utils/profit';
 import { fcSep } from '../utils/parseDiscordExport';
@@ -59,6 +61,8 @@ const PriceInput = ({
 };
 
 export const InvestmentModule = () => {
+  const { ref: panelRef, width: panelWidth } = useElementSize();
+  const compactPanel = panelWidth > 0 && panelWidth < 310;
   const {
     maps, settings, updateSetting, updateAdvSetting, updateScarab, clearScarab, initDivinePrice,
     setDivinePriceManual, leagueOverride, setLeagueOverride,
@@ -97,6 +101,10 @@ export const InvestmentModule = () => {
   }, [leagueList, leagueOverride, settings.leagueName]);
 
   const divinePrice = settings.divinePrice || 1;
+  const scarabOptions = selectableScarabOptions();
+  const deliriumOrbOptions = selectableDeliriumOrbList();
+  const astrolabeOptions = selectableAstrolabeList();
+  const chiselOptions = selectableChiselList();
 
   // All cost math lives in utils/profit.ts (WP1). The session total is derived
   // LIVE from settings + map count — the stored settings.rollingCostPerMap was
@@ -192,7 +200,7 @@ export const InvestmentModule = () => {
           </AdvSection>
           <AdvSection title="Chisel" filled={chiselFilled}>
             <SimpleGrid cols={2} style={{ alignItems: 'flex-end' }}>
-              <Select label="Type" data={CHISEL_SELECT_DATA} value={settings.chiselType || null}
+              <Select label="Type" data={chiselOptions} value={settings.chiselType || null}
                 onChange={(v) => { const t = v ?? ''; updateSetting('chiselType', t); updateSetting('chiselUsed', t.length > 0); }}
                 size="xs" clearable placeholder="— None —"
                 leftSection={settings.chiselType ? <PoeItemIcon name={chiselItemName(settings.chiselType)} size={16} /> : undefined}
@@ -206,6 +214,9 @@ export const InvestmentModule = () => {
                 onChange={(v) => updateSetting('chiselPrice', v)} divinePrice={divinePrice}
                 placeholder={settings.chiselType ? 'e.g. 150c' : '—'} />
             </SimpleGrid>
+            {entityLifecycleStatus('chisels', settings.chiselType) === 'reworked' && (
+              <Badge size="xs" color="yellow" variant="light">Reworked item — verify its current effect</Badge>
+            )}
           </AdvSection>
           <AdvSection title="Rolling Costs" filled={rollingFilled}>
             <Text size="xs" c="dimmed">Orbs spent rolling maps this session. Enter total quantity bought + total chaos paid.</Text>
@@ -245,7 +256,7 @@ export const InvestmentModule = () => {
             </SimpleGrid>
           </AdvSection>
           <AdvSection title="Delirium Orbs" filled={deliFilled}>
-            <Select label="Orb Type" data={DELIRIUM_ORB_LIST} value={settings.advDeliOrbType || null}
+            <Select label="Orb Type" data={deliriumOrbOptions} value={settings.advDeliOrbType || null}
               onChange={(v) => updateAdvSetting('advDeliOrbType', v ?? '')} size="xs" placeholder="Type to search..." searchable clearable
               leftSection={settings.advDeliOrbType ? <PoeItemIcon name={deliOrbItemName(settings.advDeliOrbType)} size={16} /> : undefined}
               renderOption={({ option }) => (
@@ -254,6 +265,9 @@ export const InvestmentModule = () => {
                   <Text size="xs">{option.label}</Text>
                 </Group>
               )} />
+            {entityLifecycleStatus('deliriumOrbs', settings.advDeliOrbType) === 'reworked' && (
+              <Badge size="xs" color="yellow" variant="light">Reworked item — verify its current effect</Badge>
+            )}
             <SimpleGrid cols={2} style={{ alignItems: 'flex-end' }}>
               <NumberInput label="Per map (1–5)" size="xs" value={settings.advDeliOrbQtyPerMap}
                 onChange={(v) => updateAdvSetting('advDeliOrbQtyPerMap', Number(v))} min={0} max={5} />
@@ -267,7 +281,7 @@ export const InvestmentModule = () => {
           {showAstrolabe && (
           <AdvSection title="Astrolabe" filled={astrolabeFilled}>
             <Text size="xs" c="dimmed">Random duration. Enter price each + count used this session.</Text>
-            <Select label="Type" data={ASTROLABE_LIST} value={settings.advAstrolabeType || null}
+            <Select label="Type" data={astrolabeOptions} value={settings.advAstrolabeType || null}
               onChange={(v) => updateAdvSetting('advAstrolabeType', v ?? '')} size="xs" placeholder="Select astrolabe..." clearable
               leftSection={settings.advAstrolabeType ? <PoeItemIcon name={settings.advAstrolabeType} size={16} /> : undefined}
               renderOption={({ option }) => (
@@ -276,6 +290,9 @@ export const InvestmentModule = () => {
                   <Text size="xs">{option.label}</Text>
                 </Group>
               )} />
+            {entityLifecycleStatus('astrolabes', settings.advAstrolabeType) === 'reworked' && (
+              <Badge size="xs" color="yellow" variant="light">Reworked item — verify its current effect</Badge>
+            )}
             <SimpleGrid cols={2} style={{ alignItems: 'flex-end' }}>
               <PriceInput label="Price each" value={settings.advAstrolabePrice}
                 onChange={(v) => updateAdvSetting('advAstrolabePrice', v)} divinePrice={divinePrice} placeholder="e.g. 1d" />
@@ -400,8 +417,8 @@ export const InvestmentModule = () => {
         </Stack>
       </Modal>
 
-      <Card shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ overflow: 'auto' }}>
-        <Group justify="space-between" mb={8}>
+      <Card ref={panelRef} shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ overflow: 'auto' }}>
+        <Group justify="space-between" mb={8} wrap="nowrap" gap={compactPanel ? 4 : 'md'}>
           {/* Panel title removed (redundant with the tab label — same call as the
               Sessions panel). The header slot hosts the league override instead
               (rollover D4/D5): '' = auto-detect via poe.ninja probe; anything
@@ -415,9 +432,9 @@ export const InvestmentModule = () => {
             onDropdownOpen={loadLeagueOptions}
             comboboxProps={{ withinPortal: true }}
             title="League — leave on Auto unless detection picks the wrong league (e.g. you are mapping in the parent league during an event)"
-            style={{ width: 170 }}
+            style={{ width: compactPanel ? undefined : 170, minWidth: 0, flex: compactPanel ? 1 : undefined }}
           />
-          <Group gap={4}>
+          <Group gap={4} style={{ marginLeft: 'auto' }}>
             <Tooltip label="All-in cost per map: total investment (base map + chisel + scarabs incl. one-time + session costs) divided by parsed maps. Equals Dashboard Investment / maps.">
               <Badge color="gray" variant="outline" style={{ fontVariantNumeric: 'tabular-nums' }}>{totalPerMapFull.toFixed(1)}c/map</Badge>
             </Tooltip>
@@ -429,18 +446,18 @@ export const InvestmentModule = () => {
           <div style={{
             background: 'rgba(255,255,255,0.03)',
             border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 6, padding: '10px 12px',
+            borderRadius: 6, padding: compactPanel ? '6px 8px' : '10px 12px',
           }}>
             {/* Two equal columns — label on top, control below, all centered */}
-            <Group grow gap="md" mb={8} align="flex-start">
+            <Group grow gap={compactPanel ? 6 : 'md'} mb={compactPanel ? 6 : 8} align="flex-start">
               {/* Divine Price */}
               <Stack gap={4} align="center">
                 {crossLeague ? (
                   <Tooltip label={historicalPriceTooltip} withArrow multiline w={280}>
-                    <Text size="xs" c="yellow" style={{ cursor: 'help' }}>{divinePriceLabel}</Text>
+                    <Text size="xs" c="yellow" style={{ cursor: 'help' }}>{compactPanel ? 'Historical Divine' : divinePriceLabel}</Text>
                   </Tooltip>
                 ) : (
-                  <Text size="xs" c="dimmed">{divinePriceLabel}</Text>
+                  <Text size="xs" c="dimmed">{compactPanel ? 'Divine Price' : divinePriceLabel}</Text>
                 )}
                 {/* Input + icon on same row, input fills available space */}
                 {/* session-16: refresh lives INSIDE the price input (it belongs to
@@ -625,7 +642,7 @@ export const InvestmentModule = () => {
             <Group key={i} gap={4} wrap="nowrap">
               <Autocomplete placeholder={`Scarab ${i + 1}`} value={scarab.name}
                 onChange={(v) => updateScarab(i, 'name', v)}
-                data={SCARAB_LIST} size="xs" style={{ flex: 1, minWidth: 0 }}
+                data={scarabOptions} size="xs" style={{ flex: 1, minWidth: 0 }}
                 leftSection={scarab.name ? <PoeItemIcon name={scarab.name} size={16} /> : undefined}
                 rightSection={scarab.name
                   ? <ActionIcon size="xs" variant="transparent" c="dimmed"
@@ -635,6 +652,11 @@ export const InvestmentModule = () => {
                   : undefined}
                 rightSectionPointerEvents={scarab.name ? 'all' : 'none'}
               />
+              {entityLifecycleStatus('scarabs', scarab.name) === 'reworked' && (
+                <Tooltip label="This scarab was reworked; verify its current effect and price.">
+                  <Badge size="xs" color="yellow" variant="light">Reworked</Badge>
+                </Tooltip>
+              )}
               <PriceInput value={scarab.cost} onChange={(v) => updateScarab(i, 'cost', v)}
                 divinePrice={divinePrice} placeholder="0c" style={{ width: 100, flexShrink: 0 }} />
             </Group>

@@ -4,10 +4,9 @@
  * ACCESS MODEL: getManifest() is synchronous and always returns the ACTIVE
  * manifest — bundled at startup, possibly replaced by a newer cached/served
  * revision during initGameData(). Revision swaps are RESTART-SCOPED by design:
- * initGameData() runs once at App mount, before any picker is opened; module
- * constants derived from the bundled snapshot (utils/constants.ts) intentionally
- * do NOT react to a swap — consumer-by-consumer migration to the helpers below
- * is step 2c (documented in HANDOVER session 12).
+ * initGameData() runs once at App mount. Live input surfaces call the derived
+ * helpers below at render time; legacy constants remain a bundled snapshot for
+ * historical display/math compatibility.
  *
  * SOURCE ORDER (plan §2.2 "loader prefers server, falls back to bundled"):
  *   bundled (always available) -> disk cache (userData, via main IPC — D1
@@ -152,6 +151,45 @@ export function __resetGameDataForTests(): void {
 // the static constants they follow a revision swap.
 
 const isActive = (e: GameEntity): boolean => e.status === 'active';
+const isSelectable = (e: GameEntity): boolean => e.status === 'active' || e.status === 'reworked';
+const selectableLabel = (e: GameEntity): string =>
+  `${e.label ?? e.name}${e.status === 'reworked' ? ' — Reworked' : ''}`;
+
+export type GameEntityGroup = 'scarabs' | 'deliriumOrbs' | 'astrolabes' | 'chisels';
+
+/** Lifecycle for an exact persisted/display name. Unknown free-text remains valid. */
+export function entityLifecycleStatus(group: GameEntityGroup, name: string): GameEntity['status'] | null {
+  const normalized = name.trim().toLocaleLowerCase();
+  if (!normalized) return null;
+  return getManifest()[group].find((e) => e.name.toLocaleLowerCase() === normalized)?.status ?? null;
+}
+
+/** Current picker data. Reworked remains selectable but is visibly labelled. */
+export function selectableScarabOptions(): { value: string; label: string }[] {
+  return getManifest().scarabs.filter(isSelectable)
+    .map((e) => ({ value: e.name, label: selectableLabel(e) }));
+}
+
+export function selectableDeliriumOrbList(): { value: string; label: string }[] {
+  return getManifest().deliriumOrbs.filter(isSelectable)
+    .map((e) => ({ value: e.name, label: selectableLabel(e) }));
+}
+
+export function selectableAstrolabeList(): { value: string; label: string }[] {
+  return [
+    { value: '', label: '— None —' },
+    ...getManifest().astrolabes.filter(isSelectable)
+      .map((e) => ({ value: e.name, label: selectableLabel(e) })),
+  ];
+}
+
+export function selectableChiselList(): { value: string; label: string }[] {
+  return [
+    { value: '', label: '— None —' },
+    ...getManifest().chisels.filter(isSelectable)
+      .map((e) => ({ value: e.name, label: selectableLabel(e) })),
+  ];
+}
 
 /** Active scarab display names — shape of the legacy SCARAB_LIST. */
 export function activeScarabNames(): string[] {

@@ -14,6 +14,7 @@ import { parseDiscordExport } from '../utils/parseDiscordExport';
 import { buildUpdateComparison, rowDirection } from '../utils/updateCompare';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { getManifest } from '../utils/gameData';
+import { hasImpossibleAtlasPoints } from '../utils/shareValidation';
 
 interface Props {
   opened: boolean;
@@ -95,6 +96,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
        updateTargetId, activeManifest.revision, activeManifest.patchVersion]);
 
   const rollingSessionTotal = computeRollingSessionTotal(settings, maps.length);
+  const impossibleAtlasPoints = hasImpossibleAtlasPoints(settings.atlasPoints, settings.atlasPointsMax);
 
   // ── Update run: compare the about-to-publish numbers to what's live now ─────
   // Fetch the current published strategy by uuid so the author can eyeball what
@@ -191,6 +193,13 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
             <Text size="xs">No maps parsed yet — parse some maps in Map Log first for complete stats.</Text>
           </Alert>
         )}
+        {impossibleAtlasPoints && (
+          <Alert color="red" variant="light" p="xs">
+            <Text size="xs">
+              Atlas Tree reports {settings.atlasPoints}/{settings.atlasPointsMax} allocated points. Sharing is disabled because that exceeds the tree maximum; correct or reload the tree, then read its stats again.
+            </Text>
+          </Alert>
+        )}
         {settings.baseMapCost === 0 && rollingSessionTotal === 0 && (
           <Alert color="yellow" variant="light" p="xs">
             <Text size="xs">No investment costs set. Fill in Advanced Costs before sharing.</Text>
@@ -263,14 +272,21 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
           </Text>
         </Stack>
         <Divider label="Preview" labelPosition="left" />
-        <div style={{ background: COLOR.bgDeep, borderRadius: 6, padding: '8px 10px', maxHeight: 200, overflowY: 'auto' }}>
-          <Text size="xs" style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', color: COLOR.textSoft, fontSize: FONT.small, lineHeight: 1.5 }}>
-            {discordExport}
-          </Text>
-        </div>
+        {impossibleAtlasPoints ? (
+          <Alert color="red" variant="light" p="xs">
+            <Text size="xs">Preview withheld until the impossible Atlas allocation is corrected.</Text>
+          </Alert>
+        ) : (
+          <div style={{ background: COLOR.bgDeep, borderRadius: 6, padding: '8px 10px', maxHeight: 200, overflowY: 'auto' }}>
+            <Text size="xs" style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', color: COLOR.textSoft, fontSize: FONT.small, lineHeight: 1.5 }}>
+              {discordExport}
+            </Text>
+          </div>
+        )}
         <CopyButton value={discordExport} timeout={2000}>
           {({ copied, copy }) => (
             <Button leftSection={copied ? <IconCheck size={14} /> : <IconBrandDiscord size={14} />} onClick={copy}
+              disabled={impossibleAtlasPoints}
               color={copied ? 'teal' : 'indigo'} variant="light" fullWidth>
               {copied ? 'Copied to clipboard!' : 'Copy to Discord'}
             </Button>

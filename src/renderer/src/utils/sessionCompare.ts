@@ -45,7 +45,7 @@ const avgOf = (
 export function buildCompareColumn(session: SavedSession): CompareColumn {
   const n = session.maps.length;
   const neutralization = session.investmentNeutralization ?? 0;
-  const { multiplier } = computeMultiplier(session.settings);
+  const { multiplier } = computeMultiplier(session.settings, session.maps);
   const p = computeProfit({
     settings: session.settings,
     mapCount: n,

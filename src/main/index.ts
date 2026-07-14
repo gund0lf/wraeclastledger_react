@@ -12,17 +12,14 @@ let watchWindow: BrowserWindow | null = null;
 // ── WP13: clipboard polling lifecycle ────────────────────────────────────────
 // Polling only runs while the renderer's Capture toggle is ON (previously it
 // ran every 200ms forever and the renderer filtered by isWatching). Turning
-// the watch ON resets lastClipboardText, so content identical to what was in
-// the clipboard before also fires. This kills the cross-toggle half of the
-// "skips identical content" wart; copying the SAME map twice in a row while
-// watching still yields identical text and is still skipped — the manual
-// Paste button remains the answer for that case. Side effect (intended):
-// enabling Capture with map text already in the clipboard logs that map
-// immediately.
+// Capture ON primes the current clipboard as the baseline without emitting it:
+// stale map text must not populate a freshly cleared log. Copying the SAME map
+// twice in a row while watching still yields identical text and is skipped —
+// the manual Paste button remains the explicit answer for that case.
 function setClipboardWatch(on: boolean): void {
   if (on) {
-    lastClipboardText = '';
     if (clipboardInterval) return; // already polling
+    lastClipboardText = clipboard.readText();
     clipboardInterval = setInterval(() => {
       const win = watchWindow;
       if (!win || win.isDestroyed()) return;

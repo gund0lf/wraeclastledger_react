@@ -219,6 +219,9 @@ export const BROWSER_COLS = {
 
 export const BROWSER_ROW_GAP = 6;
 export const BROWSER_ROW_PAD_X = 10;
+/** Full collapsed-row grid plus gaps/padding. Below this, preserve the table and
+ * expose horizontal scrolling instead of silently clipping metric columns. */
+export const BROWSER_MIN_CONTENT_WIDTH = 860;
 
 // Header and collapsed cards share this exact grid. The former paired flex
 // layouts drifted whenever content or border geometry differed between them.

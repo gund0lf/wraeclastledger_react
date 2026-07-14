@@ -12,7 +12,7 @@ import { slugifyEntityId, GameEntity } from '../../../shared/gameData/types';
 import {
   getGameDataStatus, getManifest, initGameData, isApplicableManifest, isValidManifest, __resetGameDataForTests,
   activeScarabNames, activeDeliriumOrbList, activeAstrolabeList, activeChiselTypes,
-  mechanicStatus, isMechanicActive,
+  mechanicStatus, isMechanicActive, entityLifecycleStatus, selectableScarabOptions,
 } from './gameData';
 import { SCARAB_LIST, DELIRIUM_ORB_LIST, ASTROLABE_LIST, CHISEL_TYPES, CHISEL_SELECT_DATA } from './constants';
 
@@ -269,6 +269,29 @@ describe('derived view helpers (call-time, revision-aware)', () => {
     expect(activeScarabNames()).not.toContain(BUNDLED_MANIFEST.scarabs[0].name);
     // The entity is still IN the manifest for read-time resolution:
     expect(getManifest().scarabs.find((s) => s.id === BUNDLED_MANIFEST.scarabs[0].id)?.status).toBe('removed');
+  });
+
+  it('keeps reworked products selectable with a warning label while removed products stay unpickable', async () => {
+    const first = BUNDLED_MANIFEST.scarabs[0];
+    const second = BUNDLED_MANIFEST.scarabs[1];
+    const modified = {
+      ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge',
+      revision: BUNDLED_MANIFEST.revision + 1,
+      scarabs: BUNDLED_MANIFEST.scarabs.map((s, i) =>
+        i === 0 ? { ...s, status: 'reworked' as const, note: 'Changed effect' }
+          : i === 1 ? { ...s, status: 'removed' as const }
+            : s),
+    };
+    vi.stubGlobal('window', {
+      api: { readGameDataCache: vi.fn(async () => ({ manifest: modified, error: null })) },
+    });
+    await initGameData();
+
+    expect(selectableScarabOptions()).toContainEqual({ value: first.name, label: `${first.name} — Reworked` });
+    expect(selectableScarabOptions().some((option) => option.value === second.name)).toBe(false);
+    expect(entityLifecycleStatus('scarabs', first.name)).toBe('reworked');
+    expect(entityLifecycleStatus('scarabs', second.name)).toBe('removed');
+    expect(entityLifecycleStatus('scarabs', 'User-entered unknown scarab')).toBeNull();
   });
 });
 

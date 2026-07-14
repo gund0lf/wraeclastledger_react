@@ -324,6 +324,20 @@ interface SessionState {
   importSessions: (sessions: SavedSession[], conflictMode: 'skip' | 'overwrite') => void;
 }
 
+/** Capture is a runtime device state, never a restart preference. Persist still
+ * stores the unchanged wire object for compatibility, but hydration forcibly
+ * resets the watcher before any component can ask the main process to start. */
+export function mergePersistedSessionState(
+  persistedState: unknown,
+  currentState: SessionState,
+): SessionState {
+  return {
+    ...currentState,
+    ...((persistedState ?? {}) as Partial<SessionState>),
+    isWatching: false,
+  };
+}
+
 export const useSessionStore = create<SessionState>()(
   persist(
     (set, get) => ({
@@ -643,7 +657,10 @@ export const useSessionStore = create<SessionState>()(
             : s.settings,
         })),
     }),
-    { name: 'map-tracker-storage', version: STORE_VERSION, migrate: migrateState, storage: debouncedStorage as PersistStorage<any> }
+    {
+      name: 'map-tracker-storage', version: STORE_VERSION, migrate: migrateState,
+      storage: debouncedStorage as PersistStorage<any>, merge: mergePersistedSessionState,
+    }
   )
 );
 

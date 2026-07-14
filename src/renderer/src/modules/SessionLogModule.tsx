@@ -34,9 +34,9 @@ export const SessionLogModule = () => {
     ? maps.filter((m) => m.name?.toLowerCase().includes(search.trim().toLowerCase()))
     : maps;
 
-  // Rows parse-identical to their immediate predecessor (accidental
-  // double-paste candidates) get a subtle marker. Computed over the FULL log
-  // order, not the filtered view — adjacency in the log is what matters.
+  // Later rows parse-identical to any earlier row (accidental double-paste
+  // candidates) get a subtle marker. Computed over the FULL log, not the
+  // filtered view.
   const dupIds = useMemo(() => markPossibleDuplicates(maps), [maps]);
 
   const rows = filtered.map((map, index) => (
@@ -47,13 +47,14 @@ export const SessionLogModule = () => {
       <Table.Td style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
         title={map.name || undefined}>
         {dupIds.has(map.id) && (
-          <Tooltip multiline w={230} label="Identical to the previous map — possible accidental double-paste. Delete it if so; a genuinely identical map can keep the marker.">
+          <Tooltip multiline w={240} label="Exactly matches an earlier map in this session — possible accidental repeat. Delete it if so; a genuinely identical map can keep the marker.">
             <Badge size="xs" variant="light" color="yellow" mr={4} style={{ verticalAlign: 'middle', cursor: 'help' }}>dup?</Badge>
           </Tooltip>
         )}
         {map.name || '-'}
       </Table.Td>
       <Table.Td>{map.tier ? `T${map.tier}` : '-'}</Table.Td>
+      <Table.Td>{map.explicitModCount ?? '-'}</Table.Td>
       <Table.Td>{map.quantity}%</Table.Td>
       <Table.Td>{map.rarity > 0 ? `${map.rarity}%` : '-'}</Table.Td>
       <Table.Td>{map.packSize}%</Table.Td>
@@ -102,7 +103,9 @@ export const SessionLogModule = () => {
           /* session-16: "Map Log" title dropped (redundant with the tab label);
              the capture switch leads, the count keeps its place. */
           <Group gap="xs">
-            <Tooltip label={isWatching ? 'Capturing — press Ctrl+C on a map in-game to log it' : 'Paused — turn on to start logging maps'}>
+            <Tooltip multiline w={260} label={isWatching
+              ? 'Capturing — Ctrl+Alt+C is preferred for an exact modifier count; Ctrl+C also works.'
+              : 'Paused — turn on Capture, then copy a map. Ctrl+Alt+C is preferred for exact modifiers.'}>
               <Switch checked={isWatching} onChange={toggleWatch}
                 color="green" size="sm" labelPosition="left"
                 label={isWatching ? 'Capture: Active' : 'Capture: Paused'}
@@ -111,6 +114,9 @@ export const SessionLogModule = () => {
                   : <IconPlayerPauseFilled size={10} />} />
             </Tooltip>
             <Text fw={700} size="sm">{maps.length} map{maps.length !== 1 ? 's' : ''}{search.trim() && filtered.length !== maps.length ? ` · ${filtered.length} shown` : ''}</Text>
+            <Tooltip label="Preferred capture: Ctrl+Alt+C records the exact explicit-mod count. Normal Ctrl+C remains supported.">
+              <Badge size="xs" color="blue" variant="light" style={{ cursor: 'help' }}>Ctrl+Alt+C: exact</Badge>
+            </Tooltip>
           </Group>
         }
         right={
@@ -152,6 +158,11 @@ export const SessionLogModule = () => {
               <Table.Th>#</Table.Th>
               <Table.Th>Name</Table.Th>
               <Table.Th>Tier</Table.Th>
+              <Table.Th>
+                <Tooltip label="Exact explicit modifiers from Ctrl+Alt+C; dash means a normal Ctrl+C copy">
+                  <span style={{ cursor: 'help' }}>Mods</span>
+                </Tooltip>
+              </Table.Th>
               <Table.Th>Quant</Table.Th>
               <Table.Th>Rarity</Table.Th>
               <Table.Th>Pack</Table.Th>
@@ -165,12 +176,22 @@ export const SessionLogModule = () => {
           <Table.Tbody>
             {rows.length > 0 ? rows : (
               <Table.Tr>
-                <Table.Td colSpan={11}>
-                  <Text size="xs" c="dimmed" ta="center" py="md">
-                    {maps.length === 0
-                      ? 'No maps logged yet — turn on Capture above, then press Ctrl+C on a map in-game to log it here.'
-                      : `No maps match "${search.trim()}".`}
-                  </Text>
+                <Table.Td colSpan={12}>
+                  {maps.length === 0 ? (
+                    <Stack gap={3} align="center" py="md">
+                      <Text size="xs" c="dimmed" ta="center">
+                        No maps logged yet — turn on Capture above, then press Ctrl+C on a map in-game to log it here.
+                      </Text>
+                      <Text size="xs" c="dimmed" ta="center">
+                        For Pace estimates, copy each map before running it; copy the next after finishing. Pasting an old batch cannot reconstruct playtime.
+                      </Text>
+                      <Text size="xs" c="dimmed" ta="center">
+                        Optional: Ctrl+Alt+C also logs the map and records its exact explicit-mod count from the advanced tooltip.
+                      </Text>
+                    </Stack>
+                  ) : (
+                    <Text size="xs" c="dimmed" ta="center" py="md">No maps match &ldquo;{search.trim()}&rdquo;.</Text>
+                  )}
                 </Table.Td>
               </Table.Tr>
             )}

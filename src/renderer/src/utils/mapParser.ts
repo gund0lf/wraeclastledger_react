@@ -74,6 +74,14 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
   // the mod section would be and must NOT count as a mod.
   const isUnidentified  = lines.includes('Unidentified');
 
+  // Ctrl+Alt+C advanced tooltips include exactly one header per real affix,
+  // even when that affix produces several description lines. Normal Ctrl+C
+  // has no headers, so leave the exact count unknown rather than guessing.
+  const explicitHeaders = lines.filter((line) => /^\{ (?:Prefix|Suffix) Modifier\b/.test(line));
+  const explicitModCount = !isUnidentified && explicitHeaders.length > 0
+    ? explicitHeaders.length
+    : undefined;
+
   // ── Explicit mod count ─────────────────────────────────────────────────────
   // Find the section just BEFORE "Travel to a Map" — this is always the
   // explicit mods section, regardless of trailing Corrupted / Nightmare
@@ -105,7 +113,7 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
 
   return {
     tier, name, quantity, rarity, packSize, quality, qualityType,
-    moreCurrency, moreMaps, moreScarabs, moreDivCards, modCount,
+    moreCurrency, moreMaps, moreScarabs, moreDivCards, modCount, explicitModCount,
     isOriginator, isEmpoweredMirage, isNightmare, isCorrupted, isUnidentified,
     rawText: text,
   };

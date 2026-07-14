@@ -165,8 +165,9 @@ function App(): JSX.Element {
       <Box style={{
         height: 30, background: '#141517', borderBottom: '1px solid #2C2E33',
         display: 'flex', alignItems: 'center', paddingLeft: 8, paddingRight: 8,
-        flexShrink: 0, gap: 8,
+        flexShrink: 0, gap: 8, position: 'relative',
       }}>
+        <Box style={{ position: 'absolute', left: 8 }}>
         <Menu shadow="md" width={220}>
           <Menu.Target>
             <Button size="compact-xs" variant="subtle" color="gray" style={{ fontSize: 11 }}>
@@ -192,6 +193,7 @@ function App(): JSX.Element {
             }}>Reset layout to default</Menu.Item>
           </Menu.Dropdown>
         </Menu>
+        </Box>
 
         {/* Spacer */}
         <Box style={{ flex: 1 }} />
