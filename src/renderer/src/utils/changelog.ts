@@ -16,6 +16,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'League rollover caches are now context-safe: an event ending while the app remains open triggers a fresh league probe, a divine price from the previous league is never treated as fresh for the new one, and item icons rebuild after automatic or manual league changes.',
       'The title bar now shows the active game-data revision and its source on hover, and turns the badge yellow when the remote or cached manifest is unavailable, invalid, or incompatible. Future manifest revisions declare a schema and PoE context before the app will adopt them.',
       'Newly shared strategies now record the exact game-data revision and patch active when each result was authored. Strategy cards show this provenance, while historical shares remain valid without it.',
+      'Atlas Tree no longer initializes its embedded renderer while its dock tab is hidden or zero-sized. Returning to the tab reloads the saved tree after the panel has settled, and the toolbar refresh action is now explicitly labeled Recenter tree for recovering from resize drift.',
     ],
   },
   {

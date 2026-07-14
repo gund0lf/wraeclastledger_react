@@ -43,6 +43,8 @@ export const AtlasTreeModule = () => {
   // unrelated settings edits (scarab typing etc.), only when the tree URL moves.
   const atlasTreeUrl = useSessionStore((s) => s.settings.atlasTreeUrl);
   const webviewRef     = useRef<any>(null);
+  const webviewHostRef = useRef<HTMLDivElement>(null);
+  const visibleRef     = useRef(false);
   const prevSessionRef = useRef<string | null>(activeSessionId);
   const prevNonceRef   = useRef(sessionNonce);
   const autoApplyRef   = useRef(false); // set true when URL imported — triggers auto readStats+apply
@@ -59,6 +61,56 @@ export const AtlasTreeModule = () => {
   const [importUrl,   setImportUrl]   = useState('');
   const [showImport,  setShowImport]  = useState(false);
   const [calcApplied, setCalcApplied] = useState<string | null>(null);
+  const [webviewReady, setWebviewReady] = useState(false);
+
+  // FlexLayout keeps inactive tabs mounted but gives their content display:none.
+  // Path of Pathing's Pixi viewport centres only at construction, so loading the
+  // guest at 0x0 permanently puts the tree off-screen. Unmount while hidden and
+  // mount only after two frames at a real size, allowing layout + Electron's
+  // guest bounds to settle before Pixi reads window.innerWidth/innerHeight.
+  useEffect(() => {
+    const host = webviewHostRef.current;
+    if (!host) return;
+    let frame1 = 0;
+    let frame2 = 0;
+
+    const cancelFrames = () => {
+      if (frame1) cancelAnimationFrame(frame1);
+      if (frame2) cancelAnimationFrame(frame2);
+      frame1 = 0;
+      frame2 = 0;
+    };
+    const observeSize = () => {
+      const rect = host.getBoundingClientRect();
+      const visible = rect.width >= 80 && rect.height >= 80;
+      if (!visible) {
+        cancelFrames();
+        visibleRef.current = false;
+        setWebviewReady(false);
+        return;
+      }
+      if (visibleRef.current) return;
+      visibleRef.current = true;
+      cancelFrames();
+      frame1 = requestAnimationFrame(() => {
+        frame2 = requestAnimationFrame(() => {
+          const settled = host.getBoundingClientRect();
+          if (visibleRef.current && settled.width >= 80 && settled.height >= 80) {
+            setWebviewReady(true);
+          }
+        });
+      });
+    };
+
+    const observer = new ResizeObserver(observeSize);
+    observer.observe(host);
+    observeSize();
+    return () => {
+      observer.disconnect();
+      cancelFrames();
+      visibleRef.current = false;
+    };
+  }, []);
 
   // ── Reload when session changes ────────────────────────────────────────────
   useEffect(() => {
@@ -414,8 +466,9 @@ export const AtlasTreeModule = () => {
             </Tooltip>
           )}
         </CopyButton>
-        <Tooltip label="Reload (re-centers the tree)">
-          <ActionIcon size="md" variant="subtle" color="gray" onClick={reload}>
+        <Tooltip label="Recenter tree (reload)">
+          <ActionIcon size="md" variant="subtle" color="gray" onClick={reload}
+            aria-label="Recenter atlas tree">
             <IconRefresh size={14} />
           </ActionIcon>
         </Tooltip>
@@ -481,15 +534,20 @@ export const AtlasTreeModule = () => {
         </div>
       )}
 
-      {/* Webview */}
-      <webview
-        key={key}
-        ref={webviewRef}
-        src={srcUrl}
-        style={{ flex: 1 }}
-        // @ts-ignore — webview is Electron-only JSX
-        allowpopups="false"
-      />
+      {/* Keep the host mounted so ResizeObserver can detect tab activation;
+          mount the guest only after the host has stable non-zero bounds. */}
+      <div ref={webviewHostRef} style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        {webviewReady && (
+          <webview
+            key={key}
+            ref={webviewRef}
+            src={srcUrl}
+            style={{ flex: 1 }}
+            // @ts-ignore — webview is Electron-only JSX
+            allowpopups="false"
+          />
+        )}
+      </div>
     </Card>
   );
 };
