@@ -269,7 +269,7 @@ export const AtlasCalcModule = () => {
         {activeStep === 'mounting' && (
           <>
             <Question question="Mounting Modifiers allocated?"
-              hint={`Atlas passive that gives +2% IIQ per explicit mod on the map.\nWith ${effectiveMods} mods → +${mountBonus}% if active.`}
+              hint={`2% increased effect of Explicit Modifiers on your Maps per Explicit Modifier.\nWith ${effectiveMods} explicit modifiers → ${effectiveMods * 2}% increased effect.`}
               onYes={() => answerMounting(true)} onNo={() => answerMounting(false)} />
             {showWizard && !editingPill && <Text size="xs" c="dimmed" ta="center">Step 1 of 4</Text>}
           </>
@@ -278,7 +278,7 @@ export const AtlasCalcModule = () => {
         {activeStep === 'fragments' && (
           <>
             <Question question="Using Multiplying Modifiers fragments?"
-              hint="Fragments used in the map device with 'Multiplying Modifiers'. Each adds +3% IIQ. Max 5 fragments = +15%."
+              hint="3% increased effect of Explicit Modifiers on your Maps per Fragment used with the Map. Up to 5 fragments → 15% increased effect."
               onYes={() => answerFragments(true)} onNo={() => answerFragments(false)} />
             {settings.fragmentsUsed > 0 && (
               <Stack gap={2}>
@@ -299,7 +299,7 @@ export const AtlasCalcModule = () => {
         {activeStep === 'nodes' && (
           <>
             <Question question="All 16 small nodes allocated?"
-              hint="16 × 2% = +32% total"
+              hint="Each grants 2% increased effect of Explicit Modifiers on your Maps. All 16 → 32% increased effect."
               onYes={() => answerNodes(true)} onNo={() => answerNodes(false)} />
             {showNodeSlider && (
               <Stack gap={2}>

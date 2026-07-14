@@ -213,8 +213,8 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
         <TextInput size="xs" label="Strategy name (optional)"
           placeholder="e.g. Shrine strat with Memory Tears"
           value={stratName} onChange={(e) => setStratName(e.currentTarget.value)} />
-        <MultiSelect size="xs" label="Build type tags"
-          description={`Select tags that describe this build`}
+        <MultiSelect size="xs" label="Strategy type tags"
+          description="Select tags that describe this strategy"
           data={ALL_TYPE_TAGS.map((t) => ({ value: t, label: t.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') }))}
           value={shareTags} onChange={setShareTags} maxDropdownHeight={200} searchable clearable />
         <Textarea size="xs" label="Session notes (optional)"

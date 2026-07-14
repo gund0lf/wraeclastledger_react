@@ -10,6 +10,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.67',
+    date: '2026-07-14',
+    changes: [
+      'Advanced Costs now opens another category on the first click after entering a Delirium Orb or Astrolabe price; revealing the calculated summary no longer shifts the clicked category away.',
+      'Atlas Calc now previews the real prospective Mounting Modifiers bonus instead of showing +0%, and correctly describes Mounting, Multiplying, and the small Atlas nodes as increased effect of Explicit Modifiers rather than direct IIQ.',
+      'Share My Session now calls its classifications “Strategy type tags” and describes the strategy rather than the build.',
+    ],
+  },
+  {
     version: '1.0.66',
     date: '2026-07-14',
     changes: [

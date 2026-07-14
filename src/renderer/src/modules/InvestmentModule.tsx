@@ -260,7 +260,9 @@ export const InvestmentModule = () => {
               <PriceInput label="Price each" value={settings.advDeliOrbPriceEach}
                 onChange={(v) => updateAdvSetting('advDeliOrbPriceEach', v)} divinePrice={divinePrice} placeholder="e.g. 0.5d" />
             </SimpleGrid>
-            {deliPerMap > 0 && <Text size="xs" c="teal">→ {deliPerMap.toFixed(2)}c per map</Text>}
+            <Text size="xs" c="teal" style={{ visibility: deliPerMap > 0 ? 'visible' : 'hidden' }} aria-hidden={deliPerMap <= 0}>
+              → {deliPerMap.toFixed(2)}c per map
+            </Text>
           </AdvSection>
           {showAstrolabe && (
           <AdvSection title="Astrolabe" filled={astrolabeFilled}>
@@ -280,7 +282,9 @@ export const InvestmentModule = () => {
               <NumberInput label="Count used" size="xs" value={settings.advAstrolabeCount}
                 onChange={(v) => updateAdvSetting('advAstrolabeCount', Number(v))} min={0} />
             </SimpleGrid>
-            {astrolabeTotal > 0 && <Text size="xs" c="teal">→ {astrolabeTotal.toFixed(1)}c total ({settings.advAstrolabeCount} × {settings.advAstrolabePrice.toFixed(1)}c)</Text>}
+            <Text size="xs" c="teal" style={{ visibility: astrolabeTotal > 0 ? 'visible' : 'hidden' }} aria-hidden={astrolabeTotal <= 0}>
+              → {astrolabeTotal.toFixed(1)}c total ({settings.advAstrolabeCount} × {settings.advAstrolabePrice.toFixed(1)}c)
+            </Text>
           </AdvSection>
           )}
           <AdvSection title="Gem Leveling" filled={gemFilled}>
