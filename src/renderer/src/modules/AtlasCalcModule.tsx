@@ -2,6 +2,7 @@ import { Card, Text, Stack, Group, Divider, Slider, Badge, Tooltip, Button } fro
 import { useSessionKeys } from '../store/useSessionStore';
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { computeMultiplier } from '../utils/profit';
+import { confirmedLeagueSync } from '../utils/league';
 import { ModuleHeader } from '../components/ui/ModuleHeader';
 import { CollapsibleSection } from '../components/ui/CollapsibleSection';
 import { COLOR, FONT } from '../utils/uiTokens'
@@ -35,8 +36,8 @@ const Question = ({ question, hint, onYes, onNo }: {
 );
 
 export const AtlasCalcModule = () => {
-  const { maps, settings, updateSetting, activeSessionId, sessionNonce } =
-    useSessionKeys('maps', 'settings', 'updateSetting', 'activeSessionId', 'sessionNonce');
+  const { maps, settings, updateSetting, setAtlasBonus, atlasBonusByLeague, activeSessionId, sessionNonce } =
+    useSessionKeys('maps', 'settings', 'updateSetting', 'setAtlasBonus', 'atlasBonusByLeague', 'activeSessionId', 'sessionNonce');
 
   // ── Derived: always fresh from real settings ──────────────────────────────
   const isConfigured = settings.mountingModifiers || settings.fragmentsUsed > 0 || settings.smallNodesAllocated > 0;
@@ -46,7 +47,7 @@ export const AtlasCalcModule = () => {
   const effectivelyConfigured = isConfigured;
 
   // ── Wizard local state ────────────────────────────────────────────────────
-  const [wizardStep,  setWizardStep]  = useState<'mounting' | 'fragments' | 'nodes'>('mounting');
+  const [wizardStep,  setWizardStep]  = useState<'mounting' | 'fragments' | 'nodes' | 'atlasBonus'>('mounting');
   const [dismissed,   setDismissed]   = useState(false);
   const [editingPill, setEditingPill] = useState<'mounting' | 'fragments' | 'nodes' | null>(null);
   const [showNodeSlider, setShowNodeSlider] = useState(settings.smallNodesAllocated > 0 && settings.smallNodesAllocated < 16);
@@ -138,12 +139,42 @@ export const AtlasCalcModule = () => {
     setWizardStep('nodes');
   };
 
+  // Nodes is the last CONFIG step; in the wizard walk it advances to the Atlas
+  // Bonus step, but when editing a single pill it just finishes.
+  const afterNodes = () => {
+    if (editingPill) { finishWizard(); return; }
+    setWizardStep('atlasBonus');
+  };
+
   const answerNodes = (yes: boolean) => {
     setUserAnswered(true);
     if (yes) { updateSetting('smallNodesAllocated', 16); setShowNodeSlider(false); }
     else setShowNodeSlider(true);
+    afterNodes();
+  };
+
+  // All Atlas Bonus writes go through the store's setAtlasBonus, which records
+  // per-league progress for a live session under the KNOWN active league only.
+  const answerAtlasBonus = (yes: boolean) => {
+    setUserAnswered(true);
+    setAtlasBonus(yes);
     finishWizard();
   };
+
+  const toggleAtlasBonus = () => setAtlasBonus(!settings.atlasBonus);
+
+  // Dismissing the nudge = "deliberately off for this league" (records false).
+  const dismissBonusHint = () => setAtlasBonus(false);
+
+  // Show the nudge ONLY on a live session (activeSessionId null — never on a
+  // loaded historical session), when the ACTIVE league is known, the bonus is
+  // OFF, and this league has no recorded choice yet. Per-league: re-appears each
+  // new league (Atlas resets), never when the bonus is on or after a choice, and
+  // never under an unknown/guessed league.
+  const activeLeague = confirmedLeagueSync();
+  const showBonusHint =
+    showPills && activeSessionId === null && !!activeLeague &&
+    !settings.atlasBonus && atlasBonusByLeague[activeLeague] === undefined;
 
   const editPill = (which: 'mounting' | 'fragments' | 'nodes') => {
     setEditingPill(which);
@@ -207,11 +238,22 @@ export const AtlasCalcModule = () => {
                 <div>
                   <Pill label={settings.atlasBonus ? 'Atlas Bonus +25% IIQ' : 'Atlas Bonus Off'}
                     active={settings.atlasBonus}
-                    onClick={() => updateSetting('atlasBonus', !settings.atlasBonus)} />
+                    onClick={toggleAtlasBonus} />
                 </div>
               </Tooltip>
             </Group>
           </CollapsibleSection>
+        )}
+
+        {showBonusHint && (
+          <Group gap={6} wrap="nowrap" align="center">
+            <Text size="xs" c="dimmed" style={{ fontSize: FONT.small, flex: 1 }}>
+              Atlas Bonus not set for {activeLeague} — open &quot;Click to edit&quot; above and turn it on if your Atlas is complete (+25% IIQ Quantity).
+            </Text>
+            <Tooltip label="Dismiss for this league (marks Atlas Bonus off until next league)" withArrow>
+              <Button size="compact-xs" variant="subtle" color="gray" onClick={dismissBonusHint}>Dismiss</Button>
+            </Tooltip>
+          </Group>
         )}
 
         {showWizard && !editingPill && (
@@ -229,7 +271,7 @@ export const AtlasCalcModule = () => {
             <Question question="Mounting Modifiers allocated?"
               hint={`Atlas passive that gives +2% IIQ per explicit mod on the map.\nWith ${effectiveMods} mods → +${mountBonus}% if active.`}
               onYes={() => answerMounting(true)} onNo={() => answerMounting(false)} />
-            {showWizard && !editingPill && <Text size="xs" c="dimmed" ta="center">Step 1 of 3</Text>}
+            {showWizard && !editingPill && <Text size="xs" c="dimmed" ta="center">Step 1 of 4</Text>}
           </>
         )}
 
@@ -250,7 +292,7 @@ export const AtlasCalcModule = () => {
                 </Button>
               </Stack>
             )}
-            {showWizard && !editingPill && <Text size="xs" c="dimmed" ta="center">Step 2 of 3</Text>}
+            {showWizard && !editingPill && <Text size="xs" c="dimmed" ta="center">Step 2 of 4</Text>}
           </>
         )}
 
@@ -266,10 +308,19 @@ export const AtlasCalcModule = () => {
                   min={0} max={16} step={1} label={(v) => `${v} nodes (+${v * 2}%)`}
                   marks={[{ value: 0, label: '0' }, { value: 8, label: '8' }, { value: 16, label: '16' }]}
                   size="xs" mb={6} />
-                <Button size="xs" variant="subtle" onClick={finishWizard}>Done</Button>
+                <Button size="xs" variant="subtle" onClick={afterNodes}>{editingPill ? 'Done' : 'Next'}</Button>
               </Stack>
             )}
-            {showWizard && !editingPill && <Text size="xs" c="dimmed" ta="center">Step 3 of 3</Text>}
+            {showWizard && !editingPill && <Text size="xs" c="dimmed" ta="center">Step 3 of 4</Text>}
+          </>
+        )}
+
+        {activeStep === 'atlasBonus' && (
+          <>
+            <Question question="Atlas Bonus complete?"
+              hint={'Completing all 100 Atlas Bonus Objectives grants a flat +25% IIQ (Quantity only).\nStarts off each new league/event — Atlas progress resets to zero.'}
+              onYes={() => answerAtlasBonus(true)} onNo={() => answerAtlasBonus(false)} />
+            {showWizard && !editingPill && <Text size="xs" c="dimmed" ta="center">Step 4 of 4</Text>}
           </>
         )}
 

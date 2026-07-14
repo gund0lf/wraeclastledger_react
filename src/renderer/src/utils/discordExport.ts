@@ -42,6 +42,11 @@ export interface DiscordExportInput {
    *  null/undefined/0 = no claim -> line absent. Flexible input parsing lives
    *  in utils/sessionTime.ts, never here. */
   sessionMinutes?: number | null;
+  /** Strategy-versioning update marker (design v3.1 §2): when set, the export
+   *  gains ONE additive line `Update strategy: <uuid>` directly under the
+   *  header. Legacy-safe — every pre-versioning parser ignores unknown lines.
+   *  null/undefined = normal share, no marker. */
+  updateStrategyId?: string | null;
 }
 
 export function buildDiscordExport(input: DiscordExportInput): string {
@@ -107,8 +112,16 @@ export function buildDiscordExport(input: DiscordExportInput): string {
   // One user-facing definition everywhere (decision 2026-07-02).
   const allInPerMap = n > 0 ? profit.totalInvest / n : profit.perMapBase;
 
+  const updateStrategyId = input.updateStrategyId ?? null;
+
   return [
-    `[WraeclastLedger Session]`, `**Map Session \u2014 WraeclastLedger**`,
+    `[WraeclastLedger Session]`,
+    // Update marker sits ABOVE every other field line on purpose: both the
+    // bot parser and parseDiscordExport extract-and-strip it BEFORE any field
+    // matching (the live TEST-bot finding \u2014 an unanchored Strategy: matcher
+    // must never read the uuid as the strategy name).
+    ...(updateStrategyId ? [`Update strategy: ${updateStrategyId}`] : []),
+    `**Map Session \u2014 WraeclastLedger**`,
     `${E.maps.uni} **Maps:** ${n} | **Type:** ${settings.mapType} | **Multiplier:** ${multiplier.toFixed(2)}\u00D7`,
     chiselLine,
     `${E.stats.uni} **Avg Quant:** ${avgQuant.toFixed(0)}% | **Avg Rarity:** ${avgRarity.toFixed(0)}% | **Avg Pack:** ${avgPack.toFixed(0)}% | **Avg Currency:** ${avgCurr.toFixed(0)}%`,

@@ -2,6 +2,7 @@ import { Card, ActionIcon, Group, Tooltip, CopyButton, Text, Badge, ScrollArea, 
 import { useState, useRef, useEffect } from 'react';
 import { IconRefresh, IconCopy, IconCheck, IconChartBar, IconLink, IconX } from '@tabler/icons-react';
 import { useSessionStore, useSessionKeys } from '../store/useSessionStore';
+import { useUIStore } from '../store/useUIStore';
 import { getManifest } from '../utils/gameData';
 import { atlasVersionOf } from '../utils/strategyCompat';
 import { isCrossLeagueSession } from '../utils/historicalSession';
@@ -85,6 +86,28 @@ export const AtlasTreeModule = () => {
     setKey((k) => k + 1);
     setStatGroups([]);
   }, [atlasTreeUrl]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Force re-apply on Load Build even when the URL is UNCHANGED ────────────
+  // Loading the same strategy twice sets atlasTreeUrl to the same value, so the
+  // effect above (which bails on an unchanged URL) never fires — yet newSession()
+  // has already zeroed the calc config, so the calc would sit empty and the setup
+  // wizard would reappear. StrategyBrowserModule bumps this nonce on every Load
+  // Build; we honour it unconditionally by forcing a webview reload + auto-apply.
+  // This runs AFTER the session-change effect (which sets autoApplyRef=false), so
+  // its autoApplyRef=true wins for the load.
+  const atlasApplyNonce = useUIStore((s) => s.atlasApplyNonce);
+  const prevApplyNonceRef = useRef(atlasApplyNonce);
+  useEffect(() => {
+    if (prevApplyNonceRef.current === atlasApplyNonce) return;
+    prevApplyNonceRef.current = atlasApplyNonce;
+    const url = useSessionStore.getState().settings.atlasTreeUrl;
+    if (!isPathofpathingUrl(url)) return;
+    setSrcUrl(url);
+    setCapturedUrl(url);
+    autoApplyRef.current = true;
+    setKey((k) => k + 1);
+    setStatGroups([]);
+  }, [atlasApplyNonce]);
 
   // ── Attach navigation + finish-load listeners ─────────────────────────────
   useEffect(() => {

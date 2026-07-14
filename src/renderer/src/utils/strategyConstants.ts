@@ -51,6 +51,10 @@ export interface Strategy {
   atlas_points_max?: number | null;
   posted_at: string;
   raw_export?: string | null;
+  // Strategy versioning (server migration 011): revision counter starts at 1;
+  // updated_at is null until the first update. Both public + safe.
+  current_revision?: number | null;
+  updated_at?: string | null;
 }
 
 export interface ApiResponse {
@@ -193,10 +197,9 @@ export const SORT_OPTIONS: { value: SortKey; label: string }[] = [
 
 // ─── Strategy Browser row layout ─────────────────────────────
 // Single source of truth for the column widths shared by the header row
-// (StrategyBrowserModule) and every data row (StrategyCard). Both render a flex
-// Group of these fixed-width cells plus a flexible Profit/map cell; defining the
-// widths here keeps the two sides from drifting out of alignment. GAP and PAD_X
-// are the row's flex gap and horizontal padding, which must match on both sides.
+// (StrategyBrowserModule) and every data row (StrategyCard). Both render the
+// same CSS grid, so cards cannot drift when their content differs. GAP and PAD_X
+// are the grid's column gap and horizontal padding, which must match on both sides.
 
 export const BROWSER_COLS = {
   chevron: 22,
@@ -208,8 +211,17 @@ export const BROWSER_COLS = {
   invest:  110,
   profit:  114,
   score:   36,
-  date:    36,
+  dph:     46,
+  dpm:     74,   // Profit/map — fixed compact rightmost value column (was flex)
 } as const;
 
 export const BROWSER_ROW_GAP = 6;
 export const BROWSER_ROW_PAD_X = 10;
+
+// Header and collapsed cards share this exact grid. The former paired flex
+// layouts drifted whenever content or border geometry differed between them.
+export const BROWSER_GRID_TEMPLATE =
+  `${BROWSER_COLS.chevron}px ${BROWSER_COLS.author}px minmax(${BROWSER_COLS.tags}px, 1fr) ` +
+  `${BROWSER_COLS.mod}px ${BROWSER_COLS.maps}px ${BROWSER_COLS.cost}px ` +
+  `${BROWSER_COLS.invest}px ${BROWSER_COLS.profit}px ${BROWSER_COLS.score}px ` +
+  `${BROWSER_COLS.dph}px ${BROWSER_COLS.dpm}px`;

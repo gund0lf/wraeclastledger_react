@@ -1,16 +1,16 @@
 import {
   Card, Text, Group, Stack, Badge, TextInput, Select, MultiSelect, Button,
-  ActionIcon, Loader, Alert, Tooltip,
+  ActionIcon, Loader, Alert, Tooltip, Modal,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { IconRefresh, IconBrandDiscord, IconShare2, IconCalendar } from '@tabler/icons-react';
+import { IconRefresh, IconBrandDiscord, IconShare2 } from '@tabler/icons-react';
 import { useSessionKeys } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
 import { KNOWN_LEAGUES, activeKnownLeagues } from '../utils/league';
 import { parseDiscordExport } from '../utils/parseDiscordExport';
 import {
-  Strategy, ApiResponse, ALL_TYPE_TAGS, BROWSER_COLS, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X,
+  Strategy, ApiResponse, ALL_TYPE_TAGS, BROWSER_COLS, BROWSER_GRID_TEMPLATE, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X,
   SortKey, SortOrder, SORT_DEFAULT_DIR, SORT_OPTIONS, STRATEGY_API_URL,
 } from '../utils/strategyConstants';
 import { StrategyCard } from '../components/StrategyCard';
@@ -32,6 +32,8 @@ export const StrategyBrowserModule = () => {
     'maps', 'settings', 'discordTag', 'leagueOverride',
     'updateSetting', 'updateAdvSetting', 'updateScarab', 'newSession', 'setLoadedStrategyInfo',
   );
+  // Pulled up here (before handleLoadBuild uses it) via a stable-action selector.
+  const requestAtlasApply = useUIStore((s) => s.requestAtlasApply);
 
   const apiUrl = STRATEGY_API_URL;
   const [strategies, setStrategies] = useState<Strategy[]>([]);
@@ -53,7 +55,6 @@ export const StrategyBrowserModule = () => {
   // header re-click sends ?order=. Changing the sort key always resets this.
   const [sortOrder,  setSortOrder]  = useState<SortOrder | null>(null);
   const [period,     setPeriod]     = useState('all');
-  const [showDate,   setShowDate]   = useState(false);
   const [hideGroup,  setHideGroup]  = useState(false);
   const LIMIT = 20;
 
@@ -136,7 +137,14 @@ export const StrategyBrowserModule = () => {
         updateScarab(i, 'cost', scarab.cost);
       });
     }
-    if (s.atlas_tree_url) updateSetting('atlasTreeUrl', s.atlas_tree_url);
+    if (s.atlas_tree_url) {
+      updateSetting('atlasTreeUrl', s.atlas_tree_url);
+      // Force the Atlas Tree to re-apply the tree to the Atlas Calc even when the
+      // URL is unchanged (loading the SAME strategy twice). newSession() zeroed the
+      // calc config; without this the URL-change effect can't fire on an unchanged
+      // URL, so the calc would stay empty and the setup wizard would reappear.
+      requestAtlasApply();
+    }
     if (s.raw_export) {
       const parsed = parseDiscordExport(s.raw_export);
       if (parsed) {
@@ -174,6 +182,21 @@ export const StrategyBrowserModule = () => {
     setTimeout(() => setLoadedMsg(null), 6000);
   };
 
+  // ── Update strategy (versioning client half, design v3.1 §2) ─────────────────
+  // Button on OWN cards → confirmation (same-setup wording, round-2 point 7) →
+  // setup-only clone into a fresh session (reuses handleLoadBuild: scarabs,
+  // chisel, atlas tree, deli orbs, astrolabe — never maps/loot/baseline) +
+  // the PERSISTED update target. ShareModal picks the target up from settings.
+  const [updateCandidate, setUpdateCandidate] = useState<Strategy | null>(null);
+
+  const confirmUpdateStrategy = (s: Strategy) => {
+    handleLoadBuild(s);
+    updateSetting('updateTargetStrategyId', s.id);
+    updateSetting('updateTargetStrategyName', s.strategy_name || s.discord_username || null);
+    setLoadedMsg(`Update run started for "${s.strategy_name || 'your strategy'}" — setup cloned into a fresh session. Sharing it will UPDATE the published result.`);
+    setUpdateCandidate(null);
+  };
+
   const handleLoadFromImport = (parsed: DiscordImport) => {
     // Apply what we can from a parsed import (no Strategy object — use parsed fields)
     newSession();
@@ -187,7 +210,7 @@ export const StrategyBrowserModule = () => {
         if (parsed.scarabCosts[i] > 0) updateScarab(i, 'cost', parsed.scarabCosts[i]);
       });
     }
-    if (parsed.atlasTreeUrl) updateSetting('atlasTreeUrl', parsed.atlasTreeUrl);
+    if (parsed.atlasTreeUrl) { updateSetting('atlasTreeUrl', parsed.atlasTreeUrl); requestAtlasApply(); }
     if (parsed.deliOrbType)  { updateAdvSetting('advDeliOrbType', parsed.deliOrbType); updateAdvSetting('advDeliOrbQtyPerMap', parsed.deliOrbQty); updateAdvSetting('advDeliOrbPriceEach', parsed.deliOrbPrice); }
     if (parsed.astroType)    { updateAdvSetting('advAstrolabeType', parsed.astroType); updateAdvSetting('advAstrolabeCount', parsed.astroCount); updateAdvSetting('advAstrolabePrice', parsed.astroPrice); }
     if (parsed.runRegex) {
@@ -272,6 +295,29 @@ export const StrategyBrowserModule = () => {
       <ShareModal opened={shareOpen} onClose={closeShare} initialTags={shareTags} />
       <ImportModal opened={importOpen} onClose={closeImport} onLoadBuild={handleLoadFromImport} />
 
+      <Modal opened={updateCandidate !== null} onClose={() => setUpdateCandidate(null)}
+        title={`Update "${updateCandidate?.strategy_name || 'your strategy'}"?`} size="sm">
+        <Stack gap="sm">
+          <Text size="xs">
+            This starts a fresh measurement run: your setup (scarabs, chisel, atlas tree, deli
+            orbs, astrolabe) is cloned into a new empty session. Run it, import a fresh baseline
+            and return, then Share — the export will replace the published result in place.
+            Votes and the original post date are kept.
+          </Text>
+          <Text size="xs" c="dimmed">
+            Use this only for the SAME farming setup. Price changes are expected; changing
+            scarabs, map type, atlas strategy or other core configuration should normally be
+            shared as a new strategy instead.
+          </Text>
+          <Group justify="flex-end" gap="xs">
+            <Button size="xs" variant="default" onClick={() => setUpdateCandidate(null)}>Cancel</Button>
+            <Button size="xs" color="indigo" onClick={() => updateCandidate && confirmUpdateStrategy(updateCandidate)}>
+              Load setup &amp; start update run
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
       <Card shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ display: 'flex', flexDirection: 'column' }}>
         {/* session-16: "Strategy Browser" title dropped (redundant with the
             tab label); the count badge anchors the left. */}
@@ -321,11 +367,14 @@ export const StrategyBrowserModule = () => {
           </Tooltip>
         </Group>
 
-        {/* +3 compensates the rows' always-on 3px marker border slot */}
-        <Group gap={BROWSER_ROW_GAP} mb={3} style={{ flexShrink: 0, paddingLeft: BROWSER_ROW_PAD_X + 3, paddingRight: BROWSER_ROW_PAD_X }}>
+        <div style={{
+          display: 'grid', gridTemplateColumns: BROWSER_GRID_TEMPLATE,
+          columnGap: BROWSER_ROW_GAP, alignItems: 'center', marginBottom: 3,
+          flexShrink: 0, padding: `0 ${BROWSER_ROW_PAD_X}px`,
+        }}>
           <div style={{ width: BROWSER_COLS.chevron, flexShrink: 0 }} />
           <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.author, flexShrink: 0, fontSize: FONT.small }}>Author</Text>
-          <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.tags,   flexShrink: 0, fontSize: FONT.small }}>Tags</Text>
+          <Text size="xs" c="dimmed" style={{ flex: 1, minWidth: 0, fontSize: FONT.small }}>Tags</Text>
           <Tooltip label="Map mod count — 6-mod (alched) or 8-mod (corrupted)" withArrow>
             <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.mod,    flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>Mod</Text>
           </Tooltip>
@@ -346,18 +395,15 @@ export const StrategyBrowserModule = () => {
             <Text size="xs" c="dimmed" onClick={() => handleHeaderSort('score')}
               style={{ width: BROWSER_COLS.score,  flexShrink: 0, fontSize: FONT.small, cursor: 'pointer', userSelect: 'none' }}>Score{sortArrow('score')}</Text>
           </Tooltip>
+          <Tooltip label="Optional author-reported context — click to select it as the sort. It is never the default ranking; div/map stays primary. Strategies without shared time list last." withArrow multiline w={270}>
+            <Text size="xs" c="dimmed" onClick={() => handleHeaderSort('div_per_hour')}
+              style={{ width: BROWSER_COLS.dph, textAlign: 'right', flexShrink: 0, fontSize: FONT.small, cursor: 'pointer', userSelect: 'none' }}>div/h{sortArrow('div_per_hour')}</Text>
+          </Tooltip>
           <Tooltip label="Click to sort by divines per map" withArrow>
             <Text size="xs" c="dimmed" onClick={() => handleHeaderSort('div_per_map')}
-              style={{ flex: 1, textAlign: 'right', fontSize: FONT.small, cursor: 'pointer', userSelect: 'none' }}>Profit/map{sortArrow('div_per_map')}</Text>
+              style={{ width: BROWSER_COLS.dpm, textAlign: 'right', flexShrink: 0, fontSize: FONT.small, cursor: 'pointer', userSelect: 'none' }}>Profit/map{sortArrow('div_per_map')}</Text>
           </Tooltip>
-          <Tooltip label={showDate ? 'Hide date column' : 'Show date column'} withArrow>
-            <ActionIcon size="xs" variant={showDate ? 'light' : 'subtle'} color="gray"
-              style={{ width: BROWSER_COLS.date, flexShrink: 0 }}
-              onClick={() => setShowDate((v) => !v)}>
-              <IconCalendar size={11} />
-            </ActionIcon>
-          </Tooltip>
-        </Group>
+        </div>
 
         {loadedMsg && <Alert color="teal" variant="light" p="xs" mb={6} style={{ flexShrink: 0 }}><Text size="xs">{loadedMsg}</Text></Alert>}
         {error     && <Alert color="red"  variant="light" p="xs" mb={6} style={{ flexShrink: 0 }}><Text size="xs">{error}</Text></Alert>}
@@ -376,7 +422,7 @@ export const StrategyBrowserModule = () => {
                 const grp = s.is_group_play || (s.raw_export ? /Party Play:\s*Yes/i.test(s.raw_export) : false);
                 return !grp;
               })
-              .map((s) => <StrategyCard key={s.id} strategy={s} onLoadBuild={handleLoadBuild} showDate={showDate} discordTag={discordTag} />)}
+              .map((s) => <StrategyCard key={s.id} strategy={s} onLoadBuild={handleLoadBuild} onUpdateStrategy={setUpdateCandidate} discordTag={discordTag} />)}
           </Stack>
           {hasMore && !loading && (
             <Button variant="subtle" size="xs" fullWidth mt={8} onClick={() => fetchStrategies(offset + LIMIT)}>

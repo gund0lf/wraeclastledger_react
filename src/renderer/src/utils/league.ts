@@ -150,6 +150,21 @@ export function currentLeagueSync(): string | null {
   return leagueOverride ?? cachedContext?.leagueName ?? null;
 }
 
+/**
+ * SYNCHRONOUS "confirmed" current league: a user override (always real) or a
+ * DETECTED league, else null. Unlike currentLeagueSync(), this returns null when
+ * the only thing we have is the offline FALLBACK — because the fallback can be
+ * stale around a league rollover, and seeding league-scoped state (e.g. Atlas
+ * Bonus) from a guessed league would reintroduce the exact rollover bug. Callers
+ * that must not act under a guessed league use this; null = "wait for real
+ * detection / an explicit override".
+ */
+export function confirmedLeagueSync(): string | null {
+  if (leagueOverride) return leagueOverride;
+  if (cachedContext && cachedContext.source !== 'fallback') return cachedContext.leagueName;
+  return null;
+}
+
 export function clearLeagueCache(): void {
   cachedContext = null;
   cachedFetchPromise = null;

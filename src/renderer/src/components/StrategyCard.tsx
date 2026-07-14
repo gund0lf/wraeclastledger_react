@@ -2,13 +2,14 @@ import {
   Text, Group, Stack, Badge, ActionIcon, Tooltip, Button,
   Collapse, SimpleGrid,
 } from '@mantine/core';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useLayoutEffect } from 'react';
 import {
   IconChevronDown, IconChevronRight,
   IconThumbUp, IconThumbDown, IconExternalLink, IconUsers, IconAlertTriangle,
 } from '@tabler/icons-react';
-import { Strategy, TAG_COLORS, MAP_TYPE_TAGS, MAP_TYPE_LABELS, TAG_SHORT, BROWSER_COLS, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X } from '../utils/strategyConstants';
+import { Strategy, TAG_COLORS, MAP_TYPE_TAGS, MAP_TYPE_LABELS, TAG_SHORT, BROWSER_COLS, BROWSER_GRID_TEMPLATE, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X } from '../utils/strategyConstants';
 import { formatActiveTime } from '../utils/timeEstimate';
+import { computeVisibleTagCount } from '../utils/tagFit';
 import { checkStrategyCompat } from '../utils/strategyCompat';
 import { fc, fcSep, f1, parseDiscordExport } from '../utils/parseDiscordExport';
 import { chiselItemName, deliOrbItemName } from '../utils/itemIcons';
@@ -24,45 +25,111 @@ export { CopyRegex } from './ui/RegexLine'; // moved to ui/RegexLine (WP6.4); re
 
 // ─── TagStrip ─────────────────────────────────────────────────────────────────
 
-export const TagStrip = ({ tagStr, maxVisible = 3 }: { tagStr?: string | null; maxVisible?: number }) => {
-  if (!tagStr) return null;
-  const tags = tagStr.split(',').map((t) => t.trim()).filter(Boolean);
+const TAG_GAP = 2;
+const TAG_FIT_SAFETY = 4; // covers sub-pixel rounding and a newly visible scrollbar
+
+const renderTagBadge = (t: string) => (
+  MAP_TYPE_TAGS.has(t) ? (
+    <Tooltip key={t} label={MAP_TYPE_LABELS[t] ?? t} withArrow>
+      <Badge size="xs" color={TAG_COLORS[t] ?? 'gray'} variant="light"
+        style={{ fontSize: FONT.tiny, padding: '0 3px', flexShrink: 0, cursor: 'help' }}>
+        {TAG_SHORT[t] ?? t}
+      </Badge>
+    </Tooltip>
+  ) : (
+    <Badge key={t} size="xs" color={TAG_COLORS[t] ?? 'gray'} variant="light"
+      style={{ fontSize: FONT.tiny, padding: '0 3px', flexShrink: 0 }}>
+      {TAG_SHORT[t] ?? t}
+    </Badge>
+  )
+);
+
+// Shows as many tag badges as CLEANLY fit the column width, collapsing the rest
+// into a "+N" badge. A hidden measurement layer (all badges + a sample "+N")
+// gives real px widths; a ResizeObserver recomputes on width changes. The fit
+// math is the pure computeVisibleTagCount (tagFit.ts, tested).
+export const TagStrip = ({ tagStr, layoutKey }: { tagStr?: string | null; layoutKey?: boolean }) => {
+  const tags = useMemo(
+    () => (tagStr ?? '').split(',').map((t) => t.trim()).filter(Boolean),
+    [tagStr],
+  );
+  const wrapRef    = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
+  // Safe until proven otherwise: an unmeasured/hidden panel shows only +N.
+  const [visible, setVisible] = useState(0);
+
+  useLayoutEffect(() => {
+    const wrap = wrapRef.current;
+    const meas = measureRef.current;
+    if (!wrap || !meas) return undefined;
+    const recompute = () => {
+      const badges = Array.from(meas.querySelectorAll('[data-tag-badge]')) as HTMLElement[];
+      const widths = badges.map((b) => Math.ceil(b.getBoundingClientRect().width));
+      const plusEl = meas.querySelector('[data-tag-more]') as HTMLElement | null;
+      const plusW  = plusEl ? Math.ceil(plusEl.getBoundingClientRect().width) : 22;
+      const avail  = Math.max(0, Math.floor(wrap.getBoundingClientRect().width) - TAG_FIT_SAFETY);
+      // Fonts and hidden FlexLayout tabs can report zero on an early pass.
+      // Keep the safe +N fallback and let the frame/observer retry.
+      if (badges.length !== tags.length || widths.some((w) => w <= 0) || plusW <= 0) {
+        setVisible(0);
+        return;
+      }
+      setVisible(computeVisibleTagCount(widths, avail, TAG_GAP, plusW));
+    };
+    recompute();
+    // FlexLayout visibility, fonts, and a new scrollbar can settle across two
+    // frames. ResizeObserver handles later moves/fullscreen/panel resizing.
+    let frame2 = 0;
+    const frame1 = requestAnimationFrame(() => {
+      recompute();
+      frame2 = requestAnimationFrame(recompute);
+    });
+    const ro = new ResizeObserver(recompute);
+    ro.observe(wrap);
+    return () => {
+      cancelAnimationFrame(frame1);
+      if (frame2) cancelAnimationFrame(frame2);
+      ro.disconnect();
+    };
+  }, [tags, layoutKey]);
+
   if (tags.length === 0) return null;
-  const visible = tags.slice(0, maxVisible);
-  const hidden  = tags.slice(maxVisible);
+  const hiddenCount = Math.max(0, tags.length - visible);
+
   return (
-    <Group gap={2} wrap="nowrap" style={{ overflow: 'hidden' }}>
-      {visible.map((t) => (
-        MAP_TYPE_TAGS.has(t) ? (
-          <Tooltip key={t} label={MAP_TYPE_LABELS[t] ?? t} withArrow>
-            <Badge size="xs" color={TAG_COLORS[t] ?? 'gray'} variant="light"
-              style={{ fontSize: FONT.tiny, padding: '0 3px', flexShrink: 0, cursor: 'help' }}>
-              {TAG_SHORT[t] ?? t}
+    <div ref={wrapRef} style={{ position: 'relative', width: '100%', overflow: 'hidden' }}>
+      {/* hidden measurement layer — never affects layout, always holds ALL badges */}
+      <div ref={measureRef} aria-hidden style={{ position: 'absolute', top: 0, left: 0, width: 'max-content', visibility: 'hidden', pointerEvents: 'none', display: 'flex', gap: TAG_GAP, whiteSpace: 'nowrap' }}>
+        {tags.map((t, i) => <span data-tag-badge key={i} style={{ display: 'inline-flex', flex: '0 0 auto' }}>{renderTagBadge(t)}</span>)}
+        <span data-tag-more style={{ display: 'inline-flex', flex: '0 0 auto' }}>
+          <Badge size="xs" color="gray" variant="outline" style={{ fontSize: FONT.tiny, padding: '0 3px' }}>+{tags.length}</Badge>
+        </span>
+      </div>
+      {/* visible layer */}
+      <div style={{ display: 'flex', gap: TAG_GAP, overflow: 'hidden', whiteSpace: 'nowrap' }}>
+        {tags.slice(0, visible).map((t) => renderTagBadge(t))}
+        {hiddenCount > 0 && (
+          <Tooltip label={tags.slice(visible).join(', ')} withArrow>
+            <Badge size="xs" color="gray" variant="outline"
+              style={{ fontSize: FONT.tiny, padding: '0 3px', flexShrink: 0, cursor: 'default' }}>
+              +{hiddenCount}
             </Badge>
           </Tooltip>
-        ) : (
-          <Badge key={t} size="xs" color={TAG_COLORS[t] ?? 'gray'} variant="light"
-            style={{ fontSize: FONT.tiny, padding: '0 3px', flexShrink: 0 }}>
-            {TAG_SHORT[t] ?? t}
-          </Badge>
-        )
-      ))}
-      {hidden.length > 0 && (
-        <Tooltip label={hidden.join(', ')} withArrow>
-          <Badge size="xs" color="gray" variant="outline"
-            style={{ fontSize: FONT.tiny, padding: '0 3px', flexShrink: 0, cursor: 'default' }}>
-            +{hidden.length}
-          </Badge>
-        </Tooltip>
-      )}
-    </Group>
+        )}
+      </div>
+    </div>
   );
 };
 
 // ─── StrategyCard ─────────────────────────────────────────────────────────────
 
-export const StrategyCard = ({ strategy, onLoadBuild, showDate, discordTag }: {
-  strategy: Strategy; onLoadBuild: (s: Strategy) => void; showDate: boolean; discordTag?: string;
+export const StrategyCard = ({ strategy, onLoadBuild, onUpdateStrategy, discordTag }: {
+  strategy: Strategy; onLoadBuild: (s: Strategy) => void;
+  /** Versioning client half: present = show "Update strategy" on OWN cards
+   *  (own-detection via discordTag is display heuristic only — the server
+   *  enforces real ownership by discord_user_id and rejects loudly). */
+  onUpdateStrategy?: (s: Strategy) => void;
+  discordTag?: string;
 }) => {
   const [open, setOpen] = useState(false);
   // Author's atlas multiplier at share time (from the export). Only parsed
@@ -74,7 +141,15 @@ export const StrategyCard = ({ strategy, onLoadBuild, showDate, discordTag }: {
     return m && m > 0 ? m : null;
   }, [open, strategy.raw_export]);
   const isOwn = !!(discordTag?.trim() && strategy.discord_username?.toLowerCase() === discordTag.trim().toLowerCase());
-  const date = (() => { try { return new Date(strategy.posted_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }); } catch { return '—'; } })();
+  const publishedDate = (() => { try { return new Date(strategy.posted_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }); } catch { return '—'; } })();
+  // Versioning display: vN badge only when the strategy has actually been
+  // updated (revision 1 = original post, no badge). updated_at may be null on
+  // pre-versioning rows even if revision were >1 — render defensively.
+  const revision = strategy.current_revision ?? 1;
+  const updatedDate = (() => {
+    if (!strategy.updated_at) return null;
+    try { return new Date(strategy.updated_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' }); } catch { return null; }
+  })();
   const div = strategy.div_per_map ??
     (strategy.net_profit != null && strategy.divine_price != null && strategy.divine_price > 0 && strategy.map_count != null && strategy.map_count > 0
       ? strategy.net_profit / strategy.divine_price / strategy.map_count
@@ -90,6 +165,12 @@ export const StrategyCard = ({ strategy, onLoadBuild, showDate, discordTag }: {
   const score       = strategy.score ?? 0;
   const scoreColor  = score > 0 ? COLOR.profit : score < 0 ? COLOR.loss : COLOR.dim;
   const profitColor = strategy.net_profit != null ? (strategy.net_profit >= 0 ? COLOR.profit : COLOR.loss) : COLOR.dim;
+  // Author-declared div/hour: total session divines over reported active time.
+  // Null unless the author shared session_minutes — never penalised, never a
+  // default/primary ranking (div/map stays primary); the Browser column shows '—' when null.
+  const divPerHour = strategy.session_minutes && div != null && strategy.map_count
+    ? (div * strategy.map_count) / (strategy.session_minutes / 60)
+    : null;
 
   const isGroup = strategy.is_group_play ||
     (strategy.raw_export ? /Party Play:\s*Yes/i.test(strategy.raw_export) : false);
@@ -103,24 +184,32 @@ export const StrategyCard = ({ strategy, onLoadBuild, showDate, discordTag }: {
   return (
     <div style={{
       background: isOwn ? 'rgba(74,158,255,0.03)' : score <= -3 ? 'rgba(255,107,107,0.04)' : 'rgba(255,255,255,0.025)',
-      border: `1px solid ${score <= -3 ? 'rgba(255,107,107,0.2)' : 'rgba(255,255,255,0.07)'}`,
-      borderRadius: 8, overflow: 'hidden',
-      // Fixed-width marker slot: ALWAYS 3px so rows align whether or not the
-      // own-strategy marker is showing (density-pass rider, 2026-07-08).
-      borderLeft: isOwn ? '3px solid rgba(74,158,255,0.55)' : '3px solid transparent',
+      boxShadow: `inset 0 0 0 1px ${score <= -3 ? 'rgba(255,107,107,0.2)' : 'rgba(255,255,255,0.07)'}`,
+      borderRadius: 8, overflow: 'hidden', position: 'relative',
     }}>
-      <Group gap={BROWSER_ROW_GAP} wrap="nowrap" onClick={() => setOpen((o) => !o)}
-        style={{ cursor: 'pointer', padding: `7px ${BROWSER_ROW_PAD_X}px`, userSelect: 'none' }}>
-        <ActionIcon size={BROWSER_COLS.chevron} variant="transparent" c="dimmed" style={{ flexShrink: 0 }}>
+      {isOwn && <div aria-hidden style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 3, background: 'rgba(74,158,255,0.55)' }} />}
+      <div onClick={() => setOpen((o) => !o)} style={{
+        display: 'grid', gridTemplateColumns: BROWSER_GRID_TEMPLATE,
+        columnGap: BROWSER_ROW_GAP, alignItems: 'center', cursor: 'pointer',
+        padding: `7px ${BROWSER_ROW_PAD_X}px`, userSelect: 'none',
+      }}>
+        <ActionIcon size={BROWSER_COLS.chevron} variant="transparent" c="dimmed">
           {open ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
         </ActionIcon>
-        <Stack gap={0} style={{ width: BROWSER_COLS.author, flexShrink: 0, paddingLeft: 4 }}>
+        <Stack gap={0} style={{ width: BROWSER_COLS.author, minWidth: 0 }}>
           <Group gap={3} wrap="nowrap">
-            <Text size="xs" fw={600} lineClamp={1}>{strategy.discord_username}</Text>
+            <Text size="xs" fw={600} lineClamp={1} title={strategy.discord_username}>{strategy.discord_username}</Text>
             {isGroup && (
               <Tooltip label={`Group / Party play${strategy.group_size ? ` — ${strategy.group_size} players` : ''} — loot scales with more players`} withArrow>
                 <Badge size="xs" color="cyan" variant="light" style={{ fontSize: FONT.micro, padding: '0 3px', flexShrink: 0, cursor: 'help' }}>
                   <IconUsers size={8} style={{ display: 'block' }} />
+                </Badge>
+              </Tooltip>
+            )}
+            {revision > 1 && (
+              <Tooltip label={`Updated result — revision ${revision}${updatedDate ? `, last updated ${updatedDate}` : ''}. Votes carry across updates.`} withArrow multiline w={220}>
+                <Badge size="xs" color="indigo" variant="light" style={{ fontSize: FONT.micro, padding: '0 3px', flexShrink: 0, cursor: 'help' }}>
+                  v{revision}
                 </Badge>
               </Tooltip>
             )}
@@ -136,8 +225,8 @@ export const StrategyCard = ({ strategy, onLoadBuild, showDate, discordTag }: {
             <Text size="xs" c="dimmed" lineClamp={1} style={{ fontSize: FONT.label }}>{strategy.strategy_name}</Text>
           )}
         </Stack>
-        <div style={{ width: BROWSER_COLS.tags, flexShrink: 0, overflow: 'hidden' }}>
-          <TagStrip tagStr={strategy.type_tag} maxVisible={3} />
+        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          <TagStrip tagStr={strategy.type_tag} layoutKey={open} />
         </div>
         <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.mod, flexShrink: 0, fontSize: FONT.small }}>{strategy.map_type ?? '?'}</Text>
         <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.maps, flexShrink: 0 }}>{strategy.map_count != null ? strategy.map_count : '—'}</Text>
@@ -160,18 +249,26 @@ export const StrategyCard = ({ strategy, onLoadBuild, showDate, discordTag }: {
           {score >= 0 ? <IconThumbUp size={10} style={{ color: scoreColor }} /> : <IconThumbDown size={10} style={{ color: scoreColor }} />}
           <Text size="xs" style={{ color: scoreColor, fontVariantNumeric: 'tabular-nums' }}>{score > 0 ? `+${score}` : score}</Text>
         </Group>
-        <Text size="sm" fw={800} style={{ flex: 1, textAlign: 'right', color: divColor, fontVariantNumeric: 'tabular-nums' }}>
+        <Tooltip label={divPerHour != null ? 'Optional author-reported context — selectable as a sort, but never the default ranking; div/map stays primary' : 'No session time shared — div/h unavailable'} withArrow multiline w={250}>
+          <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.dph, textAlign: 'right', flexShrink: 0, fontVariantNumeric: 'tabular-nums', cursor: 'help' }}>
+            {divPerHour != null ? `${divPerHour.toFixed(1)}` : '—'}
+          </Text>
+        </Tooltip>
+        <Text size="sm" fw={800} style={{ width: BROWSER_COLS.dpm, flexShrink: 0, textAlign: 'right', color: divColor, fontVariantNumeric: 'tabular-nums' }}>
           {div != null ? `${div.toFixed(3)}d` : '—'}
         </Text>
-        {showDate && (
-          <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.date, textAlign: 'right', flexShrink: 0, paddingLeft: 4 }}>{date}</Text>
-        )}
-      </Group>
+      </div>
 
       <Collapse in={open}>
         <div style={{ padding: '8px 12px 12px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
           {/* session-16: boxed StatTiles — same treatment as the Dashboard's
               Map Multipliers grid (the free-floating look was the complaint) */}
+          {strategy.strategy_name && (
+            <Group gap={4} mb={8} wrap="wrap">
+              <SectionLabel>Strategy</SectionLabel>
+              <Text size="xs" fw={600} style={{ overflowWrap: 'anywhere' }}>{strategy.strategy_name}</Text>
+            </Group>
+          )}
           <SimpleGrid cols={3} spacing={5} mb={10}>
             {strategy.avg_quant    != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Quantity" value={`${f1(strategy.avg_quant)}%`} color={COLOR.accent} />}
             {strategy.avg_rarity   != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Rarity" value={`${f1(strategy.avg_rarity)}%`} color={COLOR.accent} />}
@@ -189,13 +286,14 @@ export const StrategyCard = ({ strategy, onLoadBuild, showDate, discordTag }: {
             {strategy.net_profit   != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Net Profit" value={`${fcSep(strategy.net_profit, true)}${strategy.divine_price ? ` (${strategy.net_profit >= 0 ? '+' : ''}${(strategy.net_profit / strategy.divine_price).toFixed(1)}d)` : ''}`} color={strategy.net_profit >= 0 ? COLOR.profit : COLOR.loss} />}
           </SimpleGrid>
 
-          {(strategy.divine_price != null || strategy.total_invest != null) && (
-            <Group gap="md" mb={8}>
-              {strategy.divine_price != null && <Group gap={4}><SectionLabel>Divine at time</SectionLabel><Text size="xs" c="dimmed">{strategy.divine_price.toFixed(0)}c</Text></Group>}
-              {strategy.total_invest != null && <Group gap={4}><SectionLabel>Total invest</SectionLabel><Text size="xs" c="dimmed">{fcSep(strategy.total_invest)}{strategy.divine_price ? ` (${(strategy.total_invest / strategy.divine_price).toFixed(1)}d)` : ''}</Text></Group>}
-            </Group>
-          )}
-
+          <Group gap="md" mb={8} wrap="wrap">
+            <Group gap={4}><SectionLabel>Published</SectionLabel><Text size="xs" c="dimmed">{publishedDate}</Text></Group>
+            {revision > 1 && updatedDate && (
+              <Group gap={4}><SectionLabel>Last updated</SectionLabel><Text size="xs" c="dimmed">{updatedDate}</Text></Group>
+            )}
+            {strategy.divine_price != null && <Group gap={4}><SectionLabel>Divine at time</SectionLabel><Text size="xs" c="dimmed">{strategy.divine_price.toFixed(0)}c</Text></Group>}
+            {strategy.total_invest != null && <Group gap={4}><SectionLabel>Total invest</SectionLabel><Text size="xs" c="dimmed">{fcSep(strategy.total_invest)}{strategy.divine_price ? ` (${(strategy.total_invest / strategy.divine_price).toFixed(1)}d)` : ''}</Text></Group>}
+          </Group>
           {(() => {
             // Optional author-declared session context (shared-metadata batch
             // 2026-07): time (+ derived div/h) and atlas points. Absent fields
@@ -204,13 +302,11 @@ export const StrategyCard = ({ strategy, onLoadBuild, showDate, discordTag }: {
             const pts  = strategy.atlas_points;
             const ptsMax = strategy.atlas_points_max;
             if (!mins && pts == null) return null;
-            const divPerHour = mins && div != null && strategy.map_count
-              ? (div * strategy.map_count) / (mins / 60)
-              : null;
+            // divPerHour is hoisted to the component top (shared with the row cell).
             return (
               <Group gap="md" mb={6} wrap="wrap">
                 {mins ? (
-                  <Tooltip label="Self-reported by the author — optional context, never a ranking input (div/map stays the primary metric)" withArrow multiline w={230}>
+                  <Tooltip label="Optional author-reported context — selectable as a sort, but never the default ranking; div/map stays primary" withArrow multiline w={250}>
                     <Group gap={4} wrap="nowrap" style={{ cursor: 'help' }}>
                       <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>Time</Text>
                       <Text size="xs">{formatActiveTime(mins * 60_000)}{divPerHour != null ? ` · ${divPerHour.toFixed(2)} div/h` : ''}</Text>
@@ -368,6 +464,14 @@ export const StrategyCard = ({ strategy, onLoadBuild, showDate, discordTag }: {
                 <Button size="xs" variant="default" rightSection={<IconExternalLink size={11} />}
                   onClick={(e) => { e.stopPropagation(); window.open(strategy.atlas_tree_url!, '_blank'); }}>
                   Atlas Tree
+                </Button>
+              </Tooltip>
+            )}
+            {isOwn && onUpdateStrategy && (
+              <Tooltip label="Start a fresh measurement run for THIS strategy — clones the setup into a new session; sharing it will replace the published result (votes kept)" withArrow multiline w={260}>
+                <Button size="xs" variant="light" color="indigo"
+                  onClick={(e) => { e.stopPropagation(); onUpdateStrategy(strategy); }}>
+                  Update strategy
                 </Button>
               </Tooltip>
             )}

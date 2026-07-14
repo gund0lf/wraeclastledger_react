@@ -4,10 +4,10 @@ import { persist, type PersistStorage } from 'zustand/middleware';
 import { MapData, SessionSettings, LootItem, SavedSession, ScarabSlot, ScarabPreset, RegexSet, ExclusionPreset } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { tryFetchDivinePrice, sanitizeExclusionTerms } from '../utils/priceUtils';
-import { getCurrentLeague, setLeagueOverrideValue } from '../utils/league';
+import { getCurrentLeague, setLeagueOverrideValue, confirmedLeagueSync } from '../utils/league';
 import { ModGroupState, cloneDefaultGroups } from '../utils/regexBuilderPresets';
 
-const STORE_VERSION = 16;
+const STORE_VERSION = 17;
 
 // WP4.2: divine price older than this is refreshed on the next init.
 const DIVINE_PRICE_STALE_MS = 30 * 60_000;
@@ -20,7 +20,7 @@ export const DEFAULT_SETTINGS: SessionSettings = {
   fragmentsUsed: 0, smallNodesAllocated: 0, mountingModifiers: false,
   baseMapCost: 0,
   scarabs: Array(5).fill(null).map(() => ({ name: '', cost: 0 })),
-  atlasBonus: false,  // Atlas Bonus: flat +25% IIQ. Defaults OFF — only earned once all 100 atlas bonus objectives are complete; resets to 0 each league/event.
+  atlasBonus: false,  // Atlas Bonus session snapshot. Seeded per-league from atlasBonusByLeague on a new live session; per-league progress is top-level, not here.
   leagueName: '',      // auto-populated on startup via poe.ninja
   atlasDetectedTags: [],
   advChaos: 0,
@@ -34,6 +34,8 @@ export const DEFAULT_SETTINGS: SessionSettings = {
   regexExclusions: [],
   atlasTreeUrl: 'https://pathofpathing.com',
   atlasPoints: null, atlasPointsMax: null, // captured by AtlasTreeModule; null = no tree read yet
+  // Versioning client half: null = normal session; uuid = update run (see types/index.ts)
+  updateTargetStrategyId: null, updateTargetStrategyName: null,
 };
 
 // v16: user-scoped fields lifted OUT of SessionSettings so loadSession can
@@ -142,6 +144,22 @@ function migrateState(persisted: any): any {
   // the last Advanced Costs edit; the live value comes from computeRollingSessionTotal.
   delete merged['rollingCostPerMap'];
 
+  // v16→v17: Atlas Bonus becomes per-league (top-level atlasBonusByLeague).
+  // One-time seed: carry the legacy boolean into the map ONLY from a genuinely
+  // LIVE unsaved session (activeSessionId null) and only when it was ON and its
+  // league is known — a stale historical session that happened to be open must
+  // NOT define the current league's progress, and legacy OFF stays absent so the
+  // one-time prompt can still appear. Saved sessions are never rewritten.
+  if (persisted?.atlasBonusByLeague === undefined) {
+    const seeded: Record<string, boolean> = {};
+    const liveUnsaved = persisted?.activeSessionId == null;
+    const legacyLeague = typeof merged['leagueName'] === 'string' ? merged['leagueName'] : '';
+    if (liveUnsaved && merged['atlasBonus'] === true && legacyLeague) {
+      seeded[legacyLeague] = true;
+    }
+    persisted.atlasBonusByLeague = seeded;
+  }
+
   // Sanitize regexExclusions — remove any corrupted entries that contain full regex fragments
   if (Array.isArray(merged['regexExclusions'])) {
     merged['regexExclusions'] = sanitizeExclusionTerms(merged['regexExclusions']);
@@ -197,6 +215,27 @@ interface SessionState {
   // top-level + additive (persist shallow-merge defaults it to null — no migration).
   // Mirrored into utils/league.ts module state (seeded below + on every set).
   leagueOverride: string | null;
+  // Atlas Bonus per-league progress (user-scoped, top-level so it never rewrites
+  // saved-session history). Key = league name. Absent = not handled this league
+  // (prompt-eligible); true = enabled; false = deliberately off/dismissed. A new
+  // LIVE session seeds settings.atlasBonus from the ACTIVE league's value (?? false);
+  // loaded historical sessions keep their own snapshot untouched. Additive
+  // top-level; a one-time v17 migration seeds a legacy live-session value.
+  atlasBonusByLeague: Record<string, boolean>;
+  // Transient: a new live session was created before the active league was known,
+  // so its Atlas Bonus still needs seeding once detection resolves — but only if
+  // the user hasn't already made a choice (which clears this). Never seeds under
+  // an unknown/fallback league.
+  pendingAtlasBonusSeed: boolean;
+  // Transient: the user set Atlas Bonus BEFORE the active league was confirmed.
+  // null = no such pending choice. On confirmation, this value is written to the
+  // resolved league's map (so a pre-confirmation choice is retained, not lost to
+  // the live session only). Mutually exclusive with pendingAtlasBonusSeed.
+  pendingAtlasBonusValue: boolean | null;
+  // Set the Atlas Bonus for the CURRENT session; for a live session it also
+  // records the choice under the active league (when known) and clears any
+  // pending seed. Historical sessions only change their own snapshot.
+  setAtlasBonus: (value: boolean) => void;
   // WP8: Regex Builder workspace — user-scoped preference, survives
   // loadSession/newSession (not in SessionSettings, not a session snapshot).
   // Additive top-level + no partialize => persist's shallow merge defaults it
@@ -292,6 +331,9 @@ export const useSessionStore = create<SessionState>()(
       settings: { ...DEFAULT_SETTINGS },
       discordTag: DEFAULT_DISCORD_TAG, regexSets: [...DEFAULT_REGEX_SETS],
       leagueOverride: null,
+      atlasBonusByLeague: {},
+      pendingAtlasBonusSeed: false,
+      pendingAtlasBonusValue: null,
       regexBuilderGroups: cloneDefaultGroups(),
       isWatching: false, savedSessions: {},
       activeSessionId: null, activeSessionName: null, scarabPresets: [], sessionNonce: 0,
@@ -377,19 +419,41 @@ export const useSessionStore = create<SessionState>()(
           getCurrentLeague(),
           tryFetchDivinePrice(opts.force === true),
         ]);
-        set((s) => ({
-          // Timestamp advances only on a successful price fetch, so failures
-          // stay "stale" and the next init retries (bounded by the 60s cooldown
-          // in tryFetchDivinePrice).
-          ...(price && price > 0 ? { divinePriceFetchedAt: Date.now() } : {}),
-          settings: {
-            ...s.settings,
-            ...(price && price > 0 ? { divinePrice: Math.round(price) } : {}),
-            // League is session PROVENANCE: only a live (unsaved) session is
-            // ever stamped by a fetch. A loaded session keeps its league.
-            ...(!loaded && league ? { leagueName: league } : {}),
-          },
-        }));
+        set((s) => {
+          const priceOk = !!(price && price > 0);
+          const stillLive = s.activeSessionId === null;
+          const stampLeague = stillLive && !!league;
+          // On confirmation of a live session's league (CONFIRMED only — never the
+          // offline fallback, which can be stale at rollover):
+          //  - if the user made a choice BEFORE confirmation, persist it to the
+          //    resolved league's map (retain the choice);
+          //  - else if still awaiting a seed, seed the session's Atlas Bonus from
+          //    the resolved league's stored value.
+          const realLeague = confirmedLeagueSync();
+          const canResolve = stillLive && realLeague !== null;
+          const pendingVal = s.pendingAtlasBonusValue;
+          const writeChoice = canResolve && pendingVal !== null;
+          const doSeed = canResolve && pendingVal === null && s.pendingAtlasBonusSeed;
+          return {
+            // Timestamp advances only on a successful price fetch, so failures
+            // stay "stale" and the next init retries (bounded by the 60s cooldown
+            // in tryFetchDivinePrice).
+            ...(priceOk ? { divinePriceFetchedAt: Date.now() } : {}),
+            ...(writeChoice || doSeed ? { pendingAtlasBonusSeed: false } : {}),
+            ...(writeChoice ? { pendingAtlasBonusValue: null } : {}),
+            ...(writeChoice && realLeague && pendingVal !== null
+              ? { atlasBonusByLeague: { ...s.atlasBonusByLeague, [realLeague]: pendingVal } }
+              : {}),
+            settings: {
+              ...s.settings,
+              ...(price && price > 0 ? { divinePrice: Math.round(price) } : {}),
+              // League is session PROVENANCE: only a live (unsaved) session is
+              // ever stamped by a fetch. A loaded session keeps its league.
+              ...(stampLeague ? { leagueName: league } : {}),
+              ...(doSeed && realLeague ? { atlasBonus: s.atlasBonusByLeague[realLeague] ?? false } : {}),
+            },
+          };
+        });
       },
 
       setDivinePriceManual: (v) =>
@@ -442,7 +506,9 @@ export const useSessionStore = create<SessionState>()(
             } : {}),
           } as MapData;
         });
-        set({ maps, lootItems: [...session.lootItems], baselineItems: [...(session.baselineItems ?? [])], baselineTotal: session.baselineTotal ?? 0, settings: { ...DEFAULT_SETTINGS, ...session.settings }, sessionNotes: session.notes ?? '', investmentNeutralization: session.investmentNeutralization ?? 0, investmentDismissed: session.investmentDismissed ?? false, activeSessionId: id, activeSessionName: session.name, isWatching: false });
+        // A loaded historical session keeps its OWN atlasBonus snapshot; no
+        // per-league seeding applies, so clear any pending seed / held choice.
+        set({ maps, lootItems: [...session.lootItems], baselineItems: [...(session.baselineItems ?? [])], baselineTotal: session.baselineTotal ?? 0, settings: { ...DEFAULT_SETTINGS, ...session.settings }, sessionNotes: session.notes ?? '', investmentNeutralization: session.investmentNeutralization ?? 0, investmentDismissed: session.investmentDismissed ?? false, activeSessionId: id, activeSessionName: session.name, isWatching: false, pendingAtlasBonusSeed: false, pendingAtlasBonusValue: null });
       },
       deleteSession: (id) =>
         set((s) => { const { [id]: _, ...rest } = s.savedSessions; return { savedSessions: rest, activeSessionId: s.activeSessionId === id ? null : s.activeSessionId, activeSessionName: s.activeSessionId === id ? null : s.activeSessionName }; }),
@@ -450,7 +516,16 @@ export const useSessionStore = create<SessionState>()(
         set((s) => ({ savedSessions: { ...s.savedSessions, [id]: { ...s.savedSessions[id], name: newName } }, activeSessionName: s.activeSessionId === id ? newName : s.activeSessionName })),
       newSession: () => {
         flushActiveSessionAutoSave();
-        set((s) => ({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, settings: { ...DEFAULT_SETTINGS }, activeSessionId: null, activeSessionName: null, isWatching: false, loadedStrategyInfo: null, sessionNonce: s.sessionNonce + 1 }));
+        // Atlas Bonus is league-scoped progress (per-league, not per-session).
+        // Seed the new live session from the ACTIVE league's stored value — but
+        // ONLY if the league is CONFIRMED right now (confirmedLeagueSync() returns
+        // override/detected, never the offline fallback; null when unknown). If
+        // unknown (detection not yet resolved), start OFF and mark
+        // a pending seed so initDivinePrice can seed it once the league resolves.
+        // Never seed/prompt under a guessed league (that reintroduces the rollover bug).
+        const known = confirmedLeagueSync();
+        const seededBonus = known ? (get().atlasBonusByLeague[known] ?? false) : false;
+        set((s) => ({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, settings: { ...DEFAULT_SETTINGS, atlasBonus: seededBonus }, pendingAtlasBonusSeed: known === null, pendingAtlasBonusValue: null, activeSessionId: null, activeSessionName: null, isWatching: false, loadedStrategyInfo: null, sessionNonce: s.sessionNonce + 1 }));
       },
 
       saveScarabPreset: (name) => {
@@ -476,12 +551,47 @@ export const useSessionStore = create<SessionState>()(
       setLeagueOverride: (league) => {
         const v = league && league.trim() ? league.trim() : null;
         setLeagueOverrideValue(v); // clears the detection cache in league.ts
-        set({ leagueOverride: v });
+        set((s) => {
+          const live = s.activeSessionId === null;
+          if (!live) return { leagueOverride: v }; // never mutate a loaded historical session
+          if (v) {
+            // Explicit override to a known league on a live session: re-seed its
+            // Atlas Bonus from that league's stored value (supersedes any held choice).
+            return { leagueOverride: v, pendingAtlasBonusSeed: false, pendingAtlasBonusValue: null, settings: { ...s.settings, atlasBonus: s.atlasBonusByLeague[v] ?? false } };
+          }
+          // Cleared override on a live session: the active league becomes whatever
+          // detection resolves — defer the re-seed to initDivinePrice.
+          return { leagueOverride: v, pendingAtlasBonusSeed: true, pendingAtlasBonusValue: null };
+        });
         // Re-stamp settings.leagueName and refetch the divine price for the
         // new league immediately. force bypasses BOTH the staleness guard and
         // the fetch cooldown — an explicit league change must never be skipped.
         get().initDivinePrice({ force: true });
       },
+      setAtlasBonus: (value) =>
+        set((s) => {
+          const live = s.activeSessionId === null;
+          const league = confirmedLeagueSync(); // confirmed active league or null (never the fallback)
+          // Loaded historical session: change ONLY its own snapshot, never the map.
+          if (!live) return { settings: { ...s.settings, atlasBonus: value } };
+          // Live under a KNOWN league: record per-league progress immediately.
+          if (league) {
+            return {
+              settings: { ...s.settings, atlasBonus: value },
+              atlasBonusByLeague: { ...s.atlasBonusByLeague, [league]: value },
+              pendingAtlasBonusSeed: false,
+              pendingAtlasBonusValue: null,
+            };
+          }
+          // Live but league NOT yet confirmed: apply to the session and HOLD the
+          // choice so it's written to whichever league confirms (retained, not
+          // lost). Cancels the auto-seed — the user has chosen.
+          return {
+            settings: { ...s.settings, atlasBonus: value },
+            pendingAtlasBonusSeed: false,
+            pendingAtlasBonusValue: value,
+          };
+        }),
       setDefaultPreset: () =>
         // Save current session exclusions as the persistent default
         set((s) => ({ defaultExclusionPreset: [...s.settings.regexExclusions] })),

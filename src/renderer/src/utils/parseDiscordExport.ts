@@ -25,6 +25,11 @@ export interface DiscordImport {
   sessionMinutes: number | null;
   atlasPoints: number | null;
   atlasPointsMax: number | null;
+  /** Strategy-versioning marker (`Update strategy: <uuid>`): exposed for
+   *  PROVENANCE only. Import Strategy must NEVER adopt it as the viewer's
+   *  own update target (design v3.1 round-2 point 3d). null = no marker or
+   *  malformed uuid. */
+  updateStrategyId: string | null;
 }
 
 export function parseDiscordExport(raw: string): DiscordImport | null {
@@ -32,10 +37,19 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     // Strip all decoration (custom/app emoji refs + unicode emoji) up front so
     // every field pattern below keys on the text label, never on a glyph
     // (BACKLOG "Discord export/import" Part 1 - import stays decoration-proof).
-    const text = stripExportDecoration(
+    const textRaw = stripExportDecoration(
       raw.replace(/^```\s*/m, '').replace(/\s*```\s*$/m, '').replace(/\*\*/g, '')
     ).trim();
-    if (!text.includes('WraeclastLedger')) return null;
+    if (!textRaw.includes('WraeclastLedger')) return null;
+    // Update marker: extract FIRST, then strip the ENTIRE marker line from the
+    // working text BEFORE any field matching. Lesson inherited from the live
+    // TEST-bot pass (2026-07-11): the unanchored /Strategy:/ name matcher read
+    // the uuid out of a marker placed above the real Strategy: line. Malformed
+    // markers are stripped too (never allowed to leak into other fields) but
+    // yield null (no silent half-parse).
+    const markerM = textRaw.match(/^\s*Update strategy:\s*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\s*$/im);
+    const updateStrategyId = markerM ? markerM[1].toLowerCase() : null;
+    const text = textRaw.replace(/^\s*Update strategy:[^\n]*$/gim, '').trim();
     const num = (patterns: RegExp[]): number => {
       for (const p of patterns) { const m = text.match(p); if (m) return parseFloat(m[1].replace(/,/g, '')); }
       return 0;
@@ -118,7 +132,8 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
              chisel, runRegex, slamRegex, scarabs, scarabCosts, atlasTreeUrl, strategyName, strategyNotes,
              deliOrbQty, deliOrbType, deliOrbPrice, astroType, astroCount, astroPrice,
              excludedDrops, gemInfo, isGroupPlay,
-             groupSize, sessionMinutes, atlasPoints, atlasPointsMax };
+             groupSize, sessionMinutes, atlasPoints, atlasPointsMax,
+             updateStrategyId };
   } catch { return null; }
 }
 

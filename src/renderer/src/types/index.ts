@@ -51,7 +51,11 @@ export interface SessionSettings {
   // live via computeRollingSessionTotal (the stored value went stale by design).
   baseMapCost: number;
   scarabs: ScarabSlot[];
-  atlasBonus: boolean;   // Atlas Bonus: flat +25% IIQ on all maps (introduced in Mirage League)
+  // Atlas Bonus: flat +25% IIQ on all maps (100 Atlas Objectives complete).
+  // This is the SESSION SNAPSHOT value used by the multiplier. Per-league
+  // acknowledgement/progress lives at store top-level in `atlasBonusByLeague`
+  // (NOT here) so it can't rewrite saved-session history and resets each league.
+  atlasBonus: boolean;
   advChaos: number;
   advExalt: number; advExaltPrice: number;
   advScour: number; advScourPrice: number;
@@ -78,6 +82,16 @@ export interface SessionSettings {
    *  NEVER load-bearing for any calculation. */
   atlasPoints: number | null;
   atlasPointsMax: number | null;
+  /** Strategy-versioning client half (design v3.1 §2): when set, this session
+   *  is an UPDATE RUN targeting a published strategy (server uuid). Lives in
+   *  SessionSettings deliberately — snapshotted by save, restored by load,
+   *  reset to null by newSession, and NEVER written by strategy imports
+   *  (the 4-case matrix in useSessionStore.updateTarget.test.ts). Additive —
+   *  old sessions lack it, migrateState/loadSession fill null. The NAME is
+   *  display sugar only (the uuid is identity; the server/card own the
+   *  authoritative revision number). */
+  updateTargetStrategyId: string | null;
+  updateTargetStrategyName: string | null;
   leagueName: string;          // Current league, auto-detected from poe.ninja
   atlasDetectedTags: string[]; // Tags inferred from atlas tree node group titles
 }

@@ -37,6 +37,7 @@ const baseSettings = (over: Partial<SessionSettings> = {}): SessionSettings => (
   regexExclusions: [],
   atlasTreeUrl: 'https://pathofpathing.com',
   atlasPoints: null, atlasPointsMax: null,
+  updateTargetStrategyId: null, updateTargetStrategyName: null,
   ...over,
 });
 

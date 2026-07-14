@@ -10,6 +10,21 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.66',
+    date: 'UNRELEASED',
+    changes: [
+      'Update your published strategies: expand one of YOUR cards in the Strategy Browser and hit "Update strategy" — your setup (scarabs, chisel, atlas tree, deli orbs, astrolabe) is cloned into a fresh session for a new measurement run. Sharing that session replaces the published result in place: same Discord card, votes and post date kept, revision counter bumped.',
+      'The Share dialog shows when a session is an update run ("Updating <name>") with a one-click "Share as new strategy instead" opt-out. The update target survives app restarts and save/load with its session; brand-new sessions never carry one, and importing someone else\'s update export never turns you into its updater.',
+      'Updated strategies show a vN badge in the Strategy Browser with the last-updated date in its tooltip (v1 originals stay unbadged).',
+      'Fixed: loading a strategy (Load setup or Update strategy) a second time in a row now correctly re-fills the Atlas Calc from the tree instead of dropping you back into the setup wizard.',
+      'Historical sessions stay compact in Investment: their frozen league is now part of the Divine Price label (hover it for the full explanation), so the status never steals a row or gets clipped in a short panel.',
+      'Atlas Bonus (+25% IIQ for completing all 100 Atlas Objectives) is now tracked per league. The setup wizard asks about it as a 4th step, your answer is remembered for that league across new sessions, and it resets when a new league/event starts — so you set it once per league and never carry a stale +25% into the next one. New sessions only apply it once the active league is actually known (never guessed from an offline fallback). When it is off and unset for the current league, a subtle, dismissible reminder appears so the bonus is never silently missed.',
+      'Strategy Browser now has a div/h column (author-reported divines per hour), sitting just left of Profit/map (which stays the rightmost column) — it shows "—" for strategies that did not share a session time, and clicking the header sorts by it (unshared-time strategies list after the ranked ones, never penalised).',
+      'Strategy Browser columns now use one shared grid, so headers stay aligned with every strategy row. The calendar column and toggle are gone; expanded cards now show the full strategy name, publication date, and (for revisions) last-updated date. Tags safely collapse into a "+N" badge before a scrollbar or narrow panel can cut one off.',
+      'When you\'re updating one of your published strategies, the Share dialog now shows a neutral before/after comparison — maps, avg map stats, div/map, cost/map, invest and profit — against the currently published version, with directional arrows so you can see what changed without labeling larger or smaller numbers as inherently better or worse.',
+    ],
+  },
+  {
     version: '1.0.65',
     date: '2026-07-11',
     changes: [
@@ -39,7 +54,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'New: a Getting Started card welcomes fresh installs on the Dashboard — the essential first steps (capture a map, import loot CSVs, set your divine price) with pointers to the right panels. Dismissable, and it stays gone.',
       'Share dialog: set your Discord name once and your own strategies get highlighted in the Strategy Browser so you can spot them in the list.',
       'Sharing knows more, only if you want: the Share dialog gains a party-size field (2-6, shown when Group is selected) and a session-time field prefilled from your Pace estimate (breaks excluded; accepts 90, 90min, 1.5h and friends). Atlas points are captured automatically from the Atlas Tree panel. All three are optional — leave them empty and the export simply makes no claim.',
-      'Strategy cards show the author\'s session context when shared: time with a derived div/h (hover: self-reported, never a ranking input) and atlas points in the expanded card; the group badge names the party size when known.',
+      'Strategy cards show the author\'s session context when shared: time with a derived div/h (optional author-reported context; selectable as a sort while div/map stays the default) and atlas points in the expanded card; the group badge names the party size when known.',
       'Strategy Browser: column headers are click-to-sort — Cost/map, Total Invest, Total Profit, Score, and Profit/map set the sort on click and flip direction on a second click (arrow shows the active sort). The sort dropdown gained Cheapest /map and Best d/hour; d/hour comes from author-reported session time and never outranks strategies without it (they just list after the ranked ones).',
       'Import Strategy preview catches up with what the parser already reads: the strategy name headlines the preview, and Group (N players), session time, and Atlas points badges appear when the export carries them. Scarabs show as icon badges with their costs instead of a plain text list.',
       'Discord sharing, part 3 (needs the server deploy): the channel bot now re-posts your export as a formatted card crediting you, and removes your raw paste once it is saved — the channel stays clean and the card itself can be copied straight back into Import Strategy. Reactions (votes) live on the card.',

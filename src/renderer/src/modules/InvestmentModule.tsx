@@ -11,7 +11,7 @@ import { isMechanicActive } from '../utils/gameData';
 import { parsePriceInput } from '../utils/priceUtils';
 import { computeCosts } from '../utils/profit';
 import { fcSep } from '../utils/parseDiscordExport';
-import { KNOWN_LEAGUES, activeKnownLeagues, fetchSelectableLeagues, currentLeagueSync } from '../utils/league';
+import { KNOWN_LEAGUES, fetchSelectableLeagues, currentLeagueSync } from '../utils/league';
 import { isCrossLeagueSession } from '../utils/historicalSession';
 import { chiselItemName, deliOrbItemName } from '../utils/itemIcons';
 import { PoeItemIcon } from '../components/ui/PoeItemIcon';
@@ -157,6 +157,12 @@ export const InvestmentModule = () => {
   // 3.29): show the historical banner. The price guard above is stricter
   // (any loaded session); this banner only flags the league mismatch case.
   const crossLeague = isCrossLeagueSession(activeSessionId, settings.leagueName);
+  // Keep the historical-session status inside the existing price label. A
+  // standalone badge costs a whole row in short stacked FlexLayout panels.
+  const divinePriceLabel = settings.leagueName
+    ? `${settings.leagueName} Divine Price`
+    : 'Divine Price';
+  const historicalPriceTooltip = `Historical session — divine price, league and atlas points are frozen. Live refreshes never touch this loaded session. Start a new session to track ${currentLeagueSync() ?? 'the current league'}.`;
 
   const baseMapFilled   = settings.baseMapCost > 0;
   const doPresetSave = () => {
@@ -391,15 +397,6 @@ export const InvestmentModule = () => {
       </Modal>
 
       <Card shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ overflow: 'auto' }}>
-        {crossLeague && (
-          <Alert color="yellow" variant="light" p="xs" mb={8}>
-            <Text size="xs">
-              Historical session ({settings.leagueName}) — prices and league are
-              frozen. Current league is {currentLeagueSync()}. Start a new
-              session to track {currentLeagueSync()}.
-            </Text>
-          </Alert>
-        )}
         <Group justify="space-between" mb={8}>
           {/* Panel title removed (redundant with the tab label — same call as the
               Sessions panel). The header slot hosts the league override instead
@@ -434,7 +431,13 @@ export const InvestmentModule = () => {
             <Group grow gap="md" mb={8} align="flex-start">
               {/* Divine Price */}
               <Stack gap={4} align="center">
-                <Text size="xs" c="dimmed">Divine Price</Text>
+                {crossLeague ? (
+                  <Tooltip label={historicalPriceTooltip} withArrow multiline w={280}>
+                    <Text size="xs" c="yellow" style={{ cursor: 'help' }}>{divinePriceLabel}</Text>
+                  </Tooltip>
+                ) : (
+                  <Text size="xs" c="dimmed">{divinePriceLabel}</Text>
+                )}
                 {/* Input + icon on same row, input fills available space */}
                 {/* session-16: refresh lives INSIDE the price input (it belongs to
                     that value; also removes the uneven spacing vs Session costs) */}
@@ -452,13 +455,6 @@ export const InvestmentModule = () => {
                   }
                   rightSectionPointerEvents="all"
                 />
-                {/* WP4.3: which league's price? Cue only when it differs from the
-                    EXPECTED league — the override when set, else the newest known. */}
-                {settings.leagueName && settings.leagueName !== (leagueOverride ?? activeKnownLeagues()[0]) && (
-                  <Tooltip label={`This price was fetched for the ${settings.leagueName} league, not ${leagueOverride ?? activeKnownLeagues()[0]}. Use the refresh button to re-fetch.`} withArrow multiline w={220}>
-                    <Text size="xs" c="yellow" style={{ fontSize: FONT.label, cursor: 'help' }}>price: {settings.leagueName}</Text>
-                  </Tooltip>
-                )}
               </Stack>
 
               {/* Session costs — live derived total of Advanced Costs (WP1) */}

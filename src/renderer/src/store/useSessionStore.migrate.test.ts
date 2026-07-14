@@ -156,3 +156,56 @@ describe('migrateState — defaults fill and legacy key removal', () => {
     expect(out.settings).not.toHaveProperty('advAstrolabeTotalCount');
   });
 });
+
+describe('migrateState — v16 -> v17 Atlas Bonus per-league seed', () => {
+  it('seeds legacy true from a LIVE unsaved session under a known league', () => {
+    const out = migrateState(persisted({
+      activeSessionId: null,
+      settings: { ...DEFAULT_SETTINGS, atlasBonus: true, leagueName: 'Ancestors' },
+    }));
+    expect(out.atlasBonusByLeague).toEqual({ Ancestors: true });
+  });
+
+  it('does NOT seed from a LOADED historical session (activeSessionId set)', () => {
+    const out = migrateState(persisted({
+      activeSessionId: 'saved-id',
+      settings: { ...DEFAULT_SETTINGS, atlasBonus: true, leagueName: 'Ancestors' },
+    }));
+    expect(out.atlasBonusByLeague).toEqual({});
+  });
+
+  it('leaves legacy false absent so the one-time prompt can still appear', () => {
+    const out = migrateState(persisted({
+      activeSessionId: null,
+      settings: { ...DEFAULT_SETTINGS, atlasBonus: false, leagueName: 'Ancestors' },
+    }));
+    expect(out.atlasBonusByLeague).toEqual({});
+  });
+
+  it('does not seed when the active league is unknown/empty', () => {
+    const out = migrateState(persisted({
+      activeSessionId: null,
+      settings: { ...DEFAULT_SETTINGS, atlasBonus: true, leagueName: '' },
+    }));
+    expect(out.atlasBonusByLeague).toEqual({});
+  });
+
+  it('is idempotent — an already-present map is left untouched', () => {
+    const out = migrateState(persisted({
+      activeSessionId: null,
+      atlasBonusByLeague: { Mirage: false },
+      settings: { ...DEFAULT_SETTINGS, atlasBonus: true, leagueName: 'Ancestors' },
+    }));
+    expect(out.atlasBonusByLeague).toEqual({ Mirage: false });
+  });
+
+  it('never rewrites saved sessions when seeding the current league', () => {
+    const out = migrateState(persisted({
+      activeSessionId: null,
+      settings: { ...DEFAULT_SETTINGS, atlasBonus: true, leagueName: 'Ancestors' },
+      savedSessions: { s1: { id: 's1', name: 'old', settings: { ...DEFAULT_SETTINGS, atlasBonus: false, leagueName: 'Mirage' } } },
+    }));
+    expect(out.atlasBonusByLeague).toEqual({ Ancestors: true });
+    expect(out.savedSessions.s1.settings.atlasBonus).toBe(false);
+  });
+});

@@ -46,6 +46,7 @@ const settings = (over: Partial<SessionSettings> = {}): SessionSettings => ({
   regexExclusions: [],
   atlasTreeUrl: 'https://pathofpathing.com/?v=3.28.0-atlas-league#AAAABgAADAsAJMFG',
   atlasPoints: null, atlasPointsMax: null,
+  updateTargetStrategyId: null, updateTargetStrategyName: null,
   ...over,
 });
 
@@ -250,5 +251,66 @@ describe('export decoration is swappable without breaking re-import (Parts 1+2)'
       expect(e.plain.length).toBeGreaterThan(0);
       expect(e.name.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('strategy-versioning update marker (design v3.1 client half)', () => {
+  const UUID = 'be00f19f-b74c-4c4f-9a1c-ee54d2ffaabc';
+
+  const buildWith = (updateStrategyId: string | null) => buildDiscordExport({
+    maps, settings: settings(), lootItems, baselineTotal,
+    investmentNeutralization: 0,
+    stratName: 'Testy strategy', stratNotes: 'some notes',
+    updateStrategyId,
+  });
+
+  it('emits the marker line directly under the header when a target is set', () => {
+    const out = buildWith(UUID);
+    const lines = out.split('\n');
+    expect(lines[0]).toBe('[WraeclastLedger Session]');
+    expect(lines[1]).toBe(`Update strategy: ${UUID}`);
+  });
+
+  it('emits NO marker without a target (legacy wire format unchanged)', () => {
+    const out = buildWith(null);
+    expect(out).not.toContain('Update strategy:');
+  });
+
+  it('round-trips: parse recovers the uuid AND the strategy name stays correct with the marker ABOVE the Strategy: line', () => {
+    const p = parseDiscordExport(buildWith(UUID));
+    expect(p).not.toBeNull();
+    expect(p!.updateStrategyId).toBe(UUID);
+    // The live TEST-bot bug: the unanchored Strategy: matcher must never read
+    // the uuid as the name. Marker sits above the name line in our export.
+    expect(p!.strategyName).toBe('Testy strategy');
+    expect(p!.strategyNotes).toBe('some notes');
+  });
+
+  it('marker BELOW the Strategy: line also parses (position-independent strip)', () => {
+    const out = buildWith(null) + `\nUpdate strategy: ${UUID}`;
+    const p = parseDiscordExport(out);
+    expect(p!.updateStrategyId).toBe(UUID);
+    expect(p!.strategyName).toBe('Testy strategy');
+  });
+
+  it('malformed marker: stripped from the working text, exposed as null', () => {
+    const bad = buildWith(null).replace(
+      '[WraeclastLedger Session]',
+      '[WraeclastLedger Session]\nUpdate strategy: not-a-uuid',
+    );
+    const p = parseDiscordExport(bad);
+    expect(p).not.toBeNull();
+    expect(p!.updateStrategyId).toBeNull();
+    expect(p!.strategyName).toBe('Testy strategy'); // never polluted by the bad marker
+  });
+
+  it('legacy export without a marker exposes null', () => {
+    const p = parseDiscordExport(buildWith(null));
+    expect(p!.updateStrategyId).toBeNull();
+  });
+
+  it('uppercase uuid is normalised to lowercase', () => {
+    const p = parseDiscordExport(buildWith(UUID.toUpperCase()));
+    expect(p!.updateStrategyId).toBe(UUID);
   });
 });

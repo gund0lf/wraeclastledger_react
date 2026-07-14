@@ -13,6 +13,13 @@ interface UIState {
   changelogRequested: boolean;
   requestChangelog: () => void;
   clearChangelogRequest: () => void;
+  // Load Build -> force the Atlas Tree to re-apply the tree to the Atlas Calc,
+  // EVEN when the tree URL is unchanged (loading the same strategy twice). The
+  // URL-change effect in AtlasTreeModule can't see an unchanged URL, so the
+  // calc would otherwise stay empty and the wizard would (wrongly) reappear.
+  // Monotonic counter: every increment is a distinct "apply now" request.
+  atlasApplyNonce: number;
+  requestAtlasApply: () => void;
 }
 
 export const useUIStore = create<UIState>()((set) => ({
@@ -22,4 +29,6 @@ export const useUIStore = create<UIState>()((set) => ({
   changelogRequested: false,
   requestChangelog:      () => set({ changelogRequested: true }),
   clearChangelogRequest: () => set({ changelogRequested: false }),
+  atlasApplyNonce: 0,
+  requestAtlasApply:     () => set((s) => ({ atlasApplyNonce: s.atlasApplyNonce + 1 })),
 }));

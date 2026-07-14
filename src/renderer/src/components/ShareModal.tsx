@@ -9,7 +9,9 @@ import { buildDiscordExport } from '../utils/discordExport';
 import { computeRollingSessionTotal } from '../utils/profit';
 import { parseTimeInput } from '../utils/sessionTime';
 import { computeTimeEstimate, formatActiveTime } from '../utils/timeEstimate';
-import { ALL_TYPE_TAGS } from '../utils/strategyConstants';
+import { ALL_TYPE_TAGS, STRATEGY_API_URL, type Strategy } from '../utils/strategyConstants';
+import { parseDiscordExport } from '../utils/parseDiscordExport';
+import { buildUpdateComparison, rowDirection } from '../utils/updateCompare';
 import { COLOR, FONT } from '../utils/uiTokens'
 
 interface Props {
@@ -22,11 +24,21 @@ interface Props {
 export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   const {
     maps, settings, lootItems, baselineTotal,
-    investmentNeutralization, discordTag, setDiscordTag, updateAdvSetting,
+    investmentNeutralization, discordTag, setDiscordTag, updateAdvSetting, updateSetting,
   } = useSessionKeys(
     'maps', 'settings', 'lootItems', 'baselineTotal',
-    'investmentNeutralization', 'discordTag', 'setDiscordTag', 'updateAdvSetting',
+    'investmentNeutralization', 'discordTag', 'setDiscordTag', 'updateAdvSetting', 'updateSetting',
   );
+
+  // Versioning client half: a session carrying an update target shares as an
+  // UPDATE (marker line in the export). "Share as new instead" CLEARS the
+  // persisted target — matrix case (c): later shares must not silently update.
+  const updateTargetId   = settings.updateTargetStrategyId ?? null;
+  const updateTargetName = settings.updateTargetStrategyName ?? null;
+  const clearUpdateTarget = () => {
+    updateSetting('updateTargetStrategyId', null);
+    updateSetting('updateTargetStrategyName', null);
+  };
 
   const [shareTags,  setShareTags]  = useState<string[]>(initialTags);
   const [stratName,  setStratName]  = useState('');
@@ -47,6 +59,13 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     if (!opened) return;
     const est = computeTimeEstimate(maps);
     setTimeText(est ? String(Math.round(est.activeMs / 60_000)) : '');
+    // Update run: prefill the strategy name from the target so an untouched
+    // field can't blank the published name (the update replaces display
+    // columns from THIS export). User edits still win — a rename via update
+    // is legitimate (names are labels, not identity).
+    if (updateTargetId && updateTargetName && stratName.trim() === '') {
+      setStratName(updateTargetName);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately only on open
   }, [opened]);
 
@@ -66,10 +85,45 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     stratName, stratNotes, shareTags, isGroupPlay,
     groupSize: isGroupPlay ? groupSize : null,
     sessionMinutes,
+    updateStrategyId: updateTargetId,
   }), [maps, settings, lootItems, baselineTotal, investmentNeutralization,
-       stratName, stratNotes, shareTags, isGroupPlay, groupSize, sessionMinutes]);
+       stratName, stratNotes, shareTags, isGroupPlay, groupSize, sessionMinutes,
+       updateTargetId]);
 
   const rollingSessionTotal = computeRollingSessionTotal(settings, maps.length);
+
+  // ── Update run: compare the about-to-publish numbers to what's live now ─────
+  // Fetch the current published strategy by uuid so the author can eyeball what
+  // the update will change BEFORE committing. The "next" side reuses the parsed
+  // export (exactly what the server stores), so the preview can't drift from the
+  // outcome. Silent-failure-averse: a fetch error shows an inline note, never a
+  // blank panel — and never blocks sharing.
+  const [compareCurrent, setCompareCurrent] = useState<Strategy | null>(null);
+  const [compareError,   setCompareError]   = useState<string | null>(null);
+  useEffect(() => {
+    if (!opened || !updateTargetId) { setCompareCurrent(null); setCompareError(null); return; }
+    let cancelled = false;
+    setCompareError(null);
+    fetch(`${STRATEGY_API_URL}/strategies/${updateTargetId}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((s: Strategy) => { if (!cancelled) setCompareCurrent(s); })
+      .catch(() => { if (!cancelled) { setCompareCurrent(null); setCompareError('Could not load the current published version to compare.'); } });
+    return () => { cancelled = true; };
+  }, [opened, updateTargetId]);
+
+  const compareRows = useMemo(() => {
+    if (!compareCurrent) return null;
+    const next = parseDiscordExport(discordExport);
+    return next ? buildUpdateComparison(compareCurrent, next) : null;
+  }, [compareCurrent, discordExport]);
+
+  const fmtCompare = (v: number | null, kind: string): string => {
+    if (v == null) return '—';
+    if (kind === 'pct')   return `${Math.round(v)}%`;
+    if (kind === 'div')   return `${v.toFixed(2)}d`;
+    if (kind === 'count') return String(Math.round(v));
+    return `${Math.round(v)}c`; // chaos
+  };
 
   return (
     <Modal opened={opened} onClose={onClose} title="Share My Session" size="md">
@@ -77,6 +131,49 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
         <Text size="xs" c="dimmed">
           Copy this export and paste it into your strategy Discord channel. The bot picks it up automatically.
         </Text>
+        {updateTargetId && (
+          <Alert color="indigo" variant="light" p="xs">
+            <Text size="xs" mb={4}>
+              Updating <Text span fw={700}>{updateTargetName ?? 'your strategy'}</Text>
+              {compareCurrent?.current_revision ? <Text span c="dimmed"> (currently v{compareCurrent.current_revision})</Text> : null}
+              {' '}— this share replaces your published result in place (votes and post date kept).
+            </Text>
+
+            {compareError && (
+              <Text size="xs" c="dimmed" mb={4} style={{ fontSize: FONT.small }}>{compareError}</Text>
+            )}
+
+            {compareRows && (
+              <Stack gap={1} mb={6}>
+                <Group gap={0} wrap="nowrap" px={4}>
+                  <Text style={{ flex: 1, fontSize: FONT.small }} c="dimmed">Change vs published</Text>
+                  <Text style={{ width: 70, textAlign: 'right', fontSize: FONT.small }} c="dimmed">now</Text>
+                  <Text style={{ width: 70, textAlign: 'right', fontSize: FONT.small }} c="dimmed">this share</Text>
+                </Group>
+                {compareRows.map((row) => {
+                  const dir = rowDirection(row);
+                  const color = dir === 'same' || dir == null ? COLOR.dim : COLOR.accent;
+                  const arrow = dir === 'up' ? '▲' : dir === 'down' ? '▼' : '';
+                  return (
+                    <Group key={row.label} gap={0} wrap="nowrap" px={4}>
+                      <Text style={{ flex: 1, fontSize: FONT.small }} c="dimmed">{row.label}</Text>
+                      <Text style={{ width: 70, textAlign: 'right', fontSize: FONT.small, fontVariantNumeric: 'tabular-nums' }} c="dimmed">
+                        {fmtCompare(row.before, row.kind)}
+                      </Text>
+                      <Text style={{ width: 70, textAlign: 'right', fontSize: FONT.small, fontVariantNumeric: 'tabular-nums', color }}>
+                        {arrow ? `${arrow} ` : ''}{fmtCompare(row.after, row.kind)}
+                      </Text>
+                    </Group>
+                  );
+                })}
+              </Stack>
+            )}
+
+            <Button size="xs" variant="default" onClick={clearUpdateTarget}>
+              Share as new strategy instead
+            </Button>
+          </Alert>
+        )}
         <TextInput
           size="xs"
           label="Your Discord tag"
