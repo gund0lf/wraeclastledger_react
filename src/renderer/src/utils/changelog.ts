@@ -11,7 +11,7 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '1.0.66',
-    date: 'UNRELEASED',
+    date: '2026-07-14',
     changes: [
       'Update your published strategies: expand one of YOUR cards in the Strategy Browser and hit "Update strategy" — your setup (scarabs, chisel, atlas tree, deli orbs, astrolabe) is cloned into a fresh session for a new measurement run. Sharing that session replaces the published result in place: same Discord card, votes and post date kept, revision counter bumped.',
       'The Share dialog shows when a session is an update run ("Updating <name>") with a one-click "Share as new strategy instead" opt-out. The update target survives app restarts and save/load with its session; brand-new sessions never carry one, and importing someone else\'s update export never turns you into its updater.',
