@@ -1,4 +1,4 @@
-import { Card, Text, Stack, Group, Divider, Slider, Tooltip, Button } from '@mantine/core';
+import { Card, Text, Stack, Group, Divider, Slider, Tooltip, Button, UnstyledButton } from '@mantine/core';
 import { useSessionKeys } from '../store/useSessionStore';
 import { useElementSize } from '@mantine/hooks';
 import { useMemo, useState, useEffect, useRef } from 'react';
@@ -12,7 +12,7 @@ import { COLOR, FONT } from '../utils/uiTokens'
 // session-16 density pass 2: config pills share the map-type selector's blue
 // active treatment — one accent per panel instead of the old orange/blue mix.
 const Pill = ({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) => (
-  <div onClick={onClick} style={{
+  <UnstyledButton onClick={onClick} aria-pressed={active} style={{
     padding: '2px 8px', borderRadius: 10, cursor: 'pointer',
     background: active ? 'rgba(51,154,240,0.2)' : 'rgba(100,100,100,0.15)',
     border: `1px solid ${active ? COLOR.info : COLOR.dim}`,
@@ -20,7 +20,7 @@ const Pill = ({ label, active, onClick }: { label: string; active: boolean; onCl
     fontSize: FONT.body, fontWeight: 600, transition: 'all 0.1s', whiteSpace: 'nowrap',
   }}>
     {label}
-  </div>
+  </UnstyledButton>
 );
 
 const Question = ({ question, hint, onYes, onNo }: {
@@ -199,15 +199,15 @@ export const AtlasCalcModule = () => {
             {!(compactPanel && observedModAverage != null) && (['6-mod', '8-mod'] as const).map((v) => (
               <Tooltip key={v} disabled={observedModAverage == null}
                 label="Observed exact map data is available, so this fallback is locked.">
-                <div onClick={() => {
-                  if (observedModAverage == null) updateSetting('mapType', v);
-                }} aria-disabled={observedModAverage != null} style={{
+                <UnstyledButton onClick={() => updateSetting('mapType', v)}
+                  disabled={observedModAverage != null}
+                  aria-pressed={!usesObservedMods && settings.mapType === v} style={{
                 padding: '2px 8px', borderRadius: 10, cursor: observedModAverage != null ? 'not-allowed' : 'pointer', fontSize: FONT.body, fontWeight: 600,
                 background: !usesObservedMods && settings.mapType === v ? 'rgba(51,154,240,0.2)' : 'rgba(100,100,100,0.1)',
                 border: `1px solid ${!usesObservedMods && settings.mapType === v ? COLOR.info : COLOR.dim}`,
                 color: !usesObservedMods && settings.mapType === v ? COLOR.info : COLOR.textFaint,
                 opacity: observedModAverage != null ? 0.55 : 1, transition: 'all 0.1s', whiteSpace: 'nowrap',
-              }}>{v}</div>
+              }}>{v}</UnstyledButton>
               </Tooltip>
             ))}
             {observedModAverage != null && (

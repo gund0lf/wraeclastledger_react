@@ -44,6 +44,9 @@ npm run publish:win  # build + publish to GitHub releases
 
 Stack: Electron, React 19, TypeScript, Mantine v8, Zustand, electron-vite, flexlayout-react.
 
+For process boundaries, data flows, persistence, and integration structure, see
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
 ---
 
 *WraeclastLedger is a fan-made tool and is not affiliated with or endorsed by Grinding Gear Games.*

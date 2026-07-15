@@ -11,6 +11,7 @@ import { getGameDataStatus, initGameData } from './utils/gameData';
 import { UpdateBanner, APP_VERSION } from './UpdateBanner';
 import { IconRefresh } from '@tabler/icons-react';
 import { FONT } from './utils/uiTokens';
+import { migrateRegexBuilderTabs } from './utils/layoutMigration';
 
 // APP_VERSION imported from UpdateBanner.tsx — single source of truth
 // window.electron and window.api are declared in src/preload/index.d.ts — no redeclaration needed here.
@@ -36,39 +37,8 @@ const ALL_PANELS = [
 
 const LAYOUT_STORAGE_KEY = 'wraeclast-layout-v1';
 
-/**
- * One-time layout migration (WP8 leftover). WP8 merged the standalone "Regex
- * Builder" panel into the tabbed "Regex" panel and dropped it from defaultLayout,
- * but layouts persisted in localStorage still carry a redundant `regex-builder`
- * tab (it resolves to the merged panel's Builder sub-tab via Registry back-compat,
- * so it is not broken — just duplicated with the "Regex" tab). Drop it when a
- * `regex` tab already exists; otherwise relabel the lone one to `regex`. Uses
- * Actions.deleteTab so flexlayout collapses a tabset that this empties. Idempotent:
- * a migrated + re-saved layout has no `regex-builder` tab, so it no-ops thereafter
- * (until then it re-runs harmlessly each launch; it persists on the next layout save).
- */
-function migrateRegexBuilderTabs(model: Model): void {
-  const builderIds: string[] = [];
-  let hasRegex = false;
-  model.visitNodes((node: Node) => {
-    if (node.getType() !== 'tab') return;
-    const comp = (node as any).getComponent?.();
-    if (comp === 'regex') hasRegex = true;
-    else if (comp === 'regex-builder') builderIds.push(node.getId());
-  });
-  if (builderIds.length === 0) return;
-  for (const id of builderIds) {
-    if (hasRegex) {
-      model.doAction(Actions.deleteTab(id));
-    } else {
-      model.doAction(Actions.updateNodeAttributes(id, { component: 'regex', name: 'Regex' }));
-      hasRegex = true; // a lone builder is now the Regex tab; any further ones drop
-    }
-  }
-}
-
 function App(): JSX.Element {
-  const [model] = useState(() => {
+  const [initialLayout] = useState(() => {
     let m: Model;
     try {
       const saved = localStorage.getItem(LAYOUT_STORAGE_KEY);
@@ -76,14 +46,24 @@ function App(): JSX.Element {
     } catch {
       m = Model.fromJson(defaultLayout); // corrupt/old
     }
-    migrateRegexBuilderTabs(m);
-    return m;
+    const migrated = migrateRegexBuilderTabs(m);
+    let migrationSaveFailed = false;
+    if (migrated) {
+      try {
+        localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(m.toJson()));
+      } catch {
+        console.error('[App] migrated layout could not be saved — localStorage quota exceeded');
+        migrationSaveFailed = true;
+      }
+    }
+    return { model: m, migrationSaveFailed };
   });
+  const model = initialLayout.model;
   // modelVersion value is not read directly — the setter is used in onModelChange
   // to force re-renders of the toolbar's "open panels" menu after layout changes.
   const [, setModelVersion] = useState(0);
   const [checking, setChecking] = useState(false);
-  const [quotaError, setQuotaError] = useState(false);
+  const [quotaError, setQuotaError] = useState(initialLayout.migrationSaveFailed);
   const [gameDataStatus, setGameDataStatus] = useState(getGameDataStatus);
 
   const addMapRef      = useRef(useSessionStore.getState().addMap);

@@ -35,6 +35,8 @@ export const CHANGELOG: ChangelogEntry[] = [
       'The working-session guard now ignores untouched Atlas Tree metadata and no longer reopens the Sessions picker after a decision. Strategy Browser tree settings populate Atlas Calc through an isolated one-shot reader even while Regex is selected; the visible tree still mounts only at a safe panel size.',
       'Missing item artwork now uses an honest category symbol where the item type is known, while unknowns stay blank. False matches involving Heist Scarabs, Blueprint wings and fragment-like card names were removed; cards are identified from their real display names and use the shared inventory icon, plain map tiers use only clean signed art and otherwise show the neutral map symbol instead of a Blight/conqueror/event overlay, unique 6L names resolve by their base item, and non-square equipment art keeps its proper proportions.',
       'Loot search covers the complete imported list and now preserves the number of rows you previously revealed when searching or clearing the filter.',
+      'Older saved panel layouts automatically remove the obsolete duplicate Regex Builder tab while preserving a lone Builder as the merged Regex panel.',
+      'Atlas Calc choices and Strategy Browser sort headers now use native keyboard-operable controls without changing their mouse layout; Tab reveals focus and Enter or Space activates the focused control.',
     ],
   },
   {
