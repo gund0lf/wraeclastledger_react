@@ -501,9 +501,9 @@ ipcMain.handle('poeninja:economy-icons', async (_event, family: 'exchange' | 'st
       `${base}?league=${encodeURIComponent(league)}&type=${encodeURIComponent(type)}`,
       { signal: controller.signal }
     );
-    if (!res.ok) return { icons: null, slugs: [], error: `poe.ninja ${res.status}` };
+    if (!res.ok) return { icons: null, slugs: [], names: [], error: `poe.ninja ${res.status}` };
     const data = await res.json() as {
-      items?: { name?: string; image?: string }[];
+      items?: { name?: string; image?: string | null }[];
       lines?: { id?: string; name?: string; baseType?: string; icon?: string }[];
     };
     const icons: { name: string; icon: string }[] = [];
@@ -520,15 +520,19 @@ ipcMain.handle('poeninja:economy-icons', async (_event, family: 'exchange' | 'st
         if (name && l.icon) icons.push({ name, icon: l.icon });
       }
     }
-    // exchange lines[] is the authoritative item list by slug id (e.g. div
-    // cards, which have no icon anywhere) - return it so the renderer can build
-    // name sets for icon-less categories.
+    // Exchange lines[] provides ids/slugs, while items[] provides the actual
+    // display names even when image is null (notably Divination Cards). Return
+    // both: slugs are a compatibility fallback, but names are authoritative
+    // because slug text is not always display-name congruent.
     const slugs = family === 'exchange'
       ? (data.lines ?? []).map((l) => l.id).filter((s): s is string => !!s)
       : [];
-    return { icons, slugs, error: null };
+    const names = family === 'exchange'
+      ? (data.items ?? []).map((it) => it.name).filter((s): s is string => !!s)
+      : [];
+    return { icons, slugs, names, error: null };
   } catch (err: any) {
-    return { icons: null, slugs: [], error: err?.message ?? 'fetch failed' };
+    return { icons: null, slugs: [], names: [], error: err?.message ?? 'fetch failed' };
   } finally {
     clearTimeout(timeoutId);
   }

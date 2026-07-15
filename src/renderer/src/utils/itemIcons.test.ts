@@ -21,20 +21,29 @@ const CHAOS_URL  = 'https://web.poecdn.com/gen/image/chaos.png';
 const ABYSS_URL  = 'https://web.poecdn.com/gen/image/abyss-scarab.png';
 const WINGED_URL = 'https://web.poecdn.com/gen/image/winged-abyss.png';
 const GEM_URL    = 'https://web.poecdn.com/gen/image/empower-support.png';
-// Map shapes mirror the live poe.ninja responses captured via
-// scripts/dump-map-icons.mjs (2026-07-09): per-tier names, and the API's
-// FIRST Map line being "Al-Hezmin Vaal Temple Map" — the order-roulette
-// generic seed the session-17 fix removed.
+const CHISEL_URL = 'https://web.poecdn.com/gen/image/scarab-chisel.png';
+const BLUNDERBORE_URL = 'https://web.poecdn.com/gen/image/blunderbore.png';
+const generatedMapUrl = (tier: number, flags: Record<string, unknown> = {}) => {
+  const descriptor = [28, 14, {
+    f: `2DItems/Maps/Atlas2Maps/New/MapNumbers${tier}`,
+    w: 1, h: 1, scale: 1, mn: 24, mt: 0, ...flags,
+  }];
+  const encoded = btoa(JSON.stringify(descriptor)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `https://web.poecdn.com/gen/image/${encoded}/test/MapNumbers${tier}.png`;
+};
+// Map shapes mirror the live poe.ninja response verified 2026-07-15. The
+// descriptor flags carry overlays: mc = conqueror, mb = Blight, me = event.
 const VAALTEMPLE_URL = 'https://web.poecdn.com/gen/image/VaalTemple3.png';
-const BARAN16_URL    = 'https://web.poecdn.com/gen/image/Baran-MapNumbers16.png';
+const BARAN16_URL    = generatedMapUrl(16, { mc: 1 });
 const NIGHTMARE_URL  = 'https://web.poecdn.com/gen/image/NightmareMapSymbol.png';
-const BLIGHT14_URL   = 'https://web.poecdn.com/gen/image/Blight-MapNumbers14.png';
-const BLIGHT16_URL   = 'https://web.poecdn.com/gen/image/Blight-MapNumbers16.png';
-// Live-observed failure art (2026-07-09 screenshot): the challenge league's
-// plain "Map (Tier 16)" line carried a delirium composite, and Standard's
-// legacy lines carried Roman-numeral wrong-colour art that last-write-wins
-// let overwrite everything.
-const DELI16_URL       = 'https://web.poecdn.com/gen/image/Deli-MapNumbers16.png';
+const BLIGHT14_URL   = generatedMapUrl(14, { mb: true });
+const BLIGHT16_URL   = generatedMapUrl(16, { mb: true });
+const PLAIN1_URL     = generatedMapUrl(1);
+const PLAIN16_URL    = generatedMapUrl(16);
+const EVENT9_URL     = generatedMapUrl(9, { me: true });
+const EVENT15_URL    = generatedMapUrl(15, { me: true });
+// Standard's legacy line remains deliberately undecodable so it cannot beat
+// clean current-league art derived from a real descriptor.
 const LEGACY14_URL     = 'https://web.poecdn.com/gen/image/Legacy-RomanXIV.png';
 const LEGACY_CHAOS_URL = 'https://web.poecdn.com/gen/image/legacy-chaos.png';
 const PRECISION_URL    = 'https://web.poecdn.com/gen/image/AccuracyandCriticalChanceAura.png';
@@ -55,12 +64,20 @@ beforeAll(() => {
           // means the challenge league's CHAOS_URL must survive.
           { name: 'Chaos Orb',      icon: league === 'Standard' ? LEGACY_CHAOS_URL : CHAOS_URL },
           { name: 'Empower Support', icon: GEM_URL }, // seeds the GENERIC.gem fallback
+          { name: "Maven's Chisel of Scarabs", icon: CHISEL_URL },
         ], slugs: [] };
         if (type === 'Scarab')   return { icons: [
           { name: 'Abyss Scarab',        icon: ABYSS_URL },
           { name: 'Winged Abyss Scarab', icon: WINGED_URL },
         ], slugs: [] };
-        if (type === 'DivinationCard') return { icons: [], slugs: ['the-doctor', 'darker-half'] };
+        if (type === 'DivinationCard') return {
+          icons: [],
+          slugs: ['the-doctor', 'darker-half', 'time-lost-relic', 'the-reflection-of-the-heart'],
+          names: ['The Doctor', 'Darker Half', 'Time-Lost Relic', 'Reflection of the Heart'],
+        };
+        if (type === 'UniqueArmour') return { icons: [
+          { name: 'Blunderbore', icon: BLUNDERBORE_URL },
+        ], slugs: [] };
         if (type === 'Map') {
           if (league === 'Standard') return { icons: [
             { name: 'Map (Tier 14)', icon: LEGACY14_URL }, // legacy Roman-numeral art
@@ -68,7 +85,10 @@ beforeAll(() => {
           return { icons: [
             { name: 'Al-Hezmin Vaal Temple Map', icon: VAALTEMPLE_URL }, // deliberately FIRST, as live
             { name: 'Baran Map (Tier 16)',       icon: BARAN16_URL },
-            { name: 'Map (Tier 16)',             icon: DELI16_URL },     // variant composite, as live
+            { name: 'Map (Tier 1)',              icon: PLAIN1_URL },
+            { name: 'Map (Tier 9)',              icon: EVENT9_URL },
+            { name: 'Map (Tier 16)',             icon: PLAIN16_URL },
+            { name: 'Map (Tier 15)',             icon: EVENT15_URL },
             { name: 'Nightmare Map',             icon: NIGHTMARE_URL },
           ], slugs: [] };
         }
@@ -92,7 +112,21 @@ beforeAll(() => {
   };
 });
 
-import { getItemIcons, clearIconCache, chiselItemName, deliOrbItemName } from './itemIcons';
+import {
+  getItemIcons, clearIconCache, chiselItemName, deliOrbItemName, decodeIconDescriptor,
+} from './itemIcons';
+
+describe('decodeIconDescriptor()', () => {
+  it('decodes clean and composited map descriptors without network access', () => {
+    expect(decodeIconDescriptor(PLAIN16_URL)).toMatchObject({
+      f: '2DItems/Maps/Atlas2Maps/New/MapNumbers16', mn: 24, mt: 0,
+    });
+    expect(decodeIconDescriptor(BLIGHT14_URL)).toMatchObject({ mb: true });
+    expect(decodeIconDescriptor(BARAN16_URL)).toMatchObject({ mc: 1 });
+    expect(decodeIconDescriptor('https://example.com/not-generated.png')).toBeNull();
+    expect(decodeIconDescriptor('https://web.poecdn.com/gen/image/not-base64/x/y.png')).toBeNull();
+  });
+});
 
 describe('itemIcons resolve()', () => {
   it('exact and normalised matches still work', async () => {
@@ -136,18 +170,25 @@ describe('itemIcons resolve()', () => {
     expect(resolve('Precision - 1/0')).toBe(PRECISION_URL);
   });
 
-  it('gems: an unpriced gem with the "- lvl/qual" shape falls to the generic gem icon', async () => {
+  it('numeric suffixes do not make an unknown item a gem', async () => {
     const { resolve } = await getItemIcons();
-    // "Alchemist's Mark - 1/23 corrupted" (fixture): base not in the mock
-    // cache, but the suffix shape is gem-certain — honest category fallback.
-    expect(resolve("Alchemist's Mark - 1/23 corrupted")).toBe(GEM_URL);
+    // WealthyExile uses this same numeric shape for Blueprint wings, so the
+    // suffix cannot independently authorize a gem fallback.
+    expect(resolve('Blueprint: Underbelly - 1/3')).toBeUndefined();
+    expect(resolve('Blueprint: Tunnels - 1/3')).not.toBe(GEM_URL);
   });
 
-  it('keyword fallback still catches uncached items of a known category', async () => {
+  it('six-link suffixes resolve unique armour by its base name', async () => {
     const { resolve } = await getItemIcons();
-    // 'Titanic Scarab' is not cached, but the scarab keyword generic is seeded
-    // from the cached Abyss Scarab.
-    expect(resolve('Titanic Scarab')).toBe(ABYSS_URL);
+    expect(resolve('Blunderbore 6L')).toBe(BLUNDERBORE_URL);
+  });
+
+  it('uncached scarabs never borrow a different scarab or chisel identity', async () => {
+    const { resolve } = await getItemIcons();
+    expect(resolve('Titanic Scarab')).toBeUndefined();
+    expect(resolve('Heist Scarab')).toBeUndefined();
+    expect(resolve('Heist Scarab')).not.toBe(ABYSS_URL);
+    expect(resolve('Heist Scarab')).not.toBe(CHISEL_URL);
   });
 
   it('event leagues also pull the parent league + Standard (KNOWN_LEAGUES-driven)', async () => {
@@ -170,12 +211,15 @@ describe('itemIcons resolve()', () => {
     clearIconCache();
   });
 
-  it('known div-card names resolve to the generic card icon', async () => {
+  it('known div-card display names resolve to the shared card inventory icon', async () => {
     const { resolve } = await getItemIcons();
     // 'Darker Half' has no "The"-prefix so it skips pickGeneric's div-card
-    // heuristic and lands on the slug set. ('The Doctor' hits the heuristic.)
+    // heuristic and lands on the display-name set. ('The Doctor' hits the heuristic.)
     expect(resolve('Darker Half')).toContain('Divination');
     expect(resolve('The Doctor')).toContain('Divination');
+    expect(resolve('Time-Lost Relic')).toContain('Divination');
+    // Live slug includes an extra leading article; only items[].name is exact.
+    expect(resolve('Reflection of the Heart')).toContain('Divination');
   });
 
   it('REGRESSION: pickGeneric keywords are whole-word, not substrings', async () => {
@@ -212,22 +256,34 @@ describe('itemIcons resolve()', () => {
     expect(resolve('Baran Map')).not.toBe(VAALTEMPLE_URL);
   });
 
-  it('maps: an untraded "Map (Tier N)" resolves to same-tier art via the tier index', async () => {
+  it('maps: a tier only present through Blight does not borrow the Blighted art', async () => {
     const { resolve } = await getItemIcons();
-    // The challenge league has no plain "Map (Tier 14)" line, but STANDARD
-    // does — with legacy Roman-numeral art. League-major ranking means the
-    // challenge league's Blighted Map (Tier 14) key supplies the art instead.
-    expect(resolve('Map (Tier 14)')).toBe(BLIGHT14_URL);
+    // The raw descriptor source is only a naked numeral, not a rendered map.
+    // With no signed clean T14 image, the UI must receive a miss and show its
+    // neutral map glyph instead of Blight or legacy Standard art.
+    expect(resolve('Map (Tier 14)')).toBeUndefined();
+    expect(resolve('Map (Tier 14)')).not.toBe(BLIGHT14_URL);
     expect(resolve('Map (Tier 14)')).not.toBe(LEGACY14_URL);
   });
 
-  it('maps: plain "Map (Tier N)" bypasses exact-match art in favour of the ranked index', async () => {
+  it('maps: plain tiers accept signed clean art and reject encoded overlays', async () => {
     const { resolve } = await getItemIcons();
-    // The challenge league's OWN plain "Map (Tier 16)" line carries variant
-    // (delirium) composite art — live-observed. The conqueror-sourced clean
-    // art must win via the rank, even though an exact key match exists.
-    expect(resolve('Map (Tier 16)')).toBe(BARAN16_URL);
-    expect(resolve('Map (Tier 16)')).not.toBe(DELI16_URL);
+    expect(resolve('Map (Tier 1)')).toBe(PLAIN1_URL);
+    expect(resolve('Map (Tier 16)')).toBe(PLAIN16_URL);
+    expect(resolve('Map (Tier 16)')).not.toBe(BARAN16_URL);
+    // Live T15/T9 currently carry `me:true`; both intentionally miss so the
+    // Dashboard uses its neutral map glyph.
+    expect(resolve('Map (Tier 9)')).toBeUndefined();
+    expect(resolve('Map (Tier 9)')).not.toBe(EVENT9_URL);
+    expect(resolve('Map (Tier 15)')).toBeUndefined();
+    expect(resolve('Map (Tier 15)')).not.toBe(EVENT15_URL);
+  });
+
+  it('maps: untraded Blighted tiers never fall back to normal map art', async () => {
+    const { resolve } = await getItemIcons();
+    expect(resolve('Blighted Map (Tier 14)')).toBe(BLIGHT14_URL);
+    expect(resolve('Blighted Map (Tier 13)')).toBeUndefined();
+    expect(resolve('Blighted Map (Tier 13)')).not.toBe(PLAIN16_URL);
   });
 
   it('maps: the generic map fallback is deliberate highest-tier art, never Vaal Temple roulette', async () => {
@@ -235,7 +291,7 @@ describe('itemIcons resolve()', () => {
     // "Shaper Guardian Map" has no tiered key at all -> GENERIC.map, which is
     // now seeded from the highest indexed tier, not the API's first "...Map".
     const url = resolve('Shaper Guardian Map');
-    expect([BARAN16_URL, BLIGHT16_URL]).toContain(url);
+    expect(url).toBe(PLAIN16_URL);
     expect(url).not.toBe(VAALTEMPLE_URL);
     // The Vaal Temple art still serves its own exact name, of course.
     expect(resolve('Al-Hezmin Vaal Temple Map')).toBe(VAALTEMPLE_URL);

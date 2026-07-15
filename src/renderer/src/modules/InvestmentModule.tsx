@@ -211,10 +211,10 @@ export const InvestmentModule = () => {
               <Select label="Type" data={chiselOptions} value={settings.chiselType || null}
                 onChange={(v) => { const t = v ?? ''; updateSetting('chiselType', t); updateSetting('chiselUsed', t.length > 0); }}
                 size="xs" clearable placeholder="— None —"
-                leftSection={settings.chiselType ? <PoeItemIcon name={chiselItemName(settings.chiselType)} size={16} /> : undefined}
+                leftSection={settings.chiselType ? <PoeItemIcon name={chiselItemName(settings.chiselType)} size={16} category="chisel" /> : undefined}
                 renderOption={({ option }) => (
                   <Group gap={6} wrap="nowrap">
-                    <PoeItemIcon name={chiselItemName(option.value)} size={16} />
+                    <PoeItemIcon name={chiselItemName(option.value)} size={16} category="chisel" />
                     <Text size="xs">{option.label}</Text>
                   </Group>
                 )} />
@@ -234,12 +234,12 @@ export const InvestmentModule = () => {
               <Text size="xs" fw={600} c="dimmed">Total paid</Text>
             </SimpleGrid>
             <SimpleGrid cols={3} style={{ alignItems: 'center' }}>
-              <Group gap={4} wrap="nowrap"><PoeItemIcon name="Chaos Orb" size={16} /><Text size="xs">Chaos</Text></Group>
+              <Group gap={4} wrap="nowrap"><PoeItemIcon name="Chaos Orb" size={16} category="orb" /><Text size="xs">Chaos</Text></Group>
               <NumberInput size="xs" value={settings.advChaos} onChange={(v) => updateAdvSetting('advChaos', Number(v))} min={0} />
               <Text size="xs" c="dimmed">{settings.advChaos}c</Text>
             </SimpleGrid>
             <SimpleGrid cols={3} style={{ alignItems: 'center' }}>
-              <Group gap={4} wrap="nowrap"><PoeItemIcon name="Exalted Orb" size={16} /><Text size="xs">Exalted</Text></Group>
+              <Group gap={4} wrap="nowrap"><PoeItemIcon name="Exalted Orb" size={16} category="orb" /><Text size="xs">Exalted</Text></Group>
               <NumberInput size="xs" value={settings.advExalt} onChange={(v) => updateAdvSetting('advExalt', Number(v))} min={0} />
               <PriceInput value={settings.advExaltPrice} onChange={(v) => updateAdvSetting('advExaltPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
             </SimpleGrid>
@@ -253,12 +253,12 @@ export const InvestmentModule = () => {
               </SimpleGrid>
             )}
             <SimpleGrid cols={3} style={{ alignItems: 'center' }}>
-              <Group gap={4} wrap="nowrap"><PoeItemIcon name="Orb of Scouring" size={16} /><Text size="xs">Scour</Text></Group>
+              <Group gap={4} wrap="nowrap"><PoeItemIcon name="Orb of Scouring" size={16} category="orb" /><Text size="xs">Scour</Text></Group>
               <NumberInput size="xs" value={settings.advScour} onChange={(v) => updateAdvSetting('advScour', Number(v))} min={0} />
               <PriceInput value={settings.advScourPrice} onChange={(v) => updateAdvSetting('advScourPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
             </SimpleGrid>
             <SimpleGrid cols={3} style={{ alignItems: 'center' }}>
-              <Group gap={4} wrap="nowrap"><PoeItemIcon name="Orb of Alchemy" size={16} /><Text size="xs">Alch</Text></Group>
+              <Group gap={4} wrap="nowrap"><PoeItemIcon name="Orb of Alchemy" size={16} category="orb" /><Text size="xs">Alch</Text></Group>
               <NumberInput size="xs" value={settings.advAlch} onChange={(v) => updateAdvSetting('advAlch', Number(v))} min={0} />
               <PriceInput value={settings.advAlchPrice} onChange={(v) => updateAdvSetting('advAlchPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
             </SimpleGrid>
@@ -266,10 +266,10 @@ export const InvestmentModule = () => {
           <AdvSection title="Delirium Orbs" filled={deliFilled}>
             <Select label="Orb Type" data={deliriumOrbOptions} value={settings.advDeliOrbType || null}
               onChange={(v) => updateAdvSetting('advDeliOrbType', v ?? '')} size="xs" placeholder="Type to search..." searchable clearable
-              leftSection={settings.advDeliOrbType ? <PoeItemIcon name={deliOrbItemName(settings.advDeliOrbType)} size={16} /> : undefined}
+              leftSection={settings.advDeliOrbType ? <PoeItemIcon name={deliOrbItemName(settings.advDeliOrbType)} size={16} category="orb" /> : undefined}
               renderOption={({ option }) => (
                 <Group gap={6} wrap="nowrap">
-                  <PoeItemIcon name={deliOrbItemName(option.value)} size={16} />
+                  <PoeItemIcon name={deliOrbItemName(option.value)} size={16} category="orb" />
                   <Text size="xs">{option.label}</Text>
                 </Group>
               )} />
@@ -291,10 +291,10 @@ export const InvestmentModule = () => {
             <Text size="xs" c="dimmed">Random duration. Enter price each + count used this session.</Text>
             <Select label="Type" data={astrolabeOptions} value={settings.advAstrolabeType || null}
               onChange={(v) => updateAdvSetting('advAstrolabeType', v ?? '')} size="xs" placeholder="Select astrolabe..." clearable
-              leftSection={settings.advAstrolabeType ? <PoeItemIcon name={settings.advAstrolabeType} size={16} /> : undefined}
+              leftSection={settings.advAstrolabeType ? <PoeItemIcon name={settings.advAstrolabeType} size={16} category="astrolabe" /> : undefined}
               renderOption={({ option }) => (
                 <Group gap={6} wrap="nowrap">
-                  <PoeItemIcon name={option.value} size={16} />
+                  <PoeItemIcon name={option.value} size={16} category="astrolabe" />
                   <Text size="xs">{option.label}</Text>
                 </Group>
               )} />
@@ -324,7 +324,7 @@ export const InvestmentModule = () => {
               value={settings.advGemName}
               onChange={(e) => updateAdvSetting('advGemName', e.currentTarget.value)}
               size="xs"
-              leftSection={settings.advGemName ? <PoeItemIcon name={settings.advGemName} size={16} /> : undefined}
+              leftSection={settings.advGemName ? <PoeItemIcon name={settings.advGemName} size={16} category="gem" /> : undefined}
             />
             <NumberInput label="Gems leveled" size="xs" value={settings.advGemCount}
               onChange={(v) => updateAdvSetting('advGemCount', Number(v))} min={0} />
@@ -567,7 +567,7 @@ export const InvestmentModule = () => {
             <Group gap={4} wrap="wrap" justify="center">
               {settings.chiselType && (
                 <Badge size="sm" color="yellow" variant="light" style={{ cursor: 'pointer' }} onClick={openAdv}
-                  leftSection={<PoeItemIcon name={chiselItemName(settings.chiselType)} size={16} />}>
+                  leftSection={<PoeItemIcon name={chiselItemName(settings.chiselType)} size={16} category="chisel" />}>
                   {settings.chiselType}{settings.chiselPrice > 0 ? ` ${settings.chiselPrice}c` : ''}
                 </Badge>
               )}
@@ -578,13 +578,13 @@ export const InvestmentModule = () => {
               )}
               {deliPerMap > 0 && (
                 <Badge size="sm" color="grape" variant="light" style={{ cursor: 'pointer' }} onClick={openAdv}
-                  leftSection={<PoeItemIcon name={deliOrbItemName(settings.advDeliOrbType)} size={16} />}>
+                  leftSection={<PoeItemIcon name={deliOrbItemName(settings.advDeliOrbType)} size={16} category="orb" />}>
                   Deli {deliPerMap.toFixed(1)}c
                 </Badge>
               )}
               {astrolabeTotal > 0 && (
                 <Badge size="sm" color="teal" variant="light" style={{ cursor: 'pointer' }} onClick={openAdv}
-                  leftSection={<PoeItemIcon name={settings.advAstrolabeType} size={16} />}>
+                  leftSection={<PoeItemIcon name={settings.advAstrolabeType} size={16} category="astrolabe" />}>
                   Astro {astrolabeTotal.toFixed(0)}c
                 </Badge>
               )}
@@ -659,7 +659,7 @@ export const InvestmentModule = () => {
               <Autocomplete placeholder={`Scarab ${i + 1}`} value={scarab.name}
                 onChange={(v) => updateScarab(i, 'name', v)}
                 data={scarabOptions} size="xs" style={{ flex: 1, minWidth: 0 }}
-                leftSection={scarab.name ? <PoeItemIcon name={scarab.name} size={16} /> : undefined}
+                leftSection={scarab.name ? <PoeItemIcon name={scarab.name} size={16} category="scarab" /> : undefined}
                 rightSection={scarab.name
                   ? <ActionIcon size="xs" variant="transparent" c="dimmed"
                       onMouseDown={(e) => { e.preventDefault(); clearScarab(i); }}>

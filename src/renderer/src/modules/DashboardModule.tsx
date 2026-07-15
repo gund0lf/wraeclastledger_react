@@ -4,18 +4,21 @@ import {
   Progress, Image, Skeleton, Tooltip, Modal, SimpleGrid, Anchor,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useSessionKeys } from '../store/useSessionStore';
 import { QUALITY_STAT_EFFECTS, CHISEL_TYPES, DELIRIUM_ORB_LIST } from '../utils/constants';
 import { MapData, LootItem } from '../types';
 import { parseLootCsv, diffLootItems } from '../utils/lootUtils';
-import { IconTrash, IconFileImport, IconSearch, IconPackage, IconCoins } from '@tabler/icons-react';
+import {
+  IconBug, IconCards, IconCircleDashed, IconCoins, IconDiamond,
+  IconFileImport, IconMap, IconPackage, IconPuzzle, IconSearch, IconTrash,
+} from '@tabler/icons-react';
 import { getItemIcons, chiselItemName } from '../utils/itemIcons';
 import { PoeItemIcon } from '../components/ui/PoeItemIcon';
 import { computeProfit, computeMultiplier } from '../utils/profit';
 import { fcSep } from '../utils/parseDiscordExport';
 import { computeTimeEstimate, formatActiveTime } from '../utils/timeEstimate';
-import { buildCategoryBreakdown, ItemCategory, CAT_COLORS } from '../utils/lootCategories';
+import { buildCategoryBreakdown, categorise, ItemCategory, CAT_COLORS } from '../utils/lootCategories';
 import { StatTile } from '../components/ui/StatTile';
 import { GettingStartedCard } from '../components/GettingStartedCard';
 import { CollapsibleSection as Section } from '../components/ui/CollapsibleSection';
@@ -42,6 +45,40 @@ interface CsvCandidate {
   items: LootItem[];
   total: number;
 }
+
+type IconResolver = (name: string) => string | undefined;
+
+const LootCategoryFallback = ({ name, tab }: { name: string; tab: string }) => {
+  const category = categorise(name, tab);
+  const props = { size: ICON_SIZE, stroke: 1.5, color: COLOR.textMuted };
+  if (category === 'Currency' || category === 'Deliriums') return <IconCircleDashed {...props} />;
+  if (category === 'Fragments') return <IconPuzzle {...props} />;
+  if (category === 'Scarabs') return <IconBug {...props} />;
+  if (category === 'Divination Cards') return <IconCards {...props} />;
+  if (category === 'Maps') return <IconMap {...props} />;
+  if (category === 'Gems') return <IconDiamond {...props} />;
+  return <div style={{ width: ICON_SIZE, height: ICON_SIZE }} />;
+};
+
+const ResolvedLootIcon = ({
+  name, tab, resolver, loading,
+}: {
+  name: string;
+  tab: string;
+  resolver: IconResolver | null;
+  loading: boolean;
+}) => {
+  const url = resolver?.(name);
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  if (!resolver && loading) return <Skeleton w={ICON_SIZE} h={ICON_SIZE} radius="xs" />;
+  if (!url || failedUrl === url) return <LootCategoryFallback name={name} tab={tab} />;
+  return (
+    <Tooltip label={name} openDelay={500} withinPortal>
+      <Image src={url} w={ICON_SIZE} h={ICON_SIZE} fit="contain"
+        style={{ flexShrink: 0 }} onError={() => setFailedUrl(url)} />
+    </Tooltip>
+  );
+};
 
 export const DashboardModule = () => {
   const {
@@ -112,7 +149,7 @@ export const DashboardModule = () => {
   const [lootView,  setLootView]  = useState<'list' | 'diff' | 'breakdown'>('list');
   const [search,    setSearch]    = useState('');
   const [diffTab,   setDiffTab]   = useState<'gains' | 'losses'>('gains');
-  const [resolver,  setResolver]  = useState<((n: string) => string | undefined) | null>(null);
+  const [resolver,  setResolver]  = useState<IconResolver | null>(null);
   const [iconsLoading, setIconsLoading] = useState(false);
   const [visibleListRows, setVisibleListRows] = useState(INITIAL_ROWS);
   const [visibleDiffRows, setVisibleDiffRows] = useState(INITIAL_ROWS);
@@ -130,7 +167,10 @@ export const DashboardModule = () => {
     getItemIcons().then((c) => setResolver(() => c.resolve)).catch(() => {}).finally(() => setIconsLoading(false));
   }, [hasCurrent, hasBaseline, settings.leagueName, leagueOverride]);
 
-  useEffect(() => { setVisibleListRows(INITIAL_ROWS); }, [lootView, search]);
+  // Search filters the complete imported list before pagination. Preserve the
+  // user's accumulated "Show more" allowance while searching/clearing so a
+  // lookup does not discard their browsing progress.
+  useEffect(() => { setVisibleListRows(INITIAL_ROWS); }, [lootView]);
   useEffect(() => { setVisibleDiffRows(INITIAL_ROWS); }, [lootView, diffTab]);
 
   const allDiffRows = useMemo(() => hasBoth ? diffLootItems(baselineItems, lootItems) : [], [baselineItems, lootItems, hasBoth]);
@@ -244,19 +284,6 @@ export const DashboardModule = () => {
   const triggerImport = (role: 'baseline' | 'current' | null = null) => {
     pendingRoleRef.current = role; fileInputRef.current?.click();
   };
-  const ItemIcon = useCallback(({ name }: { name: string }) => {
-    if (!resolver && iconsLoading) return <Skeleton w={ICON_SIZE} h={ICON_SIZE} radius="xs" />;
-    const url = resolver?.(name);
-    if (!url) return <div style={{ width: ICON_SIZE, height: ICON_SIZE }} />;
-    return (
-      <Tooltip label={name} openDelay={500} withinPortal>
-        <Image src={url} w={ICON_SIZE} h={ICON_SIZE}
-          style={{ flexShrink: 0 }}
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-      </Tooltip>
-    );
-  }, [resolver, iconsLoading]);
-
   const pc = (v: number) => v >= 0 ? COLOR.profit : COLOR.loss;
 
   return (
@@ -392,7 +419,7 @@ export const DashboardModule = () => {
                   </Tooltip>
                   {settings.chiselType && (
                     <Badge size="sm" color="yellow" variant="light"
-                      leftSection={<PoeItemIcon name={chiselItemName(settings.chiselType)} size={14} />}>
+                      leftSection={<PoeItemIcon name={chiselItemName(settings.chiselType)} size={14} category="chisel" />}>
                       {settings.chiselType}
                     </Badge>
                   )}
@@ -569,7 +596,7 @@ export const DashboardModule = () => {
                           {filteredItems.slice(0, visibleListRows).map((item) => (
                             <Table.Tr key={item.id} style={{ opacity: item.excluded ? 0.4 : 1 }}>
                               <Table.Td><Checkbox checked={!item.excluded} onChange={() => toggleLootItemExcluded(item.id)} size="xs" /></Table.Td>
-                              <Table.Td><Group gap={6} wrap="nowrap"><ItemIcon name={item.name} /><Text size="xs" lineClamp={1}>{item.name}</Text></Group></Table.Td>
+                              <Table.Td><Group gap={6} wrap="nowrap"><ResolvedLootIcon name={item.name} tab={item.tab} resolver={resolver} loading={iconsLoading} /><Text size="xs" lineClamp={1}>{item.name}</Text></Group></Table.Td>
                               <Table.Td><Text size="xs">{item.quantity}</Text></Table.Td>
                               <Table.Td><Text size="xs" fw={600} c={item.excluded ? 'dimmed' : 'teal'}>{fcSep(item.total, false, 1)}</Text></Table.Td>
                             </Table.Tr>
@@ -612,7 +639,7 @@ export const DashboardModule = () => {
                         <Table.Tbody>
                           {activeDiff.slice(0, visibleDiffRows).map((r) => (
                             <Table.Tr key={r.name}>
-                              <Table.Td><Group gap={6} wrap="nowrap"><ItemIcon name={r.name} /><Text size="xs" lineClamp={1}>{r.name}</Text></Group></Table.Td>
+                              <Table.Td><Group gap={6} wrap="nowrap"><ResolvedLootIcon name={r.name} tab={r.tab} resolver={resolver} loading={iconsLoading} /><Text size="xs" lineClamp={1}>{r.name}</Text></Group></Table.Td>
                               <Table.Td><Text size="xs" c="dimmed">{r.baseQty} → {r.currQty}</Text></Table.Td>
                               <Table.Td><Text size="xs" fw={600} c={r.delta > 0 ? 'green' : 'red'}>{fcSep(r.delta, true, 1)}</Text></Table.Td>
                             </Table.Tr>

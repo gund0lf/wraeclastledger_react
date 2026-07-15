@@ -33,6 +33,8 @@ export const CHANGELOG: ChangelogEntry[] = [
       'League rollover safety: an unnamed working session carried from the previous league is never silently restamped or repriced. The app pauses automatic mutation, shows a clear warning, rejects Standard provenance, and waits when no supported league is confirmed.',
       'Loading or importing Strategy Browser build settings now protects every meaningful unnamed session, including loot, notes and configured setup without maps: save it, explicitly discard it, or cancel before replacement.',
       'The working-session guard now ignores untouched Atlas Tree metadata and no longer reopens the Sessions picker after a decision. Strategy Browser tree settings populate Atlas Calc through an isolated one-shot reader even while Regex is selected; the visible tree still mounts only at a safe panel size.',
+      'Missing item artwork now uses an honest category symbol where the item type is known, while unknowns stay blank. False matches involving Heist Scarabs, Blueprint wings and fragment-like card names were removed; cards are identified from their real display names and use the shared inventory icon, plain map tiers use only clean signed art and otherwise show the neutral map symbol instead of a Blight/conqueror/event overlay, unique 6L names resolve by their base item, and non-square equipment art keeps its proper proportions.',
+      'Loot search covers the complete imported list and now preserves the number of rows you previously revealed when searching or clearing the filter.',
     ],
   },
   {

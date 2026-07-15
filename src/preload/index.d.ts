@@ -22,7 +22,7 @@ declare global {
       searchMapsOnTrade:   (params: TradeParams) => Promise<{ url: string | null; error: string | null }>
       getBrickMods:        () => Promise<BrickMod[]>
       fetchCurrencyOverview: (league: string) => Promise<{ lines: { id: string; primaryValue?: number }[] | null; error: string | null }>
-      fetchEconomyIcons: (family: 'exchange' | 'stash', league: string, type: string) => Promise<{ icons: { name: string; icon: string }[] | null; slugs: string[]; error: string | null }>
+      fetchEconomyIcons: (family: 'exchange' | 'stash', league: string, type: string) => Promise<{ icons: { name: string; icon: string }[] | null; slugs: string[]; names: string[]; error: string | null }>
       fetchLeagueIndex: () => Promise<{ leagues: string[] | null; error: string | null }>
       readGameDataCache: () => Promise<{ manifest: unknown | null; error: string | null }>
       writeGameDataCache: (manifest: unknown) => Promise<{ ok: boolean; error: string | null }>

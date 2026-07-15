@@ -17,21 +17,22 @@
  * (window.api.fetchEconomyIcons) so it isn't subject to renderer CORS.
  *
  * Resolution order: exact name -> normalised -> WealthyExile decoration
- * strip (gem "- lvl/qual" suffix, "Variant, Item" comma forms; lookup-only)
+ * strip (gem "- lvl/qual", unique "6L", "Variant, Item" comma forms; lookup-only)
  * -> word-boundary prefix -> map tier index -> name-keyword fallback ->
- * known-div-card -> blank.
+ * blank. Known div-card identity is checked before keyword fallback so a card
+ * whose name contains "relic" cannot be painted as a fragment.
  * (The old bidirectional containment sweep was REMOVED 2026-07-03: its
  * `k.startsWith(n)` arm let any uncached short name match an arbitrary longer
  * cached key — observed: Forbidden Flame/Flesh resolving to the Chaos Orb
  * icon. A wrong icon is worse than a blank; the prefix step and keyword
  * fallback cover the legitimate cases.)
  *
- * Divination cards are a special case: poe.ninja serves NO per-card icons (the
- * exchange items[] only has chaos/divine), and card names have no shared keyword
- * (e.g. "Darker Half"). But the exchange DivinationCard lines[] IS the full card
- * list by slug, and a slug is just the hyphenated normalised name. So we collect
- * those slugs into a Set and map any matching loot name to the one generic
- * div-card icon poe.ninja itself uses. Auto-updates each league; no hardcoded list.
+ * Divination cards are a special case: poe.ninja serves no per-card inventory
+ * icons, and card names have no shared keyword (e.g. "Darker Half"). The
+ * exchange DivinationCard items[] still carries the true display names even
+ * when image is null, so those names identify cards; lines[] slugs are retained
+ * only as a compatibility fallback. Every recognized card maps to the normal
+ * shared div-card inventory icon. Auto-updates each league; no hardcoded list.
  *
  * We fetch the current challenge league + Standard (Standard has older items).
  */
@@ -78,8 +79,9 @@ const STASH_TYPES = [
   'Wombgift',
 ];
 
-// Generic div-card art (the same asset poe.ninja's card pages use). Used when a
-// name matches the known card list; if it ever 404s the <img onError> hides it.
+// Normal shared divination-card inventory art (all cards use this same icon).
+// Used once a name matches the known card list; if it ever 404s the UI falls
+// back to its neutral category glyph.
 const GENERIC_DIV_CARD = 'https://web.poecdn.com/image/Art/2DItems/Divination/InventoryIcon.png';
 
 // ─── Normalisation ────────────────────────────────────────────────────────────
@@ -94,9 +96,34 @@ function norm(s: string): string {
     .trim();
 }
 
+export type PoeIconDescriptor = Record<string, unknown> & { f?: string };
+
+/** Decode the JSON descriptor embedded in a web.poecdn /gen/image/ URL. */
+export function decodeIconDescriptor(url: string): PoeIconDescriptor | null {
+  const encoded = /\/gen\/image\/([^/]+)\//.exec(url)?.[1];
+  if (!encoded) return null;
+  try {
+    const base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+    const payload = JSON.parse(atob(padded)) as unknown;
+    if (!Array.isArray(payload) || typeof payload[2] !== 'object' || payload[2] === null) return null;
+    return payload[2] as PoeIconDescriptor;
+  } catch {
+    return null;
+  }
+}
+
+function isCleanTierMapIcon(url: string, tier: number): boolean {
+  const descriptor = decodeIconDescriptor(url);
+  if (descriptor?.f !== `2DItems/Maps/Atlas2Maps/New/MapNumbers${tier}`) return false;
+  const baseKeys = new Set(['f', 'w', 'h', 'scale', 'mn', 'mt']);
+  return Object.keys(descriptor).every((key) => baseKeys.has(key));
+}
+
 // ─── Category fallbacks seeded after main fetch ───────────────────────────────
 const GENERIC: Record<string, string> = {};
-// Normalised names of every divination card poe.ninja lists (built from slugs).
+// Normalised names of every divination card poe.ninja lists (display names,
+// with reconstructed slugs retained only as a compatibility fallback).
 const divCardSet = new Set<string>();
 
 function pickGeneric(name: string): string | undefined {
@@ -128,8 +155,9 @@ function pickGeneric(name: string): string | undefined {
         /\bgem\b/.test(n))
       return GENERIC.gem;
   }
-  // Scarabs
-  if (GENERIC.scarab && n.includes('scarab')) return GENERIC.scarab;
+  // Scarabs deliberately have no specific-item fallback. Known scarab slots
+  // and loot rows provide the neutral category glyph; substituting whichever
+  // scarab happened to seed this cache would still assert the wrong identity.
   // Essences
   if (GENERIC.essence && n.includes('essence')) return GENERIC.essence;
   // Delirium orbs
@@ -158,12 +186,9 @@ function pickGeneric(name: string): string | undefined {
         n.includes('vapour') || n.includes('volatile') || n.includes('tainted'))
       return GENERIC.misc_orb;
   }
-  // Fragments / keys / splinters
-  if (GENERIC.fragment) {
-    if (/\bkey\b/.test(n) || n.includes('splinter') || /\brelic\b/.test(n) ||
-        n.includes('emblem') || n.includes('fragment') || n.includes('vessel'))
-      return GENERIC.fragment;
-  }
+  // Fragment-like names deliberately have no specific-item fallback. An
+  // arbitrary Ritual Vessel image is not an honest icon for a missing key,
+  // relic, emblem or splinter; category-aware UI supplies a neutral glyph.
   // NOTE (session 17): the old last-resort `/\borb\b/ -> chaos_orb` fallback
   // was REMOVED. Every real currency orb resolves exactly from the Currency
   // category, so the rule only ever fired on orbs poe.ninja does NOT price
@@ -179,14 +204,14 @@ async function fetchCategory(
   family: 'exchange' | 'stash',
   type: string,
   league: string
-): Promise<{ pairs: [string, string][]; slugs: string[] }> {
+): Promise<{ pairs: [string, string][]; slugs: string[]; names: string[] }> {
   try {
-    if (typeof window === 'undefined' || !window.api?.fetchEconomyIcons) return { pairs: [], slugs: [] };
+    if (typeof window === 'undefined' || !window.api?.fetchEconomyIcons) return { pairs: [], slugs: [], names: [] };
     const res = await window.api.fetchEconomyIcons(family, league, type);
     const pairs = (res?.icons ?? []).map((i) => [i.name, i.icon] as [string, string]);
-    return { pairs, slugs: res?.slugs ?? [] };
+    return { pairs, slugs: res?.slugs ?? [], names: res?.names ?? [] };
   } catch {
-    return { pairs: [], slugs: [] };
+    return { pairs: [], slugs: [], names: [] };
   }
 }
 
@@ -195,10 +220,9 @@ let exactMap:  Map<string, string> | null = null;
 let normMap:   Map<string, string> | null = null;
 let fetchProm: Promise<void>       | null = null;
 let cacheLeague: string | null = null;
-// Tier -> MapNumbersN-style icon, built from every cached "... Map (Tier N)"
-// key (session 17 map audit). Plain "Map (Tier N)" keys win over prefixed
-// ones (Blighted/conqueror), but ANY tier-N map key supplies correct
-// tier-band art on a miss.
+// Tier -> signed, fully rendered MapNumbersN art whose descriptor has no
+// variant flags. Raw descriptor `f` files contain only the tier numeral, not
+// the map frame, so they must never be substituted for a generated image.
 let mapTierIcons: Map<number, string> = new Map();
 
 async function buildCache(challenge: string): Promise<void> {
@@ -242,8 +266,11 @@ async function buildCache(challenge: string): Promise<void> {
     exchRes.forEach((r, i) => {
       if (r.status !== 'fulfilled') return;
       r.value.pairs.forEach(([k, v]) => add(k, v));
-      // DivinationCard slugs -> the authoritative card-name set (no icons exist)
+      // Actual items[] display names are authoritative. Slug reconstruction is
+      // only a fallback: live example `the-reflection-of-the-heart` has display
+      // name `Reflection of the Heart` (the extra article must not be invented).
       if (EXCHANGE_TYPES[i] === 'DivinationCard') {
+        for (const name of r.value.names) divCardSet.add(norm(name));
         for (const slug of r.value.slugs) divCardSet.add(slug.replace(/-/g, ' '));
       }
     });
@@ -265,22 +292,19 @@ async function buildCache(challenge: string): Promise<void> {
   // rows can be tierless ("Baran Map") or reference a tier ninja doesn't
   // currently trade — both used to fall to an ORDER-ARBITRARY generic (the
   // API's first "...Map" line; live-observed as Al-Hezmin Vaal Temple art).
-  // Index every tiered map key so misses resolve to the right tier band.
-  // Source rank per tier (live-verified 2026-07-09), LEAGUE-MAJOR so a
-  // current-league source of any type beats a later league's: within a
-  // league, conqueror-prefixed art is clean; PLAIN "Map (Tier N)" line art
-  // is whatever variant traded (delirium/originator composites observed);
-  // blighted carries fungus. rank = leagueIdx*10 + (prefixed 0 | plain 1 |
-  // blighted 2) — a challenge-league blighted line (2) must still beat a
-  // Standard legacy plain line (21), or Roman-numeral art returns via the index.
+  // Generated icon URLs embed a base64 JSON descriptor. Keep only signed
+  // MapNumbersN images without variant flags for plain tier rows; mb/mc/me/md
+  // entries are Blight/conqueror/event variants. If no clean signed image is
+  // available, the UI's neutral map glyph is more honest than either a false
+  // overlay or the raw `f` asset (which is only a naked Roman numeral).
   mapTierIcons = new Map();
   const tierRank = new Map<number, number>();
   for (const [key, url] of normalized) {
     const m = /(?:^|\s)map tier (\d+)$/.exec(key);
     if (!m) continue;
     const tier = parseInt(m[1], 10);
-    const typeRank = key === `map tier ${tier}` ? 1 : key.startsWith('blighted ') ? 2 : 0;
-    const rank = (keyLeague.get(key) ?? 9) * 10 + typeRank;
+    if (!isCleanTierMapIcon(url, tier)) continue;
+    const rank = keyLeague.get(key) ?? 9;
     if (!mapTierIcons.has(tier) || rank < (tierRank.get(tier) ?? Infinity)) {
       mapTierIcons.set(tier, url);
       tierRank.set(tier, rank);
@@ -294,7 +318,6 @@ async function buildCache(challenge: string): Promise<void> {
     }
   };
 
-  seedBy('scarab',    (n) => n.includes('scarab'));
   seedBy('essence',   (n) => n.includes('essence'));
   seedBy('delirium',  (n) => n.includes('delirium'));
   seedBy('incubator', (n) => n.includes('incubator'));
@@ -305,15 +328,14 @@ async function buildCache(challenge: string): Promise<void> {
   seedBy('djinn_coin',(n) => /\bcoin\b/.test(n));
   seedBy('oil',       (n) => n.endsWith(' oil'));
   seedBy('temple',    (n) => n.endsWith('temple'));
-  // GENERIC.map: DELIBERATE seed (session 17) — highest indexed tier's art,
+  // GENERIC.map: DELIBERATE seed (session 17) — highest clean indexed tier's art,
   // NOT "first name ending in 'map'" (API-order roulette; live-observed
-  // landing on the Al-Hezmin Vaal Temple icon). endsWith seeding is only the
-  // last resort if no tiered key exists at all.
+  // landing on the Al-Hezmin Vaal Temple icon). If no clean signed tier exists,
+  // leave this unset so category-aware UI shows the neutral map glyph.
   if (!GENERIC.map && mapTierIcons.size > 0) {
     const top = Math.max(...mapTierIcons.keys());
     GENERIC.map = mapTierIcons.get(top)!;
   }
-  seedBy('map',       (n) => n.endsWith('map'));
   seedBy('astrolabe', (n) => n.includes('astrolabe'));
 
   // Specific-name seeds where a keyword would be ambiguous
@@ -327,7 +349,6 @@ async function buildCache(challenge: string): Promise<void> {
   seed(['Craicic Chimeral', 'Saqawal, First of the Sky', 'Farrul, First of the Plains'], 'beast');
   seed(['Chaos Orb'], 'chaos_orb');
   seed(['Orb of Alchemy', 'Orb of Annulment', 'Orb of Scouring'], 'misc_orb');
-  seed(['Ritual Vessel', 'Sacrifice at Dusk', 'Timeless Karui Splinter'], 'fragment');
 
   // Gem fallback: any support gem icon
   const gemEntry = [...exact.entries()].find(([k]) =>
@@ -370,16 +391,14 @@ export async function getItemIcons(): Promise<{
 
       const n = norm(name);
 
-      // 0. Plain "Map (Tier N)" BYPASSES exact-match art (session 17): the
-      // ninja line under that exact key carries whatever variant happened to
-      // trade (delirium/originator composites and, pre-first-write, legacy
-      // Standard art — both live-observed). The ranked tier index is the
-      // deliberate source; exact match only serves it if the index can't.
+      // 0. Plain "Map (Tier N)" bypasses exact art because it may carry
+      // mb/mc/me/md overlays. Return only a signed flag-free tier image; a miss
+      // intentionally reaches the Dashboard's neutral map glyph.
       const plainM = /^map tier (\d+)$/.exec(n);
       if (plainM) {
-        const url = mapTierIcons.get(parseInt(plainM[1], 10));
-        if (url) return url;
+        return mapTierIcons.get(parseInt(plainM[1], 10));
       }
+      const blightedM = /^blighted map tier (\d+)$/.exec(n);
 
       // 1. Exact name match
       const exact = exactMap.get(name);
@@ -388,6 +407,10 @@ export async function getItemIcons(): Promise<{
       // 2. Normalised exact (diacritics, apostrophes stripped)
       const byNorm = normMap.get(n);
       if (byNorm) return byNorm;
+
+      // Do not silently turn an untraded Blighted tier into a normal map. A
+      // live exact URL above keeps its fungus marker; otherwise use the glyph.
+      if (blightedM) return undefined;
 
       // 2b. WealthyExile decorations (session 17; shapes verified from the
       // fixture CSVs). Lookup-only retries — exact/norm equality on the
@@ -401,7 +424,16 @@ export async function getItemIcons(): Promise<{
         const base = name.split(' - ')[0].trim();
         const hit = exactMap.get(base) ?? normMap.get(norm(base));
         if (hit) return hit;
-        if (GENERIC.gem) return GENERIC.gem;
+        // WealthyExile also uses "- 1/3" for Blueprints. The suffix alone is
+        // not gem-certain; require an independently gem-shaped base.
+        const bn = norm(base);
+        if (GENERIC.gem && (bn.includes(' support') || bn.startsWith('awakened ') ||
+            bn.startsWith('vaal ') || /\bgem\b/.test(bn))) return GENERIC.gem;
+      }
+      const linkedBase = name.replace(/\s+\d+L$/i, '').trim();
+      if (linkedBase !== name) {
+        const hit = exactMap.get(linkedBase) ?? normMap.get(norm(linkedBase));
+        if (hit) return hit;
       }
       if (name.includes(',')) {
         for (const seg of name.split(',').reverse()) {
@@ -428,8 +460,9 @@ export async function getItemIcons(): Promise<{
       // from the fixture CSVs, poe.ninja keys via scripts/dump-map-icons.mjs):
       //  - tierless "<Conqueror/Guardian> Map" rows probe the tiered keys
       //    ("baran map" -> "baran map tier 16") — the item's REAL icon;
-      //  - "(Blighted) Map (Tier N)" rows ninja doesn't currently trade fall
-      //    to the indexed tier art, so a T14 never wears white T4 art again.
+      //  - plain "Map (Tier N)" rows were already handled at step 0; missing
+      //    clean or Blighted tier art intentionally stays missing so the UI
+      //    can show an honest neutral map glyph.
       if (n.endsWith(' map')) {
         for (const t of [16, 15, 14]) {
           const url = normMap.get(`${n} tier ${t}`);
@@ -442,12 +475,14 @@ export async function getItemIcons(): Promise<{
         if (url) return url;
       }
 
-      // 4. Name-keyword fallback
+      // 4. Known divination card -> shared card inventory art. This MUST precede the
+      // keyword fallback: valid cards such as Time-Lost Relic contain words
+      // that otherwise resemble fragment names.
+      if (divCardSet.has(n)) return GENERIC.div_card;
+
+      // 5. Name-keyword fallback
       const byKeyword = pickGeneric(name);
       if (byKeyword) return byKeyword;
-
-      // 5. Known divination card (poe.ninja's own card list) -> generic card icon
-      if (divCardSet.has(n)) return GENERIC.div_card;
 
       return undefined;
     },

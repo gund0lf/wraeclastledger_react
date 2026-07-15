@@ -33,6 +33,19 @@ const BASE = 'https://poe.ninja/poe1/api/economy/stash/current/item/overview';
 
 const iconTail = (u) => (typeof u === 'string' ? u.split('/').slice(-2).join('/') : String(u));
 
+function decodeIconDescriptor(url) {
+  const encoded = typeof url === 'string' ? /\/gen\/image\/([^/]+)\//.exec(url)?.[1] : null;
+  if (!encoded) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+    return Array.isArray(payload) && payload[2] && typeof payload[2] === 'object'
+      ? payload[2]
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchType(league, type) {
   const url = `${BASE}?league=${encodeURIComponent(league)}&type=${encodeURIComponent(type)}`;
   const res = await fetch(url);
@@ -59,7 +72,8 @@ function report(league, type, lines) {
   for (const l of lines.slice(0, 6)) {
     console.log(
       `    name=${JSON.stringify(l.name ?? null)} baseType=${JSON.stringify(l.baseType ?? null)}` +
-      ` mapTier=${l.mapTier ?? '-'} variant=${JSON.stringify(l.variant ?? null)} icon=…${iconTail(l.icon)}`
+      ` mapTier=${l.mapTier ?? '-'} variant=${JSON.stringify(l.variant ?? null)}` +
+      ` icon=…${iconTail(l.icon)} descriptor=${JSON.stringify(decodeIconDescriptor(l.icon))}`
     );
   }
 

@@ -25,7 +25,7 @@ const api = {
   getBrickMods: (): Promise<BrickMod[]> => ipcRenderer.invoke('trade:get-brick-mods'),
   fetchCurrencyOverview: (league: string): Promise<{ lines: { id: string; primaryValue?: number }[] | null; error: string | null }> =>
     ipcRenderer.invoke('poeninja:currency-overview', league),
-  fetchEconomyIcons: (family: 'exchange' | 'stash', league: string, type: string): Promise<{ icons: { name: string; icon: string }[] | null; slugs: string[]; error: string | null }> =>
+  fetchEconomyIcons: (family: 'exchange' | 'stash', league: string, type: string): Promise<{ icons: { name: string; icon: string }[] | null; slugs: string[]; names: string[]; error: string | null }> =>
     ipcRenderer.invoke('poeninja:economy-icons', family, league, type),
   // League-override dropdown data (league.ts fetchSelectableLeagues).
   fetchLeagueIndex: (): Promise<{ leagues: string[] | null; error: string | null }> =>

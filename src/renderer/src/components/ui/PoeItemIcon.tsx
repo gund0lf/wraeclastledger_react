@@ -13,16 +13,29 @@
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { Image } from '@mantine/core';
+import { IconBug, IconCircleDashed, IconDiamond, IconTool, IconWorld } from '@tabler/icons-react';
 import { getItemIcons } from '../../utils/itemIcons';
 import { useSessionStore } from '../../store/useSessionStore';
+import { COLOR } from '../../utils/uiTokens';
 
 type Resolver = (name: string) => string | undefined;
+export type PoeItemCategory = 'scarab' | 'orb' | 'chisel' | 'gem' | 'astrolabe';
 let cachedResolver: Resolver | null = null;
 
-export const PoeItemIcon = ({ name, size = 14, fallback = null }: {
+const CategoryFallback = ({ category, size }: { category: PoeItemCategory; size: number }) => {
+  const props = { size, stroke: 1.5, color: COLOR.textMuted, style: { flexShrink: 0 } };
+  if (category === 'scarab') return <IconBug {...props} />;
+  if (category === 'chisel') return <IconTool {...props} />;
+  if (category === 'gem') return <IconDiamond {...props} />;
+  if (category === 'astrolabe') return <IconWorld {...props} />;
+  return <IconCircleDashed {...props} />;
+};
+
+export const PoeItemIcon = ({ name, size = 14, fallback = null, category }: {
   name: string | null | undefined;
   size?: number;
   fallback?: ReactNode;
+  category?: PoeItemCategory;
 }) => {
   const leagueOverride = useSessionStore((s) => s.leagueOverride);
   const sessionLeague = useSessionStore((s) => s.settings.leagueName);
@@ -30,6 +43,7 @@ export const PoeItemIcon = ({ name, size = 14, fallback = null }: {
   // function, and useState(fn) would CALL it as an initializer (resolve(undefined)
   // -> crash on later mounts once the cache is warm).
   const [resolver, setResolver] = useState<Resolver | null>(() => cachedResolver);
+  const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -43,14 +57,17 @@ export const PoeItemIcon = ({ name, size = 14, fallback = null }: {
   }, [leagueOverride, sessionLeague]);
 
   const url = name ? resolver?.(name) : undefined;
-  if (!url) return <>{fallback}</>;
+  useEffect(() => setImageFailed(false), [url]);
+
+  const fallbackNode = fallback ?? (category ? <CategoryFallback category={category} size={size} /> : null);
+  if (!url || imageFailed) return <>{fallbackNode}</>;
   return (
     <Image
-      src={url} w={size} h={size}
+      src={url} w={size} h={size} fit="contain" alt="" aria-hidden
       // session-16: no imageRendering:'pixelated' — nearest-neighbor downscaling
       // of the ~78px CDN icons to 14-24px is what made small icons look crunchy.
       style={{ flexShrink: 0, display: 'inline-block' }}
-      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+      onError={() => setImageFailed(true)}
     />
   );
 };

@@ -360,13 +360,13 @@ export const StrategyCard = ({ strategy, onLoadBuild, onUpdateStrategy, discordT
               <Group gap={4} mb={6} wrap="wrap">
                 {deliM && (
                   <Badge size="sm" color="grape" variant="light"
-                    leftSection={<PoeItemIcon name={deliOrbItemName(deliM[2].replace(/[^\x00-\x7F]/g, '').replace(/'s$/i, ''))} size={16} />}>
+                    leftSection={<PoeItemIcon name={deliOrbItemName(deliM[2].replace(/[^\x00-\x7F]/g, '').replace(/'s$/i, ''))} size={16} category="orb" />}>
                     {deliM[1]}x {deliM[2].replace(/[^\x00-\x7F]/g, '')} ({parseInt(deliM[1]) * 20}% delirious)
                   </Badge>
                 )}
                 {astM && (
                   <Badge size="sm" color="teal" variant="light"
-                    leftSection={<PoeItemIcon name={astM[1].replace(/[^\x00-\x7F]/g, '').trim()} size={16} />}>
+                    leftSection={<PoeItemIcon name={astM[1].replace(/[^\x00-\x7F]/g, '').trim()} size={16} category="astrolabe" />}>
                     {astM[1].replace(/[^\x00-\x7F]/g, '').trim()}
                   </Badge>
                 )}
@@ -377,7 +377,7 @@ export const StrategyCard = ({ strategy, onLoadBuild, onUpdateStrategy, discordT
           {strategy.chisel && strategy.chisel !== 'None' && (
             <Group gap={4} mb={6}>
               <Badge size="sm" color="yellow" variant="light"
-                leftSection={<PoeItemIcon name={chiselItemName(strategy.chisel)} size={16} />}>
+                leftSection={<PoeItemIcon name={chiselItemName(strategy.chisel)} size={16} category="chisel" />}>
                 {strategy.chisel}
               </Badge>
             </Group>
@@ -413,7 +413,7 @@ export const StrategyCard = ({ strategy, onLoadBuild, onUpdateStrategy, discordT
                       <Badge size="sm"
                         color={removed ? 'red' : changed ? 'yellow' : (TAG_COLORS[strategy.type_tag ?? ''] ?? 'orange')}
                         variant="light"
-                        leftSection={<PoeItemIcon name={s.name} size={16} />}
+                        leftSection={<PoeItemIcon name={s.name} size={16} category="scarab" />}
                         style={removed ? { textDecoration: 'line-through', opacity: 0.7 } : undefined}>
                         {s.name}{s.cost > 0 ? ` · ${s.cost}c` : ''}
                       </Badge>

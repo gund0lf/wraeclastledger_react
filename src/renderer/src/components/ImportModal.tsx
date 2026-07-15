@@ -81,19 +81,19 @@ export const ImportModal = ({ opened, onClose, onLoadBuild }: Props) => {
               <Badge variant="light" color="blue">{importResult.multiplier.toFixed(2)}×</Badge>
               {importResult.chisel && importResult.chisel !== 'None' && (
                 <Badge variant="light" color="yellow"
-                  leftSection={<PoeItemIcon name={chiselItemName(importResult.chisel)} size={14} />}>
+                  leftSection={<PoeItemIcon name={chiselItemName(importResult.chisel)} size={14} category="chisel" />}>
                   {importResult.chisel}
                 </Badge>
               )}
               {importResult.deliOrbType && (
                 <Badge variant="light" color="grape"
-                  leftSection={<PoeItemIcon name={deliOrbItemName(importResult.deliOrbType)} size={14} />}>
+                  leftSection={<PoeItemIcon name={deliOrbItemName(importResult.deliOrbType)} size={14} category="orb" />}>
                   {importResult.deliOrbQty}x {importResult.deliOrbType} ({importResult.deliOrbQty * 20}%)
                 </Badge>
               )}
               {importResult.astroType && (
                 <Badge variant="light" color="teal"
-                  leftSection={<PoeItemIcon name={importResult.astroType} size={14} />}>
+                  leftSection={<PoeItemIcon name={importResult.astroType} size={14} category="astrolabe" />}>
                   {importResult.astroType}
                 </Badge>
               )}
@@ -123,7 +123,7 @@ export const ImportModal = ({ opened, onClose, onLoadBuild }: Props) => {
                 <Group gap={4} wrap="wrap">
                   {importResult.scarabs.map((name, i) => (
                     <Badge key={name} variant="light" color="orange"
-                      leftSection={<PoeItemIcon name={name} size={14} />}>
+                      leftSection={<PoeItemIcon name={name} size={14} category="scarab" />}>
                       {name}{importResult.scarabCosts[i] > 0 ? ` (${importResult.scarabCosts[i]}c)` : ''}
                     </Badge>
                   ))}
