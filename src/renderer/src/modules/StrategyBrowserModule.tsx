@@ -5,7 +5,7 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { IconRefresh, IconBrandDiscord, IconShare2 } from '@tabler/icons-react';
-import { useSessionKeys } from '../store/useSessionStore';
+import { DEFAULT_SETTINGS, useSessionKeys, useSessionStore } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
 import { KNOWN_LEAGUES, activeKnownLeagues } from '../utils/league';
 import { parseDiscordExport } from '../utils/parseDiscordExport';
@@ -20,6 +20,9 @@ import { ShareModal } from '../components/ShareModal';
 import { ImportModal } from '../components/ImportModal';
 import type { DiscordImport } from '../utils/parseDiscordExport';
 import { FONT } from '../utils/uiTokens'
+import { WorkingSessionGuardModal } from '../components/WorkingSessionGuardModal';
+import { isWorkingSessionMeaningful } from '../utils/workingSession';
+import { deriveAtlasCalcSettings } from '../../../shared/atlasStats';
 
 // API base (incl. the VITE_STRATEGY_API_URL dev override) moved to
 // strategyConstants.STRATEGY_API_URL — shared with the game-data loader.
@@ -28,10 +31,10 @@ import { FONT } from '../utils/uiTokens'
 export const StrategyBrowserModule = () => {
   const {
     maps, settings, discordTag, leagueOverride,
-    updateSetting, updateAdvSetting, updateScarab, newSession, setLoadedStrategyInfo,
+    updateSetting, updateAdvSetting, updateScarab, newSession, saveAsNewSession, setLoadedStrategyInfo,
   } = useSessionKeys(
     'maps', 'settings', 'discordTag', 'leagueOverride',
-    'updateSetting', 'updateAdvSetting', 'updateScarab', 'newSession', 'setLoadedStrategyInfo',
+    'updateSetting', 'updateAdvSetting', 'updateScarab', 'newSession', 'saveAsNewSession', 'setLoadedStrategyInfo',
   );
   // Pulled up here (before handleLoadBuild uses it) via a stable-action selector.
   const requestAtlasApply = useUIStore((s) => s.requestAtlasApply);
@@ -58,6 +61,26 @@ export const StrategyBrowserModule = () => {
   const [period,     setPeriod]     = useState('all');
   const [hideGroup,  setHideGroup]  = useState(false);
   const LIMIT = 20;
+
+  const requestCurrentAtlasApply = (url: string) => {
+    const targetSessionNonce = useSessionStore.getState().sessionNonce;
+    requestAtlasApply(targetSessionNonce); // visible Atlas Tree lifecycle/reload
+    void window.api.readAtlasTreeStats(url).then((result) => {
+      if (useSessionStore.getState().sessionNonce !== targetSessionNonce) return;
+      if (!result.groups) {
+        setLoadedMsg(`Build loaded, but Atlas Calc could not read the Atlas Tree: ${result.error ?? 'unknown error'}.`);
+        return;
+      }
+      const patch = deriveAtlasCalcSettings(result.groups);
+      if (patch.smallNodesAllocated !== undefined) updateSetting('smallNodesAllocated', patch.smallNodesAllocated);
+      if (patch.mountingModifiers) updateSetting('mountingModifiers', true);
+      if (patch.fragmentsUsed) updateSetting('fragmentsUsed', patch.fragmentsUsed);
+    }).catch((error: unknown) => {
+      if (useSessionStore.getState().sessionNonce !== targetSessionNonce) return;
+      const message = error instanceof Error ? error.message : 'unknown error';
+      setLoadedMsg(`Build loaded, but Atlas Calc could not read the Atlas Tree: ${message}.`);
+    });
+  };
 
   // Refs mirroring loading/offset for the background-refresh interval —
   // keeps the interval effect off those fast-changing deps (no re-arm churn).
@@ -124,9 +147,40 @@ export const StrategyBrowserModule = () => {
 
   // ── Import modal ──────────────────────────────────────────────────────────────
   const [importOpen, { open: openImport, close: closeImport }] = useDisclosure(false);
+  const [replacementGuardOpen, { open: openReplacementGuard, close: closeReplacementGuard }] = useDisclosure(false);
+  const [replacementName, setReplacementName] = useState('');
+  const [pendingReplacement, setPendingReplacement] = useState<(() => void) | null>(null);
+
+  const requestReplacement = (action: () => void) => {
+    if (!isWorkingSessionMeaningful(useSessionStore.getState(), DEFAULT_SETTINGS)) {
+      action();
+      return;
+    }
+    setPendingReplacement(() => action);
+    setReplacementName('');
+    openReplacementGuard();
+  };
+
+  const cancelReplacement = () => {
+    setPendingReplacement(null);
+    setReplacementName('');
+    closeReplacementGuard();
+  };
+
+  const continueReplacement = (saveFirst: boolean) => {
+    const action = pendingReplacement;
+    if (!action) return;
+    if (saveFirst) {
+      const name = replacementName.trim();
+      if (!name) return;
+      saveAsNewSession(name);
+    }
+    cancelReplacement();
+    action();
+  };
 
   // ── Load build (called by both StrategyCard and ImportModal) ─────────────────
-  const handleLoadBuild = (s: Strategy) => {
+  const applyStrategyBuild = (s: Strategy) => {
     newSession();
     if (s.chisel && s.chisel !== 'None') {
       updateSetting('chiselType', s.chisel.split(' ')[0]);
@@ -144,7 +198,7 @@ export const StrategyBrowserModule = () => {
       // URL is unchanged (loading the SAME strategy twice). newSession() zeroed the
       // calc config; without this the URL-change effect can't fire on an unchanged
       // URL, so the calc would stay empty and the setup wizard would reappear.
-      requestAtlasApply();
+      requestCurrentAtlasApply(s.atlas_tree_url);
     }
     if (s.raw_export) {
       const parsed = parseDiscordExport(s.raw_export);
@@ -183,6 +237,10 @@ export const StrategyBrowserModule = () => {
     setTimeout(() => setLoadedMsg(null), 6000);
   };
 
+  const handleLoadBuild = (strategy: Strategy) => {
+    requestReplacement(() => applyStrategyBuild(strategy));
+  };
+
   // ── Update strategy (versioning client half, design v3.1 §2) ─────────────────
   // Button on OWN cards → confirmation (same-setup wording, round-2 point 7) →
   // setup-only clone into a fresh session (reuses handleLoadBuild: scarabs,
@@ -191,14 +249,16 @@ export const StrategyBrowserModule = () => {
   const [updateCandidate, setUpdateCandidate] = useState<Strategy | null>(null);
 
   const confirmUpdateStrategy = (s: Strategy) => {
-    handleLoadBuild(s);
-    updateSetting('updateTargetStrategyId', s.id);
-    updateSetting('updateTargetStrategyName', s.strategy_name || s.discord_username || null);
-    setLoadedMsg(`Update run started for "${s.strategy_name || 'your strategy'}" — setup cloned into a fresh session. Sharing it will UPDATE the published result.`);
     setUpdateCandidate(null);
+    requestReplacement(() => {
+      applyStrategyBuild(s);
+      updateSetting('updateTargetStrategyId', s.id);
+      updateSetting('updateTargetStrategyName', s.strategy_name || s.discord_username || null);
+      setLoadedMsg(`Update run started for "${s.strategy_name || 'your strategy'}" — setup cloned into a fresh session. Sharing it will UPDATE the published result.`);
+    });
   };
 
-  const handleLoadFromImport = (parsed: DiscordImport) => {
+  const applyImportedBuild = (parsed: DiscordImport) => {
     // Apply what we can from a parsed import (no Strategy object — use parsed fields)
     newSession();
     if (parsed.chisel && parsed.chisel !== 'None') {
@@ -211,7 +271,7 @@ export const StrategyBrowserModule = () => {
         if (parsed.scarabCosts[i] > 0) updateScarab(i, 'cost', parsed.scarabCosts[i]);
       });
     }
-    if (parsed.atlasTreeUrl) { updateSetting('atlasTreeUrl', parsed.atlasTreeUrl); requestAtlasApply(); }
+    if (parsed.atlasTreeUrl) { updateSetting('atlasTreeUrl', parsed.atlasTreeUrl); requestCurrentAtlasApply(parsed.atlasTreeUrl); }
     if (parsed.deliOrbType)  { updateAdvSetting('advDeliOrbType', parsed.deliOrbType); updateAdvSetting('advDeliOrbQtyPerMap', parsed.deliOrbQty); updateAdvSetting('advDeliOrbPriceEach', parsed.deliOrbPrice); }
     if (parsed.astroType)    { updateAdvSetting('advAstrolabeType', parsed.astroType); updateAdvSetting('advAstrolabeCount', parsed.astroCount); updateAdvSetting('advAstrolabePrice', parsed.astroPrice); }
     if (parsed.runRegex) {
@@ -229,6 +289,10 @@ export const StrategyBrowserModule = () => {
     }
     setLoadedMsg(`Imported build settings applied: chisel, scarabs, atlas tree, deli orbs & astrolabe.`);
     setTimeout(() => setLoadedMsg(null), 6000);
+  };
+
+  const handleLoadFromImport = (parsed: DiscordImport) => {
+    requestReplacement(() => applyImportedBuild(parsed));
   };
 
   // ── Fetch ─────────────────────────────────────────────────────────────────────
@@ -295,6 +359,16 @@ export const StrategyBrowserModule = () => {
     <>
       <ShareModal opened={shareOpen} onClose={closeShare} initialTags={shareTags} />
       <ImportModal opened={importOpen} onClose={closeImport} onLoadBuild={handleLoadFromImport} />
+      <WorkingSessionGuardModal
+        opened={replacementGuardOpen}
+        mapCount={maps.length}
+        name={replacementName}
+        actionDescription="Loading these build settings"
+        onNameChange={setReplacementName}
+        onSave={() => continueReplacement(true)}
+        onDiscard={() => continueReplacement(false)}
+        onCancel={cancelReplacement}
+      />
 
       <Modal opened={updateCandidate !== null} onClose={() => setUpdateCandidate(null)}
         title={`Update "${updateCandidate?.strategy_name || 'your strategy'}"?`} size="sm">

@@ -9,7 +9,7 @@
  * override setter (the detection cache is never populated in the node env).
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { isCrossLeagueSession } from './historicalSession';
+import { isCrossLeagueSession, isLiveSessionLeagueMismatch } from './historicalSession';
 import { setLeagueOverrideValue } from './league';
 
 afterEach(() => setLeagueOverrideValue(null));
@@ -39,5 +39,20 @@ describe('isCrossLeagueSession', () => {
     setLeagueOverrideValue('NewLeague329');
     expect(isCrossLeagueSession('sess-1', '')).toBe(false);
     expect(isCrossLeagueSession('sess-1', undefined)).toBe(false);
+  });
+});
+
+describe('isLiveSessionLeagueMismatch', () => {
+  it('flags an unnamed live session carried from a different confirmed league', () => {
+    setLeagueOverrideValue('NewLeague329');
+    expect(isLiveSessionLeagueMismatch(null, 'Mirage')).toBe(true);
+  });
+
+  it('does not flag a loaded session, matching league, or unknown league', () => {
+    setLeagueOverrideValue('Mirage');
+    expect(isLiveSessionLeagueMismatch('saved-1', 'Ancestors')).toBe(false);
+    expect(isLiveSessionLeagueMismatch(null, 'Mirage')).toBe(false);
+    setLeagueOverrideValue(null);
+    expect(isLiveSessionLeagueMismatch(null, 'Mirage')).toBe(false);
   });
 });

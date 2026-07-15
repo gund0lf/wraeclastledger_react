@@ -30,6 +30,9 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Atlas Calc stays compact in narrow panels: map-type labels no longer wrap into boxes, observed evidence locks the fallback pills, and the duplicated header multiplier was removed while the detailed total remains below.',
       'Dock panels now adapt to their own width rather than the app window: Atlas Calc right-aligns its map-type pills and hides locked fallbacks only when necessary, Sessions shortens action labels without adding rows, and Investment safely wraps its header. Dashboard preserves its denser two-column comparisons in smaller desktop windows.',
       'Strategy Browser now preserves a readable minimum table width and offers horizontal scrolling below it instead of silently cutting off filters and result columns; compact Investment keeps its league selector and cost-per-map summary on one row.',
+      'League rollover safety: an unnamed working session carried from the previous league is never silently restamped or repriced. The app pauses automatic mutation, shows a clear warning, rejects Standard provenance, and waits when no supported league is confirmed.',
+      'Loading or importing Strategy Browser build settings now protects every meaningful unnamed session, including loot, notes and configured setup without maps: save it, explicitly discard it, or cancel before replacement.',
+      'The working-session guard now ignores untouched Atlas Tree metadata and no longer reopens the Sessions picker after a decision. Strategy Browser tree settings populate Atlas Calc through an isolated one-shot reader even while Regex is selected; the visible tree still mounts only at a safe panel size.',
     ],
   },
   {

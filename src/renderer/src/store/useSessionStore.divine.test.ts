@@ -10,7 +10,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const fetchMock = vi.fn<[boolean?], Promise<number | null>>();
-const leagueState = vi.hoisted(() => ({ current: 'Ancestors' }));
+const leagueState = vi.hoisted(() => ({
+  current: 'Ancestors',
+  confirmed: 'Ancestors' as string | null,
+}));
 
 vi.mock('../utils/priceUtils', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/priceUtils')>();
@@ -23,7 +26,11 @@ vi.mock('../utils/priceUtils', async (importOriginal) => {
 });
 vi.mock('../utils/league', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/league')>();
-  return { ...actual, getCurrentLeague: async () => leagueState.current };
+  return {
+    ...actual,
+    getCurrentLeague: async () => leagueState.current,
+    confirmedLeagueSync: () => leagueState.confirmed,
+  };
 });
 
 import { useSessionStore, DEFAULT_SETTINGS } from './useSessionStore';
@@ -41,6 +48,7 @@ const resetStore = (divinePrice: number, fetchedAt: number): void => {
 describe('WP4.2 divine price staleness', () => {
   beforeEach(() => {
     leagueState.current = 'Ancestors';
+    leagueState.confirmed = 'Ancestors';
     fetchMock.mockReset();
     fetchMock.mockResolvedValue(250);
   });
@@ -81,16 +89,17 @@ describe('WP4.2 divine price staleness', () => {
     expect(useSessionStore.getState().settings.divinePrice).toBe(250);
   });
 
-  it('fresh price from a different league refetches and bypasses the cooldown', async () => {
+  it('different confirmed league refetches but preserves prior-league live state', async () => {
     resetStore(300, Date.now());
     useSessionStore.setState((s) => ({ settings: { ...s.settings, leagueName: 'Ancestors' } }));
     leagueState.current = 'Curse of the Allflame';
+    leagueState.confirmed = 'Curse of the Allflame';
 
     await useSessionStore.getState().initDivinePrice();
 
     expect(fetchMock).toHaveBeenCalledWith(true);
-    expect(useSessionStore.getState().settings.divinePrice).toBe(250);
-    expect(useSessionStore.getState().settings.leagueName).toBe('Curse of the Allflame');
+    expect(useSessionStore.getState().settings.divinePrice).toBe(300);
+    expect(useSessionStore.getState().settings.leagueName).toBe('Ancestors');
   });
 
   it('setDivinePriceManual marks the price fresh — next init skips', async () => {
@@ -100,6 +109,13 @@ describe('WP4.2 divine price staleness', () => {
     await useSessionStore.getState().initDivinePrice();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(useSessionStore.getState().settings.divinePrice).toBe(275); // not overwritten
+  });
+
+  it('rejects Standard before persisting a manual league override', async () => {
+    resetStore(300, Date.now());
+    useSessionStore.getState().setLeagueOverride('Standard');
+    expect(useSessionStore.getState().leagueOverride).toBeNull();
+    await Promise.resolve();
   });
 
   it('failed fetch does not advance the timestamp (stays stale, will retry)', async () => {
@@ -136,6 +152,8 @@ describe('historical-session protection', () => {
   };
 
   beforeEach(() => {
+    leagueState.current = 'Ancestors';
+    leagueState.confirmed = 'Ancestors';
     fetchMock.mockReset();
     fetchMock.mockResolvedValue(250);
   });
@@ -181,5 +199,32 @@ describe('historical-session protection', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(useSessionStore.getState().settings.divinePrice).toBe(250);
     expect(useSessionStore.getState().settings.leagueName).toBe('Ancestors');
+  });
+
+  it('a live session from another confirmed league is not repriced or restamped', async () => {
+    useSessionStore.setState({
+      settings: { ...DEFAULT_SETTINGS, divinePrice: 180, leagueName: 'Mirage' },
+      divinePriceFetchedAt: 0,
+      activeSessionId: null, activeSessionName: null, savedSessions: {},
+    });
+    await useSessionStore.getState().initDivinePrice({ force: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(useSessionStore.getState().settings.divinePrice).toBe(180);
+    expect(useSessionStore.getState().settings.leagueName).toBe('Mirage');
+    expect(useSessionStore.getState().divinePriceFetchedAt).toBe(0);
+  });
+
+  it('unconfirmed fallback leaves a fresh live session pending', async () => {
+    leagueState.confirmed = null;
+    useSessionStore.setState({
+      settings: { ...DEFAULT_SETTINGS, divinePrice: 0, leagueName: '' },
+      divinePriceFetchedAt: 0,
+      activeSessionId: null, activeSessionName: null, savedSessions: {},
+    });
+    await useSessionStore.getState().initDivinePrice({ force: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(useSessionStore.getState().settings.divinePrice).toBe(0);
+    expect(useSessionStore.getState().settings.leagueName).toBe('');
+    expect(useSessionStore.getState().divinePriceFetchedAt).toBe(0);
   });
 });

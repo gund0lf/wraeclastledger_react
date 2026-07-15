@@ -1,4 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
+import type { AtlasStatsReadResult } from '../shared/atlasStats'
 
 type TradeParams = {
   league: string; minIIQ: number; minPack: number; minIIR: number;
@@ -26,6 +27,7 @@ declare global {
       readGameDataCache: () => Promise<{ manifest: unknown | null; error: string | null }>
       writeGameDataCache: (manifest: unknown) => Promise<{ ok: boolean; error: string | null }>
       fetchGameDataLatest: (baseUrl: string) => Promise<{ payload: { revision: number; manifest: unknown } | null; error: string | null }>
+      readAtlasTreeStats: (url: string) => Promise<AtlasStatsReadResult>
     }
   }
 }

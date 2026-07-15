@@ -19,7 +19,8 @@ interface UIState {
   // calc would otherwise stay empty and the wizard would (wrongly) reappear.
   // Monotonic counter: every increment is a distinct "apply now" request.
   atlasApplyNonce: number;
-  requestAtlasApply: () => void;
+  atlasApplySessionNonce: number | null;
+  requestAtlasApply: (sessionNonce: number) => void;
 }
 
 export const useUIStore = create<UIState>()((set) => ({
@@ -30,5 +31,9 @@ export const useUIStore = create<UIState>()((set) => ({
   requestChangelog:      () => set({ changelogRequested: true }),
   clearChangelogRequest: () => set({ changelogRequested: false }),
   atlasApplyNonce: 0,
-  requestAtlasApply:     () => set((s) => ({ atlasApplyNonce: s.atlasApplyNonce + 1 })),
+  atlasApplySessionNonce: null,
+  requestAtlasApply:     (sessionNonce) => set((s) => ({
+    atlasApplyNonce: s.atlasApplyNonce + 1,
+    atlasApplySessionNonce: sessionNonce,
+  })),
 }));

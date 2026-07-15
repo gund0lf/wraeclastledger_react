@@ -8,6 +8,7 @@ import { atlasVersionOf } from '../utils/strategyCompat';
 import { isCrossLeagueSession } from '../utils/historicalSession';
 import { SectionLabel } from '../components/ui/SectionLabel';
 import { COLOR, FONT } from '../utils/uiTokens'
+import { deriveAtlasCalcSettings, type AtlasStatGroup } from '../../../shared/atlasStats';
 
 const BASE_URL = 'https://pathofpathing.com';
 
@@ -31,18 +32,15 @@ async function pollUntil(
   }
 }
 
-interface StatGroup {
-  title: string;
-  stats: string[];
-}
-
 export const AtlasTreeModule = () => {
   const { activeSessionId, sessionNonce, updateSetting } =
     useSessionKeys('activeSessionId', 'sessionNonce', 'updateSetting');
   // Scalar selector: this panel hosts a webview — it must NOT re-render on
   // unrelated settings edits (scarab typing etc.), only when the tree URL moves.
   const atlasTreeUrl = useSessionStore((s) => s.settings.atlasTreeUrl);
-  const webviewRef     = useRef<any>(null);
+  const atlasApplyNonce = useUIStore((s) => s.atlasApplyNonce);
+  const atlasApplySessionNonce = useUIStore((s) => s.atlasApplySessionNonce);
+  const webviewRef     = useRef<Electron.WebviewTag>(null);
   const webviewHostRef = useRef<HTMLDivElement>(null);
   const visibleRef     = useRef(false);
   const prevSessionRef = useRef<string | null>(activeSessionId);
@@ -56,7 +54,7 @@ export const AtlasTreeModule = () => {
   const [capturedUrl, setCapturedUrl] = useState(srcUrl);
   const [key,         setKey]         = useState(0);
   const [statsOpen,   setStatsOpen]   = useState(false);
-  const [statGroups,  setStatGroups]  = useState<StatGroup[]>([]);
+  const [statGroups,  setStatGroups]  = useState<AtlasStatGroup[]>([]);
   const [statsError,  setStatsError]  = useState<string | null>(null);
   const [importUrl,   setImportUrl]   = useState('');
   const [showImport,  setShowImport]  = useState(false);
@@ -137,7 +135,10 @@ export const AtlasTreeModule = () => {
     if (prevSessionRef.current === activeSessionId && prevNonceRef.current === sessionNonce) return;
     prevSessionRef.current = activeSessionId;
     prevNonceRef.current   = sessionNonce;
-    autoApplyRef.current = false; // never auto-read stats on New Session
+    // A strategy load creates a new session and requests an Atlas Calc apply in
+    // adjacent store updates. Tie that request to the resulting session nonce so
+    // effect scheduling cannot let this reset erase a legitimate pending apply.
+    autoApplyRef.current = atlasApplySessionNonce === sessionNonce;
     const url = useSessionStore.getState().settings.atlasTreeUrl;
     const next = isPathofpathingUrl(url) ? url : BASE_URL;
     setSrcUrl(next);
@@ -145,7 +146,7 @@ export const AtlasTreeModule = () => {
     remountAfterLayout();
     setStatGroups([]);
     setStatsOpen(false); // close stats panel on session change
-  }, [activeSessionId, sessionNonce, remountAfterLayout]);
+  }, [activeSessionId, sessionNonce, atlasApplySessionNonce, remountAfterLayout]);
 
   // ── Reload when atlasTreeUrl is set externally (Load Build Settings) ───────
   useEffect(() => {
@@ -164,22 +165,23 @@ export const AtlasTreeModule = () => {
   // effect above (which bails on an unchanged URL) never fires — yet newSession()
   // has already zeroed the calc config, so the calc would sit empty and the setup
   // wizard would reappear. StrategyBrowserModule bumps this nonce on every Load
-  // Build; we honour it unconditionally by forcing a webview reload + auto-apply.
-  // This runs AFTER the session-change effect (which sets autoApplyRef=false), so
-  // its autoApplyRef=true wins for the load.
-  const atlasApplyNonce = useUIStore((s) => s.atlasApplyNonce);
-  const prevApplyNonceRef = useRef(atlasApplyNonce);
+  // Build; we honour it by forcing a webview reload + auto-apply. The request is
+  // session-bound, so either effect order reaches the same result and a stale
+  // request can never apply to a later session.
+  const prevApplyNonceRef = useRef(0);
   useEffect(() => {
     if (prevApplyNonceRef.current === atlasApplyNonce) return;
     prevApplyNonceRef.current = atlasApplyNonce;
-    const url = useSessionStore.getState().settings.atlasTreeUrl;
+    const current = useSessionStore.getState();
+    if (atlasApplySessionNonce !== current.sessionNonce) return;
+    const url = current.settings.atlasTreeUrl;
     if (!isPathofpathingUrl(url)) return;
     setSrcUrl(url);
     setCapturedUrl(url);
     autoApplyRef.current = true;
     remountAfterLayout();
     setStatGroups([]);
-  }, [atlasApplyNonce, remountAfterLayout]);
+  }, [atlasApplyNonce, atlasApplySessionNonce, remountAfterLayout]);
 
   // ── Attach navigation + finish-load listeners ─────────────────────────────
   useEffect(() => {
@@ -248,7 +250,7 @@ export const AtlasTreeModule = () => {
           `Promise.resolve(!!document.getElementById('skillTreeStats_ShowHide'))`,
         ).catch(() => false),
       );
-      readStats(true);
+      await readStats(true);
     };
     wv.addEventListener('will-navigate', handleWillNavigate);
     wv.addEventListener('did-navigate', handleNav);
@@ -260,7 +262,7 @@ export const AtlasTreeModule = () => {
       wv.removeEventListener('did-navigate-in-page', handleNav);
       wv.removeEventListener('did-finish-load', handleFinishLoad);
     };
-  }, [key, updateSetting]);
+  }, [key, webviewReady, updateSetting]);
 
   // ── Read atlas tree stats via JS injection ─────────────────────────────────
   const readStats = async (autoApply = false) => {
@@ -331,8 +333,8 @@ export const AtlasTreeModule = () => {
         return;
       }
 
-      const groups: StatGroup[] = Array.isArray(result)
-        ? result as StatGroup[]
+      const groups: AtlasStatGroup[] = Array.isArray(result)
+        ? result as AtlasStatGroup[]
         : Object.entries(result as Record<string, string[]>).map(([title, stats]) => ({ title, stats }));
 
       setStatGroups(groups);
@@ -406,24 +408,18 @@ export const AtlasTreeModule = () => {
   // ── Apply stats to Atlas Calc ─────────────────────────────────────────────
   // applyGroupsToCalc takes groups directly (avoids stale-state issues when
   // called right after readStats resolves)
-  const applyGroupsToCalc = (groups: StatGroup[]) => {
-    const allStats = groups.flatMap((g) => g.stats);
+  const applyGroupsToCalc = (groups: AtlasStatGroup[]) => {
+    const patch = deriveAtlasCalcSettings(groups);
     const appliedParts: string[] = [];
-    const flatMod = allStats.find((s) =>
-      /^(\d+)% increased effect of Explicit Modifiers on your Maps$/.test(s.trim()));
-    if (flatMod) {
-      const match = flatMod.match(/(\d+)%/);
-      if (match) {
-        const nodes = Math.round(parseInt(match[1]) / 2);
-        updateSetting('smallNodesAllocated', Math.min(16, nodes));
-        appliedParts.push(`${nodes} small nodes`);
-      }
+    if (patch.smallNodesAllocated !== undefined) {
+      updateSetting('smallNodesAllocated', patch.smallNodesAllocated);
+      appliedParts.push(`${patch.smallNodesAllocated} small nodes`);
     }
-    if (allStats.some((s) => s.includes('per Explicit Modifier'))) {
+    if (patch.mountingModifiers) {
       updateSetting('mountingModifiers', true);
       appliedParts.push('Mounting Modifiers');
     }
-    if (allStats.some((s) => s.includes('per Fragment used with Map'))) {
+    if (patch.fragmentsUsed) {
       updateSetting('fragmentsUsed', 5);
       appliedParts.push('5 fragments');
     }

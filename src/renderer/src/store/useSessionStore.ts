@@ -4,7 +4,7 @@ import { persist, type PersistStorage } from 'zustand/middleware';
 import { MapData, SessionSettings, LootItem, SavedSession, ScarabSlot, ScarabPreset, RegexSet, ExclusionPreset } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { tryFetchDivinePrice, sanitizeExclusionTerms } from '../utils/priceUtils';
-import { getCurrentLeague, setLeagueOverrideValue, confirmedLeagueSync } from '../utils/league';
+import { confirmedLeagueSync, getCurrentLeague, normalizeLeagueOverride, setLeagueOverrideValue } from '../utils/league';
 import { ModGroupState, cloneDefaultGroups } from '../utils/regexBuilderPresets';
 
 const STORE_VERSION = 17;
@@ -413,6 +413,7 @@ export const useSessionStore = create<SessionState>()(
         // unset/legacy OR the last successful fetch is older than 30 min.
         // `force` (manual refresh button) always fetches.
         const { settings: st, divinePriceFetchedAt, activeSessionId } = get();
+        const requestedSessionId = activeSessionId;
         // Historical-session guard (Phase 1.5): a loaded saved session is
         // never auto-mutated — the audit found this exact path repricing AND
         // re-stamping the league of old sessions, with the WP10 auto-save
@@ -440,15 +441,26 @@ export const useSessionStore = create<SessionState>()(
         set((s) => {
           const priceOk = !!(price && price > 0);
           const stillLive = s.activeSessionId === null;
-          const stampLeague = stillLive && !!league;
+          // Ignore a response that completed after the user changed sessions.
+          if (s.activeSessionId !== requestedSessionId) return {};
+          const realLeague = confirmedLeagueSync();
+          const sameOrUnstamped = !!realLeague && (
+            !s.settings.leagueName || s.settings.leagueName === realLeague
+          );
+          // Automatic price/provenance mutation fails closed: fallback/unknown
+          // contexts and cross-league live sessions remain untouched. Explicit
+          // loaded-session repricing is separately confirmed and never stamps.
+          const canAutoMutate = stillLive && sameOrUnstamped;
+          const canExplicitlyReprice = !stillLive && opts.repriceLoaded === true;
+          const applyPrice = priceOk && (canAutoMutate || canExplicitlyReprice);
+          const stampLeague = canAutoMutate;
           // On confirmation of a live session's league (CONFIRMED only — never the
           // offline fallback, which can be stale at rollover):
           //  - if the user made a choice BEFORE confirmation, persist it to the
           //    resolved league's map (retain the choice);
           //  - else if still awaiting a seed, seed the session's Atlas Bonus from
           //    the resolved league's stored value.
-          const realLeague = confirmedLeagueSync();
-          const canResolve = stillLive && realLeague !== null;
+          const canResolve = canAutoMutate;
           const pendingVal = s.pendingAtlasBonusValue;
           const writeChoice = canResolve && pendingVal !== null;
           const doSeed = canResolve && pendingVal === null && s.pendingAtlasBonusSeed;
@@ -456,7 +468,7 @@ export const useSessionStore = create<SessionState>()(
             // Timestamp advances only on a successful price fetch, so failures
             // stay "stale" and the next init retries (bounded by the 60s cooldown
             // in tryFetchDivinePrice).
-            ...(priceOk ? { divinePriceFetchedAt: Date.now() } : {}),
+            ...(applyPrice ? { divinePriceFetchedAt: Date.now() } : {}),
             ...(writeChoice || doSeed ? { pendingAtlasBonusSeed: false } : {}),
             ...(writeChoice ? { pendingAtlasBonusValue: null } : {}),
             ...(writeChoice && realLeague && pendingVal !== null
@@ -464,10 +476,10 @@ export const useSessionStore = create<SessionState>()(
               : {}),
             settings: {
               ...s.settings,
-              ...(price && price > 0 ? { divinePrice: Math.round(price) } : {}),
+              ...(applyPrice && price ? { divinePrice: Math.round(price) } : {}),
               // League is session PROVENANCE: only a live (unsaved) session is
               // ever stamped by a fetch. A loaded session keeps its league.
-              ...(stampLeague ? { leagueName: league } : {}),
+              ...(stampLeague && realLeague ? { leagueName: realLeague } : {}),
               ...(doSeed && realLeague ? { atlasBonus: s.atlasBonusByLeague[realLeague] ?? false } : {}),
             },
           };
@@ -567,7 +579,7 @@ export const useSessionStore = create<SessionState>()(
       setDiscordTag: (tag) => set({ discordTag: tag }),
 
       setLeagueOverride: (league) => {
-        const v = league && league.trim() ? league.trim() : null;
+        const v = normalizeLeagueOverride(league);
         setLeagueOverrideValue(v); // clears the detection cache in league.ts
         set((s) => {
           const live = s.activeSessionId === null;
@@ -746,4 +758,8 @@ export function useSessionKeys<K extends keyof SessionState>(...keys: K[]): Pick
 // persist() hydrates synchronously from localStorage during create(), so the
 // value is already in state here. For old stores the additive top-level field
 // shallow-merges to null (no migration needed) — seeding null is a no-op.
-setLeagueOverrideValue(useSessionStore.getState().leagueOverride ?? null);
+const hydratedLeagueOverride = normalizeLeagueOverride(useSessionStore.getState().leagueOverride ?? null);
+if (hydratedLeagueOverride !== useSessionStore.getState().leagueOverride) {
+  useSessionStore.setState({ leagueOverride: hydratedLeagueOverride });
+}
+setLeagueOverrideValue(hydratedLeagueOverride);

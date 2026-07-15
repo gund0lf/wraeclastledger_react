@@ -4,12 +4,14 @@ import {
 } from '@mantine/core';
 import { useDisclosure, useElementSize } from '@mantine/hooks';
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { useSessionKeys } from '../store/useSessionStore';
+import { DEFAULT_SETTINGS, useSessionKeys, useSessionStore } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
 import { IconTrash, IconPencil, IconDeviceFloppy, IconShare2, IconBrandDiscord, IconDownload, IconUpload, IconX, IconArrowsLeftRight, IconCheck } from '@tabler/icons-react';
 import type { SavedSession } from '../types';
 import { SessionCompareModal } from '../components/SessionCompareModal';
 import { CollapsibleSection } from '../components/ui/CollapsibleSection';
+import { WorkingSessionGuardModal } from '../components/WorkingSessionGuardModal';
+import { isWorkingSessionMeaningful } from '../utils/workingSession';
 
 const TILE_STYLES = { inner: { width: '100%' }, label: { flex: 1, textAlign: 'center' as const } };
 
@@ -37,6 +39,7 @@ export const SessionManagerModule = () => {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null); // WP5: single-delete confirmation
   const [pendingSwitch, setPendingSwitch] = useState<string | null>(null); // guard: session to switch to once the unsaved one is handled
   const [savedFlash, setSavedFlash] = useState(false); // brief green confirmation on the Save tile after a save
+  const [sessionSelectOpen, setSessionSelectOpen] = useState(false);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null); // row hover for history tile reveal
   const [hoveredTrashTop, setHoveredTrashTop] = useState(false); // top-right delete icon red hover
   const [hoveredTrashId, setHoveredTrashId] = useState<string | null>(null); // history row delete icon red hover
@@ -67,11 +70,10 @@ export const SessionManagerModule = () => {
     else loadSession(target);
   };
 
-  // Guard ONLY the not-yet-saved session that has real work in it: a named
-  // session auto-saves, so leaving it is always safe, but an unnamed new
-  // session lives only in memory and switching would silently discard it.
+  // Named sessions auto-save. Unnamed working state must be explicitly saved
+  // or discarded before every replacement path.
   const requestSwitch = (target: string) => {
-    if (!activeSessionId && maps.length > 0) {
+    if (isWorkingSessionMeaningful(useSessionStore.getState(), DEFAULT_SETTINGS)) {
       setPendingSwitch(target);
       setNameInput('');
       openSwitchGuard();
@@ -81,6 +83,7 @@ export const SessionManagerModule = () => {
   };
 
   const handleSessionSelect = (val: string | null) => {
+    setSessionSelectOpen(false);
     requestSwitch(val && val !== '__new__' ? val : '__new__');
   };
 
@@ -301,25 +304,16 @@ export const SessionManagerModule = () => {
       </Modal>
 
       {/* ── Unsaved-session guard (no manual save button; auto-save only covers named sessions) ── */}
-      <Modal opened={switchGuardOpen} onClose={cancelSwitch} title="Unsaved session" size="sm">
-        <Stack gap="sm">
-          <Text size="sm">
-            Your current session has <Text span fw={700}>{maps.length} map{maps.length !== 1 ? 's' : ''}</Text> and
-            isn&apos;t saved yet. Switching will discard it unless you save it first.
-          </Text>
-          <TextInput label="Save as" placeholder="e.g. T16 Deli — 72 maps"
-            value={nameInput} onChange={(e) => setNameInput(e.currentTarget.value)}
-            onKeyDown={(e) => e.key === 'Enter' && nameInput.trim() && doSaveAndSwitch()}
-            autoFocus />
-          <Group justify="space-between">
-            <Button variant="subtle" color="red" onClick={doDiscardAndSwitch}>Discard &amp; switch</Button>
-            <Group gap="xs">
-              <Button variant="default" onClick={cancelSwitch}>Cancel</Button>
-              <Button color="blue" onClick={doSaveAndSwitch} disabled={!nameInput.trim()}>Save &amp; switch</Button>
-            </Group>
-          </Group>
-        </Stack>
-      </Modal>
+      <WorkingSessionGuardModal
+        opened={switchGuardOpen}
+        mapCount={maps.length}
+        name={nameInput}
+        actionDescription="Switching sessions"
+        onNameChange={setNameInput}
+        onSave={doSaveAndSwitch}
+        onDiscard={doDiscardAndSwitch}
+        onCancel={cancelSwitch}
+      />
 
       <SessionCompareModal
         opened={compareOpen}
@@ -362,6 +356,9 @@ export const SessionManagerModule = () => {
               ]}
               value={activeSessionId ?? '__new__'}
               onChange={handleSessionSelect}
+              dropdownOpened={sessionSelectOpen}
+              onDropdownOpen={() => setSessionSelectOpen(true)}
+              onDropdownClose={() => setSessionSelectOpen(false)}
               searchable size="sm"
             />
             {!isUnsaved && (

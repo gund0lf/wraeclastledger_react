@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import type { AtlasStatsReadResult } from '../shared/atlasStats'
 
 type TradeParams = {
   league: string; minIIQ: number; minPack: number; minIIR: number;
@@ -36,6 +37,8 @@ const api = {
     ipcRenderer.invoke('gamedata:write-cache', manifest),
   fetchGameDataLatest: (baseUrl: string): Promise<{ payload: { revision: number; manifest: unknown } | null; error: string | null }> =>
     ipcRenderer.invoke('gamedata:fetch-latest', baseUrl),
+  readAtlasTreeStats: (url: string): Promise<AtlasStatsReadResult> =>
+    ipcRenderer.invoke('atlas-tree:read-stats', url),
 }
 
 if (process.contextIsolated) {

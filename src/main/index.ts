@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { autoUpdater } from 'electron-updater'
 import { BRICK_MOD_DEFS, brickRegexTerm } from '../shared/brickMods'
+import type { AtlasStatGroup, AtlasStatsReadResult } from '../shared/atlasStats'
 
 let clipboardInterval: NodeJS.Timeout | null = null;
 let lastClipboardText = '';
@@ -56,6 +57,96 @@ ipcMain.on('install-update', () => autoUpdater.quitAndInstall(false, true));
 ipcMain.on('check-for-updates', () => {
   if (is.dev) return;
   autoUpdater.checkForUpdates().catch(() => {});
+});
+
+// Strategy Browser can load a Path of Pathing tree while the visible Atlas Tree
+// tab is display:none. A renderer webview in that subtree cannot initialise, so
+// derive its stats in a short-lived, isolated main-process window instead.
+ipcMain.handle('atlas-tree:read-stats', async (_event, rawUrl: string): Promise<AtlasStatsReadResult> => {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+    if (url.protocol !== 'https:' || url.hostname !== 'pathofpathing.com') {
+      throw new Error('Only https://pathofpathing.com URLs are allowed');
+    }
+  } catch (error) {
+    return { groups: null, error: error instanceof Error ? error.message : 'Invalid Atlas Tree URL' };
+  }
+
+  const reader = new BrowserWindow({
+    show: false,
+    width: 800,
+    height: 600,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      backgroundThrottling: false,
+    },
+  });
+  reader.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  reader.webContents.on('will-navigate', (event, target) => {
+    try {
+      const next = new URL(target);
+      if (next.protocol !== 'https:' || next.hostname !== 'pathofpathing.com') event.preventDefault();
+    } catch { event.preventDefault(); }
+  });
+
+  try {
+    await reader.loadURL(url.toString());
+    const deadline = Date.now() + 8_000;
+    let ready = false;
+    while (Date.now() < deadline) {
+      ready = await reader.webContents.executeJavaScript(
+        `Promise.resolve(!!document.getElementById('skillTreeStats_ShowHide'))`,
+      );
+      if (ready) break;
+      await new Promise<void>((resolve) => setTimeout(resolve, 200));
+    }
+    if (!ready) return { groups: null, error: 'Path of Pathing stats did not become ready' };
+
+    const raw: unknown = await reader.webContents.executeJavaScript(`
+      (async function() {
+        var btn = document.getElementById('skillTreeStats_ShowHide');
+        if (btn && btn.textContent && btn.textContent.trim() === 'Show stats') {
+          btn.click();
+          await new Promise(function(resolve) { setTimeout(resolve, 300); });
+        }
+        var container = document.getElementById('skillTreeStats');
+        if (container) {
+          container.scrollTop = container.scrollHeight;
+          await new Promise(function(resolve) { setTimeout(resolve, 150); });
+        }
+        var statEls = Array.from(document.querySelectorAll('#skillTreeStats_Content .stat[data-group-name]'));
+        var groups = {};
+        var order = [];
+        statEls.forEach(function(el) {
+          var name = el.getAttribute('data-group-name');
+          if (!groups[name]) { groups[name] = []; order.push(name); }
+          var text = el.textContent.trim();
+          if (text) groups[name].push(text);
+        });
+        return order.map(function(name) { return { title: name, stats: groups[name] }; });
+      })()
+    `);
+
+    if (!Array.isArray(raw)) return { groups: null, error: 'Path of Pathing returned invalid stats' };
+    const groups: AtlasStatGroup[] = raw.flatMap((group: unknown) => {
+      if (!group || typeof group !== 'object') return [];
+      const candidate = group as { title?: unknown; stats?: unknown };
+      if (typeof candidate.title !== 'string' || !Array.isArray(candidate.stats) ||
+          !candidate.stats.every((stat) => typeof stat === 'string')) return [];
+      return [{ title: candidate.title, stats: candidate.stats as string[] }];
+    });
+    return groups.length > 0
+      ? { groups, error: null }
+      : { groups: null, error: 'No Atlas Tree stats were found' };
+  } catch (error) {
+    console.error('[Atlas Tree reader]', error);
+    return { groups: null, error: error instanceof Error ? error.message : 'Atlas Tree reader failed' };
+  } finally {
+    if (!reader.isDestroyed()) reader.destroy();
+  }
 });
 
 // ── PoE Trade stat ID cache ───────────────────────────────────────────────────

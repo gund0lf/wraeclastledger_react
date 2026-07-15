@@ -52,6 +52,7 @@ export const KNOWN_LEAGUES: string[] = [
 // early off a live one, and the manual override remains the escape hatch.
 export const LEAGUE_ENDS_AT: Record<string, string> = {
   Ancestors: '2026-07-17T00:00:00Z',
+  Mirage: '2026-07-20T22:00:00Z',
 };
 
 /** Has this league's known end date passed? Unknown end = never ended. */
@@ -86,8 +87,15 @@ export interface ActiveContext {
 // Do not set it from anywhere else.
 let leagueOverride: string | null = null;
 
+export function normalizeLeagueOverride(v: string | null): string | null {
+  const candidate = v?.trim() ?? '';
+  // Standard is never valid session provenance. The dropdown filters it too,
+  // but persisted/hand-edited state must fail closed at this boundary.
+  return candidate && !/^standard$/i.test(candidate) ? candidate : null;
+}
+
 export function setLeagueOverrideValue(v: string | null): void {
-  const next = v && v.trim() ? v.trim() : null;
+  const next = normalizeLeagueOverride(v);
   if (next === leagueOverride) return;
   leagueOverride = next;
   // Any cached detection result is now the wrong answer (in BOTH directions:
@@ -106,7 +114,11 @@ async function detect(): Promise<ActiveContext> {
   // The per-request timeout lives in the main-process handler.
   // D5(b): ended leagues are skipped — poe.ninja may keep serving frozen data
   // for a dead event, which would otherwise win the probe forever.
-  for (const name of activeKnownLeagues()) {
+  // Display defaults deliberately fail open, but detection must allow an empty
+  // candidate list during the gap between leagues. Probing ended leagues would
+  // turn frozen poe.ninja data into a false confirmation.
+  const detectable = KNOWN_LEAGUES.filter((name) => !isLeagueEnded(name));
+  for (const name of detectable) {
     try {
       const res = await window.api?.fetchCurrencyOverview(name);
       if (res?.lines && res.lines.length > 5) {
@@ -116,7 +128,7 @@ async function detect(): Promise<ActiveContext> {
     } catch { /* network error: fall through to the next league */ }
   }
   // Fallback also respects endsAt: first non-ended entry, else CURRENT_LEAGUE.
-  const fallback = activeKnownLeagues()[0] ?? CURRENT_LEAGUE;
+  const fallback = detectable[0] ?? CURRENT_LEAGUE;
   console.warn('[League] Could not detect, falling back to:', fallback);
   return { leagueName: fallback, source: 'fallback' };
 }

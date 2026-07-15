@@ -52,6 +52,7 @@ describe('D5(b) — ended-league handling', () => {
     expect(isLeagueEnded(ANCESTORS, BEFORE_END)).toBe(false);
     expect(isLeagueEnded(ANCESTORS, AFTER_END)).toBe(true);
     expect(isLeagueEnded('Mirage', AFTER_END)).toBe(false);
+    expect(isLeagueEnded('Unknown League', Date.parse('2099-01-01T00:00:00Z'))).toBe(false);
   });
 
   it('activeKnownLeagues drops ended entries but keeps the rest in order', () => {
@@ -106,6 +107,25 @@ describe('D5(b) — ended-league handling', () => {
     league.setLeagueOverrideValue(ANCESTORS);
     const ctx = await league.getActiveContext();
     expect(ctx).toEqual({ leagueName: ANCESTORS, source: 'override' });
+  });
+
+  it('all-ended interregnum fails closed to an unconfirmed fallback', async () => {
+    vi.setSystemTime(new Date(Date.parse(LEAGUE_ENDS_AT.Mirage) + 60_000));
+    const league = await freshLeague();
+    const spy = stubProbe({ Ancestors: 10, Mirage: 10 });
+    const ctx = await league.getActiveContext();
+    expect(ctx.source).toBe('fallback');
+    expect(league.confirmedLeagueSync()).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('cached context expires and re-detects the next live league', async () => {
+    const league = await freshLeague();
+    const spy = stubProbe({ Ancestors: 10, Mirage: 10 });
+    expect(await league.getActiveContext()).toEqual({ leagueName: 'Ancestors', source: 'detected' });
+    vi.setSystemTime(new Date(AFTER_END));
+    expect(await league.getActiveContext()).toEqual({ leagueName: 'Mirage', source: 'detected' });
+    expect(spy).toHaveBeenCalledWith('Mirage');
   });
 });
 
@@ -180,6 +200,14 @@ describe('getActiveContext — manual override (D4/D5)', () => {
     stubProbe({ [KNOWN_LEAGUES[0]]: 10 });
     league.setLeagueOverrideValue('   ');
     expect((await league.getActiveContext()).source).toBe('detected');
+  });
+
+  it('rejects Standard as an override at the state boundary', async () => {
+    const league = await freshLeague();
+    stubProbe({ [KNOWN_LEAGUES[0]]: 10 });
+    league.setLeagueOverrideValue('Standard');
+    expect((await league.getActiveContext()).source).toBe('detected');
+    expect(league.confirmedLeagueSync()).toBe(KNOWN_LEAGUES[0]);
   });
 });
 

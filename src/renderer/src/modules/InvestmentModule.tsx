@@ -13,8 +13,8 @@ import {
 import { parsePriceInput } from '../utils/priceUtils';
 import { computeCosts } from '../utils/profit';
 import { fcSep } from '../utils/parseDiscordExport';
-import { KNOWN_LEAGUES, fetchSelectableLeagues, currentLeagueSync } from '../utils/league';
-import { isCrossLeagueSession } from '../utils/historicalSession';
+import { KNOWN_LEAGUES, confirmedLeagueSync, fetchSelectableLeagues, currentLeagueSync } from '../utils/league';
+import { isCrossLeagueSession, isLiveSessionLeagueMismatch } from '../utils/historicalSession';
 import { chiselItemName, deliOrbItemName } from '../utils/itemIcons';
 import { PoeItemIcon } from '../components/ui/PoeItemIcon';
 import { IconTrash, IconDeviceFloppy, IconChevronDown, IconRefresh, IconX, IconSettings, IconLock } from '@tabler/icons-react';
@@ -76,6 +76,7 @@ export const InvestmentModule = () => {
   const [presetSaveOpen, setPresetSaveOpen] = useState(false); // scarab preset "Save current as…" dialog
   const [presetSaveName, setPresetSaveName] = useState('');
   const [fetchingPrice, setFetchingPrice] = useState(false);
+  const [confirmedActiveLeague, setConfirmedActiveLeague] = useState<string | null>(() => confirmedLeagueSync());
   const [hoveredReset, setHoveredReset] = useState(false); // reset-costs icon red hover (Sessions pattern)
   const [hoveredPresetTrashId, setHoveredPresetTrashId] = useState<string | null>(null); // preset delete red hover
   // League-override dropdown (rollover D4/D5). Options start with the curated
@@ -139,8 +140,13 @@ export const InvestmentModule = () => {
   // Re-fetch when a new session is started (activeSessionId transitions to null)
   // so the price stays fresh without requiring a manual refresh.
   useEffect(() => {
-    if (activeSessionId === null) initDivinePrice();
-  }, [activeSessionId]);
+    if (activeSessionId !== null) return;
+    let active = true;
+    void initDivinePrice().finally(() => {
+      if (active) setConfirmedActiveLeague(confirmedLeagueSync());
+    });
+    return () => { active = false; };
+  }, [activeSessionId, leagueOverride, initDivinePrice]);
 
   // Manual refresh button: bypasses the cooldown via { force: true }, since
   // an explicit user action shouldn't be silently skipped.
@@ -153,6 +159,7 @@ export const InvestmentModule = () => {
     if (activeSessionId !== null) { setRepriceConfirmOpen(true); return; }
     setFetchingPrice(true);
     await initDivinePrice({ force: true });
+    setConfirmedActiveLeague(confirmedLeagueSync());
     setFetchingPrice(false);
   };
   const confirmReprice = async () => {
@@ -165,6 +172,7 @@ export const InvestmentModule = () => {
   // 3.29): show the historical banner. The price guard above is stricter
   // (any loaded session); this banner only flags the league mismatch case.
   const crossLeague = isCrossLeagueSession(activeSessionId, settings.leagueName);
+  const liveLeagueMismatch = isLiveSessionLeagueMismatch(activeSessionId, settings.leagueName);
   // Keep the historical-session status inside the existing price label. A
   // standalone badge costs a whole row in short stacked FlexLayout panels.
   const divinePriceLabel = settings.leagueName
@@ -442,6 +450,14 @@ export const InvestmentModule = () => {
         </Group>
 
         <Stack gap={6}>
+          {liveLeagueMismatch && (
+            <Alert color="yellow" variant="light" p="xs" title="Previous-league working session">
+              <Text size="xs">
+                This session belongs to {settings.leagueName}. Automatic league and divine-price updates are paused
+                {confirmedActiveLeague ? ` while ${confirmedActiveLeague} is active` : ''}. Use Sessions to save it or start a new session.
+              </Text>
+            </Alert>
+          )}
           {/* ── Costs box ─────────────────────────────────── */}
           <div style={{
             background: 'rgba(255,255,255,0.03)',

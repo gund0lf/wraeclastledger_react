@@ -1,4 +1,4 @@
-import { currentLeagueSync } from './league';
+import { confirmedLeagueSync, currentLeagueSync } from './league';
 
 /**
  * Historical-session helpers (LEAGUE_ROLLOVER_PLAN Phase 1.5, 2026-07-11).
@@ -22,4 +22,14 @@ export function isCrossLeagueSession(
   if (activeSessionId === null) return false;
   const cur = currentLeagueSync();
   return !!leagueName && !!cur && leagueName !== cur;
+}
+
+/** A live unnamed session carried across a confirmed supported league boundary. */
+export function isLiveSessionLeagueMismatch(
+  activeSessionId: string | null,
+  leagueName: string | undefined | null,
+): boolean {
+  if (activeSessionId !== null) return false;
+  const confirmed = confirmedLeagueSync();
+  return !!leagueName && !!confirmed && leagueName !== confirmed;
 }
