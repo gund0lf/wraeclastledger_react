@@ -8,7 +8,6 @@ import { DashboardModule }      from '../modules/DashboardModule';
 import { SessionManagerModule } from '../modules/SessionManagerModule';
 import { MapSearchModule }      from '../modules/MapSearchModule';
 import { RegexPanel, RegexBuilderPanel } from '../modules/RegexPanelModule';
-import { MapAnalyzerModule }    from '../modules/MapAnalyzerModule';
 import { StrategyBrowserModule } from '../modules/StrategyBrowserModule';
 import { NotesModule }           from '../modules/NotesModule';
 
@@ -24,7 +23,6 @@ export const COMPONENT_REGISTRY: Record<string, () => any> = {
   'map-search':      MapSearchModule,
   'regex':           RegexPanel,
   'regex-builder':   RegexBuilderPanel,
-  'map-analyzer':    MapAnalyzerModule,
   'strategy-browser': StrategyBrowserModule,
   'notes':             NotesModule,
 };

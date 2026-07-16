@@ -294,7 +294,7 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
   if (minTier > 0)  mapFilters['map_tier']     = { min: minTier };
 
   // 8-mod maps: add max IIQ/IIR/Pack to exclude nightmare maps.
-  // Regular top-tier mods cap out at IIQ:143, IIR:82, Pack:53 (best 4P+4S from regularMapMods).
+  // Verified regular top-tier mods cap out at IIQ:143, IIR:82, Pack:53 (best 4P+4S).
   // Any map rolling higher must have uber-tier mods — almost certainly a nightmare map.
   // Buffer of +2/+3 added to avoid false positives from rounding.
   if (mapType === '8mod') {

@@ -11,7 +11,7 @@ import { getGameDataStatus, initGameData } from './utils/gameData';
 import { UpdateBanner, APP_VERSION } from './UpdateBanner';
 import { IconRefresh } from '@tabler/icons-react';
 import { FONT } from './utils/uiTokens';
-import { migrateRegexBuilderTabs } from './utils/layoutMigration';
+import { migratePersistedLayout } from './utils/layoutMigration';
 
 // APP_VERSION imported from UpdateBanner.tsx — single source of truth
 // window.electron and window.api are declared in src/preload/index.d.ts — no redeclaration needed here.
@@ -30,7 +30,6 @@ const ALL_PANELS = [
   // in-app trade search + regex tooling superseded it. Registry tombstone stays
   // so old saved layouts keep rendering it.
   { component: 'regex',           name: 'Regex' },
-  { component: 'map-analyzer',    name: 'Map Analyzer' },
   { component: 'strategy-browser', name: 'Strategy Browser' },
   { component: 'notes',            name: 'Notes' },
 ];
@@ -46,7 +45,7 @@ function App(): JSX.Element {
     } catch {
       m = Model.fromJson(defaultLayout); // corrupt/old
     }
-    const migrated = migrateRegexBuilderTabs(m);
+    const migrated = migratePersistedLayout(m);
     let migrationSaveFailed = false;
     if (migrated) {
       try {

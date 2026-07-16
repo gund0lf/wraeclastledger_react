@@ -30,3 +30,25 @@ export function migrateRegexBuilderTabs(model: Model): boolean {
   }
   return true;
 }
+
+const RETIRED_COMPONENTS = new Set(['map-analyzer']);
+
+/** Remove panels whose product surface has been deliberately retired. */
+export function removeRetiredTabs(model: Model): boolean {
+  const retiredIds: string[] = [];
+  model.visitNodes((node: Node) => {
+    if (node.getType() !== 'tab') return;
+    const component = (node as ComponentNode).getComponent?.();
+    if (component && RETIRED_COMPONENTS.has(component)) retiredIds.push(node.getId());
+  });
+
+  for (const id of retiredIds) model.doAction(Actions.deleteTab(id));
+  return retiredIds.length > 0;
+}
+
+/** Apply every persisted-layout migration; all passes must run independently. */
+export function migratePersistedLayout(model: Model): boolean {
+  const regexChanged = migrateRegexBuilderTabs(model);
+  const retiredChanged = removeRetiredTabs(model);
+  return regexChanged || retiredChanged;
+}

@@ -732,7 +732,7 @@ if (typeof window !== 'undefined') {
 // ── Selector subscription helpers (session 17: typing-lag fix) ──────────────
 // Subscribing with `useSessionStore()` (no selector) re-renders the component
 // on EVERY store change — a Notes keystroke used to re-render the Map Log
-// table, the 600-row loot table, the Map Analyzer grid, everything mounted.
+// table, the 600-row loot table, and every other mounted panel.
 // All components must subscribe via useSessionKeys (or a custom selector for
 // nested scalars, e.g. `useSessionStore((s) => s.settings.atlasTreeUrl)`).
 // Convention: no bare `useSessionStore()` calls in components.

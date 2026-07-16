@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { IJsonModel, Model, Node } from 'flexlayout-react';
-import { migrateRegexBuilderTabs } from './layoutMigration';
+import { migratePersistedLayout, migrateRegexBuilderTabs, removeRetiredTabs } from './layoutMigration';
 
 type ComponentNode = Node & { getComponent?: () => string | undefined };
 
@@ -62,5 +62,53 @@ describe('migrateRegexBuilderTabs', () => {
 
     expect(migrateRegexBuilderTabs(model)).toBe(false);
     expect(model.toJson()).toEqual(before);
+  });
+});
+
+describe('removeRetiredTabs', () => {
+  it('removes Map Analyzer while preserving neighboring panels', () => {
+    const model = modelWith(
+      tab('Atlas Tree', 'atlas-tree'),
+      tab('Map Analyzer', 'map-analyzer'),
+      tab('Regex', 'regex'),
+    );
+
+    expect(removeRetiredTabs(model)).toBe(true);
+    expect(components(model)).toEqual(['atlas-tree', 'regex']);
+  });
+
+  it('removes every duplicate retired tab and is then idempotent', () => {
+    const model = modelWith(
+      tab('Map Analyzer A', 'map-analyzer'),
+      tab('Notes', 'notes'),
+      tab('Map Analyzer B', 'map-analyzer'),
+    );
+
+    expect(removeRetiredTabs(model)).toBe(true);
+    expect(components(model)).toEqual(['notes']);
+    const after = model.toJson();
+    expect(removeRetiredTabs(model)).toBe(false);
+    expect(model.toJson()).toEqual(after);
+  });
+
+  it('leaves a valid empty layout when the retired panel was the only tab', () => {
+    const model = modelWith(tab('Map Analyzer', 'map-analyzer'));
+
+    expect(removeRetiredTabs(model)).toBe(true);
+    expect(components(model)).toEqual([]);
+    expect(() => model.toJson()).not.toThrow();
+  });
+});
+
+describe('migratePersistedLayout', () => {
+  it('applies regex upgrade and panel retirement in the same pass', () => {
+    const model = modelWith(
+      tab('Regex Builder', 'regex-builder'),
+      tab('Map Analyzer', 'map-analyzer'),
+    );
+
+    expect(migratePersistedLayout(model)).toBe(true);
+    expect(components(model)).toEqual(['regex']);
+    expect(migratePersistedLayout(model)).toBe(false);
   });
 });

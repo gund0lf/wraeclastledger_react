@@ -12,7 +12,7 @@
  * Verification key:
  *   [V:game]  = manually verified in PoE stash search in-game
  *   [V:py]    = verified via Python substring check against mod text
- *   [V:uber]  = from UBER_MODS (uberMapMods.ts) verified dataset
+ *   [V:uber]  = from the verified uber-map modifier dataset used during token review
  *
  * Special case: Fecund uber (90-100% more Life, +47% currency) uses a regex
  * pattern '(9\\d|100)% m' that lives in RegexBuilderModule.tsx directly —

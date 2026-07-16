@@ -10,6 +10,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.69',
+    date: 'Unreleased',
+    changes: [
+      'Map Analyzer has been retired: it no longer had a useful decision to support. Fresh layouts and Add Panel no longer offer it, and existing saved layouts remove the old tab automatically without disturbing neighboring panels.',
+      'The hidden Atlas Tree stats reader now rejects an untrusted final redirect before reading the page and serializes concurrent requests so only one isolated reader window can exist at a time.',
+    ],
+  },
+  {
     version: '1.0.68',
     date: '2026-07-16',
     changes: [
