@@ -5,6 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import { autoUpdater } from 'electron-updater'
 import { BRICK_MOD_DEFS, brickRegexTerm } from '../shared/brickMods'
 import type { AtlasStatGroup, AtlasStatsReadResult } from '../shared/atlasStats'
+import { createKeyedSerialTask, isAllowedPathOfPathingUrl } from '../shared/atlasReaderSafety'
 
 let clipboardInterval: NodeJS.Timeout | null = null;
 let lastClipboardText = '';
@@ -62,11 +63,11 @@ ipcMain.on('check-for-updates', () => {
 // Strategy Browser can load a Path of Pathing tree while the visible Atlas Tree
 // tab is display:none. A renderer webview in that subtree cannot initialise, so
 // derive its stats in a short-lived, isolated main-process window instead.
-ipcMain.handle('atlas-tree:read-stats', async (_event, rawUrl: string): Promise<AtlasStatsReadResult> => {
+async function readAtlasTreeStats(rawUrl: string): Promise<AtlasStatsReadResult> {
   let url: URL;
   try {
     url = new URL(rawUrl);
-    if (url.protocol !== 'https:' || url.hostname !== 'pathofpathing.com') {
+    if (!isAllowedPathOfPathingUrl(rawUrl)) {
       throw new Error('Only https://pathofpathing.com URLs are allowed');
     }
   } catch (error) {
@@ -94,6 +95,9 @@ ipcMain.handle('atlas-tree:read-stats', async (_event, rawUrl: string): Promise<
 
   try {
     await reader.loadURL(url.toString());
+    if (!isAllowedPathOfPathingUrl(reader.webContents.getURL())) {
+      return { groups: null, error: 'Path of Pathing redirected to an untrusted URL' };
+    }
     const deadline = Date.now() + 8_000;
     let ready = false;
     while (Date.now() < deadline) {
@@ -147,7 +151,11 @@ ipcMain.handle('atlas-tree:read-stats', async (_event, rawUrl: string): Promise<
   } finally {
     if (!reader.isDestroyed()) reader.destroy();
   }
-});
+}
+
+const readAtlasTreeStatsSingleFlight = createKeyedSerialTask(readAtlasTreeStats);
+ipcMain.handle('atlas-tree:read-stats', (_event, rawUrl: string) =>
+  readAtlasTreeStatsSingleFlight(rawUrl));
 
 // ── PoE Trade stat ID cache ───────────────────────────────────────────────────
 const STATS_CACHE = new Map<string, string>();
