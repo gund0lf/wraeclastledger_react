@@ -2,9 +2,9 @@
  * gameData.test.ts — manifest invariants + loader behaviour + derived views
  * (rollover Phase 1 step 2).
  *
- * The invariant tests are the migration's safety net: they lock the bundled
- * manifest to the exact shapes/counts the legacy constants.ts arrays had, so
- * the constants -> manifest move is provably 1:1.
+ * The invariant tests are the rollover safety net: they lock revision metadata,
+ * entity counts, lifecycle changes, aliases, picker behavior, and the legacy
+ * derived shapes that must remain compatible.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
@@ -13,6 +13,8 @@ import {
   getGameDataStatus, getManifest, initGameData, isApplicableManifest, isValidManifest, __resetGameDataForTests,
   activeScarabNames, activeDeliriumOrbList, activeAstrolabeList, activeChiselTypes,
   mechanicStatus, isMechanicActive, entityLifecycleStatus, selectableScarabOptions,
+  selectableDeliriumOrbList, selectableAstrolabeList, shouldShowMechanicInput,
+  preserveHistoricalSelection,
 } from './gameData';
 import { SCARAB_LIST, DELIRIUM_ORB_LIST, ASTROLABE_LIST, CHISEL_TYPES, CHISEL_SELECT_DATA } from './constants';
 
@@ -22,12 +24,92 @@ afterEach(() => {
 });
 
 describe('bundled manifest invariants', () => {
-  it('carries the migrated entity counts (123 scarabs / 17 deli / 10 astrolabes / 6 chisels)', () => {
-    // 123 is deliberate — see the DATA NOTE in manifest.ts (111-vs-123 history).
-    expect(BUNDLED_MANIFEST.scarabs).toHaveLength(123);
+  it('reports the bundled revision in the title-bar status before and after initialization', async () => {
+    __resetGameDataForTests();
+    expect(getGameDataStatus()).toMatchObject({
+      revision: BUNDLED_MANIFEST.revision,
+      patchVersion: BUNDLED_MANIFEST.patchVersion,
+      source: 'bundled',
+    });
+
+    vi.stubGlobal('window', {
+      api: { readGameDataCache: vi.fn(async () => ({ manifest: null, error: null })) },
+    });
+    await initGameData();
+    expect(getGameDataStatus().revision).toBe(BUNDLED_MANIFEST.revision);
+  });
+
+  it('carries the revision-2 entity counts (129 scarabs / 17 deli / 11 astrolabes / 6 chisels)', () => {
+    expect(BUNDLED_MANIFEST.scarabs).toHaveLength(129);
     expect(BUNDLED_MANIFEST.deliriumOrbs).toHaveLength(17);
-    expect(BUNDLED_MANIFEST.astrolabes).toHaveLength(10);
+    expect(BUNDLED_MANIFEST.astrolabes).toHaveLength(11);
     expect(BUNDLED_MANIFEST.chisels).toHaveLength(6);
+  });
+
+  it('classifies the confirmed 3.29 entity changes without deleting history', () => {
+    const scarab = (name: string) => BUNDLED_MANIFEST.scarabs.find((e) => e.name === name);
+    const deli = (name: string) => BUNDLED_MANIFEST.deliriumOrbs.find((e) => e.name === name);
+    const astro = (name: string) => BUNDLED_MANIFEST.astrolabes.find((e) => e.name === name);
+
+    expect(scarab('Abyss Scarab of Edifice')).toMatchObject({
+      status: 'renamed', aliasOf: 'abyss-scarab-of-crystals',
+    });
+    expect(scarab('Abyss Scarab of Profound Depth')).toMatchObject({
+      status: 'renamed', aliasOf: 'abyssal-scarab-of-the-consort',
+    });
+    expect(scarab('Abyss Scarab of Crystals')?.status).toBe('reworked');
+    expect(scarab('Abyssal Scarab of the Consort')?.status).toBe('reworked');
+    expect(scarab('Abyss Scarab')?.status).toBe('reworked');
+    expect(scarab('Abyss Scarab of Multitudes')?.status).toBe('reworked');
+
+    for (const name of [
+      'Trarthan Scarab', 'Trarthan Scarab of Infamy', 'Trarthan Scarab of Renown',
+      'Trarthan Scarab of Surprising Alliances',
+    ]) expect(scarab(name)?.status, name).toBe('active');
+
+    for (const name of [
+      'Heist Scarab', 'Heist Scarab of Lockpicking', 'Heist Scarab of Many Clients',
+      'Heist Scarab of the Wealthy', 'Metamorph Scarab', 'Metamorph Scarab of Catalogue',
+      'Metamorph Scarab of Curiosity', 'Metamorph Scarab of Specimen',
+    ]) expect(scarab(name)?.status, name).toBe('removed');
+
+    for (const name of ['Abyssal', 'Fossilised', 'Kalguuran', 'Obscured', 'Timeless']) {
+      expect(deli(name)?.status, name).toBe('removed');
+    }
+    expect(deli('Primal')).toBeUndefined();
+
+    expect(astro('Enshrouded Astrolabe')).toMatchObject({
+      status: 'renamed', aliasOf: 'deceptive-astrolabe',
+    });
+    expect(astro('Deceptive Astrolabe')?.status).toBe('active');
+  });
+
+  it('offers only current/reworked revision-2 products in new-input pickers', () => {
+    const scarabs = selectableScarabOptions();
+    expect(scarabs).toContainEqual({
+      value: 'Abyss Scarab of Crystals', label: 'Abyss Scarab of Crystals',
+    });
+    expect(scarabs).toContainEqual({
+      value: 'Abyssal Scarab of the Consort', label: 'Abyssal Scarab of the Consort',
+    });
+    expect(scarabs.some((e) => e.value === 'Trarthan Scarab')).toBe(true);
+    expect(scarabs.some((e) => e.value === 'Abyss Scarab of Edifice')).toBe(false);
+    expect(scarabs.some((e) => e.value === 'Heist Scarab')).toBe(false);
+
+    const deli = selectableDeliriumOrbList();
+    expect(deli.some((e) => e.value === 'Fossilised')).toBe(false);
+    expect(deli.some((e) => e.value === 'Obscured')).toBe(false);
+
+    const astrolabes = selectableAstrolabeList();
+    expect(astrolabes.some((e) => e.value === 'Deceptive Astrolabe')).toBe(true);
+    expect(astrolabes.some((e) => e.value === 'Enshrouded Astrolabe')).toBe(false);
+
+    expect(preserveHistoricalSelection(astrolabes, 'Enshrouded Astrolabe')).toContainEqual({
+      value: 'Enshrouded Astrolabe', label: 'Enshrouded Astrolabe — Historical',
+    });
+    expect(preserveHistoricalSelection(deli, 'Fossilised')).toContainEqual({
+      value: 'Fossilised', label: 'Fossilised — Historical',
+    });
   });
 
   it('all ids are unique across every entity list', () => {
@@ -77,9 +159,13 @@ describe('bundled manifest invariants', () => {
 
   it('accepts immutable legacy revision 1 but requires declared compatibility after it', () => {
     expect(isApplicableManifest(BUNDLED_MANIFEST)).toBe(true);
-    expect(isApplicableManifest({ ...BUNDLED_MANIFEST, revision: 2 })).toBe(false);
+    const legacy = {
+      ...BUNDLED_MANIFEST, revision: 1, schemaVersion: undefined, contextKey: undefined,
+    };
+    expect(isApplicableManifest(legacy)).toBe(true);
+    expect(isApplicableManifest({ ...legacy, revision: 2 })).toBe(false);
     expect(isApplicableManifest({
-      ...BUNDLED_MANIFEST, revision: 2, schemaVersion: 1, contextKey: 'poe1-challenge',
+      ...legacy, revision: 2, schemaVersion: 1, contextKey: 'poe1-challenge',
     })).toBe(true);
   });
 });
@@ -91,7 +177,7 @@ describe('legacy constants are 1:1 derived views (migration lock)', () => {
   });
 
   it('DELIRIUM_ORB_LIST / ASTROLABE_LIST keep the legacy select shapes', () => {
-    expect(DELIRIUM_ORB_LIST[0]).toEqual({ value: 'Abyssal', label: 'Abyssal (Abyss)' });
+    expect(DELIRIUM_ORB_LIST).not.toContainEqual({ value: 'Abyssal', label: 'Abyssal (Abyss)' });
     expect(ASTROLABE_LIST[0]).toEqual({ value: '', label: '— None —' }); // None row preserved
     expect(ASTROLABE_LIST).toHaveLength(11); // 10 entities + None
   });
@@ -265,13 +351,13 @@ describe('derived view helpers (call-time, revision-aware)', () => {
       api: { readGameDataCache: vi.fn(async () => ({ manifest: modified, error: null })) },
     });
     await initGameData();
-    expect(activeScarabNames()).toHaveLength(122);
+    expect(activeScarabNames()).toHaveLength(SCARAB_LIST.length - 1);
     expect(activeScarabNames()).not.toContain(BUNDLED_MANIFEST.scarabs[0].name);
     // The entity is still IN the manifest for read-time resolution:
     expect(getManifest().scarabs.find((s) => s.id === BUNDLED_MANIFEST.scarabs[0].id)?.status).toBe('removed');
   });
 
-  it('keeps reworked products selectable with a warning label while removed products stay unpickable', async () => {
+  it('round-trips reworked picker values as clean stored names while removed products stay unpickable', async () => {
     const first = BUNDLED_MANIFEST.scarabs[0];
     const second = BUNDLED_MANIFEST.scarabs[1];
     const modified = {
@@ -287,7 +373,10 @@ describe('derived view helpers (call-time, revision-aware)', () => {
     });
     await initGameData();
 
-    expect(selectableScarabOptions()).toContainEqual({ value: first.name, label: `${first.name} — Reworked` });
+    const option = selectableScarabOptions().find((candidate) => candidate.value === first.name);
+    expect(option).toEqual({ value: first.name, label: first.name });
+    expect(option?.value).not.toContain('Reworked');
+    expect(option?.label).not.toContain('Reworked');
     expect(selectableScarabOptions().some((option) => option.value === second.name)).toBe(false);
     expect(entityLifecycleStatus('scarabs', first.name)).toBe('reworked');
     expect(entityLifecycleStatus('scarabs', second.name)).toBe('removed');
@@ -296,11 +385,15 @@ describe('derived view helpers (call-time, revision-aware)', () => {
 });
 
 describe('mechanic flags (step 5, §5.3)', () => {
-  it('bundled manifest: scarabs/delirium/astrolabe all active', () => {
+  it('bundled revision 2 keeps live mechanics active and explicitly removes split input', () => {
     expect(mechanicStatus('scarabs')).toBe('active');
     expect(mechanicStatus('delirium')).toBe('active');
     expect(mechanicStatus('astrolabe')).toBe('active');
+    expect(mechanicStatus('split')).toBe('removed');
     expect(isMechanicActive('astrolabe')).toBe(true);
+    expect(isMechanicActive('split')).toBe(false);
+    expect(shouldShowMechanicInput('split', false)).toBe(false);
+    expect(shouldShowMechanicInput('split', true)).toBe(true);
   });
 
   it('an OMITTED mechanic defaults to active (fail-open, no silent hide)', async () => {

@@ -7,8 +7,9 @@ import { useDisclosure, useElementSize } from '@mantine/hooks';
 import { useState, useEffect, useMemo } from 'react';
 import { useSessionKeys } from '../store/useSessionStore';
 import {
-  entityLifecycleStatus, isMechanicActive, selectableAstrolabeList,
+  shouldShowMechanicInput, selectableAstrolabeList,
   selectableChiselList, selectableDeliriumOrbList, selectableScarabOptions,
+  preserveHistoricalSelection,
 } from '../utils/gameData';
 import { parsePriceInput } from '../utils/priceUtils';
 import { computeCosts } from '../utils/profit';
@@ -103,9 +104,15 @@ export const InvestmentModule = () => {
 
   const divinePrice = settings.divinePrice || 1;
   const scarabOptions = selectableScarabOptions();
-  const deliriumOrbOptions = selectableDeliriumOrbList();
-  const astrolabeOptions = selectableAstrolabeList();
-  const chiselOptions = selectableChiselList();
+  const deliriumOrbOptions = preserveHistoricalSelection(
+    selectableDeliriumOrbList(), settings.advDeliOrbType,
+  );
+  const astrolabeOptions = preserveHistoricalSelection(
+    selectableAstrolabeList(), settings.advAstrolabeType,
+  );
+  const chiselOptions = preserveHistoricalSelection(
+    selectableChiselList(), settings.chiselType,
+  );
 
   // All cost math lives in utils/profit.ts (WP1). The session total is derived
   // LIVE from settings + map count — the stored settings.rollingCostPerMap was
@@ -125,7 +132,10 @@ export const InvestmentModule = () => {
   // section — UNLESS this session already has astrolabe data, so an in-progress
   // session is never disrupted mid-edit (read-time visibility, non-destructive).
   const astrolabeHasData = !!settings.advAstrolabeType || settings.advAstrolabeCount > 0 || settings.advAstrolabePrice > 0;
-  const showAstrolabe   = isMechanicActive('astrolabe') || astrolabeHasData;
+  const showAstrolabe   = shouldShowMechanicInput('astrolabe', astrolabeHasData);
+  // 3.29 removed both map-splitting methods. New sessions no longer offer the
+  // input, but historical sessions with a recorded split cost retain it.
+  const showSplit       = shouldShowMechanicInput('split', isSplit);
   const gemBuyTotal     = settings.advGemCount * settings.advGemBuyPrice;
   const gemSellTotal    = settings.advGemCount * settings.advGemSellPrice;
   const gemNetPL        = gemSellTotal - gemBuyTotal;
@@ -222,9 +232,6 @@ export const InvestmentModule = () => {
                 onChange={(v) => updateSetting('chiselPrice', v)} divinePrice={divinePrice}
                 placeholder={settings.chiselType ? 'e.g. 150c' : '—'} />
             </SimpleGrid>
-            {entityLifecycleStatus('chisels', settings.chiselType) === 'reworked' && (
-              <Badge size="xs" color="yellow" variant="light">Reworked item — verify its current effect</Badge>
-            )}
           </AdvSection>
           <AdvSection title="Rolling Costs" filled={rollingFilled}>
             <Text size="xs" c="dimmed">Orbs spent rolling maps this session. Enter total quantity bought + total chaos paid.</Text>
@@ -273,9 +280,6 @@ export const InvestmentModule = () => {
                   <Text size="xs">{option.label}</Text>
                 </Group>
               )} />
-            {entityLifecycleStatus('deliriumOrbs', settings.advDeliOrbType) === 'reworked' && (
-              <Badge size="xs" color="yellow" variant="light">Reworked item — verify its current effect</Badge>
-            )}
             <SimpleGrid cols={2} style={{ alignItems: 'flex-end' }}>
               <NumberInput label="Per map (1–5)" size="xs" value={settings.advDeliOrbQtyPerMap}
                 onChange={(v) => updateAdvSetting('advDeliOrbQtyPerMap', Number(v))} min={0} max={5} />
@@ -298,9 +302,6 @@ export const InvestmentModule = () => {
                   <Text size="xs">{option.label}</Text>
                 </Group>
               )} />
-            {entityLifecycleStatus('astrolabes', settings.advAstrolabeType) === 'reworked' && (
-              <Badge size="xs" color="yellow" variant="light">Reworked item — verify its current effect</Badge>
-            )}
             <SimpleGrid cols={2} style={{ alignItems: 'flex-end' }}>
               <PriceInput label="Price each" value={settings.advAstrolabePrice}
                 onChange={(v) => updateAdvSetting('advAstrolabePrice', v)} divinePrice={divinePrice} placeholder="e.g. 1d" />
@@ -360,6 +361,7 @@ export const InvestmentModule = () => {
               </Stack>
             )}
           </AdvSection>
+          {showSplit && (
           <AdvSection title="Split Session" filled={splitFilled}>
             <Group gap={6} wrap="nowrap">
               {/* Fractured Fossil = the actual split fossil (session-16 review
@@ -382,6 +384,7 @@ export const InvestmentModule = () => {
             </SimpleGrid>
             {isSplit && <Text size="xs" c="teal">→ +{(settings.advSplitPrice / 2).toFixed(2)}c/map</Text>}
           </AdvSection>
+          )}
           <Divider />
           <Group justify="space-between">
             <Text size="sm" fw={700}>Session costs (total)</Text>
@@ -685,11 +688,6 @@ export const InvestmentModule = () => {
                   : undefined}
                 rightSectionPointerEvents={scarab.name ? 'all' : 'none'}
               />
-              {entityLifecycleStatus('scarabs', scarab.name) === 'reworked' && (
-                <Tooltip label="This scarab was reworked; verify its current effect and price.">
-                  <Badge size="xs" color="yellow" variant="light">Reworked</Badge>
-                </Tooltip>
-              )}
               <PriceInput value={scarab.cost} onChange={(v) => updateScarab(i, 'cost', v)}
                 divinePrice={divinePrice} placeholder="0c" style={{ width: 100, flexShrink: 0 }} />
             </Group>

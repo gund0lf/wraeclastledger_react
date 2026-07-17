@@ -1,11 +1,12 @@
 /**
- * BUNDLED game-data manifest — revision 1 (patch 3.28 / Mirage-era, incl. the
- * Return of the Ancestors event which shares Mirage's item set).
+ * BUNDLED game-data manifest — revision 2 (patch 3.29 / Curse of the
+ * Allflame). Revision 1 remains immutable as the published Mirage-era floor.
  *
- * SOURCE + PROVENANCE: generated 2026-07-06 (session 12) 1:1 from the flat
- * arrays that previously lived in src/renderer/src/utils/constants.ts —
- * SCARAB_LIST, DELIRIUM_ORB_LIST, ASTROLABE_LIST, CHISEL_TYPES. constants.ts
- * now DERIVES its exports from this file; this is the single source of truth.
+ * SOURCE + PROVENANCE: revision 1 was generated 2026-07-06 (session 12) 1:1
+ * from the flat arrays that previously lived in constants.ts. Revision 2 was
+ * classified from GGG's official 3.29 notes on 2026-07-17, with exact Consort
+ * spelling cross-checked against the PoEDB 3.29 mirror. constants.ts now
+ * DERIVES its exports from this file; this is the single source of truth.
  *
  * DATA NOTE (found at migration): the old SCARAB_LIST header claimed
  * "111 droppable scarabs verified for 3.28" but the array actually contained
@@ -14,17 +15,10 @@
  * list-vs-its-own-comment. Sad (2026-07-06): vaguely recalls a past incident
  * of sources disagreeing (plausibly the same one behind plan §0's source
  * discipline); possible python-port remnants; origin no longer verifiable.
- * DECISION (Sad + Claude 2026-07-06): keep all 123 status 'active' — do NOT
- * delete or reconcile via poe.ninja/wiki (§0 forbids existence questions to
- * price sources). Reconcile ONCE against GGG's 3.29 filter item list
- * (~Jul 16): entries absent there get status 'removed' (never deleted).
- * HYPOTHESIS (Sad's wiki find, 2026-07-06): poewiki's List_of_scarabs says
- * "111 scarabs that can drop" AND has a separate Drop-disabled section — so
- * 123 = 111 droppable + ~12 drop-disabled is plausible, meaning the list may
- * never have been wrong: drop-disabled scarabs can remain tradeable/usable in
- * the map device, so keeping them PICKABLE may be correct. Adjudicate at the
- * 3.29 reconciliation (candidates would get note: 'drop-disabled', NOT
- * 'removed', if still usable). See BACKLOG "game-data housekeeping script".
+ * REVISION-2 DECISION (Sad + reviewer 2026-07-17): this app supports current
+ * challenge leagues, not Standard. Standard-only survival therefore means
+ * 'removed' for new-input pickers; historical entries remain in the manifest.
+ * GGG's launch-day in-game filter list is the final existence authority.
  *
  * EDITING RULES (plan §2.2):
  *  - Never delete an entity — set status 'removed' instead.
@@ -32,19 +26,22 @@
  *  - Any change here bumps `revision` (monotonic, mid-league bumps fine).
  *  - ids are frozen at introduction (slugifyEntityId of the then-current name).
  *
- * atlasTreeVersion is '' — the pathofpathing ?v= string for 3.28 has not been
+ * atlasTreeVersion is '' — the pathofpathing ?v= string for 3.29 has not been
  * OBSERVED yet ('' is a loud unknown, not a guess; §5.4 Tier 1 parse fills it).
  */
 import { GameDataManifest } from './types';
 
 export const BUNDLED_MANIFEST: GameDataManifest = {
-  revision: 1,
-  patchVersion: '3.28',
+  revision: 2,
+  schemaVersion: 1,
+  contextKey: 'poe1-challenge',
+  patchVersion: '3.29',
   atlasTreeVersion: '',
   mechanics: {
     scarabs: 'active',
     delirium: 'active',
     astrolabe: 'active',
+    split: 'removed',
   },
   scarabs: [
   // ── Horned ──
@@ -56,11 +53,13 @@ export const BUNDLED_MANIFEST: GameDataManifest = {
   { id: 'horned-scarab-of-preservation', name: "Horned Scarab of Preservation", status: 'active' },
   { id: 'horned-scarab-of-tradition', name: "Horned Scarab of Tradition", status: 'active' },
   // ── Abyss ──
-  { id: 'abyss-scarab', name: "Abyss Scarab", status: 'active' },
+  { id: 'abyss-scarab', name: "Abyss Scarab", status: 'reworked', note: "Limit 5; extra Abyss sources add two additional pits when an area already has an Abyss." },
   { id: 'abyss-scarab-of-descending', name: "Abyss Scarab of Descending", status: 'active' },
-  { id: 'abyss-scarab-of-edifice', name: "Abyss Scarab of Edifice", status: 'active' },
-  { id: 'abyss-scarab-of-multitudes', name: "Abyss Scarab of Multitudes", status: 'active' },
-  { id: 'abyss-scarab-of-profound-depth', name: "Abyss Scarab of Profound Depth", status: 'active' },
+  { id: 'abyss-scarab-of-edifice', name: "Abyss Scarab of Edifice", status: 'renamed', aliasOf: 'abyss-scarab-of-crystals' },
+  { id: 'abyss-scarab-of-crystals', name: "Abyss Scarab of Crystals", status: 'reworked', note: "Abyss Pits without a reward instead create an Abyssal Crystal." },
+  { id: 'abyss-scarab-of-multitudes', name: "Abyss Scarab of Multitudes", status: 'reworked', note: "Abyss Chasms spawn 100% increased monsters per Soul fed." },
+  { id: 'abyss-scarab-of-profound-depth', name: "Abyss Scarab of Profound Depth", status: 'renamed', aliasOf: 'abyssal-scarab-of-the-consort' },
+  { id: 'abyssal-scarab-of-the-consort', name: "Abyssal Scarab of the Consort", status: 'reworked', note: "One Abyss Pit in the area spawns an Abyssal Consort." },
   // ── Ambush ──
   { id: 'ambush-scarab', name: "Ambush Scarab", status: 'active' },
   { id: 'ambush-scarab-of-containment', name: "Ambush Scarab of Containment", status: 'active' },
@@ -139,10 +138,10 @@ export const BUNDLED_MANIFEST: GameDataManifest = {
   { id: 'harvest-scarab-of-cornucopia', name: "Harvest Scarab of Cornucopia", status: 'active' },
   { id: 'harvest-scarab-of-doubling', name: "Harvest Scarab of Doubling", status: 'active' },
   // ── Heist ──
-  { id: 'heist-scarab', name: "Heist Scarab", status: 'active' },
-  { id: 'heist-scarab-of-lockpicking', name: "Heist Scarab of Lockpicking", status: 'active' },
-  { id: 'heist-scarab-of-many-clients', name: "Heist Scarab of Many Clients", status: 'active' },
-  { id: 'heist-scarab-of-the-wealthy', name: "Heist Scarab of the Wealthy", status: 'active' },
+  { id: 'heist-scarab', name: "Heist Scarab", status: 'removed' },
+  { id: 'heist-scarab-of-lockpicking', name: "Heist Scarab of Lockpicking", status: 'removed' },
+  { id: 'heist-scarab-of-many-clients', name: "Heist Scarab of Many Clients", status: 'removed' },
+  { id: 'heist-scarab-of-the-wealthy', name: "Heist Scarab of the Wealthy", status: 'removed' },
   // ── Incursion ──
   { id: 'incursion-scarab', name: "Incursion Scarab", status: 'active' },
   { id: 'incursion-scarab-of-champions', name: "Incursion Scarab of Champions", status: 'active' },
@@ -164,10 +163,10 @@ export const BUNDLED_MANIFEST: GameDataManifest = {
   { id: 'legion-scarab-of-officers', name: "Legion Scarab of Officers", status: 'active' },
   { id: 'legion-scarab-of-treasures', name: "Legion Scarab of Treasures", status: 'active' },
   // ── Metamorph ──
-  { id: 'metamorph-scarab', name: "Metamorph Scarab", status: 'active' },
-  { id: 'metamorph-scarab-of-catalogue', name: "Metamorph Scarab of Catalogue", status: 'active' },
-  { id: 'metamorph-scarab-of-curiosity', name: "Metamorph Scarab of Curiosity", status: 'active' },
-  { id: 'metamorph-scarab-of-specimen', name: "Metamorph Scarab of Specimen", status: 'active' },
+  { id: 'metamorph-scarab', name: "Metamorph Scarab", status: 'removed' },
+  { id: 'metamorph-scarab-of-catalogue', name: "Metamorph Scarab of Catalogue", status: 'removed' },
+  { id: 'metamorph-scarab-of-curiosity', name: "Metamorph Scarab of Curiosity", status: 'removed' },
+  { id: 'metamorph-scarab-of-specimen', name: "Metamorph Scarab of Specimen", status: 'removed' },
   // ── Ritual ──
   { id: 'ritual-scarab-of-abundance', name: "Ritual Scarab of Abundance", status: 'active' },
   { id: 'ritual-scarab-of-corpses', name: "Ritual Scarab of Corpses", status: 'active' },
@@ -180,6 +179,11 @@ export const BUNDLED_MANIFEST: GameDataManifest = {
   { id: 'titanic-scarab', name: "Titanic Scarab", status: 'active' },
   { id: 'titanic-scarab-of-legend', name: "Titanic Scarab of Legend", status: 'active' },
   { id: 'titanic-scarab-of-treasures', name: "Titanic Scarab of Treasures", status: 'active' },
+  // ── Trarthan ──
+  { id: 'trarthan-scarab', name: "Trarthan Scarab", status: 'active' },
+  { id: 'trarthan-scarab-of-infamy', name: "Trarthan Scarab of Infamy", status: 'active' },
+  { id: 'trarthan-scarab-of-renown', name: "Trarthan Scarab of Renown", status: 'active' },
+  { id: 'trarthan-scarab-of-surprising-alliances', name: "Trarthan Scarab of Surprising Alliances", status: 'active' },
   // ── Torment ──
   { id: 'torment-scarab', name: "Torment Scarab", status: 'active' },
   { id: 'torment-scarab-of-peculiarity', name: "Torment Scarab of Peculiarity", status: 'active' },
@@ -201,28 +205,29 @@ export const BUNDLED_MANIFEST: GameDataManifest = {
   { id: 'scarab-of-wisps', name: "Scarab of Wisps", status: 'active' },
   ],
   deliriumOrbs: [
-  { id: 'deli-abyssal', name: "Abyssal", label: "Abyssal (Abyss)", status: 'active' },
+  { id: 'deli-abyssal', name: "Abyssal", label: "Abyssal (Abyss)", status: 'removed' },
   { id: 'deli-armoursmith', name: "Armoursmith", label: "Armoursmith's (Armour)", status: 'active' },
   { id: 'deli-blacksmith', name: "Blacksmith", label: "Blacksmith's (Weapons)", status: 'active' },
   { id: 'deli-blighted', name: "Blighted", label: "Blighted (Blight)", status: 'active' },
   { id: 'deli-cartographer', name: "Cartographer", label: "Cartographer's (Maps)", status: 'active' },
   { id: 'deli-diviner', name: "Diviner", label: "Diviner's (Div Cards)", status: 'active' },
   { id: 'deli-fine', name: "Fine", label: "Fine (Currency)", status: 'active' },
-  { id: 'deli-fossilised', name: "Fossilised", label: "Fossilised (Fossils)", status: 'active' },
+  { id: 'deli-fossilised', name: "Fossilised", label: "Fossilised (Fossils)", status: 'removed' },
   { id: 'deli-fragmented', name: "Fragmented", label: "Fragmented (Fragments)", status: 'active' },
   { id: 'deli-jeweller', name: "Jeweller", label: "Jeweller's (Jewels)", status: 'active' },
-  { id: 'deli-kalguuran', name: "Kalguuran", label: "Kalguuran (Kalguur)", status: 'active' },
-  { id: 'deli-obscured', name: "Obscured", label: "Obscured (Heist)", status: 'active' },
+  { id: 'deli-kalguuran', name: "Kalguuran", label: "Kalguuran (Kalguur)", status: 'removed' },
+  { id: 'deli-obscured', name: "Obscured", label: "Obscured (Heist)", status: 'removed' },
   { id: 'deli-singular', name: "Singular", label: "Singular (Unique)", status: 'active' },
   { id: 'deli-skittering', name: "Skittering", label: "Skittering (Scarabs)", status: 'active' },
   { id: 'deli-thaumaturge', name: "Thaumaturge", label: "Thaumaturge's (Metamorph)", status: 'active' },
-  { id: 'deli-timeless', name: "Timeless", label: "Timeless (Legion)", status: 'active' },
+  { id: 'deli-timeless', name: "Timeless", label: "Timeless (Legion)", status: 'removed' },
   { id: 'deli-whispering', name: "Whispering", label: "Whispering (Essences)", status: 'active' },
   ],
   astrolabes: [
   { id: 'templar-astrolabe', name: "Templar Astrolabe", label: "Templar (Originator region)", status: 'active' },
   { id: 'chaotic-astrolabe', name: "Chaotic Astrolabe", label: "Chaotic (Ultimatum)", status: 'active' },
-  { id: 'enshrouded-astrolabe', name: "Enshrouded Astrolabe", label: "Enshrouded (Delirium Mirror)", status: 'active' },
+  { id: 'enshrouded-astrolabe', name: "Enshrouded Astrolabe", label: "Enshrouded (Delirium Mirror)", status: 'renamed', aliasOf: 'deceptive-astrolabe' },
+  { id: 'deceptive-astrolabe', name: "Deceptive Astrolabe", label: "Deceptive (Delirium Mirror)", status: 'active' },
   { id: 'fruiting-astrolabe', name: "Fruiting Astrolabe", label: "Fruiting (Harvest)", status: 'active' },
   { id: 'fungal-astrolabe', name: "Fungal Astrolabe", label: "Fungal (Blight)", status: 'active' },
   { id: 'grasping-astrolabe', name: "Grasping Astrolabe", label: "Grasping (Breach)", status: 'active' },

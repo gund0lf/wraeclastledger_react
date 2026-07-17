@@ -1,9 +1,9 @@
 /**
  * strategyCompat.test.ts — strategy-vs-manifest compatibility (rollover step 4).
  *
- * Revision 1 has no renames/removals, so a bundled-manifest strategy is always
- * 'ok'. The interesting cases inject a synthetic manifest (renamed/removed/
- * reworked scarabs, a set atlas version) through the loader's adopt path.
+ * Revision 2 contains real lifecycle changes. The bundled cases distinguish
+ * unchanged products from those changes; synthetic cases isolate every
+ * compatibility level and atlas-version behavior.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
@@ -40,10 +40,10 @@ describe('atlasVersionOf', () => {
   });
 });
 
-describe('compat on the bundled manifest (everything current -> ok)', () => {
-  it('a strategy of current scarabs + chisel is ok', () => {
+describe('compat on the bundled manifest', () => {
+  it('a strategy of unchanged scarabs + chisel is ok', () => {
     const r = checkStrategyCompat(strat({
-      scarabs: [{ name: 'Abyss Scarab', cost: 5 }, { name: 'Titanic Scarab', cost: 10 }],
+      scarabs: [{ name: 'Abyss Scarab of Descending', cost: 5 }, { name: 'Titanic Scarab', cost: 10 }],
       chisel: 'Cartographer',
     }));
     expect(r.level).toBe('ok');

@@ -1,9 +1,8 @@
 /**
  * aliasResolver.test.ts — read-time historical-name resolution (rollover step 3).
  *
- * Revision 1 has ZERO renames, so the bundled manifest can only exercise the
- * identity path. To prove the alias machinery, most tests inject a synthetic
- * manifest with a renamed edge via the loader's adopt-newer path.
+ * Revision 2 carries real 3.29 rename edges. Synthetic manifests still cover
+ * removed/reworked states and malformed chains independently.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
@@ -25,7 +24,7 @@ afterEach(() => {
   __resetGameDataForTests();
 });
 
-describe('resolver on the bundled manifest (identity — no renames at rev 1)', () => {
+describe('resolver on the bundled revision-2 manifest', () => {
   it('resolves a current scarab name to itself, not via alias', () => {
     const r = resolveEntity('scarabs', 'Abyss Scarab');
     expect(r.entity?.name).toBe('Abyss Scarab');
@@ -50,6 +49,14 @@ describe('resolver on the bundled manifest (identity — no renames at rev 1)', 
   it('isCurrentlyUsable is true for active bundled entities, false for unknown', () => {
     expect(isCurrentlyUsable('scarabs', 'Abyss Scarab')).toBe(true);
     expect(isCurrentlyUsable('scarabs', 'Ghost Scarab')).toBe(false);
+  });
+
+  it('upgrades both renamed Abyss scarabs and the renamed astrolabe', () => {
+    expect(currentName('scarabs', 'Abyss Scarab of Edifice')).toBe('Abyss Scarab of Crystals');
+    expect(currentName('scarabs', 'Abyss Scarab of Profound Depth')).toBe('Abyssal Scarab of the Consort');
+    expect(currentName('astrolabes', 'Enshrouded Astrolabe')).toBe('Deceptive Astrolabe');
+    expect(resolveEntity('scarabs', 'Abyss Scarab of Edifice').viaAlias).toBe(true);
+    expect(isCurrentlyUsable('scarabs', 'Abyss Scarab of Edifice')).toBe(true);
   });
 });
 
@@ -98,7 +105,7 @@ describe('resolver across a renamed alias edge (synthetic 3.29-style manifest)',
   });
 
   it('rebuilds its index after a revision swap (no stale cache across manifests)', async () => {
-    // Bundled first: old name unknown.
+    // Bundled first: the synthetic old name is unknown.
     expect(resolveEntity('scarabs', 'Old Name Scarab').entity).toBeNull();
     // Swap: now it resolves.
     await useManifest(renamed);

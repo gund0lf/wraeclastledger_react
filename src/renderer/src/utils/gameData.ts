@@ -152,8 +152,7 @@ export function __resetGameDataForTests(): void {
 
 const isActive = (e: GameEntity): boolean => e.status === 'active';
 const isSelectable = (e: GameEntity): boolean => e.status === 'active' || e.status === 'reworked';
-const selectableLabel = (e: GameEntity): string =>
-  `${e.label ?? e.name}${e.status === 'reworked' ? ' — Reworked' : ''}`;
+const selectableLabel = (e: GameEntity): string => e.label ?? e.name;
 
 export type GameEntityGroup = 'scarabs' | 'deliriumOrbs' | 'astrolabes' | 'chisels';
 
@@ -164,7 +163,10 @@ export function entityLifecycleStatus(group: GameEntityGroup, name: string): Gam
   return getManifest()[group].find((e) => e.name.toLocaleLowerCase() === normalized)?.status ?? null;
 }
 
-/** Current picker data. Reworked remains selectable but is visibly labelled. */
+/**
+ * Current picker data. Reworked remains selectable, but lifecycle is internal:
+ * input surfaces always present the clean product name/label.
+ */
 export function selectableScarabOptions(): { value: string; label: string }[] {
   return getManifest().scarabs.filter(isSelectable)
     .map((e) => ({ value: e.name, label: selectableLabel(e) }));
@@ -189,6 +191,19 @@ export function selectableChiselList(): { value: string; label: string }[] {
     ...getManifest().chisels.filter(isSelectable)
       .map((e) => ({ value: e.name, label: selectableLabel(e) })),
   ];
+}
+
+/**
+ * A strict Select cannot display a saved value that is absent from its data.
+ * Keep that one selected legacy value visible without returning it to any
+ * fresh-session picker.
+ */
+export function preserveHistoricalSelection(
+  options: { value: string; label: string }[],
+  selectedValue: string,
+): { value: string; label: string }[] {
+  if (!selectedValue || options.some((option) => option.value === selectedValue)) return options;
+  return [...options, { value: selectedValue, label: `${selectedValue} — Historical` }];
 }
 
 /** Active scarab display names — shape of the legacy SCARAB_LIST. */
@@ -226,7 +241,7 @@ export function activeChiselTypes(): Record<string, { label: string; statKey: Ch
 // 'active' (fail-open): a data omission must never silently hide a working UI
 // surface — that would be a silent failure, which this project rejects. 3.29
 // removals are made EXPLICIT ('removed') in the manifest, not implied by omission.
-export type MechanicKey = 'scarabs' | 'delirium' | 'astrolabe';
+export type MechanicKey = 'scarabs' | 'delirium' | 'astrolabe' | 'split';
 
 export function mechanicStatus(key: MechanicKey): 'active' | 'reworked' | 'removed' {
   const s = getManifest().mechanics[key];
@@ -238,4 +253,13 @@ export function mechanicStatus(key: MechanicKey): 'active' | 'reworked' | 'remov
  *  handled at each display site, not here). Reworked stays visible. */
 export function isMechanicActive(key: MechanicKey): boolean {
   return mechanicStatus(key) !== 'removed';
+}
+
+/**
+ * New input follows the active manifest, while persisted historical input
+ * remains editable and visible. This is the shared non-destructive gate used
+ * by mechanic-specific Investment controls.
+ */
+export function shouldShowMechanicInput(key: MechanicKey, hasHistoricalData: boolean): boolean {
+  return isMechanicActive(key) || hasHistoricalData;
 }

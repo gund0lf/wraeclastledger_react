@@ -19,8 +19,8 @@
 import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
 
 // ─── SCARAB LIST (derived) ────────────────────────────────────────────────────
-// 123 entries carried 1:1 from the pre-manifest array — see the DATA NOTE in
-// manifest.ts for the 111-vs-123 history and the 3.29 reconciliation decision.
+// Current ACTIVE entries from bundled revision 2. Reworked entries remain
+// selectable through the call-time helpers in gameData.ts, not this legacy view.
 export const SCARAB_LIST: string[] =
   BUNDLED_MANIFEST.scarabs.filter((e) => e.status === 'active').map((e) => e.name);
 
