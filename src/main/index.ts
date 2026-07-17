@@ -6,6 +6,17 @@ import { autoUpdater } from 'electron-updater'
 import { BRICK_MOD_DEFS, brickRegexTerm } from '../shared/brickMods'
 import type { AtlasStatGroup, AtlasStatsReadResult } from '../shared/atlasStats'
 import { createKeyedSerialTask, isAllowedPathOfPathingUrl } from '../shared/atlasReaderSafety'
+import { resolveUserDataPath } from '../shared/appProfile'
+
+// The installed build and `npm run dev` used to share one Chromium profile.
+// Their file:// and localhost origins could then touch the same LevelDB while
+// both processes were running. Isolate development before Chromium storage is
+// initialised; ProcessSingleton is scoped to this userData directory, so each
+// profile permits one writer while dev and installed builds may coexist.
+app.setPath('userData', resolveUserDataPath(app.getPath('userData'), is.dev));
+const hasSingleInstanceLock = app.requestSingleInstanceLock({
+  profile: is.dev ? 'development' : 'installed',
+});
 
 let clipboardInterval: NodeJS.Timeout | null = null;
 let lastClipboardText = '';
@@ -573,12 +584,24 @@ function createWindow(): void {
   setupAutoUpdater(mainWindow);
 }
 
-app.whenReady().then(() => {
-  electronApp.setAppUserModelId('com.wraeclastledger.app');
-  app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window));
-  createWindow();
-  ipcMain.on('ping', () => console.log('pong'));
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-});
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    const mainWindow = BrowserWindow.getAllWindows()[0];
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
 
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+  app.whenReady().then(() => {
+    electronApp.setAppUserModelId('com.wraeclastledger.app');
+    app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window));
+    createWindow();
+    ipcMain.on('ping', () => console.log('pong'));
+    app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+  });
+
+  app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+}

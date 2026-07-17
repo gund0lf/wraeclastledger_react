@@ -13,6 +13,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.69',
     date: 'Unreleased',
     changes: [
+      'Development and installed builds now use separate local profiles, and each profile permits only one running app instance. Side-by-side release testing can no longer make two Electron processes write the same pre-migration localStorage database. A second launch focuses the existing window instead.',
       'Game data is classified for Path of Exile 3.29: the new Trarthan Scarabs are available, renamed Abyss Scarabs and the Deceptive Astrolabe preserve their historical aliases, and Heist/Metamorph Scarabs plus unavailable Delirium Orbs are removed from new-input pickers without erasing old sessions. Reworked products keep clean names on input surfaces, while compatibility checks retain their lifecycle context. Map-splitting costs are likewise hidden for new 3.29 sessions while historical split sessions remain editable.',
       'Atlas Calc now leads with its multiplier and keeps the detailed breakdown and configuration in compact summary bars. Map Type moved into Configuration beside a 2-by-2 settings grid, while the existing observed-mod lock, Atlas Bonus behavior, wizard answers, sliders, and multiplier math remain unchanged.',
       'Investment now places its scarab Presets action in the centered Scarabs divider, with a compact tooltip lock when Preservation is active. This removes the otherwise empty control row without moving scarab inputs or cost badges.',
