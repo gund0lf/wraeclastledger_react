@@ -67,6 +67,37 @@ export const generateBuilderRegex = (groups: ModGroupState[]): GeneratedBuilderR
   };
 };
 
+export interface RegexGroupPreset {
+  id: string;
+  mods: { id: string }[];
+}
+
+export const findPresetIdForGroup = (
+  group: ModGroupState,
+  presets: RegexGroupPreset[],
+): string | undefined => {
+  const builtInIds = group.mods
+    .filter((mod) => !mod.id.startsWith('custom_'))
+    .map((mod) => mod.id);
+  if (builtInIds.length === 0) return undefined;
+  const builtInIdSet = new Set(builtInIds);
+  return presets.find((preset) =>
+    preset.mods.length === builtInIdSet.size &&
+    preset.mods.every((mod) => builtInIdSet.has(mod.id)))?.id;
+};
+
+export const getAvailablePresetIds = (
+  groups: ModGroupState[],
+  presets: RegexGroupPreset[],
+): string[] => {
+  const used = new Set(
+    groups
+      .map((group) => findPresetIdForGroup(group, presets))
+      .filter((id): id is string => id !== undefined),
+  );
+  return presets.map((preset) => preset.id).filter((id) => !used.has(id));
+};
+
 const currencyNumberPattern = (minimum: number): string => {
   if (minimum <= 0) return '\\d..';
   const floor = Math.floor(minimum / 10) * 10;

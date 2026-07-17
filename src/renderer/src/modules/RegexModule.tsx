@@ -811,7 +811,6 @@ export const SavedSetsTab = () => {
           </Group>
         </Stack>
       </Modal>
-      <Text fw={700} size="sm" mb="xs" style={{ flexShrink: 0 }}>Saved Sets</Text>
       <ScrollArea style={{ flex: 1, minHeight: 0 }}>
         <Stack gap="xs">
           {regexSets.length === 0 && (

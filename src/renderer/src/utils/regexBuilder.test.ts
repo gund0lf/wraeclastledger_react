@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   adjustAltAugChisel,
+  findPresetIdForGroup,
   generateAltAugRegex,
   generateBuilderRegex,
   generatePosRegex,
+  getAvailablePresetIds,
   REGEX_CHAR_LIMIT,
 } from './regexBuilder';
 import type { ModGroupState } from './regexBuilderPresets';
@@ -88,6 +90,42 @@ describe('generateBuilderRegex', () => {
 
     expect(exact.charCount).toBe(REGEX_CHAR_LIMIT);
     expect(over.charCount).toBe(REGEX_CHAR_LIMIT + 1);
+  });
+});
+
+describe('preset group availability', () => {
+  const presets = [
+    { id: 'pack', mods: [{ id: 'pack-a' }, { id: 'pack-b' }] },
+    { id: 'currency', mods: [{ id: 'currency-a' }] },
+  ];
+
+  it('recognises a preset even after custom tokens are added', () => {
+    const pack = group('pack', ['a', 'b'], 1);
+    pack.mods = [
+      { id: 'pack-a', token: 'a', label: 'A' },
+      { id: 'pack-b', token: 'b', label: 'B' },
+      { id: 'custom_1', token: 'custom', label: 'Custom' },
+    ];
+
+    expect(findPresetIdForGroup(pack, presets)).toBe('pack');
+  });
+
+  it('offers only presets not already represented by a group', () => {
+    const pack = group('pack', ['a', 'b'], 1);
+    pack.mods = [
+      { id: 'pack-a', token: 'a', label: 'A' },
+      { id: 'pack-b', token: 'b', label: 'B' },
+    ];
+
+    expect(getAvailablePresetIds([pack], presets)).toEqual(['currency']);
+  });
+
+  it('does not mistake a custom-only group for a preset', () => {
+    const custom = group('custom', ['token'], 1);
+    custom.mods = [{ id: 'custom_1', token: 'token', label: 'Custom' }];
+
+    expect(findPresetIdForGroup(custom, presets)).toBeUndefined();
+    expect(getAvailablePresetIds([custom], presets)).toEqual(['pack', 'currency']);
   });
 });
 

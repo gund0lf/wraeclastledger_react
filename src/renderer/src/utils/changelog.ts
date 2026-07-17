@@ -13,6 +13,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.69',
     date: 'Unreleased',
     changes: [
+      'Regex Builder now keeps one mod group open at a time, summarizes configured groups as compact pills, and aligns the generated regex beside the active group with its exact character budget and requirements. Matching section bars replace the loose collapsibles, duplicate inner titles and the unnecessary short-list search are gone, existing presets cannot be added twice, and the layout stacks based on the dock panel itself while K-of-N and Alt/Aug output stays byte-identical.',
       'PoE Trade reward selection keeps its original searchable multi-select layout while pinning the clear and dropdown controls to the top-right as selected pills add rows. The green league name is now clickable for a search-only league choice without rewriting a loaded historical session.',
       'Strategy Browser now shows the exact observed modifier average shared from fully advanced-copied map sets in its Mod column, with the sample size and unchanged 6/8-mod filter bucket explained on hover. Older shares continue to show their 6-mod/8-mod type.',
       'Map Analyzer has been retired: it no longer had a useful decision to support. Fresh layouts and Add Panel no longer offer it, and existing saved layouts remove the old tab automatically without disturbing neighboring panels.',
