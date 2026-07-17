@@ -171,6 +171,11 @@ export const StrategyCard = ({ strategy, onLoadBuild, onUpdateStrategy, discordT
   const divPerHour = strategy.session_minutes && div != null && strategy.map_count
     ? (div * strategy.map_count) / (strategy.session_minutes / 60)
     : null;
+  const observedModAverage = strategy.observed_mod_average;
+  const observedModSampleSize = strategy.observed_mod_sample_size;
+  const hasObservedMods = observedModAverage != null && observedModSampleSize != null
+    && Number.isFinite(observedModAverage) && observedModSampleSize > 0;
+  const modDisplay = hasObservedMods ? observedModAverage.toFixed(1) : strategy.map_type ?? '?';
 
   const isGroup = strategy.is_group_play ||
     (strategy.raw_export ? /Party Play:\s*Yes/i.test(strategy.raw_export) : false);
@@ -228,7 +233,17 @@ export const StrategyCard = ({ strategy, onLoadBuild, onUpdateStrategy, discordT
         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
           <TagStrip tagStr={strategy.type_tag} layoutKey={open} />
         </div>
-        <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.mod, flexShrink: 0, fontSize: FONT.small }}>{strategy.map_type ?? '?'}</Text>
+        {hasObservedMods ? (
+          <Tooltip
+            label={`Observed explicit-mod average across ${observedModSampleSize} exact maps. Strategy bucket remains ${strategy.map_type ?? 'unclassified'}; Browser 6/8 filtering is unchanged.`}
+            withArrow multiline w={250}>
+            <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.mod, flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>
+              {modDisplay}
+            </Text>
+          </Tooltip>
+        ) : (
+          <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.mod, flexShrink: 0, fontSize: FONT.small }}>{modDisplay}</Text>
+        )}
         <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.maps, flexShrink: 0 }}>{strategy.map_count != null ? strategy.map_count : '—'}</Text>
         <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.cost, flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {costPerMap != null ? fcSep(costPerMap) : '—'}

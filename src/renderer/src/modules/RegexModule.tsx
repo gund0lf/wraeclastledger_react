@@ -1,14 +1,14 @@
 import {
   Text, Button, Group, Stack, Badge, ActionIcon,
   TextInput, Select, MultiSelect, Modal, CopyButton, Code, Divider, ScrollArea, Tooltip,
-  NumberInput, Switch, Alert, Menu, SimpleGrid,
+  NumberInput, Switch, Alert, Menu, SimpleGrid, UnstyledButton,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useState, useMemo, useEffect } from 'react';
-import { useSessionStore, useSessionKeys } from '../store/useSessionStore';
+import { useSessionKeys } from '../store/useSessionStore';
 import { IconTrash, IconCopy, IconCheck, IconWand, IconX, IconExternalLink, IconStar, IconDeviceFloppy, IconChevronDown } from '@tabler/icons-react';
 import { generateRunRegex, generateSlamRegex, trimmedMean, sanitizeExclusionTerms } from '../utils/priceUtils';
-import { CURRENT_LEAGUE } from '../utils/league';
+import { CURRENT_LEAGUE, KNOWN_LEAGUES } from '../utils/league';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { RegexLine } from '../components/ui/RegexLine'
 
@@ -36,6 +36,30 @@ const MAP_TYPE_OPTIONS: { value: MapType; label: string; description: string }[]
   { value: 'nightmare',  label: 'Nightmare',    description: 'Has uber pseudo stats (currency/scarabs/maps > 0) and is NOT Originator. Set at least one pseudo min.' },
   { value: 'originator', label: 'Originator',   description: 'Has Originator\'s Memories implicit. Includes all variants.' },
 ];
+
+const DELI_REWARD_OPTIONS = [
+  { value: 'deli_currency',   label: 'Currency' },
+  { value: 'deli_scarabs',    label: 'Scarabs' },
+  { value: 'deli_fragments',  label: 'Fragments' },
+  { value: 'deli_divcards',   label: 'Divination Cards' },
+  { value: 'deli_maps',       label: 'Map Items' },
+  { value: 'deli_essences',   label: 'Essences' },
+  { value: 'deli_unique',     label: 'Unique Items' },
+  { value: 'deli_expedition', label: 'Expedition Items' },
+  { value: 'deli_breach',     label: 'Breach Items' },
+  { value: 'deli_delirium',   label: 'Delirium' },
+  { value: 'deli_blight',     label: 'Blight Items' },
+  { value: 'deli_abyss',      label: 'Abyss Items' },
+  { value: 'deli_gems',       label: 'Gems' },
+  { value: 'deli_fossils',    label: 'Fossils' },
+  { value: 'deli_armour',     label: 'Armour' },
+  { value: 'deli_weapons',    label: 'Weapons' },
+  { value: 'deli_jewellery',  label: 'Jewellery' },
+  { value: 'deli_incubators', label: 'Incubators' },
+  { value: 'deli_labyrinth',  label: 'Labyrinth Items' },
+  { value: 'deli_catalysts',  label: 'Catalysts' },
+  { value: 'deli_talismans',  label: 'Talismans' },
+] as const;
 
 const TAG_TO_MAP_TYPE: Record<string, MapType> = {
   regular: 'regular', originator: 'originator', nightmare: 'nightmare',
@@ -74,12 +98,12 @@ export const FromSessionTab = () => {
   const { settings, updateSetting, saveRegexSet,
     setDefaultPreset,
     exclusionPresets, saveExclusionPreset, loadExclusionPreset, deleteExclusionPreset,
-    maps, initDivinePrice, loadedStrategyInfo, activeSessionId,
+    maps, loadedStrategyInfo, activeSessionId,
   } = useSessionKeys(
     'settings', 'updateSetting', 'saveRegexSet',
     'setDefaultPreset',
     'exclusionPresets', 'saveExclusionPreset', 'loadExclusionPreset', 'deleteExclusionPreset',
-    'maps', 'initDivinePrice', 'loadedStrategyInfo', 'activeSessionId',
+    'maps', 'loadedStrategyInfo', 'activeSessionId',
   );
 
   const [saveAsOpen, { open: openSaveAs, close: closeSaveAs }] = useDisclosure(false);
@@ -96,6 +120,7 @@ export const FromSessionTab = () => {
   const [parsedTerms,  setParsedTerms]  = useState<string[]>([]);
 
   const [tradeMapType,      setTradeMapType]      = useState<MapType>('any');
+  const [tradeLeague,       setTradeLeague]       = useState(settings.leagueName?.trim() || CURRENT_LEAGUE);
   const [tradeEmpowered,    setTradeEmpowered]    = useState(false);
   const [tradeMinDelirious, setTradeMinDelirious] = useState(-1);
   const [tradeDeliRewards,  setTradeDeliRewards]  = useState<string[]>([]);
@@ -162,6 +187,12 @@ export const FromSessionTab = () => {
     if (nightmare.length > 0) result.push({ group: 'Nightmare', items: nightmare });
     return result;
   }, [brickMods]);
+  const tradeLeagueOptions = useMemo(
+    () => Array.from(new Set(
+      [settings.leagueName?.trim(), ...KNOWN_LEAGUES].filter((name): name is string => !!name)
+    )),
+    [settings.leagueName]
+  );
 
   const renderBrickOption = ({ option }: { option: { value: string; label: string } }) => (
     <Text size="xs" style={{ color: nightmareStatIds.has(option.value) ? COLOR.nightmare : undefined }}>
@@ -211,6 +242,7 @@ export const FromSessionTab = () => {
   };
 
   const handleOpenTradeModal = () => {
+    setTradeLeague(settings.leagueName?.trim() || CURRENT_LEAGUE);
     const src = generatedRegex ?? (loadedStrategyInfo ? {
       avg: {
         avgQuant:  loadedStrategyInfo.avgQuant,
@@ -255,10 +287,7 @@ export const FromSessionTab = () => {
   };
 
   const handleSearch = async () => {
-    const league = settings.leagueName?.trim() || await (async () => {
-      await initDivinePrice();
-      return useSessionStore.getState().settings.leagueName || CURRENT_LEAGUE;
-    })();
+    const league = tradeLeague;
     setTradeLoading(true); setTradeError(null);
     try {
       const result = await window.api.searchMapsOnTrade({
@@ -303,7 +332,28 @@ export const FromSessionTab = () => {
       <Modal opened={tradeOpen} onClose={closeTrade} title="PoE Trade Map Search" size="md" scrollAreaComponent={ScrollArea.Autosize}>
         <Stack gap="md">
           <Text size="xs" c="dimmed">
-            League: <Text span fw={600} c="teal">{settings.leagueName || CURRENT_LEAGUE}</Text>
+            League:{' '}
+            <Menu position="bottom-start" withinPortal>
+              <Menu.Target>
+                <UnstyledButton
+                  aria-label={`Trade league: ${tradeLeague}. Click to change for this search only.`}
+                  style={{
+                    color: 'var(--mantine-color-teal-4)',
+                    fontWeight: 600,
+                    fontSize: 'inherit',
+                    lineHeight: 'inherit',
+                  }}>
+                  {tradeLeague}
+                </UnstyledButton>
+              </Menu.Target>
+              <Menu.Dropdown>
+                {tradeLeagueOptions.map((league) => (
+                  <Menu.Item key={league} onClick={() => setTradeLeague(league)}>
+                    {league}
+                  </Menu.Item>
+                ))}
+              </Menu.Dropdown>
+            </Menu>
             {' · '}Any Non-Unique{' · '}<Text span c="green" fw={600}>Instant Buyout</Text>
           </Text>
 
@@ -349,30 +399,13 @@ export const FromSessionTab = () => {
                 onChange={(v) => setTradeMinDelirious(Number(v ?? '-1'))} />
               <MultiSelect size="xs" label="Reward types (optional)" placeholder="Any"
                 clearable searchable
-                data={[
-                  { value: 'deli_currency',   label: 'Currency' },
-                  { value: 'deli_scarabs',    label: 'Scarabs' },
-                  { value: 'deli_fragments',  label: 'Fragments' },
-                  { value: 'deli_divcards',   label: 'Divination Cards' },
-                  { value: 'deli_maps',       label: 'Map Items' },
-                  { value: 'deli_essences',   label: 'Essences' },
-                  { value: 'deli_unique',     label: 'Unique Items' },
-                  { value: 'deli_expedition', label: 'Expedition Items' },
-                  { value: 'deli_breach',     label: 'Breach Items' },
-                  { value: 'deli_delirium',   label: 'Delirium' },
-                  { value: 'deli_blight',     label: 'Blight Items' },
-                  { value: 'deli_abyss',      label: 'Abyss Items' },
-                  { value: 'deli_gems',       label: 'Gems' },
-                  { value: 'deli_fossils',    label: 'Fossils' },
-                  { value: 'deli_armour',     label: 'Armour' },
-                  { value: 'deli_weapons',    label: 'Weapons' },
-                  { value: 'deli_jewellery',  label: 'Jewellery' },
-                  { value: 'deli_incubators', label: 'Incubators' },
-                  { value: 'deli_labyrinth',  label: 'Labyrinth Items' },
-                  { value: 'deli_catalysts',  label: 'Catalysts' },
-                  { value: 'deli_talismans',  label: 'Talismans' },
-                ]}
-                value={tradeDeliRewards} onChange={setTradeDeliRewards} maxDropdownHeight={200} />
+                data={DELI_REWARD_OPTIONS}
+                value={tradeDeliRewards} onChange={setTradeDeliRewards} maxDropdownHeight={200}
+                styles={{
+                  // Match the Brick Exclusions pickers: the field grows with
+                  // its pills, while clear/chevron stay pinned at top right.
+                  section: { alignItems: 'flex-start', paddingTop: 5 },
+                }} />
             </Group>
           </Stack>
 

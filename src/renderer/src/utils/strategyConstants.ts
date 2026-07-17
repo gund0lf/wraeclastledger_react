@@ -23,6 +23,8 @@ export interface Strategy {
   discord_jump_url?: string | null;
   map_type?: string | null;
   map_count?: number | null;
+  observed_mod_average?: number | null;
+  observed_mod_sample_size?: number | null;
   multiplier?: number | null;
   avg_quant?: number | null;
   avg_rarity?: number | null;

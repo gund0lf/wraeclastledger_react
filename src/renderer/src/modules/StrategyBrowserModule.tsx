@@ -451,7 +451,7 @@ export const StrategyBrowserModule = () => {
           <div style={{ width: BROWSER_COLS.chevron, flexShrink: 0 }} />
           <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.author, flexShrink: 0, fontSize: FONT.small }}>Author</Text>
           <Text size="xs" c="dimmed" style={{ flex: 1, minWidth: 0, fontSize: FONT.small }}>Tags</Text>
-          <Tooltip label="Map mod count — 6-mod (alched) or 8-mod (corrupted)" withArrow>
+          <Tooltip label="Observed average when exact map evidence was shared; otherwise the 6-mod/8-mod strategy bucket. Filtering always uses the bucket." withArrow multiline w={250}>
             <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.mod,    flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>Mod</Text>
           </Tooltip>
           <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.maps,   flexShrink: 0, fontSize: FONT.small }}>Maps</Text>

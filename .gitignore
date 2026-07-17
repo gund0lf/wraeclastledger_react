@@ -21,3 +21,4 @@ docs/REMEDIATION_PLAN_2026-07.md
 traceuer-server-side/
 # Lock file — regenerated on install, no need to track
 package-lock.json
+docs/mockups/
