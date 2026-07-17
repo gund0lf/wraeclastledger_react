@@ -35,6 +35,12 @@ export const COLOR = {
   bgHover: '#2a2b2e',
   bgHoverStrong: '#3a3b3e',
 
+  // Semantic surfaces
+  surfaceInfoBg: '#182733',
+  surfaceInfoBorder: '#315675',
+  surfaceSectionBg: '#2a2b2e',
+  surfaceSectionContent: '#25262b',
+
   // Borders
   border: '#2c2d30',
   borderDeep: '#1f2020',

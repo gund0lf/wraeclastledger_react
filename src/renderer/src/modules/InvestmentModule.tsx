@@ -605,54 +605,71 @@ export const InvestmentModule = () => {
             </Group>
           )}
 
-          <Divider labelPosition="center" label={
-            <Group gap={4}>
-              <Text size="xs" c="dimmed">Scarabs</Text>
-              {hasPreservation && (
-                <Tooltip
-                  label="Horned Scarab of Preservation detected — only Preservation scarabs are counted per-map. All other scarabs are treated as a one-time cost."
-                  withArrow multiline w={240}>
-                  <Text size="xs" c="teal" style={{ cursor: 'help', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                    <IconLock size={10} /> preservation active
-                  </Text>
-                </Tooltip>
-              )}
-            </Group>
-          } />
-          <Group justify="flex-end">
-            <Menu shadow="md" width={220} position="bottom-end">
-              <Menu.Target>
-                <Button size="xs" variant="default" rightSection={<IconChevronDown size={10} />}>Presets</Button>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Item leftSection={<IconDeviceFloppy size={13} />}
-                  disabled={!settings.scarabs.some((s) => s.name.trim())}
-                  onClick={() => setPresetSaveOpen(true)}>
-                  Save current as…
-                </Menu.Item>
-                {scarabPresets.length > 0 && (
-                  <>
-                    <Menu.Divider />
-                    <Menu.Label>Load preset</Menu.Label>
-                    {scarabPresets.map((p) => (
-                      <Menu.Item key={p.id}
-                        rightSection={<ActionIcon size="sm" variant="subtle" aria-label={`Delete preset ${p.name}`}
-                          onMouseEnter={() => setHoveredPresetTrashId(p.id)}
-                          onMouseLeave={() => setHoveredPresetTrashId(null)}
-                          style={{ color: hoveredPresetTrashId === p.id ? 'var(--mantine-color-red-4)' : 'var(--mantine-color-dimmed)' }}
-                          onClick={(e) => { e.stopPropagation(); setHoveredPresetTrashId(null); deleteScarabPreset(p.id); }}>
-                          <IconTrash size={13} /></ActionIcon>}
-                        onClick={() => loadScarabPreset(p.id)}>
-                        <Tooltip label={p.scarabs.filter((s) => s.name.trim()).map((s) => s.name).join(', ') || '(empty)'} withArrow position="left">
-                          <Text size="xs" lineClamp={1}>{p.name}</Text>
-                        </Tooltip>
-                      </Menu.Item>
-                    ))}
-                  </>
+          <div style={{
+            alignItems: 'center',
+            display: 'grid',
+            gap: 4,
+            gridTemplateColumns: 'minmax(0, 1fr) 100px',
+          }}>
+            <div style={{
+              alignItems: 'center',
+              display: 'grid',
+              gap: 8,
+              gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)',
+            }}>
+              <div style={{ background: COLOR.borderSoft, height: 1 }} />
+              <Group gap={4} wrap="nowrap">
+                <Text size="xs" c="dimmed">Scarabs</Text>
+                {hasPreservation && (
+                  <Tooltip
+                    label="Horned Scarab of Preservation detected — only Preservation scarabs are counted per-map. All other scarabs are treated as a one-time cost."
+                    withArrow multiline w={240}>
+                    <span
+                      aria-label="Preservation active"
+                      style={{ color: COLOR.profit, cursor: 'help', display: 'inline-flex', alignItems: 'center' }}
+                    >
+                      <IconLock size={10} />
+                    </span>
+                  </Tooltip>
                 )}
-              </Menu.Dropdown>
-            </Menu>
-          </Group>
+              </Group>
+              <div style={{ background: COLOR.borderSoft, height: 1 }} />
+            </div>
+            <div>
+              <Menu shadow="md" width={220} position="bottom-end">
+                <Menu.Target>
+                  <Button fullWidth size="xs" variant="default" rightSection={<IconChevronDown size={10} />}>Presets</Button>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Item leftSection={<IconDeviceFloppy size={13} />}
+                    disabled={!settings.scarabs.some((s) => s.name.trim())}
+                    onClick={() => setPresetSaveOpen(true)}>
+                    Save current as…
+                  </Menu.Item>
+                  {scarabPresets.length > 0 && (
+                    <>
+                      <Menu.Divider />
+                      <Menu.Label>Load preset</Menu.Label>
+                      {scarabPresets.map((p) => (
+                        <Menu.Item key={p.id}
+                          rightSection={<ActionIcon size="sm" variant="subtle" aria-label={`Delete preset ${p.name}`}
+                            onMouseEnter={() => setHoveredPresetTrashId(p.id)}
+                            onMouseLeave={() => setHoveredPresetTrashId(null)}
+                            style={{ color: hoveredPresetTrashId === p.id ? 'var(--mantine-color-red-4)' : 'var(--mantine-color-dimmed)' }}
+                            onClick={(e) => { e.stopPropagation(); setHoveredPresetTrashId(null); deleteScarabPreset(p.id); }}>
+                            <IconTrash size={13} /></ActionIcon>}
+                          onClick={() => loadScarabPreset(p.id)}>
+                          <Tooltip label={p.scarabs.filter((s) => s.name.trim()).map((s) => s.name).join(', ') || '(empty)'} withArrow position="left">
+                            <Text size="xs" lineClamp={1}>{p.name}</Text>
+                          </Tooltip>
+                        </Menu.Item>
+                      ))}
+                    </>
+                  )}
+                </Menu.Dropdown>
+              </Menu>
+            </div>
+          </div>
 
           {settings.scarabs.map((scarab, i) => (
             <Group key={i} gap={4} wrap="nowrap">

@@ -1,41 +1,128 @@
-import { Card, Text, Stack, Group, Divider, Slider, Tooltip, Button, UnstyledButton } from '@mantine/core';
+import { Card, Text, Stack, Group, Slider, Tooltip, Button, UnstyledButton } from '@mantine/core';
 import { useSessionKeys } from '../store/useSessionStore';
 import { useElementSize } from '@mantine/hooks';
 import { useMemo, useState, useEffect, useRef } from 'react';
+import { IconChevronDown, IconChevronRight } from '@tabler/icons-react';
 import { computeMultiplier } from '../utils/profit';
 import { inferMapType } from '../utils/mapTypeDetection';
 import { confirmedLeagueSync } from '../utils/league';
-import { ModuleHeader } from '../components/ui/ModuleHeader';
-import { CollapsibleSection } from '../components/ui/CollapsibleSection';
-import { COLOR, FONT } from '../utils/uiTokens'
+import { COLOR, FONT } from '../utils/uiTokens';
 
-// session-16 density pass 2: config pills share the map-type selector's blue
-// active treatment — one accent per panel instead of the old orange/blue mix.
-const Pill = ({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) => (
-  <UnstyledButton onClick={onClick} aria-pressed={active} style={{
-    padding: '2px 8px', borderRadius: 10, cursor: 'pointer',
-    background: active ? 'rgba(51,154,240,0.2)' : 'rgba(100,100,100,0.15)',
-    border: `1px solid ${active ? COLOR.info : COLOR.dim}`,
-    color: active ? COLOR.info : COLOR.textFaint,
-    fontSize: FONT.body, fontWeight: 600, transition: 'all 0.1s', whiteSpace: 'nowrap',
+type ConfigStep = 'mounting' | 'fragments' | 'nodes' | 'atlasBonus';
+
+const SectionBar = ({ title, meta, open, onClick }: {
+  title: string;
+  meta: string;
+  open: boolean;
+  onClick: () => void;
+}) => (
+  <UnstyledButton
+    onClick={onClick}
+    aria-expanded={open}
+    style={{
+      alignItems: 'center',
+      background: COLOR.surfaceSectionBg,
+      border: `1px solid ${COLOR.border}`,
+      borderRadius: open ? '7px 7px 0 0' : 7,
+      display: 'flex',
+      gap: 6,
+      minHeight: 28,
+      padding: '5px 8px',
+      width: '100%',
+    }}
+  >
+    {open
+      ? <IconChevronDown size={12} color={COLOR.textMuted} />
+      : <IconChevronRight size={12} color={COLOR.textMuted} />}
+    <Text size="xs" fw={600}>{title}</Text>
+    <Text
+      size="xs"
+      c="dimmed"
+      ml="auto"
+      style={{
+        fontSize: FONT.label,
+        minWidth: 0,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {meta}
+    </Text>
+  </UnstyledButton>
+);
+
+const SectionContent = ({ children }: { children: React.ReactNode }) => (
+  <div style={{
+    background: COLOR.surfaceSectionContent,
+    border: `1px solid ${COLOR.border}`,
+    borderRadius: '0 0 7px 7px',
+    borderTop: 'none',
+    padding: 8,
   }}>
-    {label}
+    {children}
+  </div>
+);
+
+const ConfigTile = ({ name, value, active, onClick }: {
+  name: string;
+  value: string;
+  active: boolean;
+  onClick: () => void;
+}) => (
+  <UnstyledButton
+    onClick={onClick}
+    aria-pressed={active}
+    style={{
+      background: active ? COLOR.surfaceInfoBg : COLOR.bgRaised,
+      border: `1px solid ${active ? COLOR.info : COLOR.border}`,
+      borderRadius: 6,
+      color: active ? COLOR.info : COLOR.textFaint,
+      minWidth: 0,
+      padding: '6px 4px',
+      textAlign: 'center',
+      width: '100%',
+    }}
+  >
+    <Text size="xs" fw={600} truncate>{name}</Text>
+    <Text size="xs" style={{ fontSize: FONT.label, opacity: active ? 0.85 : 0.65 }} truncate>
+      {value}
+    </Text>
   </UnstyledButton>
 );
 
 const Question = ({ question, hint, onYes, onNo }: {
   question: string; hint?: string; onYes: () => void; onNo: () => void;
 }) => (
-  <Stack gap={4} p="xs"
-    style={{ background: 'rgba(100,100,255,0.06)', borderRadius: 6, border: '1px solid rgba(100,100,255,0.2)' }}>
+  <Stack gap={6} p="xs" style={{
+    background: COLOR.surfaceSectionBg,
+    borderRadius: 7,
+    border: `1px solid ${COLOR.border}`,
+  }}>
     <Text size="sm" fw={600}>{question}</Text>
-    {hint && <Text size="xs" c="dimmed">{hint}</Text>}
-    <Group gap="xs" mt={2}>
-      <Button size="xs" variant="filled" color="orange" onClick={onYes}>Yes</Button>
+    {hint && <Text size="xs" c="dimmed" style={{ whiteSpace: 'pre-line' }}>{hint}</Text>}
+    <Group gap="xs" mt={2} justify="center">
+      <Button size="xs" variant="light" color="blue" onClick={onYes}>Yes</Button>
       <Button size="xs" variant="default" onClick={onNo}>No</Button>
     </Group>
   </Stack>
 );
+
+const StepDots = ({ active }: { active: ConfigStep }) => {
+  const steps: ConfigStep[] = ['mounting', 'fragments', 'nodes', 'atlasBonus'];
+  return (
+    <Group gap={4} justify="center">
+      {steps.map((step) => (
+        <div key={step} style={{
+          width: 6,
+          height: 6,
+          borderRadius: '50%',
+          background: step === active ? COLOR.info : COLOR.border,
+        }} />
+      ))}
+    </Group>
+  );
+};
 
 export const AtlasCalcModule = () => {
   const { ref: panelRef, width: panelWidth } = useElementSize();
@@ -51,9 +138,11 @@ export const AtlasCalcModule = () => {
   const effectivelyConfigured = isConfigured;
 
   // ── Wizard local state ────────────────────────────────────────────────────
-  const [wizardStep,  setWizardStep]  = useState<'mounting' | 'fragments' | 'nodes' | 'atlasBonus'>('mounting');
+  const [wizardStep,  setWizardStep]  = useState<ConfigStep>('mounting');
   const [dismissed,   setDismissed]   = useState(false);
   const [editingPill, setEditingPill] = useState<'mounting' | 'fragments' | 'nodes' | null>(null);
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const [configurationOpen, setConfigurationOpen] = useState(false);
   const [showNodeSlider, setShowNodeSlider] = useState(settings.smallNodesAllocated > 0 && settings.smallNodesAllocated < 16);
   const [autoDetectMsg, setAutoDetectMsg]   = useState<string | null>(null);
   // True once the user answers any wizard step. Lets the wizard keep running through
@@ -75,6 +164,8 @@ export const AtlasCalcModule = () => {
     setShowNodeSlider(false);
     setEditingPill(null);
     setUserAnswered(false);
+    setBreakdownOpen(false);
+    setConfigurationOpen(false);
   }, [activeSessionId, sessionNonce]);
 
   // When configuration appears externally (tree loaded / Load Build), stop any in-progress editing
@@ -83,6 +174,7 @@ export const AtlasCalcModule = () => {
     if (!prevConfigured.current && effectivelyConfigured) {
       setEditingPill(null);
       setShowNodeSlider(settings.smallNodesAllocated > 0 && settings.smallNodesAllocated < 16);
+      setConfigurationOpen(false);
     }
     prevConfigured.current = effectivelyConfigured;
   }, [effectivelyConfigured, settings.smallNodesAllocated]);
@@ -127,6 +219,7 @@ export const AtlasCalcModule = () => {
   const finishWizard = () => {
     setEditingPill(null);
     setDismissed(true);
+    setConfigurationOpen(false);
   };
 
   const answerMounting = (yes: boolean) => {
@@ -183,198 +276,288 @@ export const AtlasCalcModule = () => {
 
   const editPill = (which: 'mounting' | 'fragments' | 'nodes') => {
     setEditingPill(which);
+    setConfigurationOpen(true);
     if (which !== 'nodes') setShowNodeSlider(false);
   };
 
+  const configCount = [
+    settings.mountingModifiers,
+    settings.fragmentsUsed > 0,
+    settings.smallNodesAllocated > 0,
+    settings.atlasBonus,
+  ].filter(Boolean).length;
+  const presentationConfigured = effectivelyConfigured || (dismissed && userAnswered);
+  const modifierEffect = mountBonus + fragmentEffect + nodeEffect;
+  const heroContext = usesObservedMods && observedModAverage != null
+    ? `Observed ${observedModAverage.toFixed(1)} mods · ${effectiveMods.toFixed(1)} effective (Risk +${scarabOfRiskMods})`
+    : `${settings.mapType} · ${effectiveMods} effective mods${scarabOfRiskMods > 0 ? ` (Risk +${scarabOfRiskMods})` : ''}`;
+  const breakdownMeta = `+${modifierEffect}% mods · ${settings.atlasBonus ? '+25% IIQ' : 'no flat IIQ'}`;
+  const configMeta = `${usesObservedMods && observedModAverage != null ? `Observed ${observedModAverage.toFixed(1)}` : settings.mapType} · ${configCount} on`;
+
+  const questionContent = activeStep && (
+    <Stack gap={6}>
+      {activeStep === 'mounting' && (
+        <Question question="Mounting Modifiers allocated?"
+          hint={`2% increased effect of Explicit Modifiers on your Maps per Explicit Modifier.\nWith ${effectiveMods} explicit modifiers → ${effectiveMods * 2}% increased effect.`}
+          onYes={() => answerMounting(true)} onNo={() => answerMounting(false)} />
+      )}
+      {activeStep === 'fragments' && (
+        <>
+          <Question question="Using Multiplying Modifiers fragments?"
+            hint="3% increased effect of Explicit Modifiers on your Maps per Fragment used with the Map. Up to 5 fragments → 15% increased effect."
+            onYes={() => answerFragments(true)} onNo={() => answerFragments(false)} />
+          {settings.fragmentsUsed > 0 && (
+            <Stack gap={2}>
+              <Text size="xs" c="dimmed">Fragments: {settings.fragmentsUsed} (+{fragmentEffect}%)</Text>
+              <Slider value={settings.fragmentsUsed} onChange={(v) => updateSetting('fragmentsUsed', v)}
+                min={1} max={5} step={1} label={(v) => `${v} frags (+${v * 3}%)`}
+                marks={[1, 2, 3, 4, 5].map((v) => ({ value: v, label: String(v) }))}
+                size="xs" mb={6} />
+              <Button size="xs" variant="subtle" onClick={() => editingPill ? finishWizard() : setWizardStep('nodes')}>
+                {editingPill ? 'Done' : 'Next'}
+              </Button>
+            </Stack>
+          )}
+        </>
+      )}
+      {activeStep === 'nodes' && (
+        <>
+          <Question question="All 16 small nodes allocated?"
+            hint="Each grants 2% increased effect of Explicit Modifiers on your Maps. All 16 → 32% increased effect."
+            onYes={() => answerNodes(true)} onNo={() => answerNodes(false)} />
+          {showNodeSlider && (
+            <Stack gap={2}>
+              <Text size="xs" c="dimmed">Nodes: {settings.smallNodesAllocated} (+{nodeEffect}%)</Text>
+              <Slider value={settings.smallNodesAllocated} onChange={(v) => updateSetting('smallNodesAllocated', v)}
+                min={0} max={16} step={1} label={(v) => `${v} nodes (+${v * 2}%)`}
+                marks={[{ value: 0, label: '0' }, { value: 8, label: '8' }, { value: 16, label: '16' }]}
+                size="xs" mb={6} />
+              <Button size="xs" variant="subtle" onClick={afterNodes}>{editingPill ? 'Done' : 'Next'}</Button>
+            </Stack>
+          )}
+        </>
+      )}
+      {activeStep === 'atlasBonus' && (
+        <Question question="Atlas Bonus complete?"
+          hint={'Completing all 100 Atlas Bonus Objectives grants a flat +25% IIQ (Quantity only).\nStarts off each new league/event — Atlas progress resets to zero.'}
+          onYes={() => answerAtlasBonus(true)} onNo={() => answerAtlasBonus(false)} />
+      )}
+      {showWizard && !editingPill && <StepDots active={activeStep} />}
+    </Stack>
+  );
+
   return (
     <Card ref={panelRef} shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ overflow: 'auto' }}>
-      <ModuleHeader
-        mb="xs"
-        title={
-          /* session-16: Map Type moved into the header slot — the in-panel
-             "Atlas Calc" title was redundant with the tab label. */
-          <Group gap={4} wrap="nowrap" justify="space-between" style={{ flex: 1, minWidth: 0 }}>
-            <Text size="xs" fw={500} style={{ whiteSpace: 'nowrap' }}>Map Type</Text>
-            <Group gap={4} wrap="nowrap" justify="flex-end">
-            {!(compactPanel && observedModAverage != null) && (['6-mod', '8-mod'] as const).map((v) => (
-              <Tooltip key={v} disabled={observedModAverage == null}
-                label="Observed exact map data is available, so this fallback is locked.">
-                <UnstyledButton onClick={() => updateSetting('mapType', v)}
-                  disabled={observedModAverage != null}
-                  aria-pressed={!usesObservedMods && settings.mapType === v} style={{
-                padding: '2px 8px', borderRadius: 10, cursor: observedModAverage != null ? 'not-allowed' : 'pointer', fontSize: FONT.body, fontWeight: 600,
-                background: !usesObservedMods && settings.mapType === v ? 'rgba(51,154,240,0.2)' : 'rgba(100,100,100,0.1)',
-                border: `1px solid ${!usesObservedMods && settings.mapType === v ? COLOR.info : COLOR.dim}`,
-                color: !usesObservedMods && settings.mapType === v ? COLOR.info : COLOR.textFaint,
-                opacity: observedModAverage != null ? 0.55 : 1, transition: 'all 0.1s', whiteSpace: 'nowrap',
-              }}>{v}</UnstyledButton>
-              </Tooltip>
-            ))}
-            {observedModAverage != null && (
-              <Tooltip multiline w={280} label={`Exact Ctrl+Alt+C coverage: ${observedSampleSize}/${maps.length} maps. Scarab of Risk modifiers are added after this observed average.`}>
-                <div style={{
-                  padding: '2px 8px', borderRadius: 10, cursor: 'help', fontSize: FONT.body, fontWeight: 600,
-                  background: usesObservedMods ? 'rgba(51,154,240,0.2)' : 'rgba(100,100,100,0.1)',
-                  border: `1px solid ${usesObservedMods ? COLOR.info : COLOR.dim}`,
-                  color: usesObservedMods ? COLOR.info : COLOR.textFaint, transition: 'all 0.1s', whiteSpace: 'nowrap',
-                }}>Observed {observedModAverage.toFixed(1)}</div>
-              </Tooltip>
-            )}
-            </Group>
-          </Group>
-        }
-      />
-
       <Stack gap={8}>
+        <div style={{
+          background: COLOR.surfaceInfoBg,
+          border: `1px solid ${COLOR.surfaceInfoBorder}`,
+          borderRadius: 8,
+          padding: compactPanel ? '7px 8px' : '8px 10px',
+          textAlign: 'center',
+        }}>
+          <Text
+            fw={700}
+            style={{
+              color: presentationConfigured ? COLOR.info : COLOR.textMuted,
+              fontSize: compactPanel ? FONT.xl : 24,
+              lineHeight: 1.15,
+            }}
+          >
+            {multiplier.toFixed(3)}×
+          </Text>
+          <Text tt="uppercase" c="dimmed" style={{ fontSize: FONT.tiny, letterSpacing: 0.5 }}>
+            Atlas Multiplier
+          </Text>
+          <Text
+            c={presentationConfigured ? 'dimmed' : undefined}
+            title={presentationConfigured ? heroContext : undefined}
+            style={{
+              color: presentationConfigured ? undefined : COLOR.warning,
+              fontSize: FONT.label,
+              marginTop: 2,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: compactPanel ? 'nowrap' : 'normal',
+            }}
+          >
+            {presentationConfigured
+              ? heroContext
+              : 'Not configured — answer 4 quick questions, or skip and import from your Atlas Tree later'}
+          </Text>
+        </div>
+
         {autoDetectMsg && <Text size="xs" c="teal">{autoDetectMsg}</Text>}
 
-        {showPills && (
-          /* session-16: configuration collapses once set up — saves vertical
-             space; the title doubles as the instruction. Atlas Bonus is now a
-             pill here too (direct toggle) instead of a bottom-row switch. */
-          <CollapsibleSection variant="group" title="Click to edit" defaultOpen={false}>
-            <Group gap={6} wrap="wrap">
-              <Pill label={settings.mountingModifiers ? `Mounting +${mountBonus}%` : 'Mounting Off'}
-                active={settings.mountingModifiers} onClick={() => editPill('mounting')} />
-              <Pill label={settings.fragmentsUsed > 0 ? `Frags ${settings.fragmentsUsed}×3%=+${fragmentEffect}%` : 'Frags Off'}
-                active={settings.fragmentsUsed > 0} onClick={() => editPill('fragments')} />
-              <Pill label={settings.smallNodesAllocated > 0 ? `${settings.smallNodesAllocated} Nodes +${nodeEffect}%` : 'Nodes Off'}
-                active={settings.smallNodesAllocated > 0}
-                onClick={() => {
-                  setShowNodeSlider(settings.smallNodesAllocated > 0 && settings.smallNodesAllocated < 16);
-                  editPill('nodes');
-                }} />
-              <Tooltip multiline w={230}
-                label="Completing all 100 Atlas Bonus Objectives grants a flat +25% IIQ (Quantity only). Turn this on once your Atlas is complete. It starts off each new league/event because Atlas progress resets to zero.">
-                <div>
-                  <Pill label={settings.atlasBonus ? 'Atlas Bonus +25% IIQ' : 'Atlas Bonus Off'}
-                    active={settings.atlasBonus}
-                    onClick={toggleAtlasBonus} />
-                </div>
+        {showWizard && !editingPill ? (
+          <>
+            <Group justify="flex-end">
+              <Tooltip label="Skip setup and configure later with Apply to Calc from the Atlas Tree" withArrow>
+                <Button size="compact-xs" variant="subtle" color="gray" onClick={() => setDismissed(true)}>
+                  Skip setup ›
+                </Button>
               </Tooltip>
             </Group>
-          </CollapsibleSection>
-        )}
-
-        {showBonusHint && (
-          <Group gap={6} wrap="nowrap" align="center">
-            <Text size="xs" c="dimmed" style={{ fontSize: FONT.small, flex: 1 }}>
-              Atlas Bonus not set for {activeLeague} — open &quot;Click to edit&quot; above and turn it on if your Atlas is complete (+25% IIQ Quantity).
-            </Text>
-            <Tooltip label="Dismiss for this league (marks Atlas Bonus off until next league)" withArrow>
-              <Button size="compact-xs" variant="subtle" color="gray" onClick={dismissBonusHint}>Dismiss</Button>
-            </Tooltip>
-          </Group>
-        )}
-
-        {showWizard && !editingPill && (
-          <Group justify="flex-end">
-            <Tooltip label="Skip the setup — configure manually by clicking the Atlas Tree and using Apply to Calc, or click the pills above after loading a build" withArrow multiline w={240}>
-              <Button size="xs" variant="subtle" color="gray" onClick={() => setDismissed(true)}>
-                Skip
-              </Button>
-            </Tooltip>
-          </Group>
-        )}
-
-        {activeStep === 'mounting' && (
-          <>
-            <Question question="Mounting Modifiers allocated?"
-              hint={`2% increased effect of Explicit Modifiers on your Maps per Explicit Modifier.\nWith ${effectiveMods} explicit modifiers → ${effectiveMods * 2}% increased effect.`}
-              onYes={() => answerMounting(true)} onNo={() => answerMounting(false)} />
-            {showWizard && !editingPill && <Text size="xs" c="dimmed" ta="center">Step 1 of 4</Text>}
+            {questionContent}
           </>
-        )}
-
-        {activeStep === 'fragments' && (
+        ) : (
           <>
-            <Question question="Using Multiplying Modifiers fragments?"
-              hint="3% increased effect of Explicit Modifiers on your Maps per Fragment used with the Map. Up to 5 fragments → 15% increased effect."
-              onYes={() => answerFragments(true)} onNo={() => answerFragments(false)} />
-            {settings.fragmentsUsed > 0 && (
-              <Stack gap={2}>
-                <Text size="xs" c="dimmed">Fragments: {settings.fragmentsUsed} (+{fragmentEffect}%)</Text>
-                <Slider value={settings.fragmentsUsed} onChange={(v) => updateSetting('fragmentsUsed', v)}
-                  min={1} max={5} step={1} label={(v) => `${v} frags (+${v * 3}%)`}
-                  marks={[1,2,3,4,5].map((v) => ({ value: v, label: String(v) }))}
-                  size="xs" mb={6} />
-                <Button size="xs" variant="subtle" onClick={() => editingPill ? finishWizard() : setWizardStep('nodes')}>
-                  {editingPill ? 'Done' : 'Next'}
-                </Button>
-              </Stack>
+            <Stack gap={0}>
+              <SectionBar
+                title="Breakdown"
+                meta={breakdownMeta}
+                open={breakdownOpen}
+                onClick={() => setBreakdownOpen((open) => !open)}
+              />
+              {breakdownOpen && (
+                <SectionContent>
+                  <Stack gap={3}>
+                    {scarabOfRiskMods > 0 && (
+                      <Group justify="space-between" wrap="nowrap">
+                        <Text size="xs" style={{ color: COLOR.accent }}>Scarab of Risk (+{scarabOfRiskMods} mods)</Text>
+                        <Text size="xs" style={{ color: COLOR.accent }}>{effectiveMods} effective</Text>
+                      </Group>
+                    )}
+                    {mountBonus > 0 && (
+                      <Group justify="space-between" wrap="nowrap">
+                        <Text size="xs" c="dimmed">Mounting ({effectiveMods} mods × 2%)</Text>
+                        <Text size="xs">+{mountBonus}%</Text>
+                      </Group>
+                    )}
+                    {fragmentEffect > 0 && (
+                      <Group justify="space-between" wrap="nowrap">
+                        <Text size="xs" c="dimmed">Fragments ({settings.fragmentsUsed} × 3%)</Text>
+                        <Text size="xs">+{fragmentEffect}%</Text>
+                      </Group>
+                    )}
+                    {nodeEffect > 0 && (
+                      <Group justify="space-between" wrap="nowrap">
+                        <Text size="xs" c="dimmed">Small Nodes ({settings.smallNodesAllocated} × 2%)</Text>
+                        <Text size="xs">+{nodeEffect}%</Text>
+                      </Group>
+                    )}
+                    {settings.atlasBonus && (
+                      <Group justify="space-between" wrap="nowrap">
+                        <Text size="xs" c="dimmed">Atlas Bonus (Quantity only)</Text>
+                        <Text size="xs">+25% flat IIQ</Text>
+                      </Group>
+                    )}
+                  </Stack>
+                </SectionContent>
+              )}
+            </Stack>
+
+            <Stack gap={0}>
+              <SectionBar
+                title="Configuration"
+                meta={configMeta}
+                open={configurationOpen}
+                onClick={() => {
+                  setConfigurationOpen((open) => !open);
+                  if (configurationOpen) setEditingPill(null);
+                }}
+              />
+              {configurationOpen && (
+                <SectionContent>
+                  <Stack gap={8}>
+                    <Group justify="space-between" gap={6} wrap="nowrap">
+                      <Text size="xs" fw={500}>Map Type</Text>
+                      {observedModAverage != null ? (
+                        <Tooltip multiline w={280} label={`Exact Ctrl+Alt+C coverage: ${observedSampleSize}/${maps.length} maps. Scarab of Risk modifiers are added after this observed average.`}>
+                          <div style={{
+                            padding: '2px 8px',
+                            borderRadius: 10,
+                            cursor: 'help',
+                            fontSize: FONT.body,
+                            fontWeight: 600,
+                            background: usesObservedMods ? COLOR.surfaceInfoBg : COLOR.bgRaised,
+                            border: `1px solid ${usesObservedMods ? COLOR.info : COLOR.dim}`,
+                            color: usesObservedMods ? COLOR.info : COLOR.textFaint,
+                            whiteSpace: 'nowrap',
+                          }}>
+                            Observed {observedModAverage.toFixed(1)}
+                          </div>
+                        </Tooltip>
+                      ) : (
+                        <Group gap={4} wrap="nowrap">
+                          {(['6-mod', '8-mod'] as const).map((mapType) => {
+                            const active = settings.mapType === mapType;
+                            return (
+                              <UnstyledButton
+                                key={mapType}
+                                onClick={() => updateSetting('mapType', mapType)}
+                                aria-pressed={active}
+                                style={{
+                                  padding: '2px 8px',
+                                  borderRadius: 10,
+                                  fontSize: FONT.body,
+                                  fontWeight: 600,
+                                  background: active ? COLOR.surfaceInfoBg : COLOR.bgRaised,
+                                  border: `1px solid ${active ? COLOR.info : COLOR.dim}`,
+                                  color: active ? COLOR.info : COLOR.textFaint,
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {mapType}
+                              </UnstyledButton>
+                            );
+                          })}
+                        </Group>
+                      )}
+                    </Group>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 5 }}>
+                      <ConfigTile
+                        name="Mounting"
+                        value={settings.mountingModifiers ? `+${mountBonus}%` : 'Off'}
+                        active={settings.mountingModifiers}
+                        onClick={() => editPill('mounting')}
+                      />
+                      <ConfigTile
+                        name="Fragments"
+                        value={settings.fragmentsUsed > 0 ? `${settings.fragmentsUsed} × 3% = +${fragmentEffect}%` : 'Off'}
+                        active={settings.fragmentsUsed > 0}
+                        onClick={() => editPill('fragments')}
+                      />
+                      <ConfigTile
+                        name="Small Nodes"
+                        value={settings.smallNodesAllocated > 0 ? `${settings.smallNodesAllocated} · +${nodeEffect}%` : 'Off'}
+                        active={settings.smallNodesAllocated > 0}
+                        onClick={() => {
+                          setShowNodeSlider(settings.smallNodesAllocated > 0 && settings.smallNodesAllocated < 16);
+                          editPill('nodes');
+                        }}
+                      />
+                      <Tooltip multiline w={230} label="Completing all 100 Atlas Bonus Objectives grants a flat +25% IIQ. Atlas progress resets each league.">
+                        <div>
+                          <ConfigTile
+                            name="Atlas Bonus"
+                            value={settings.atlasBonus ? '+25% IIQ' : 'Off'}
+                            active={settings.atlasBonus}
+                            onClick={toggleAtlasBonus}
+                          />
+                        </div>
+                      </Tooltip>
+                    </div>
+
+                    {editingPill && questionContent}
+                  </Stack>
+                </SectionContent>
+              )}
+            </Stack>
+
+            {showBonusHint && (
+              <Group gap={6} wrap="nowrap" align="center">
+                <Text size="xs" c="dimmed" style={{ fontSize: FONT.small, flex: 1 }}>
+                  Atlas Bonus not set for {activeLeague}. Turn it on if your Atlas is complete (+25% IIQ).
+                </Text>
+                <Tooltip label="Dismiss for this league (marks Atlas Bonus off until next league)" withArrow>
+                  <Button size="compact-xs" variant="subtle" color="gray" onClick={dismissBonusHint}>Dismiss</Button>
+                </Tooltip>
+              </Group>
             )}
-            {showWizard && !editingPill && <Text size="xs" c="dimmed" ta="center">Step 2 of 4</Text>}
           </>
         )}
-
-        {activeStep === 'nodes' && (
-          <>
-            <Question question="All 16 small nodes allocated?"
-              hint="Each grants 2% increased effect of Explicit Modifiers on your Maps. All 16 → 32% increased effect."
-              onYes={() => answerNodes(true)} onNo={() => answerNodes(false)} />
-            {showNodeSlider && (
-              <Stack gap={2}>
-                <Text size="xs" c="dimmed">Nodes: {settings.smallNodesAllocated} (+{nodeEffect}%)</Text>
-                <Slider value={settings.smallNodesAllocated} onChange={(v) => updateSetting('smallNodesAllocated', v)}
-                  min={0} max={16} step={1} label={(v) => `${v} nodes (+${v * 2}%)`}
-                  marks={[{ value: 0, label: '0' }, { value: 8, label: '8' }, { value: 16, label: '16' }]}
-                  size="xs" mb={6} />
-                <Button size="xs" variant="subtle" onClick={afterNodes}>{editingPill ? 'Done' : 'Next'}</Button>
-              </Stack>
-            )}
-            {showWizard && !editingPill && <Text size="xs" c="dimmed" ta="center">Step 3 of 4</Text>}
-          </>
-        )}
-
-        {activeStep === 'atlasBonus' && (
-          <>
-            <Question question="Atlas Bonus complete?"
-              hint={'Completing all 100 Atlas Bonus Objectives grants a flat +25% IIQ (Quantity only).\nStarts off each new league/event — Atlas progress resets to zero.'}
-              onYes={() => answerAtlasBonus(true)} onNo={() => answerAtlasBonus(false)} />
-            {showWizard && !editingPill && <Text size="xs" c="dimmed" ta="center">Step 4 of 4</Text>}
-          </>
-        )}
-
-        <Divider />
-
-        <Stack gap={3}>
-          {scarabOfRiskMods > 0 && (
-            <Group justify="space-between">
-              {/* session-16: subtle accent — this row appears by scarab choice,
-                  not panel config, so it reads as "external" at a glance */}
-              <Text size="xs" style={{ color: COLOR.accent }}>Scarab of Risk (+{scarabOfRiskMods} mods)</Text>
-              <Text size="xs" style={{ color: COLOR.accent }}>{effectiveMods} effective</Text>
-            </Group>
-          )}
-          {fragmentEffect > 0 && (
-            <Group justify="space-between">
-              <Text size="xs" c="dimmed">Fragments ({settings.fragmentsUsed} × 3%)</Text>
-              <Text size="xs">+{fragmentEffect}%</Text>
-            </Group>
-          )}
-          {nodeEffect > 0 && (
-            <Group justify="space-between">
-              <Text size="xs" c="dimmed">Small Nodes ({settings.smallNodesAllocated} × 2%)</Text>
-              <Text size="xs">+{nodeEffect}%</Text>
-            </Group>
-          )}
-          {mountBonus > 0 && (
-            <Group justify="space-between">
-              <Text size="xs" c="dimmed">Mounting ({effectiveMods} mods × 2%)</Text>
-              <Text size="xs">+{mountBonus}%</Text>
-            </Group>
-          )}
-          {settings.atlasBonus && (
-            <Group justify="space-between">
-              <Text size="xs" c="dimmed">Atlas Bonus (Quantity only)</Text>
-              <Text size="xs">+25% flat IIQ</Text>
-            </Group>
-          )}
-          <Group justify="space-between">
-            <Text size="sm" fw={700}>Multiplier</Text>
-            <Text size="sm" fw={700} c="blue">{multiplier.toFixed(3)}×</Text>
-          </Group>
-        </Stack>
       </Stack>
     </Card>
   );
