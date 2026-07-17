@@ -11,7 +11,7 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '1.0.69',
-    date: 'Unreleased',
+    date: '2026-07-17',
     changes: [
       'Development and installed builds now use separate local profiles, and each profile permits only one running app instance. Side-by-side release testing can no longer make two Electron processes write the same pre-migration localStorage database. A second launch focuses the existing window instead.',
       'Game data is classified for Path of Exile 3.29: the new Trarthan Scarabs are available, renamed Abyss Scarabs and the Deceptive Astrolabe preserve their historical aliases, and Heist/Metamorph Scarabs plus unavailable Delirium Orbs are removed from new-input pickers without erasing old sessions. Reworked products keep clean names on input surfaces, while compatibility checks retain their lifecycle context. Map-splitting costs are likewise hidden for new 3.29 sessions while historical split sessions remain editable.',
