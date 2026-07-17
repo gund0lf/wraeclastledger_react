@@ -18,30 +18,19 @@ import {
 import { IconPlus, IconTrash, IconCopy, IconCheck, IconChevronDown, IconChevronRight, IconX, IconDeviceFloppy } from '@tabler/icons-react';
 import { useSessionKeys } from '../store/useSessionStore';
 import { PRESET_GROUPS, type ModGroupState } from '../utils/regexBuilderPresets';
-import { COLOR, FONT } from '../utils/uiTokens'
+import {
+  adjustAltAugChisel,
+  generateAltAugRegex,
+  generateBuilderRegex,
+  generatePosRegex,
+  REGEX_CHAR_LIMIT,
+} from '../utils/regexBuilder';
+import { COLOR, FONT } from '../utils/uiTokens';
 
 // ─── POS Algorithm ────────────────────────────────────────────────────────────
 
-function combinations<T>(arr: T[], k: number): T[][] {
-  if (k === 0) return [[]];
-  if (k > arr.length) return [];
-  const [head, ...tail] = arr;
-  return [
-    ...combinations(tail, k - 1).map((c) => [head, ...c]),
-    ...combinations(tail, k),
-  ];
-}
-
-function generatePosRegex(tokens: string[], k: number): string {
-  if (tokens.length === 0 || k <= 0 || k > tokens.length) return '';
-  if (k === 1) return `"${tokens.join('|')}"`;
-  if (k === tokens.length) return tokens.map((t) => `"${t}"`).join(' ');
-  const blockSize = tokens.length - k + 1;
-  return combinations(tokens, blockSize).map((c) => `"${c.join('|')}"`).join(' ');
-}
-
-const CHAR_LIMIT = 250;
-const charCountColor = (n: number) => n > CHAR_LIMIT ? COLOR.loss : n > 220 ? COLOR.warning : COLOR.profit;
+const charCountColor = (n: number) =>
+  n > REGEX_CHAR_LIMIT ? COLOR.loss : n > 220 ? COLOR.warning : COLOR.profit;
 const TIER_COLORS: Record<string, string> = { S: 'yellow', A: 'orange', B: 'blue' };
 
 // ─── Mod Group Editor ─────────────────────────────────────────────────────────
@@ -60,8 +49,7 @@ const ModGroupEditor = ({
 
   const selectedTokens = group.mods.filter((m) => group.selected.includes(m.id)).map((m) => m.token);
   const preview    = generatePosRegex(selectedTokens, group.k);
-  const blockCount = selectedTokens.length > 0
-    ? combinations(selectedTokens, selectedTokens.length - group.k + 1).length : 0;
+  const blockCount = preview ? preview.split('" "').length : 0;
 
   const tooltipStyles = {
     tooltip: {
@@ -218,23 +206,6 @@ const ModGroupEditor = ({
 
 // ─── Alt/Aug Crafting ─────────────────────────────────────────────────────────
 
-function currNum(min: number): string {
-  if (min <= 0) return '\\d..';
-  const f = Math.floor(min / 10) * 10;
-  if (f >= 200) return '[2-9]..';
-  if (f >= 100) {
-    const t = Math.floor((f % 100) / 10);
-    return t === 0 ? '\\d..' : `1[${t}-9].|[2-9]..`;
-  }
-  const t = Math.floor(f / 10);
-  return t >= 9 ? `9.|\\d..` : `[${t}-9].|\\d..`;
-}
-function sizeNum(min: number): string {
-  if (min <= 0) return '\\d+';
-  const t = Math.floor(min / 10);
-  return t <= 0 ? '[1-9].|\\d..' : t >= 9 ? `9.|\\d..` : `[${t}-9].|\\d..`;
-}
-
 const AltAugSection = () => {
   const [currencyMin, setCurrencyMin] = useState(90);
   const [packMin,     setPackMin]     = useState(20);
@@ -243,16 +214,13 @@ const AltAugSection = () => {
 
   // When toggling chisel, adjust the number boxes directly so the user sees the change
   const handleChiselToggle = (nowChiseled: boolean) => {
-    if (!nowChiseled) {
-      // Chisel NOT yet applied — lower thresholds by 50 to match pre-chisel roll
-      setCurrencyMin((v) => Math.max(0, v - 50));
-      setGigaMin((v) => Math.max(0, v - 50));
-    } else {
-      // Chisel already applied — raise thresholds back by 50
-      setCurrencyMin((v) => v + 50);
-      setGigaMin((v) => v + 50);
-    }
-    setChiseled(nowChiseled);
+    const adjusted = adjustAltAugChisel(
+      { currencyMin, packMin, gigaMin, chiseled },
+      nowChiseled,
+    );
+    setCurrencyMin(adjusted.currencyMin);
+    setGigaMin(adjusted.gigaMin);
+    setChiseled(adjusted.chiseled);
   };
 
   // Both open-slot patterns combined — no toggle needed:
@@ -260,12 +228,12 @@ const AltAugSection = () => {
   //   "^Map of"     → suffix-only (open prefix): "Map of Defiance (Tier 16)"
   // A full 2-mod map like "Punishing Map of Defiance" matches NEITHER → no false positives.
   // ^ anchor confirmed working in PoE stash search.
-  const openSlotPats = ' Map \\(Tier|^Map of';
-
-  const gate1 = `"curr.*(${currNum(currencyMin)})"`;
-  const gate2  = `"size.*(${sizeNum(packMin)})%|${openSlotPats}${gigaMin > currencyMin ? `|curr.*(${currNum(gigaMin)})` : ''}"`;
-  const regex   = `${gate1} ${gate2}`;
-  const charCount = regex.length;
+  const { regex, charCount } = generateAltAugRegex({
+    currencyMin,
+    packMin,
+    gigaMin,
+    chiseled,
+  });
 
   return (
     <Stack gap={8} p="sm" style={{ background: COLOR.bgInset, borderRadius: 8, border: `1px solid ${COLOR.border}` }}>
@@ -307,7 +275,7 @@ const AltAugSection = () => {
         <Group justify="space-between">
           <Text size="xs" c="dimmed" style={{ fontSize: FONT.label }}>
             {charCount} chars
-            {charCount > CHAR_LIMIT && <Text span c="red"> over limit</Text>}
+            {charCount > REGEX_CHAR_LIMIT && <Text span c="red"> over limit</Text>}
           </Text>
           <CopyButton value={regex} timeout={2000}>
             {({ copied, copy }) => (
@@ -355,18 +323,10 @@ export const BuilderTab = () => {
     }]);
   };
 
-  const finalRegex = useMemo(() => {
-    const parts = groups
-      .map((g) => {
-        const tokens = g.mods.filter((m) => g.selected.includes(m.id)).map((m) => m.token);
-        return generatePosRegex(tokens, g.k);
-      })
-      .filter(Boolean);
-    return parts.join(' ');
-  }, [groups]);
-
-  const charCount  = finalRegex.length;
-  const blockCount = finalRegex ? finalRegex.split('" "').length : 0;
+  const generated = useMemo(() => generateBuilderRegex(groups), [groups]);
+  const finalRegex = generated.regex;
+  const charCount = generated.charCount;
+  const blockCount = generated.blockCount;
 
   const doSave = () => {
     const label = saveName.trim();
@@ -396,7 +356,7 @@ export const BuilderTab = () => {
         </Stack>
         {finalRegex && (
           <Badge size="xs" color={charCountColor(charCount)} variant="light">
-            {charCount} / {CHAR_LIMIT} chars
+            {charCount} / {REGEX_CHAR_LIMIT} chars
           </Badge>
         )}
       </Group>
@@ -463,7 +423,7 @@ export const BuilderTab = () => {
                   <Text size="xs" fw={700} c="teal">Generated Regex</Text>
                   <Text size="xs" c="dimmed" style={{ fontSize: FONT.label }}>
                     {blockCount} block{blockCount !== 1 ? 's' : ''}
-                    {charCount > CHAR_LIMIT && <Text span c="red"> · exceeds 250-char limit</Text>}
+                    {charCount > REGEX_CHAR_LIMIT && <Text span c="red"> · exceeds 250-char limit</Text>}
                   </Text>
                 </Group>
                 <Group gap={4}>
@@ -486,9 +446,9 @@ export const BuilderTab = () => {
               <Text style={{ fontFamily: 'monospace', fontSize: FONT.small, wordBreak: 'break-all', lineHeight: 1.6, color: COLOR.text }}>
                 {finalRegex}
               </Text>
-              {charCount > CHAR_LIMIT && (
+              {charCount > REGEX_CHAR_LIMIT && (
                 <Text size="xs" c="red" style={{ fontSize: FONT.small }}>
-                  {charCount - CHAR_LIMIT} chars over the limit. Reduce K or the number of mods.
+                  {charCount - REGEX_CHAR_LIMIT} chars over the limit. Reduce K or the number of mods.
                 </Text>
               )}
             </Stack>
