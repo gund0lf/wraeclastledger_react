@@ -111,3 +111,11 @@ export interface SavedSession {
   investmentNeutralization?: number;
   investmentDismissed?: boolean;
 }
+
+/** Local end-of-league marker. Keyed by normalizeLeagueKey(leagueName). */
+export interface LeagueCloseout {
+  cutoffUtc: string;
+  closedAt: string;
+}
+
+export type LeagueCloseouts = Record<string, LeagueCloseout>;

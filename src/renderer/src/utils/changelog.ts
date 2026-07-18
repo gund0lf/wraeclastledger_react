@@ -13,6 +13,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.70',
     date: 'Unreleased',
     changes: [
+      'Strategy Browser now includes a Retrospectives view for your own saved sessions. Close out each league with an explicit UTC cutoff, then reopen or compare the qualifying sessions in a collapsed Personal board; later sessions stay visible as an omitted count rather than silently entering the historical set. Public frozen rankings will follow separately.',
       'Map Search (poe.re) has been fully retired now that the built-in Regex and PoE Trade tools cover its useful workflows. Fresh layouts no longer include it, and saved layouts remove every old Map Search tab automatically without disturbing neighboring panels.',
     ],
   },

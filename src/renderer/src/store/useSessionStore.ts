@@ -1,11 +1,12 @@
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { persist, type PersistStorage } from 'zustand/middleware';
-import { MapData, SessionSettings, LootItem, SavedSession, ScarabSlot, ScarabPreset, RegexSet, ExclusionPreset } from '../types';
+import { MapData, SessionSettings, LootItem, SavedSession, ScarabSlot, ScarabPreset, RegexSet, ExclusionPreset, LeagueCloseouts } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { tryFetchDivinePrice, sanitizeExclusionTerms } from '../utils/priceUtils';
 import { confirmedLeagueSync, getCurrentLeague, normalizeLeagueOverride, setLeagueOverrideValue } from '../utils/league';
 import { ModGroupState, cloneDefaultGroups } from '../utils/regexBuilderPresets';
+import { isRetrospectiveLeague, normalizeLeagueKey } from '../utils/retrospectives';
 
 const STORE_VERSION = 17;
 
@@ -222,6 +223,10 @@ interface SessionState {
   // loaded historical sessions keep their own snapshot untouched. Additive
   // top-level; a one-time v17 migration seeds a legacy live-session value.
   atlasBonusByLeague: Record<string, boolean>;
+  // Local Personal-retrospective markers. The normalized league key is
+  // permanent cross-repo identity; session payloads remain in savedSessions
+  // and are never copied into this preference index.
+  retrospectiveCloseouts: LeagueCloseouts;
   // Transient: a new live session was created before the active league was known,
   // so its Atlas Bonus still needs seeding once detection resolves — but only if
   // the user hasn't already made a choice (which clears this). Never seeds under
@@ -236,6 +241,8 @@ interface SessionState {
   // records the choice under the active league (when known) and clears any
   // pending seed. Historical sessions only change their own snapshot.
   setAtlasBonus: (value: boolean) => void;
+  setPersonalLeagueCloseout: (leagueName: string, cutoffUtc: string) => void;
+  removePersonalLeagueCloseout: (leagueName: string) => void;
   // WP8: Regex Builder workspace — user-scoped preference, survives
   // loadSession/newSession (not in SessionSettings, not a session snapshot).
   // Additive top-level + no partialize => persist's shallow merge defaults it
@@ -346,6 +353,7 @@ export const useSessionStore = create<SessionState>()(
       discordTag: DEFAULT_DISCORD_TAG, regexSets: [...DEFAULT_REGEX_SETS],
       leagueOverride: null,
       atlasBonusByLeague: {},
+      retrospectiveCloseouts: {},
       pendingAtlasBonusSeed: false,
       pendingAtlasBonusValue: null,
       regexBuilderGroups: cloneDefaultGroups(),
@@ -622,6 +630,34 @@ export const useSessionStore = create<SessionState>()(
             pendingAtlasBonusValue: value,
           };
         }),
+      setPersonalLeagueCloseout: (leagueName, cutoffUtc) => {
+        if (!isRetrospectiveLeague(leagueName)) {
+          throw new Error('A supported league name is required.');
+        }
+        const cutoffMs = Date.parse(cutoffUtc);
+        if (!Number.isFinite(cutoffMs)) {
+          throw new Error('A valid retrospective cutoff is required.');
+        }
+        const leagueKey = normalizeLeagueKey(leagueName);
+        const normalizedCutoff = new Date(cutoffMs).toISOString();
+        set((s) => ({
+          retrospectiveCloseouts: {
+            ...s.retrospectiveCloseouts,
+            [leagueKey]: {
+              cutoffUtc: normalizedCutoff,
+              closedAt: s.retrospectiveCloseouts[leagueKey]?.closedAt
+                ?? new Date().toISOString(),
+            },
+          },
+        }));
+      },
+      removePersonalLeagueCloseout: (leagueName) => {
+        const leagueKey = normalizeLeagueKey(leagueName);
+        set((s) => {
+          const { [leagueKey]: _removed, ...remaining } = s.retrospectiveCloseouts;
+          return { retrospectiveCloseouts: remaining };
+        });
+      },
       setDefaultPreset: () =>
         // Save current session exclusions as the persistent default
         set((s) => ({ defaultExclusionPreset: [...s.settings.regexExclusions] })),

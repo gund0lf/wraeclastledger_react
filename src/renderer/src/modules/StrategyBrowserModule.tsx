@@ -1,6 +1,6 @@
 import {
   Card, Text, Group, Stack, Badge, TextInput, Select, MultiSelect, Button,
-  ActionIcon, Loader, Alert, Tooltip, Modal, UnstyledButton,
+  ActionIcon, Loader, Alert, Tooltip, Modal, UnstyledButton, SegmentedControl,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -18,6 +18,7 @@ import { StrategyCard } from '../components/StrategyCard';
 import { ModuleHeader } from '../components/ui/ModuleHeader';
 import { ShareModal } from '../components/ShareModal';
 import { ImportModal } from '../components/ImportModal';
+import { PersonalRetrospectives } from '../components/PersonalRetrospectives';
 import type { DiscordImport } from '../utils/parseDiscordExport';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { WorkingSessionGuardModal } from '../components/WorkingSessionGuardModal';
@@ -31,10 +32,10 @@ import { deriveAtlasCalcSettings } from '../../../shared/atlasStats';
 export const StrategyBrowserModule = () => {
   const {
     maps, settings, discordTag, leagueOverride,
-    updateSetting, updateAdvSetting, updateScarab, newSession, saveAsNewSession, setLoadedStrategyInfo,
+    updateSetting, updateAdvSetting, updateScarab, newSession, saveAsNewSession, setLoadedStrategyInfo, loadSession,
   } = useSessionKeys(
     'maps', 'settings', 'discordTag', 'leagueOverride',
-    'updateSetting', 'updateAdvSetting', 'updateScarab', 'newSession', 'saveAsNewSession', 'setLoadedStrategyInfo',
+    'updateSetting', 'updateAdvSetting', 'updateScarab', 'newSession', 'saveAsNewSession', 'setLoadedStrategyInfo', 'loadSession',
   );
   // Pulled up here (before handleLoadBuild uses it) via a stable-action selector.
   const requestAtlasApply = useUIStore((s) => s.requestAtlasApply);
@@ -60,6 +61,7 @@ export const StrategyBrowserModule = () => {
   const [sortOrder,  setSortOrder]  = useState<SortOrder | null>(null);
   const [period,     setPeriod]     = useState('all');
   const [hideGroup,  setHideGroup]  = useState(false);
+  const [browserView, setBrowserView] = useState<'live' | 'retrospectives'>('live');
   const LIMIT = 20;
 
   const requestCurrentAtlasApply = (url: string) => {
@@ -241,6 +243,10 @@ export const StrategyBrowserModule = () => {
     requestReplacement(() => applyStrategyBuild(strategy));
   };
 
+  const handleLoadPersonalSession = (sessionId: string) => {
+    requestReplacement(() => loadSession(sessionId));
+  };
+
   // ── Update strategy (versioning client half, design v3.1 §2) ─────────────────
   // Button on OWN cards → confirmation (same-setup wording, round-2 point 7) →
   // setup-only clone into a fresh session (reuses handleLoadBuild: scarabs,
@@ -399,12 +405,25 @@ export const StrategyBrowserModule = () => {
             tab label); the count badge anchors the left. */}
         <ModuleHeader
           title={
-            <Tooltip label="Strategies matching the current filters" withArrow>
-              <Badge color="gray" variant="outline" size="sm" style={{ cursor: 'default', fontVariantNumeric: 'tabular-nums' }}>{total} strategies</Badge>
-            </Tooltip>
+            <Group gap={6} wrap="nowrap">
+              <SegmentedControl
+                size="xs"
+                value={browserView}
+                onChange={(value) => setBrowserView(value as 'live' | 'retrospectives')}
+                data={[
+                  { value: 'live', label: 'Live' },
+                  { value: 'retrospectives', label: 'Retrospectives' },
+                ]}
+              />
+              {browserView === 'live' && (
+                <Tooltip label="Strategies matching the current filters" withArrow>
+                  <Badge color="gray" variant="outline" size="sm" style={{ cursor: 'default', fontVariantNumeric: 'tabular-nums' }}>{total} strategies</Badge>
+                </Tooltip>
+              )}
+            </Group>
           }
           right={
-            <Group gap={4}>
+            browserView === 'live' ? <Group gap={4}>
               <Tooltip label="Analyse an export from Discord">
                 <Button size="xs" variant="default" leftSection={<IconBrandDiscord size={12} />} onClick={openImport}>Import Strategy</Button>
               </Tooltip>
@@ -415,10 +434,12 @@ export const StrategyBrowserModule = () => {
                 <ActionIcon size="md" variant="default" loading={loading} aria-label="Refresh strategies"
                   onClick={() => fetchStrategies(0)}><IconRefresh size={14} /></ActionIcon>
               </Tooltip>
-            </Group>
+            </Group> : undefined
           }
         />
 
+        {browserView === 'live' ? (
+          <>
         <Group gap={6} mb={6} style={{ flexShrink: 0 }} wrap="nowrap">
           <MultiSelect size="xs" placeholder="Any type" clearable style={{ flex: 1 }}
             data={ALL_TYPE_TAGS.map((t) => ({ value: t, label: t.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') }))}
@@ -511,6 +532,12 @@ export const StrategyBrowserModule = () => {
         <Text size="xs" c="dimmed" ta="center" mt={6} style={{ flexShrink: 0 }}>
           Vote with the thumbs reactions in Discord · Share submits your session · Load Build starts a new session
         </Text>
+          </>
+        ) : (
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+            <PersonalRetrospectives onLoadSession={handleLoadPersonalSession} />
+          </div>
+        )}
       </Card>
       </div>
     </>
