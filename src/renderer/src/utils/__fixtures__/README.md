@@ -161,3 +161,32 @@ unchanged.
 | `wp14-profile/large-session-envelope.json` | one large loaded session | 1,162,341 | 292,261 | `bb375a4deb1bf13372cf6cddae9c11e1c3aa9f75a58211c1d1956c3e5bcebed3` |
 | `wp14-profile/rawtext-heavy-10mib-envelope.json` | active rawText-heavy 10 MiB class | 10,486,709 | 147,993 | `4b4666a899150356ac1c6715e0eabdfd9f1911e0b457bf8f48568c8485574571` |
 | `wp14-profile/many-session-envelope.json` | deterministic 100-session catalogue | 9,778,864 | 2,484,004 | `606901a60cdc8ca82ff196eed32610ad3840ec2d311ee3313524f5a81dff8c5b` |
+
+### WP14 Phase 0 benchmark
+
+The benchmark consumes the generated `wp14-profile/` artifacts above and
+refuses to run if any file is missing or differs from the recorded byte count
+or SHA-256. It builds dedicated production-bundle entries, launches them in an
+isolated temporary Electron profile, and writes one ignored report:
+
+`<project>/.wp14-bench/wp14-benchmark-report.json`
+
+The benchmark work/profile directory is removed after Electron exits. If
+cleanup fails, the report records the exact leftover path. No retained profile
+data is written outside `.wp14-bench/`.
+
+Run from Command Prompt:
+
+```cmd
+npm run wp14:bench
+```
+
+Run from PowerShell (the `npm.ps1` shim is blocked on this machine):
+
+```powershell
+npm.cmd run wp14:bench
+```
+
+The first real run belongs to Sad's Windows machine. Do not infer retention,
+transport, or debounce constants until that report is reviewed; its candidate
+targets are hypotheses and any relaxation must be recorded explicitly.
