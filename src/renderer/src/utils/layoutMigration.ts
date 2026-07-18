@@ -31,7 +31,7 @@ export function migrateRegexBuilderTabs(model: Model): boolean {
   return true;
 }
 
-const RETIRED_COMPONENTS = new Set(['map-analyzer']);
+const RETIRED_COMPONENTS = new Set(['map-analyzer', 'map-search']);
 
 /** Remove panels whose product surface has been deliberately retired. */
 export function removeRetiredTabs(model: Model): boolean {

@@ -26,9 +26,6 @@ const ALL_PANELS = [
   // registry entries remain as tombstones for old saved layouts, but they are
   // no longer offered in "+ Add Panel" (WP5).
   { component: 'atlas-tree',      name: 'Atlas Tree' },
-  // 'map-search' (poe.re iframe) retired from "+ Add Panel" (session 16) — the
-  // in-app trade search + regex tooling superseded it. Registry tombstone stays
-  // so old saved layouts keep rendering it.
   { component: 'regex',           name: 'Regex' },
   { component: 'strategy-browser', name: 'Strategy Browser' },
   { component: 'notes',            name: 'Notes' },

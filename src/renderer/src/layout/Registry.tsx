@@ -6,7 +6,6 @@ import { InvestmentModule }     from '../modules/InvestmentModule';
 import { LootModule }           from '../modules/LootModule';
 import { DashboardModule }      from '../modules/DashboardModule';
 import { SessionManagerModule } from '../modules/SessionManagerModule';
-import { MapSearchModule }      from '../modules/MapSearchModule';
 import { RegexPanel, RegexBuilderPanel } from '../modules/RegexPanelModule';
 import { StrategyBrowserModule } from '../modules/StrategyBrowserModule';
 import { NotesModule }           from '../modules/NotesModule';
@@ -20,7 +19,6 @@ export const COMPONENT_REGISTRY: Record<string, () => any> = {
   'investment':      InvestmentModule,
   'loot':            LootModule,         // kept for existing saved layouts
   'dashboard':       DashboardModule,    // new merged stats+loot panel
-  'map-search':      MapSearchModule,
   'regex':           RegexPanel,
   'regex-builder':   RegexBuilderPanel,
   'strategy-browser': StrategyBrowserModule,

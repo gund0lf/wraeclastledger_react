@@ -66,10 +66,11 @@ describe('migrateRegexBuilderTabs', () => {
 });
 
 describe('removeRetiredTabs', () => {
-  it('removes Map Analyzer while preserving neighboring panels', () => {
+  it('removes retired panels while preserving neighboring panels', () => {
     const model = modelWith(
       tab('Atlas Tree', 'atlas-tree'),
       tab('Map Analyzer', 'map-analyzer'),
+      tab('Map Search (poe.re)', 'map-search'),
       tab('Regex', 'regex'),
     );
 
@@ -82,6 +83,8 @@ describe('removeRetiredTabs', () => {
       tab('Map Analyzer A', 'map-analyzer'),
       tab('Notes', 'notes'),
       tab('Map Analyzer B', 'map-analyzer'),
+      tab('Map Search A', 'map-search'),
+      tab('Map Search B', 'map-search'),
     );
 
     expect(removeRetiredTabs(model)).toBe(true);
@@ -92,7 +95,7 @@ describe('removeRetiredTabs', () => {
   });
 
   it('leaves a valid empty layout when the retired panel was the only tab', () => {
-    const model = modelWith(tab('Map Analyzer', 'map-analyzer'));
+    const model = modelWith(tab('Map Search (poe.re)', 'map-search'));
 
     expect(removeRetiredTabs(model)).toBe(true);
     expect(components(model)).toEqual([]);
@@ -105,6 +108,7 @@ describe('migratePersistedLayout', () => {
     const model = modelWith(
       tab('Regex Builder', 'regex-builder'),
       tab('Map Analyzer', 'map-analyzer'),
+      tab('Map Search (poe.re)', 'map-search'),
     );
 
     expect(migratePersistedLayout(model)).toBe(true);

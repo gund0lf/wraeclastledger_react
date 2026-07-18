@@ -10,6 +10,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.70',
+    date: 'Unreleased',
+    changes: [
+      'Map Search (poe.re) has been fully retired now that the built-in Regex and PoE Trade tools cover its useful workflows. Fresh layouts no longer include it, and saved layouts remove every old Map Search tab automatically without disturbing neighboring panels.',
+    ],
+  },
+  {
     version: '1.0.69',
     date: '2026-07-17',
     changes: [
