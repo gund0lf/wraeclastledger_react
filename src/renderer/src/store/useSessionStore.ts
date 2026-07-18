@@ -240,7 +240,7 @@ function migrateState(persisted: any): any {
 // Exported for useSessionStore.migrate.test.ts.
 export { migrateState };
 
-interface SessionState {
+export interface SessionState {
   maps: MapData[];
   lootItems: LootItem[];
   baselineItems: LootItem[];

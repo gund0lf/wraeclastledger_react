@@ -18,6 +18,7 @@ docs/HANDOVER_ARCHIVE*.md
 docs/GAME_DATA_ENDPOINT_SPEC.md
 docs/CONTEXT.md
 docs/REMEDIATION_PLAN_2026-07.md
+docs/WP14_FIELD_OWNERSHIP.md
 traceuer-server-side/
 # Lock file — regenerated on install, no need to track
 package-lock.json

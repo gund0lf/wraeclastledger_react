@@ -49,7 +49,11 @@ export function isWorkingSessionMeaningful(
   if (state.loadedStrategyInfo !== null) return true;
   if ((state.settings.atlasPoints ?? 0) > 0) return true;
 
-  for (const key of Object.keys(defaults) as (keyof SessionSettings)[]) {
+  const settingKeys = new Set([
+    ...Object.keys(defaults),
+    ...Object.keys(state.settings),
+  ] as (keyof SessionSettings)[]);
+  for (const key of settingKeys) {
     if (AUTO_MANAGED_SETTINGS.has(key)) continue;
     if (!valuesEqual(state.settings[key], defaults[key])) return true;
   }
