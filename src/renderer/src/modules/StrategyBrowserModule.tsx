@@ -19,6 +19,7 @@ import { ModuleHeader } from '../components/ui/ModuleHeader';
 import { ShareModal } from '../components/ShareModal';
 import { ImportModal } from '../components/ImportModal';
 import { PersonalRetrospectives } from '../components/PersonalRetrospectives';
+import { PublicRetrospectives } from '../components/PublicRetrospectives';
 import type { DiscordImport } from '../utils/parseDiscordExport';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { WorkingSessionGuardModal } from '../components/WorkingSessionGuardModal';
@@ -535,7 +536,10 @@ export const StrategyBrowserModule = () => {
           </>
         ) : (
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-            <PersonalRetrospectives onLoadSession={handleLoadPersonalSession} />
+            <Stack gap="md">
+              <PersonalRetrospectives onLoadSession={handleLoadPersonalSession} />
+              <PublicRetrospectives onLoadStrategy={handleLoadBuild} />
+            </Stack>
           </div>
         )}
       </Card>

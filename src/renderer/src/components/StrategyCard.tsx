@@ -6,6 +6,7 @@ import { useState, useMemo, useRef, useLayoutEffect } from 'react';
 import {
   IconChevronDown, IconChevronRight,
   IconThumbUp, IconThumbDown, IconExternalLink, IconUsers, IconAlertTriangle,
+  IconSnowflake,
 } from '@tabler/icons-react';
 import { Strategy, TAG_COLORS, MAP_TYPE_TAGS, MAP_TYPE_LABELS, TAG_SHORT, BROWSER_COLS, BROWSER_GRID_TEMPLATE, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X } from '../utils/strategyConstants';
 import { formatActiveTime } from '../utils/timeEstimate';
@@ -123,13 +124,21 @@ export const TagStrip = ({ tagStr, layoutKey }: { tagStr?: string | null; layout
 
 // ─── StrategyCard ─────────────────────────────────────────────────────────────
 
-export const StrategyCard = ({ strategy, onLoadBuild, onUpdateStrategy, discordTag }: {
+export const StrategyCard = ({
+  strategy,
+  onLoadBuild,
+  onUpdateStrategy,
+  discordTag,
+  frozen = false,
+}: {
   strategy: Strategy; onLoadBuild: (s: Strategy) => void;
   /** Versioning client half: present = show "Update strategy" on OWN cards
    *  (own-detection via discordTag is display heuristic only — the server
    *  enforces real ownership by discord_user_id and rejects loudly). */
   onUpdateStrategy?: (s: Strategy) => void;
   discordTag?: string;
+  /** Frozen snapshot cards remain loadable but can never enter the update flow. */
+  frozen?: boolean;
 }) => {
   const [open, setOpen] = useState(false);
   // Author's atlas multiplier at share time (from the export). Only parsed
@@ -140,7 +149,10 @@ export const StrategyCard = ({ strategy, onLoadBuild, onUpdateStrategy, discordT
     const m = parseDiscordExport(strategy.raw_export)?.multiplier;
     return m && m > 0 ? m : null;
   }, [open, strategy.raw_export]);
-  const isOwn = !!(discordTag?.trim() && strategy.discord_username?.toLowerCase() === discordTag.trim().toLowerCase());
+  const isOwn = !frozen && !!(
+    discordTag?.trim()
+    && strategy.discord_username?.toLowerCase() === discordTag.trim().toLowerCase()
+  );
   const publishedDate = (() => { try { return new Date(strategy.posted_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }); } catch { return '—'; } })();
   // Versioning display: vN badge only when the strategy has actually been
   // updated (revision 1 = original post, no badge). updated_at may be null on
@@ -215,6 +227,13 @@ export const StrategyCard = ({ strategy, onLoadBuild, onUpdateStrategy, discordT
               <Tooltip label={`Updated result — revision ${revision}${updatedDate ? `, last updated ${updatedDate}` : ''}. Votes carry across updates.`} withArrow multiline w={220}>
                 <Badge size="xs" color="indigo" variant="light" style={{ fontSize: FONT.micro, padding: '0 3px', flexShrink: 0, cursor: 'help' }}>
                   v{revision}
+                </Badge>
+              </Tooltip>
+            )}
+            {frozen && (
+              <Tooltip label="Frozen at league close; later votes and strategy updates do not change this result" withArrow multiline w={240}>
+                <Badge size="xs" color="cyan" variant="light" style={{ fontSize: FONT.micro, padding: '0 3px', flexShrink: 0, cursor: 'help' }}>
+                  <IconSnowflake size={8} style={{ display: 'block' }} />
                 </Badge>
               </Tooltip>
             )}
@@ -477,7 +496,7 @@ export const StrategyCard = ({ strategy, onLoadBuild, onUpdateStrategy, discordT
 
           <Group gap="xs">
             <Button size="xs" variant="light" color="blue" onClick={(e) => { e.stopPropagation(); onLoadBuild(strategy); }}>
-              Load Build Settings
+              {frozen ? 'Load Frozen Build' : 'Load Build Settings'}
             </Button>
             {strategy.atlas_tree_url && (
               <Tooltip label="Open atlas tree in browser">
@@ -487,7 +506,7 @@ export const StrategyCard = ({ strategy, onLoadBuild, onUpdateStrategy, discordT
                 </Button>
               </Tooltip>
             )}
-            {isOwn && onUpdateStrategy && (
+            {!frozen && isOwn && onUpdateStrategy && (
               <Tooltip label="Start a fresh measurement run for THIS strategy — clones the setup into a new session; sharing it will replace the published result (votes kept)" withArrow multiline w={260}>
                 <Button size="xs" variant="light" color="indigo"
                   onClick={(e) => { e.stopPropagation(); onUpdateStrategy(strategy); }}>

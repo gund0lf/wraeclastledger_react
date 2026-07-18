@@ -160,12 +160,12 @@ export const PersonalRetrospectives = ({ onLoadSession }: Props) => {
         initialSelectedIds={compareIds}
       />
 
-      <Stack gap="sm" h="100%">
+      <Stack gap="sm">
         <Group justify="space-between" align="flex-start">
           <div>
             <Text size="sm" fw={700}>End-of-league retrospectives</Text>
             <Text size="xs" c="dimmed">
-              Review your saved sessions by league. Public frozen rankings arrive in the next slice.
+              Review your saved sessions by league. Published frozen rankings appear separately below.
             </Text>
           </div>
           <Button
