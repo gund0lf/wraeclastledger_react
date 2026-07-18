@@ -7,7 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { relative, resolve } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -83,60 +83,60 @@ const updateCleanupResult = (cleanup) => {
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
 };
 
-validateFixtures();
 mkdirSync(benchRoot, { recursive: true });
 assertInside(benchRoot, workRoot);
 rmSync(workRoot, { recursive: true, force: true });
 rmSync(reportPath, { force: true });
 mkdirSync(workRoot, { recursive: true });
 
-const electronViteCli = resolve(
-  root,
-  'node_modules',
-  require('electron-vite/package.json').bin['electron-vite'],
-);
-run(process.execPath, [electronViteCli, 'build', '--mode', 'wp14-bench'], 'production build');
-
-const electronPath = require('electron');
-const benchmarkEnv = {
-  ...process.env,
-  WL_WP14_BENCH: '1',
-  WL_WP14_BENCH_ROOT: root,
-  WL_WP14_BENCH_FIXTURES: fixtureRoot,
-  WL_WP14_BENCH_WORK: workRoot,
-  WL_WP14_BENCH_REPORT: reportPath,
-  WL_WP14_BENCH_USER_DATA: resolve(workRoot, 'user-data'),
-  WL_WP14_BENCH_COMMIT: readCommitSha(),
-};
-
 let benchmarkError = null;
 try {
+  validateFixtures();
+  const electronVitePkgPath = require.resolve('electron-vite/package.json');
+  const electronViteCli = resolve(
+    dirname(electronVitePkgPath),
+    require('electron-vite/package.json').bin['electron-vite'],
+  );
+  run(process.execPath, [electronViteCli, 'build', '--mode', 'wp14-bench'], 'production build');
+
+  const electronPath = require('electron');
+  const benchmarkEnv = {
+    ...process.env,
+    WL_WP14_BENCH: '1',
+    WL_WP14_BENCH_ROOT: root,
+    WL_WP14_BENCH_FIXTURES: fixtureRoot,
+    WL_WP14_BENCH_WORK: workRoot,
+    WL_WP14_BENCH_REPORT: reportPath,
+    WL_WP14_BENCH_USER_DATA: resolve(workRoot, 'user-data'),
+    WL_WP14_BENCH_COMMIT: readCommitSha(),
+  };
+
   run(electronPath, [root], 'Electron benchmark', benchmarkEnv);
   if (!existsSync(reportPath)) {
     throw new Error('Electron benchmark exited without producing its report');
   }
 } catch (error) {
   benchmarkError = error;
+} finally {
+  let cleanup;
+  try {
+    rmSync(workRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    cleanup = {
+      userDataDeleted: true,
+      workDirectoryDeleted: true,
+      leftoverPath: null,
+      error: null,
+    };
+  } catch (error) {
+    cleanup = {
+      userDataDeleted: false,
+      workDirectoryDeleted: false,
+      leftoverPath: workRoot,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+  updateCleanupResult(cleanup);
 }
-
-let cleanup;
-try {
-  rmSync(workRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
-  cleanup = {
-    userDataDeleted: true,
-    workDirectoryDeleted: true,
-    leftoverPath: null,
-    error: null,
-  };
-} catch (error) {
-  cleanup = {
-    userDataDeleted: false,
-    workDirectoryDeleted: false,
-    leftoverPath: workRoot,
-    error: error instanceof Error ? error.message : String(error),
-  };
-}
-updateCleanupResult(cleanup);
 
 if (benchmarkError) throw benchmarkError;
 console.log(`WP14 benchmark report: ${reportPath}`);
