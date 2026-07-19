@@ -15,6 +15,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     changes: [
       'Strategy Browser now includes a Retrospectives view. Close out each league with an explicit UTC cutoff, then reopen or compare qualifying saved sessions in the Personal board. Published snapshots appear separately as immutable Top Rated and Top Profit boards, with captured cutoff/provenance, an always-visible Author-reported warning on profit rankings, compatibility badges, and frozen builds that can be viewed or loaded but never updated.',
       'Map Search (poe.re) has been fully retired now that the built-in Regex and PoE Trade tools cover its useful workflows. Fresh layouts no longer include it, and saved layouts remove every old Map Search tab automatically without disturbing neighboring panels.',
+      'Share My Session now shows a live Discord card size meter and caps notes to what actually fits the 2,000-character card, so shares can never be silently truncated and you can see up front whether your card keeps its custom emotes. Strategy names are capped at 80 characters with a hint that they are public labels, not your private session names.',
+      'Sharing is disabled with a clear explanation when the session belongs to an ended league (its results live on in Retrospectives) or when no league is confirmed yet — the Discord bot would reject those exports anyway.',
     ],
   },
   {

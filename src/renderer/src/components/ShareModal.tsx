@@ -14,7 +14,8 @@ import { parseDiscordExport } from '../utils/parseDiscordExport';
 import { buildUpdateComparison, rowDirection } from '../utils/updateCompare';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { getManifest } from '../utils/gameData';
-import { hasImpossibleAtlasPoints } from '../utils/shareValidation';
+import { hasImpossibleAtlasPoints, leagueShareBlock } from '../utils/shareValidation';
+import { DISCORD_MSG_LIMIT, STRAT_NAME_MAX, computeShareBudget } from '../utils/exportBudget';
 
 interface Props {
   opened: boolean;
@@ -95,8 +96,32 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
        stratName, stratNotes, shareTags, isGroupPlay, groupSize, sessionMinutes,
        updateTargetId, activeManifest.revision, activeManifest.patchVersion]);
 
+  // Same export with EMPTY notes: the character budget derives the live notes
+  // cap from everything else in the card (exportBudget.ts). Cheap - the pure
+  // builder already runs per keystroke for the preview.
+  const discordExportNoNotes = useMemo(() => buildDiscordExport({
+    maps, settings, lootItems, baselineTotal, investmentNeutralization,
+    stratName, stratNotes: '', shareTags, isGroupPlay,
+    groupSize: isGroupPlay ? groupSize : null,
+    sessionMinutes,
+    updateStrategyId: updateTargetId,
+    gameDataRevision: activeManifest.revision,
+    gameDataPatchVersion: activeManifest.patchVersion,
+  }), [maps, settings, lootItems, baselineTotal, investmentNeutralization,
+       stratName, shareTags, isGroupPlay, groupSize, sessionMinutes,
+       updateTargetId, activeManifest.revision, activeManifest.patchVersion]);
+
+  const budget = computeShareBudget(discordExport, discordExportNoNotes, stratNotes.length);
+  // Ended/missing league blocks sharing outright (decided 2026-07-19): the
+  // server rejects it anyway - stop the wasted export at the source.
+  const leagueBlock = leagueShareBlock(settings.leagueName);
+
   const rollingSessionTotal = computeRollingSessionTotal(settings, maps.length);
   const impossibleAtlasPoints = hasImpossibleAtlasPoints(settings.atlasPoints, settings.atlasPointsMax);
+  // Preview is WITHHELD for invalid-content blocks (atlas, league); a size
+  // overflow keeps the preview visible so the author can see what to trim.
+  const previewWithheld = impossibleAtlasPoints || leagueBlock !== null;
+  const copyDisabled = previewWithheld || !budget.fitsPlain;
 
   // ── Update run: compare the about-to-publish numbers to what's live now ─────
   // Fetch the current published strategy by uuid so the author can eyeball what
@@ -200,6 +225,20 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
             </Text>
           </Alert>
         )}
+        {leagueBlock === 'ended' && (
+          <Alert color="red" variant="light" p="xs">
+            <Text size="xs">
+              {settings.leagueName} has ended — strategies can no longer be shared for this league. Its results live on in the Retrospectives boards.
+            </Text>
+          </Alert>
+        )}
+        {leagueBlock === 'missing' && (
+          <Alert color="red" variant="light" p="xs">
+            <Text size="xs">
+              This session has no confirmed league yet, and sharing requires one. Once a live league is detected (or you start a session under one), sharing unlocks.
+            </Text>
+          </Alert>
+        )}
         {settings.baseMapCost === 0 && rollingSessionTotal === 0 && (
           <Alert color="yellow" variant="light" p="xs">
             <Text size="xs">No investment costs set. Fill in Advanced Costs before sharing.</Text>
@@ -224,16 +263,28 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
           </Alert>
         )}
         <TextInput size="xs" label="Strategy name (optional)"
+          description="A short label others see in the Strategy Browser — not your private session name"
           placeholder="e.g. Shrine strat with Memory Tears"
+          maxLength={STRAT_NAME_MAX}
           value={stratName} onChange={(e) => setStratName(e.currentTarget.value)} />
         <MultiSelect size="xs" label="Strategy type tags"
           description="Select tags that describe this strategy"
           data={ALL_TYPE_TAGS.map((t) => ({ value: t, label: t.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') }))}
           value={shareTags} onChange={setShareTags} maxDropdownHeight={200} searchable clearable />
-        <Textarea size="xs" label="Session notes (optional)"
-          placeholder="e.g. Div Scarabs were cheap this week, Divine was 280c"
-          value={stratNotes} onChange={(e) => setStratNotes(e.currentTarget.value)}
-          autosize minRows={2} maxRows={4} />
+        <Stack gap={2}>
+          <Textarea size="xs" label="Session notes (optional)"
+            placeholder="Only what the setup can't show — e.g. prices assume early-week scarab costs"
+            value={stratNotes} onChange={(e) => setStratNotes(e.currentTarget.value)}
+            // Never hard-cut text the user already typed: if the budget shrinks
+            // (e.g. more scarabs added), the red counter + disabled copy handle it.
+            maxLength={Math.max(budget.notesMax, stratNotes.length)}
+            autosize minRows={2} maxRows={4} />
+          <Text size="xs" c={budget.notesRemaining < 0 ? 'red' : 'dimmed'} style={{ fontSize: FONT.small }}>
+            {budget.notesRemaining < 0
+              ? `Notes exceed the Discord card budget by ${-budget.notesRemaining} characters — trim them to share.`
+              : `${budget.notesRemaining} characters left for notes (Discord card limit).`}
+          </Text>
+        </Stack>
         <Stack gap={4}>
           <Group gap={8} align="center" wrap="nowrap">
             <Text size="xs" fw={500} style={{ flexShrink: 0 }}>Play style</Text>
@@ -272,9 +323,21 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
           </Text>
         </Stack>
         <Divider label="Preview" labelPosition="left" />
-        {impossibleAtlasPoints ? (
+        <Text size="xs" c={!budget.fitsPlain ? 'red' : budget.fitsDecorated ? 'dimmed' : 'orange'} style={{ fontSize: FONT.small }}>
+          {`Card size: ${budget.plainCardLength}/${DISCORD_MSG_LIMIT} plain | ${budget.decoratedCardLength}/${DISCORD_MSG_LIMIT} with emotes — `}
+          {!budget.fitsPlain
+            ? 'too large to post; trim notes.'
+            : budget.fitsDecorated
+              ? 'fits with app emotes.'
+              : 'posts without app emotes (over the emote budget).'}
+        </Text>
+        {previewWithheld ? (
           <Alert color="red" variant="light" p="xs">
-            <Text size="xs">Preview withheld until the impossible Atlas allocation is corrected.</Text>
+            <Text size="xs">
+              {impossibleAtlasPoints
+                ? 'Preview withheld until the impossible Atlas allocation is corrected.'
+                : 'Preview withheld — this league no longer accepts new shares.'}
+            </Text>
           </Alert>
         ) : (
           <div style={{ background: COLOR.bgDeep, borderRadius: 6, padding: '8px 10px', maxHeight: 200, overflowY: 'auto' }}>
@@ -286,7 +349,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
         <CopyButton value={discordExport} timeout={2000}>
           {({ copied, copy }) => (
             <Button leftSection={copied ? <IconCheck size={14} /> : <IconBrandDiscord size={14} />} onClick={copy}
-              disabled={impossibleAtlasPoints}
+              disabled={copyDisabled}
               color={copied ? 'teal' : 'indigo'} variant="light" fullWidth>
               {copied ? 'Copied to clipboard!' : 'Copy to Discord'}
             </Button>
