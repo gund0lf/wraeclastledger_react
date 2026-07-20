@@ -288,10 +288,15 @@ export const AtlasCalcModule = () => {
   ].filter(Boolean).length;
   const presentationConfigured = effectivelyConfigured || (dismissed && userAnswered);
   const modifierEffect = mountBonus + fragmentEffect + nodeEffect;
+  // Observed averages produce fractional mod counts (e.g. 5.8 -> 7.79485...
+  // effective). Display rounds to one decimal everywhere; integers stay bare.
+  // The MATH is untouched - multiplier precision is unchanged (BACKLOG
+  // "Atlas Calc breakdown shows unrounded floats", fixed 2026-07-20).
+  const fmt1 = (v: number): string => (Number.isInteger(v) ? String(v) : v.toFixed(1));
   const heroContext = usesObservedMods && observedModAverage != null
     ? `Observed ${observedModAverage.toFixed(1)} mods · ${effectiveMods.toFixed(1)} effective (Risk +${scarabOfRiskMods})`
-    : `${settings.mapType} · ${effectiveMods} effective mods${scarabOfRiskMods > 0 ? ` (Risk +${scarabOfRiskMods})` : ''}`;
-  const breakdownMeta = `+${modifierEffect}% mods · ${settings.atlasBonus ? '+25% IIQ' : 'no flat IIQ'}`;
+    : `${settings.mapType} · ${fmt1(effectiveMods)} effective mods${scarabOfRiskMods > 0 ? ` (Risk +${scarabOfRiskMods})` : ''}`;
+  const breakdownMeta = `+${fmt1(modifierEffect)}% mods · ${settings.atlasBonus ? '+25% IIQ' : 'no flat IIQ'}`;
   const configMeta = `${usesObservedMods && observedModAverage != null ? `Observed ${observedModAverage.toFixed(1)}` : settings.mapType} · ${configCount} on`;
 
   const questionContent = activeStep && (
@@ -349,9 +354,12 @@ export const AtlasCalcModule = () => {
   return (
     <Card ref={panelRef} shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ overflow: 'auto' }}>
       <Stack gap={8}>
+        {/* Toned down 2026-07-20 (Sad): the info-blue surface made the hero
+            dominate the whole panel; neutral section surface + the softer
+            accent token keep it the headline without shouting. */}
         <div style={{
-          background: COLOR.surfaceInfoBg,
-          border: `1px solid ${COLOR.surfaceInfoBorder}`,
+          background: COLOR.surfaceSectionBg,
+          border: `1px solid ${COLOR.border}`,
           borderRadius: 8,
           padding: compactPanel ? '7px 8px' : '8px 10px',
           textAlign: 'center',
@@ -359,7 +367,7 @@ export const AtlasCalcModule = () => {
           <Text
             fw={700}
             style={{
-              color: presentationConfigured ? COLOR.info : COLOR.textMuted,
+              color: presentationConfigured ? COLOR.accent : COLOR.textMuted,
               fontSize: compactPanel ? FONT.xl : 24,
               lineHeight: 1.15,
             }}
@@ -415,13 +423,13 @@ export const AtlasCalcModule = () => {
                     {scarabOfRiskMods > 0 && (
                       <Group justify="space-between" wrap="nowrap">
                         <Text size="xs" style={{ color: COLOR.accent }}>Scarab of Risk (+{scarabOfRiskMods} mods)</Text>
-                        <Text size="xs" style={{ color: COLOR.accent }}>{effectiveMods} effective</Text>
+                        <Text size="xs" style={{ color: COLOR.accent }}>{fmt1(effectiveMods)} effective</Text>
                       </Group>
                     )}
                     {mountBonus > 0 && (
                       <Group justify="space-between" wrap="nowrap">
-                        <Text size="xs" c="dimmed">Mounting ({effectiveMods} mods × 2%)</Text>
-                        <Text size="xs">+{mountBonus}%</Text>
+                        <Text size="xs" c="dimmed">Mounting ({fmt1(effectiveMods)} mods × 2%)</Text>
+                        <Text size="xs">+{fmt1(mountBonus)}%</Text>
                       </Group>
                     )}
                     {fragmentEffect > 0 && (
