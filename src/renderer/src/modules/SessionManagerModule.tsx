@@ -422,9 +422,12 @@ export const SessionManagerModule = () => {
             <CollapsibleSection variant="group" defaultOpen={false} title="History"
               right={<Badge size="xs" variant="light" color="gray">{sessionEntries.length}</Badge>}>
 
-              {/* Bulk action bar — visible when ≥1 selected */}
-              {selected.size > 0 && (
-                <Group gap={4} wrap="nowrap">
+              {/* Bulk action bar — ALWAYS mounted, revealed via visibility so
+                  selecting a row never reflows the list under the cursor
+                  (Sad, 2026-07-20). visibility (not opacity) also removes the
+                  hidden buttons from pointer + accessibility trees. */}
+              <Group gap={4} wrap="nowrap"
+                style={{ visibility: selected.size > 0 ? 'visible' : 'hidden' }}>
                   <Text size="xs" c="dimmed" style={{ flex: 1 }}>{selected.size} selected</Text>
                   <Tooltip label="Export selected as JSON" withArrow>
                     <Button size="xs" variant="default" leftSection={<IconDownload size={11} />}
@@ -442,8 +445,7 @@ export const SessionManagerModule = () => {
                     </Button>
                   </Tooltip>
                   <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Clear selection" onClick={clearSelection}><IconX size={11} /></ActionIcon>
-                </Group>
-              )}
+              </Group>
 
               {/* Select all header */}
               <Group gap={6} justify="space-between">
