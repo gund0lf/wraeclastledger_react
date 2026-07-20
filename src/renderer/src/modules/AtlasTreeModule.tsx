@@ -264,6 +264,22 @@ export const AtlasTreeModule = () => {
     };
   }, [key, webviewReady, updateSetting]);
 
+  // Close pathofpathing's own stats panel after we scraped it - OUR overlay
+  // presents the data, so theirs must never stay stuck open behind it
+  // (previously only the auto-apply path closed it; Sad, 2026-07-20).
+  const closeUpstreamStatsPanel = async (wv: Electron.WebviewTag) => {
+    try {
+      await wv.executeJavaScript(`
+        (function() {
+          var btn = document.getElementById('skillTreeStats_ShowHide');
+          if (btn && btn.textContent && btn.textContent.trim() === 'Hide stats') btn.click();
+        })()
+      `);
+    } catch (closeErr) {
+      console.error('[AtlasTree] failed to close stats panel:', closeErr);
+    }
+  };
+
   // ── Read atlas tree stats via JS injection ─────────────────────────────────
   const readStats = async (autoApply = false) => {
     const wv = webviewRef.current;
@@ -311,25 +327,13 @@ export const AtlasTreeModule = () => {
         })()
       `);
 
+      await closeUpstreamStatsPanel(wv);
+
       if (!result || (result as any).error) {
         setStatsError((result as any)?.error
           ?? 'No stats found. Select some nodes in the atlas tree first — if nodes ARE selected and this keeps happening, pathofpathing may have changed its layout; please report it.');
         setStatGroups([]);
         if (!autoApply) setStatsOpen(true);
-        else {
-          // Auto-apply opened the pathofpathing stats panel to read it; nothing was found
-          // (e.g. an empty/blank tree), so close it again so it does not stay stuck open.
-          try {
-            await wv.executeJavaScript(`
-              (function() {
-                var btn = document.getElementById('skillTreeStats_ShowHide');
-                if (btn && btn.textContent && btn.textContent.trim() === 'Hide stats') btn.click();
-              })()
-            `);
-          } catch (closeErr) {
-            console.error('[AtlasTree] failed to close stats panel after empty auto-read:', closeErr);
-          }
-        }
         return;
       }
 
@@ -357,27 +361,25 @@ export const AtlasTreeModule = () => {
       if (detected.length > 0) updateSetting('atlasDetectedTags', detected);
 
       // Auto-apply calc if triggered by external URL load
-      if (autoApply) {
-        applyGroupsToCalc(groups);
-        // Silently close the pathofpathing stats panel after auto-read
-        try {
-          await wv.executeJavaScript(`
-            (function() {
-              var btn = document.getElementById('skillTreeStats_ShowHide');
-              if (btn && btn.textContent && btn.textContent.trim() === 'Hide stats') btn.click();
-            })()
-          `);
-        } catch (closeErr) {
-          console.error('[AtlasTree] failed to close stats panel:', closeErr);
-        }
-      }
+      if (autoApply) applyGroupsToCalc(groups);
     } catch {
       setStatsError('Could not read stats — try navigating the tree first. If this keeps happening, pathofpathing may have changed its layout; please report it.');
       if (!autoApply) setStatsOpen(true);
     }
   };
 
-  const reload  = () => { remountAfterLayout(); setStatGroups([]); };
+  // Recenter must reload the tree AS IT IS NOW. srcUrl is frozen at
+  // mount/import time (in-page allocation navs only advance capturedUrl +
+  // settings.atlasTreeUrl), so a bare remount silently rewound every
+  // allocation made since load - and the post-remount navigation event then
+  // re-captured the STALE url into the session, destroying the newer one
+  // (found 2026-07-20). Re-source from the live captured state instead.
+  const reload = () => {
+    const url = useSessionStore.getState().settings.atlasTreeUrl;
+    if (isPathofpathingUrl(url)) { setSrcUrl(url); setCapturedUrl(url); }
+    remountAfterLayout();
+    setStatGroups([]);
+  };
 
   const hasTree = capturedUrl !== BASE_URL && capturedUrl.includes('#');
   const urlShort = capturedUrl.replace('https://pathofpathing.com', '') || '/';
@@ -519,7 +521,18 @@ export const AtlasTreeModule = () => {
         }}>
           <Group justify="space-between" px={8} pt={6} pb={4} style={{ flexShrink: 0 }}>
             <Text size="xs" fw={700} c="blue">Atlas Node Stats</Text>
-            <ActionIcon size="xs" variant="subtle" color="gray" onClick={() => setStatsOpen(false)}><IconX size={11} /></ActionIcon>
+            <Group gap={4} wrap="nowrap">
+              {/* Viewing never mutates the calc; applying is this explicit
+                  click - now available right where the stats are read
+                  (Sad, 2026-07-20). */}
+              {statGroups.length > 0 && (
+                <Button size="compact-xs" variant="light"
+                  onClick={() => applyGroupsToCalc(statGroups)}>
+                  Apply to Calc
+                </Button>
+              )}
+              <ActionIcon size="xs" variant="subtle" color="gray" onClick={() => setStatsOpen(false)}><IconX size={11} /></ActionIcon>
+            </Group>
           </Group>
           {calcApplied && (
             <Text size="xs" c="teal" px={8} pb={4} style={{ flexShrink: 0 }}>
