@@ -10,29 +10,30 @@ import {
 
 describe('exportBudget', () => {
   it('pins the worst-case bot header allowance so template drift is loud', () => {
-    // Mirrors bot/card.js buildCard: header emoji + 32-char username +
-    // 20-digit snowflake mention + update version line + instruction + blank.
+    // Mirrors bot/card.js buildCard as deployed 2026-07-20: header emoji +
+    // 32-char username + 20-digit snowflake mention + slimmed version line +
+    // blank separator (the instruction line is gone).
     const worstHeader =
       '📨 **Shared by:** ' + 'x'.repeat(32) + ' (<@' + '9'.repeat(20) + '>)\n' +
-      '*Current result · v99 · updated 28 Sep*\n' +
-      '*Copy this message into WraeclastLedger to import the strategy.*\n\n';
+      '*v99 · updated 28 Sep*\n' +
+      '\n';
     expect(CARD_HEADER_ALLOWANCE).toBe(worstHeader.length);
     // Sanity envelope: a header can never plausibly leave this band.
-    expect(CARD_HEADER_ALLOWANCE).toBeGreaterThan(150);
-    expect(CARD_HEADER_ALLOWANCE).toBeLessThan(250);
+    expect(CARD_HEADER_ALLOWANCE).toBeGreaterThan(80);
+    expect(CARD_HEADER_ALLOWANCE).toBeLessThan(150);
   });
 
-  it('projects emote decoration cost per occurrence, including VS16 markers', () => {
-    // wl_scarab ref: <: + 9-name + : + 19 digits + > = 32 units vs 2-unit glyph.
-    const scarab = EXPORT_EMOJI.scarabs.uni;
-    expect(projectDecoratedLength(scarab)).toBe(2 + 30);
-    // wl_deli glyph carries a variation selector (3 units) - overhead shrinks by 1.
+  it('projects short-ref decoration cost per occurrence, including VS16 markers', () => {
+    // Short ref <:wl:19-digit-id> = 25 units regardless of emote name.
+    const scarab = EXPORT_EMOJI.scarabs.uni; // 2-unit glyph -> +23
+    expect(projectDecoratedLength(scarab)).toBe(2 + 23);
+    // wl_deli glyph carries a variation selector (3 units) -> +22.
     const deli = EXPORT_EMOJI.delirium.uni;
     expect(deli.length).toBe(3);
-    expect(projectDecoratedLength(deli)).toBe(3 + (2 + 'wl_deli'.length + 1 + 19 + 1) - 3);
+    expect(projectDecoratedLength(deli)).toBe(3 + 22);
     // Two occurrences count twice; marker-free text is unchanged.
     expect(projectDecoratedLength(scarab + ' and ' + scarab))
-      .toBe((scarab + ' and ' + scarab).length + 2 * 30);
+      .toBe((scarab + ' and ' + scarab).length + 2 * 23);
     expect(projectDecoratedLength('no markers here')).toBe('no markers here'.length);
   });
 

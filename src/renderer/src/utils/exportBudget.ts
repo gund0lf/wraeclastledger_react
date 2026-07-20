@@ -14,10 +14,11 @@
  * count UTF-16 code units, so every figure here uses plain JS `.length`.
  * Astral-plane emoji count as 2 units - consistent on both sides.
  *
- * The header/versionLine templates MIRROR bot/card.js buildCard(). If the bot
- * header changes (e.g. the planned instruction-line slim), update the
- * templates here in the same batch - exportBudget.test.ts pins the derived
- * allowance so a drift is loud.
+ * The header/versionLine templates MIRROR bot/card.js buildCard() as deployed
+ * 2026-07-20 (instruction line removed, version line slimmed, short emote
+ * refs). If the bot header changes again, update the templates here in the
+ * same batch - exportBudget.test.ts pins the derived allowance so a drift is
+ * loud.
  *
  * ASCII-source rule: no raw emoji/middot literals - escapes only.
  */
@@ -31,21 +32,23 @@ export const STRAT_NAME_MAX = 80;
 
 // ── Bot card header allowance (mirrors bot/card.js buildCard) ───────────────
 // Worst case: 32-char username, 20-digit snowflake, update-run version line
-// with a 2-digit revision and a "28 Sep"-style stamp.
+// with a 2-digit revision and a "28 Sep"-style stamp. Mirrors the bot header
+// as deployed 2026-07-20 (instruction line removed, version line slimmed).
 // 📨 = envelope-with-arrow header emoji; · = middot.
 const WORST_USERNAME = 'x'.repeat(32);
 const WORST_SNOWFLAKE = '9'.repeat(20);
 const WORST_HEADER =
   '\uD83D\uDCE8 **Shared by:** ' + WORST_USERNAME + ' (<@' + WORST_SNOWFLAKE + '>)\n' +
-  '*Current result \u00B7 v99 \u00B7 updated 28 Sep*\n' +
-  '*Copy this message into WraeclastLedger to import the strategy.*\n\n';
+  '*v99 \u00B7 updated 28 Sep*\n' +
+  '\n';
 
 export const CARD_HEADER_ALLOWANCE = WORST_HEADER.length;
 
 // ── Emote decoration projection (mirrors bot/card.js decorate) ──────────────
-// A marker's app-emote ref is `<:` + name + `:` + id + `>`; live ids are 19
-// digits. Extra cost per occurrence = ref length - unicode glyph length.
-const EMOTE_ID_DIGITS = 19;
+// The bot emits SHORT refs since 2026-07-20: `<:wl:` + 19-digit id + `>` =
+// 25 units per marker regardless of the uploaded emote's name. Extra cost
+// per occurrence = 25 - unicode glyph length.
+const SHORT_REF_LENGTH = 25;
 
 const countOccurrences = (text: string, needle: string): number => {
   if (needle.length === 0) return 0;
@@ -59,8 +62,7 @@ const countOccurrences = (text: string, needle: string): number => {
 export function projectDecoratedLength(text: string): number {
   let extra = 0;
   for (const marker of Object.values(EXPORT_EMOJI)) {
-    const refLength = 2 + marker.name.length + 1 + EMOTE_ID_DIGITS + 1;
-    extra += countOccurrences(text, marker.uni) * (refLength - marker.uni.length);
+    extra += countOccurrences(text, marker.uni) * (SHORT_REF_LENGTH - marker.uni.length);
   }
   return text.length + extra;
 }

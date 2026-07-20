@@ -88,7 +88,10 @@ export function buildDiscordExport(input: DiscordExportInput): string {
   const chiselLine  = settings.chiselType
     ? E.chisel.uni + ' **Chisel:** ' + settings.chiselType + ' (' + settings.chiselPrice + 'c)'
     : E.chisel.uni + ' **Chisel:** None';
-  const scarabLines = settings.scarabs.filter((s) => s.name).map((s) => `  - ${s.name} (${s.cost}c)`).join('\n');
+  // Un-indented bullets (2026-07-20): Discord rendered the old two-space
+  // indent as inconsistent NESTED bullets. Both parsers match `^\s*-`, so the
+  // flat form imports identically.
+  const scarabLines = settings.scarabs.filter((s) => s.name).map((s) => `- ${s.name} (${s.cost}c)`).join('\n');
   const deliLine    = settings.advDeliOrbType && settings.advDeliOrbQtyPerMap > 0
     ? E.delirium.uni + ' **Delirium Orbs:** ' + settings.advDeliOrbQtyPerMap + 'x ' + settings.advDeliOrbType +
       ' (' + (settings.advDeliOrbQtyPerMap * 20) + '% delirious, ' +
@@ -105,11 +108,15 @@ export function buildDiscordExport(input: DiscordExportInput): string {
   if (n > 0) {
     const avg    = { avgQuant, avgPack, avgCurr, avgRarity, avgScarabs };
     const is8mod = settings.mapType === '8-mod';
+    // Shared regexes are emitted WITHOUT the author's brick exclusions
+    // (2026-07-20): exclusions are build-specific noise for everyone else,
+    // which also retires the disclaimer line. In-app importers regenerate
+    // with their own exclusions anyway; Discord-only readers get the neutral
+    // form. Card-budget bonus: shorter regex strings.
     regexBlock = ['', `${E.search.uni} **Generated Regex (${n} maps, trimmed avg)**`,
       `Avg: ${avgQuant.toFixed(0)}%Q \u00B7 ${avgRarity.toFixed(0)}%R \u00B7 ${avgPack.toFixed(0)}%P \u00B7 ${avgCurr.toFixed(0)}% Curr`,
-      `*Brick exclusion is build-dependent \u2014 edit in settings*`,
-      `${E.run.uni} Run: \`${generateRunRegex(avg, settings.regexExclusions)}\``,
-      ...(!is8mod ? [`${E.slam.uni} Slam: \`${generateSlamRegex(avg, settings.regexExclusions)}\` *(open slots only)*`] : []),
+      `${E.run.uni} Run: \`${generateRunRegex(avg, [])}\``,
+      ...(!is8mod ? [`${E.slam.uni} Slam: \`${generateSlamRegex(avg, [])}\` *(open slots only)*`] : []),
     ].join('\n');
   }
 
@@ -131,7 +138,10 @@ export function buildDiscordExport(input: DiscordExportInput): string {
     // matching (the live TEST-bot finding \u2014 an unanchored Strategy: matcher
     // must never read the uuid as the strategy name).
     ...(updateStrategyId ? [`Update strategy: ${updateStrategyId}`] : []),
-    `**Map Session \u2014 WraeclastLedger**`,
+    // The "**Map Session \u2014 WraeclastLedger**" title line was retired
+    // 2026-07-20: it duplicated the bracket header above, no parser anchors
+    // on it (the bot triggers on the 'WraeclastLedger' substring, both
+    // parsers key on field labels), and it cost ~33 card-budget units.
     `${E.maps.uni} **Maps:** ${n} | **Type:** ${settings.mapType} | **Multiplier:** ${multiplier.toFixed(2)}\u00D7`,
     ...(usesObservedMods && observedModAverage != null
       ? [`**Observed Mods:** ${observedModAverage.toFixed(1)} average (${n}/${n} exact maps)`]
