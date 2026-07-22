@@ -241,6 +241,23 @@ describe('WP14 startup recovery', () => {
     expect(recovery.preserved).toHaveLength(1);
     await expect(readFile(recovery.preserved[0], 'utf8')).resolves.toBe('corrupt-current');
   });
+
+  it('keeps a valid backup when promoting temp over a corrupt current', async () => {
+    const root = await tempRoot();
+    const directory = deriveSessionDirectory(root, 'session-id');
+    await mkdir(directory, { recursive: true });
+    await writeFile(join(directory, CURRENT_RECORD_NAME), 'corrupt-current');
+    await writeFile(join(directory, BACKUP_RECORD_NAME), await encodeRecordV1('session', 1, body(1)));
+    await writeFile(join(directory, 'candidate.g2.tmp'), await encodeRecordV1('session', 1, body(2)));
+    const recovery = await recoverRecordDirectory(directory, policy, 'session');
+    expect(recovery.status).toBe('promoted');
+    expect((recovery.record?.body as JsonObject).generation).toBe(2);
+    const inspection = await inspectRecordCandidates(directory, policy, 'session');
+    expect(inspection.valid.map(({ name, generation }) => [name, generation]))
+      .toEqual([[BACKUP_RECORD_NAME, 1], [CURRENT_RECORD_NAME, 2]]);
+    expect(recovery.preserved).toHaveLength(1);
+    await expect(readFile(recovery.preserved[0], 'utf8')).resolves.toBe('corrupt-current');
+  });
 });
 
 describe('WP14 transient file retry', () => {

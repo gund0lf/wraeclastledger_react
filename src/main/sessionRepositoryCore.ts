@@ -128,6 +128,8 @@ export class RepositoryRecoveryRequiredError extends Error {
 }
 
 export interface RepositoryReadPolicy {
+  // Every repository body, regardless of content type, must carry a
+  // non-negative safe-integer generation for recovery and concurrency.
   maxRecordBytes: number;
   maxContentVersions: Readonly<Record<RecordContentType, number>>;
 }
@@ -382,9 +384,9 @@ export async function recoverRecordDirectory(
   const preserved: string[] = [];
   if (await pathExists(currentPath)) {
     if (winner.role === 'temporary') {
-      await prepareBackupDestination(backupPath, policy, expectedType, retry);
       const currentInspection = inspection.valid.find((candidate) => candidate.role === 'current');
       if (currentInspection) {
+        await prepareBackupDestination(backupPath, policy, expectedType, retry);
         await retryTransientFileOperation(() => rename(currentPath, backupPath), retry);
       } else {
         preserved.push(await quarantine(currentPath, 'damaged', retry));
@@ -506,6 +508,8 @@ export async function commitRecordAtomically(
     await retryTransientFileOperation(() => rename(currentPath, backupPath), retry);
   }
   await stage(options.hooks, 'current-rotated');
+  // Node cannot portably fsync a directory on Windows. Crash recovery scans
+  // current/temp/bak candidates, so rename durability is recovered by design.
   await retryTransientFileOperation(() => rename(temporaryPath, currentPath), retry);
   await stage(options.hooks, 'temp-promoted');
   return {
