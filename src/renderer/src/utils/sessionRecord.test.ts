@@ -53,6 +53,14 @@ describe('WP14 framed-record contract', () => {
     });
   });
 
+  it('rejects a frame truncated before the header delimiter', async () => {
+    const encoded = await encodeRecordV1('session', 1, sessionBody());
+    const newlineIndex = encoded.indexOf(0x0a);
+    await expect(decodeRecordV1(encoded.slice(0, newlineIndex - 4))).rejects.toMatchObject({
+      code: 'invalid-frame',
+    });
+  });
+
   it('detects literal-byte corruption with the body hash', async () => {
     const encoded = await encodeRecordV1('session', 1, sessionBody());
     const corrupted = encoded.slice();

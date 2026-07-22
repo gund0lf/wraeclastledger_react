@@ -105,6 +105,9 @@ function assertValidUnicode(value: string, path: string): void {
 }
 
 export function assertJsonValue(value: unknown, path = '$'): asserts value is JsonValue {
+  // Optional properties must be omitted, never explicitly set to undefined.
+  // JSON.stringify would silently drop them, which would make the validated
+  // in-memory value differ from the bytes we hash and commit.
   if (value === null || typeof value === 'boolean') return;
   if (typeof value === 'string') {
     assertValidUnicode(value, path);
