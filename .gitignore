@@ -25,7 +25,6 @@ traceuer-server-side/
 package-lock.json
 docs/mockups/
 .wp14-bench/
-docs/WP14_PHASE0_REPORT.md
 src/renderer/src/utils/__fixtures__/wp14-profile/
 *.tsbuildinfo
 resources/linux/wl-proton-clipboard.exe
