@@ -288,13 +288,6 @@ export const DashboardModule = () => {
 
   return (
     <>
-      {crossLeague && (
-        <Tooltip label="Divine price, league and atlas points of this session are frozen — live refreshes never touch loaded sessions from another league. Start a new session to track the current league." withArrow multiline w={280}>
-          <Badge color="yellow" variant="light" size="sm" mb={6} style={{ cursor: 'help' }}>
-            Historical session — {settings.leagueName}
-          </Badge>
-        </Tooltip>
-      )}
       <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFileChange} />
 
       <Modal opened={blOpen} onClose={closeBl} title="How should this CSV be used?" size="sm">
@@ -345,6 +338,15 @@ export const DashboardModule = () => {
           outline: dragOver ? '2px dashed var(--mantine-color-blue-5)' : undefined,
           outlineOffset: -2,
         }}>
+
+        {crossLeague && (
+          <Tooltip label="Divine price, league and atlas points of this session are frozen — live refreshes never touch loaded sessions from another league. Start a new session to track the current league." withArrow multiline w={280}>
+            <Badge color="yellow" variant="light" size="sm" mb={6}
+              style={{ cursor: 'help', flexShrink: 0, alignSelf: 'flex-start' }}>
+              Historical session — {settings.leagueName}
+            </Badge>
+          </Tooltip>
+        )}
 
         {/* session-16: "Dashboard" title dropped (redundant with the tab
             label). session-17 review: the leftover right-aligned badge row is
@@ -611,7 +613,11 @@ export const DashboardModule = () => {
                         </Button>
                       )}
                     </div>
-                    <Group justify="space-between" style={{ flexShrink: 0 }}>
+                    <Group justify="space-between" px={4} pt={4} style={{
+                      flexShrink: 0,
+                      borderTop: `1px solid ${COLOR.borderSoft}`,
+                      background: COLOR.bgPanel,
+                    }}>
                       <Text size="xs" c="dimmed">
                         {filteredItems.length} items
                         {visibleListRows < filteredItems.length && ` (showing ${visibleListRows})`}

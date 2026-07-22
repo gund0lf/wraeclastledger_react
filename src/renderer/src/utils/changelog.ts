@@ -13,6 +13,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.70',
     date: 'Unreleased',
     changes: [
+      'Saved sessions no longer inherit stale strategy-preview metadata from the previously viewed strategy. Historical divine-price labels now keep their stored league name at every panel width, Strategy Browser headers remain aligned when its list scrolls, and Loot Tracker totals stay pinned below the visible item list.',
       'Atlas Tree now opens older live and historical allocations against the active 3.29 tree while preserving their exact authored URLs. A provenance badge explains the shown version and offers Load original whenever the view was retargeted.',
       'The 3.29 game-data bundle now uses GGG\'s official Abyss Scarab of the Consort name and the verified Path of Pathing 3.29.0-atlas version.',
       'Strategy Browser now includes a Retrospectives view. Close out each league with an explicit UTC cutoff, then reopen or compare qualifying saved sessions in the Personal board. Published snapshots appear separately as immutable Top Rated and Top Profit boards, with captured cutoff/provenance, an always-visible Author-reported warning on profit rankings, compatibility badges, and frozen builds that can be viewed or loaded but never updated.',

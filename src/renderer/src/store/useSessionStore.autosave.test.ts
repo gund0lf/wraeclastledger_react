@@ -103,6 +103,21 @@ describe('WP10 auto-save', () => {
     expect(useSessionStore.getState().savedSessions[id].notes).toBe('sentinel');
   });
 
+  it('clears strategy preview metadata when loading a saved session', () => {
+    const id = saveActive('Unrelated session');
+    useSessionStore.getState().setLoadedStrategyInfo({
+      authorName: 'Strategy X', mapCount: 10,
+      avgQuant: 100, avgRarity: 50, avgPack: 30, avgCurr: 0,
+      runRegex: 'strategy-x',
+    });
+
+    useSessionStore.getState().loadSession(id);
+
+    // SavedSession does not currently persist this provenance. Clearing is
+    // truthful; WP14 owns restoring session-scoped provenance round-trips.
+    expect(useSessionStore.getState().loadedStrategyInfo).toBeNull();
+  });
+
   it('flushes pending edits into the old session when loading another', () => {
     const idA = saveActive('A');
     useSessionStore.getState().newSession();

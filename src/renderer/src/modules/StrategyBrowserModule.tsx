@@ -465,10 +465,12 @@ export const StrategyBrowserModule = () => {
           </Tooltip>
         </Group>
 
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         <div style={{
           display: 'grid', gridTemplateColumns: BROWSER_GRID_TEMPLATE,
           columnGap: BROWSER_ROW_GAP, alignItems: 'center', marginBottom: 3,
-          flexShrink: 0, padding: `0 ${BROWSER_ROW_PAD_X}px`,
+          padding: `2px ${BROWSER_ROW_PAD_X}px`, position: 'sticky', top: 0,
+          zIndex: 2, background: COLOR.bgPanel,
         }}>
           <div style={{ width: BROWSER_COLS.chevron, flexShrink: 0 }} />
           <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.author, flexShrink: 0, fontSize: FONT.small }}>Author</Text>
@@ -506,7 +508,6 @@ export const StrategyBrowserModule = () => {
         {loadedMsg && <Alert color="teal" variant="light" p="xs" mb={6} style={{ flexShrink: 0 }}><Text size="xs">{loadedMsg}</Text></Alert>}
         {error     && <Alert color="red"  variant="light" p="xs" mb={6} style={{ flexShrink: 0 }}><Text size="xs">{error}</Text></Alert>}
 
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
           {!loading && strategies.length === 0 && !error && (
             <Stack align="center" justify="center" style={{ height: 120 }} gap="xs">
               <Text size="sm" c="dimmed">No strategies yet.</Text>

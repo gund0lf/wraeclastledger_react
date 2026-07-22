@@ -546,7 +546,7 @@ export const useSessionStore = create<SessionState>()(
         });
         // A loaded historical session keeps its OWN atlasBonus snapshot; no
         // per-league seeding applies, so clear any pending seed / held choice.
-        set({ maps, lootItems: [...session.lootItems], baselineItems: [...(session.baselineItems ?? [])], baselineTotal: session.baselineTotal ?? 0, settings: { ...DEFAULT_SETTINGS, ...session.settings }, sessionNotes: session.notes ?? '', investmentNeutralization: session.investmentNeutralization ?? 0, investmentDismissed: session.investmentDismissed ?? false, activeSessionId: id, activeSessionName: session.name, isWatching: false, pendingAtlasBonusSeed: false, pendingAtlasBonusValue: null });
+        set({ maps, lootItems: [...session.lootItems], baselineItems: [...(session.baselineItems ?? [])], baselineTotal: session.baselineTotal ?? 0, settings: { ...DEFAULT_SETTINGS, ...session.settings }, sessionNotes: session.notes ?? '', investmentNeutralization: session.investmentNeutralization ?? 0, investmentDismissed: session.investmentDismissed ?? false, activeSessionId: id, activeSessionName: session.name, isWatching: false, pendingAtlasBonusSeed: false, pendingAtlasBonusValue: null, loadedStrategyInfo: null });
       },
       deleteSession: (id) =>
         set((s) => { const { [id]: _, ...rest } = s.savedSessions; return { savedSessions: rest, activeSessionId: s.activeSessionId === id ? null : s.activeSessionId, activeSessionName: s.activeSessionId === id ? null : s.activeSessionName }; }),

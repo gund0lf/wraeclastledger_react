@@ -185,9 +185,12 @@ export const InvestmentModule = () => {
   const liveLeagueMismatch = isLiveSessionLeagueMismatch(activeSessionId, settings.leagueName);
   // Keep the historical-session status inside the existing price label. A
   // standalone badge costs a whole row in short stacked FlexLayout panels.
-  const divinePriceLabel = settings.leagueName
+  const historicalDivinePriceLabel = settings.leagueName
     ? `${settings.leagueName} Divine Price`
-    : 'Divine Price';
+    : 'Historical Divine Price';
+  const compactHistoricalDivinePriceLabel = settings.leagueName
+    ? `${settings.leagueName} Divine`
+    : 'Historical Divine';
   const historicalPriceTooltip = `Historical session — divine price, league and atlas points are frozen. Live refreshes never touch this loaded session. Start a new session to track ${currentLeagueSync() ?? 'the current league'}.`;
 
   const baseMapFilled   = settings.baseMapCost > 0;
@@ -473,10 +476,10 @@ export const InvestmentModule = () => {
               <Stack gap={4} align="center">
                 {crossLeague ? (
                   <Tooltip label={historicalPriceTooltip} withArrow multiline w={280}>
-                    <Text size="xs" c="yellow" style={{ cursor: 'help' }}>{compactPanel ? 'Historical Divine' : divinePriceLabel}</Text>
+                    <Text size="xs" c="yellow" style={{ cursor: 'help' }}>{compactPanel ? compactHistoricalDivinePriceLabel : historicalDivinePriceLabel}</Text>
                   </Tooltip>
                 ) : (
-                  <Text size="xs" c="dimmed">{compactPanel ? 'Divine Price' : divinePriceLabel}</Text>
+                  <Text size="xs" c="dimmed">Divine Price</Text>
                 )}
                 {/* Input + icon on same row, input fills available space */}
                 {/* session-16: refresh lives INSIDE the price input (it belongs to
