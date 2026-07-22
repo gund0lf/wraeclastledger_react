@@ -37,6 +37,10 @@ export interface SessionRepositoryPort {
   openDataFolder(request: RequestFor<'open-data-folder'>): Promise<SessionRepositoryDataMap['open-data-folder']>;
 }
 
+export interface SessionRepositoryAdapterPolicy {
+  maxExportDocumentBytes: number;
+}
+
 export function mapSessionRepositoryError(error: unknown): SessionRepositoryError {
   if (error instanceof GenerationConflictError) {
     return {
@@ -82,7 +86,11 @@ function success<Operation extends SessionRepositoryOperation>(
   return { ok: true, operation, data } as SessionRepositorySuccess<Operation>;
 }
 
-async function execute(repository: SessionRepositoryPort, request: SessionRepositoryRequest): Promise<SessionRepositorySuccess> {
+async function execute(
+  repository: SessionRepositoryPort,
+  policy: SessionRepositoryAdapterPolicy,
+  request: SessionRepositoryRequest,
+): Promise<SessionRepositorySuccess> {
   switch (request.operation) {
     case 'bootstrap': return success(request.operation, await repository.bootstrap(request));
     case 'list': return success(request.operation, await repository.list(request));
@@ -93,13 +101,26 @@ async function execute(repository: SessionRepositoryPort, request: SessionReposi
     case 'history-list': return success(request.operation, await repository.historyList(request));
     case 'history-restore': return success(request.operation, await repository.historyRestore(request));
     case 'import': return success(request.operation, await repository.importDocument(request));
-    case 'export': return success(request.operation, await repository.exportDocument(request));
+    case 'export': {
+      const data = await repository.exportDocument(request);
+      const size = Buffer.byteLength(data.document, 'utf8');
+      if (size > policy.maxExportDocumentBytes) {
+        throw new RecordSizeLimitError(size, policy.maxExportDocumentBytes);
+      }
+      return success(request.operation, data);
+    }
     case 'retry': return success(request.operation, await repository.retry(request));
     case 'open-data-folder': return success(request.operation, await repository.openDataFolder(request));
   }
 }
 
-export function createSessionRepositoryAdapter(repository: SessionRepositoryPort) {
+export function createSessionRepositoryAdapter(
+  repository: SessionRepositoryPort,
+  policy: SessionRepositoryAdapterPolicy,
+) {
+  if (!Number.isSafeInteger(policy.maxExportDocumentBytes) || policy.maxExportDocumentBytes <= 0) {
+    throw new RangeError('maxExportDocumentBytes must be a positive safe integer');
+  }
   return async (input: unknown): Promise<SessionRepositoryResponse> => {
     let request: SessionRepositoryRequest;
     try {
@@ -113,7 +134,7 @@ export function createSessionRepositoryAdapter(repository: SessionRepositoryPort
       return failure;
     }
     try {
-      return await execute(repository, request);
+      return await execute(repository, policy, request);
     } catch (error) {
       return { ok: false, operation: request.operation, error: mapSessionRepositoryError(error) };
     }

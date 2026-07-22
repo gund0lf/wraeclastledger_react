@@ -144,6 +144,9 @@ function assertGeneration(value: unknown, nullable: boolean): asserts value is n
 }
 
 function assertNoPathKeys(value: unknown, label = 'request'): void {
+  // This is a diagnostic tripwire, not the security boundary. Exact-key
+  // request shapes and an ID-only port keep renderer-supplied paths out even
+  // when a path-like key is not covered by this deliberately small denylist.
   if (Array.isArray(value)) {
     value.forEach((item, index) => assertNoPathKeys(item, `${label}[${index}]`));
     return;
@@ -310,6 +313,9 @@ export function assertSessionRepositoryResponse(value: unknown): asserts value i
   if (!isPlainObject(value) || typeof value.ok !== 'boolean') {
     throw new SessionRepositoryRequestError('response must be a result object');
   }
+  // Retain deep validation on both sides of the boundary. A 2026-07-22
+  // Windows measurement over the 10 MiB Phase 0 fixture recorded P95 17.477ms
+  // and max 18.904ms, below the locked 50ms renderer long-task budget.
   assertJsonValue(value, '$.response');
   if (value.ok) {
     if (typeof value.operation !== 'string' || !operationSet.has(value.operation)) {

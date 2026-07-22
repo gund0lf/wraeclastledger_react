@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   SessionRepositoryRequestError,
   assertSessionRepositoryResponse,
@@ -11,7 +11,29 @@ import {
   UnsupportedContentVersionError,
 } from '../../../main/sessionRepositoryCore';
 import { RecordValidationError } from '../../../shared/sessionRecord';
-import { mapSessionRepositoryError } from '../../../main/sessionRepositoryAdapter';
+import {
+  createSessionRepositoryAdapter,
+  mapSessionRepositoryError,
+  type SessionRepositoryPort,
+} from '../../../main/sessionRepositoryAdapter';
+
+function repositoryPort(overrides: Partial<SessionRepositoryPort> = {}): SessionRepositoryPort {
+  return {
+    bootstrap: vi.fn(),
+    list: vi.fn(),
+    load: vi.fn(),
+    save: vi.fn(),
+    rename: vi.fn(),
+    delete: vi.fn(),
+    historyList: vi.fn(),
+    historyRestore: vi.fn(),
+    importDocument: vi.fn(),
+    exportDocument: vi.fn(),
+    retry: vi.fn(),
+    openDataFolder: vi.fn(),
+    ...overrides,
+  };
+}
 
 describe('WP14 repository IPC request contract', () => {
   it.each([
@@ -84,5 +106,22 @@ describe('WP14 repository IPC response and error contract', () => {
     expect(mapSessionRepositoryError(new UnsupportedContentVersionError('session', 2, 1))).toMatchObject({ code: 'unsupported-version' });
     expect(mapSessionRepositoryError(new RecordSizeLimitError(2, 1))).toMatchObject({ code: 'size-limit' });
     expect(mapSessionRepositoryError(new RecordValidationError('invalid-body', 'bad'))).toMatchObject({ code: 'validation' });
+  });
+
+  it('enforces the caller-supplied export document ceiling', async () => {
+    const adapter = createSessionRepositoryAdapter(repositoryPort({
+      exportDocument: vi.fn().mockResolvedValue({ document: 'ééé' }),
+    }), { maxExportDocumentBytes: 5 });
+
+    await expect(adapter({ operation: 'export', sessionIds: [] })).resolves.toMatchObject({
+      ok: false,
+      operation: 'export',
+      error: { code: 'size-limit', details: { size: 6, maximum: 5 } },
+    });
+  });
+
+  it('rejects an invalid export policy when the dead adapter is constructed', () => {
+    expect(() => createSessionRepositoryAdapter(repositoryPort(), { maxExportDocumentBytes: 0 }))
+      .toThrow('positive safe integer');
   });
 });

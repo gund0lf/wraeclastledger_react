@@ -3,6 +3,15 @@ export const WP14_BENCHMARK_REPORT_NAME = 'wp14-benchmark-report.json';
 export const WP14_BENCHMARK_SCHEMA_VERSION = 1;
 export const WP14_BENCHMARK_TARGET_BYTES = 194 * 1024;
 
+// Phase 0's measured 100-session envelope was 9,778,864 UTF-8 bytes.
+// Exports are user-initiated and may include metadata beyond that envelope, so
+// the recommended ceiling is an explicit 2x evidence-derived allowance. The
+// Phase 2B binding must pass this value (or another documented policy) rather
+// than inheriting a hidden adapter default.
+export const WP14_PHASE0_MANY_SESSION_ENVELOPE_BYTES = 9_778_864;
+export const WP14_RECOMMENDED_MAX_EXPORT_DOCUMENT_BYTES =
+  WP14_PHASE0_MANY_SESSION_ENVELOPE_BYTES * 2;
+
 export const WP14_BENCHMARK_COUNTS = {
   bootstrapWarmups: 5,
   bootstrapIterations: 30,

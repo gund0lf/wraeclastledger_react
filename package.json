@@ -25,6 +25,7 @@
     "trade-stats:check": "node scripts/check-tradestats.mjs",
     "wp14:fixtures": "vite-node scripts/gen-wp14-fixtures.ts",
     "wp14:bench": "node scripts/run-wp14-bench.mjs",
+    "wp14:ipc-bench": "vite-node scripts/bench-wp14-ipc-validation.ts",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
