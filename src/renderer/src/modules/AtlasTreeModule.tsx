@@ -4,7 +4,7 @@ import { IconRefresh, IconCopy, IconCheck, IconChartBar, IconLink, IconX } from 
 import { useSessionStore, useSessionKeys } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
 import { getManifest } from '../utils/gameData';
-import { atlasVersionOf } from '../utils/strategyCompat';
+import { atlasVersionOf, retargetAtlasUrl } from '../utils/strategyCompat';
 import { isCrossLeagueSession } from '../utils/historicalSession';
 import { SectionLabel } from '../components/ui/SectionLabel';
 import { COLOR, FONT } from '../utils/uiTokens'
@@ -16,6 +16,11 @@ const BASE_URL = 'https://pathofpathing.com';
 function isPathofpathingUrl(url: string): boolean {
   try { return new URL(url).hostname === 'pathofpathing.com'; }
   catch { return false; }
+}
+
+function atlasViewUrl(authoredUrl: string): string {
+  if (!isPathofpathingUrl(authoredUrl)) return BASE_URL;
+  return retargetAtlasUrl(authoredUrl, getManifest().atlasTreeVersion);
 }
 
 // Polls a predicate (via async check fn) until it returns true or the timeout expires.
@@ -47,11 +52,24 @@ export const AtlasTreeModule = () => {
   const prevNonceRef   = useRef(sessionNonce);
   const autoApplyRef   = useRef(false); // set true when URL imported — triggers auto readStats+apply
 
+  // The initial navigation to this URL is view-only and must not replace the
+  // authored URL retained by the session or shared strategy.
+  const retargetedViewRef = useRef('');
+  const retargetSettledRef = useRef(false);
+  const showOriginalRef = useRef(false);
   const [srcUrl,      setSrcUrl]      = useState(() => {
-    const stored = atlasTreeUrl;
-    return isPathofpathingUrl(stored) ? stored : BASE_URL;
+    const viewed = atlasViewUrl(atlasTreeUrl);
+    if (viewed !== atlasTreeUrl && viewed !== BASE_URL) retargetedViewRef.current = viewed;
+    return viewed;
   });
   const [capturedUrl, setCapturedUrl] = useState(srcUrl);
+  const capturedUrlRef = useRef(srcUrl);
+  const captureUrl = useCallback((url: string) => {
+    capturedUrlRef.current = url;
+    setCapturedUrl(url);
+  }, []);
+  const [retargetActive, setRetargetActive] = useState(() => retargetedViewRef.current !== '');
+  const [showOriginal, setShowOriginal] = useState(false);
   const [key,         setKey]         = useState(0);
   const [statsOpen,   setStatsOpen]   = useState(false);
   const [statGroups,  setStatGroups]  = useState<AtlasStatGroup[]>([]);
@@ -140,25 +158,36 @@ export const AtlasTreeModule = () => {
     // effect scheduling cannot let this reset erase a legitimate pending apply.
     autoApplyRef.current = atlasApplySessionNonce === sessionNonce;
     const url = useSessionStore.getState().settings.atlasTreeUrl;
-    const next = isPathofpathingUrl(url) ? url : BASE_URL;
+    const next = atlasViewUrl(url);
+    showOriginalRef.current = false;
+    setShowOriginal(false);
+    retargetedViewRef.current = next !== url && next !== BASE_URL ? next : '';
+    retargetSettledRef.current = retargetedViewRef.current === '';
+    setRetargetActive(retargetedViewRef.current !== '');
     setSrcUrl(next);
-    setCapturedUrl(next);
+    captureUrl(next);
     remountAfterLayout();
     setStatGroups([]);
     setStatsOpen(false); // close stats panel on session change
-  }, [activeSessionId, sessionNonce, atlasApplySessionNonce, remountAfterLayout]);
+  }, [activeSessionId, sessionNonce, atlasApplySessionNonce, remountAfterLayout, captureUrl]);
 
   // ── Reload when atlasTreeUrl is set externally (Load Build Settings) ───────
   useEffect(() => {
     const stored = atlasTreeUrl;
-    if (!stored || stored === capturedUrl || stored === srcUrl) return;
+    if (showOriginal) return;
+    if (!stored) return;
     if (!isPathofpathingUrl(stored)) return;
-    setSrcUrl(stored);
-    setCapturedUrl(stored);
+    const next = atlasViewUrl(stored);
+    if (next === capturedUrl || next === srcUrl) return;
+    retargetedViewRef.current = next !== stored ? next : '';
+    retargetSettledRef.current = retargetedViewRef.current === '';
+    setRetargetActive(retargetedViewRef.current !== '');
+    setSrcUrl(next);
+    captureUrl(next);
     autoApplyRef.current = true; // auto-apply calc after load
     remountAfterLayout();
     setStatGroups([]);
-  }, [atlasTreeUrl, remountAfterLayout]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [atlasTreeUrl, remountAfterLayout, showOriginal]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Force re-apply on Load Build even when the URL is UNCHANGED ────────────
   // Loading the same strategy twice sets atlasTreeUrl to the same value, so the
@@ -176,12 +205,18 @@ export const AtlasTreeModule = () => {
     if (atlasApplySessionNonce !== current.sessionNonce) return;
     const url = current.settings.atlasTreeUrl;
     if (!isPathofpathingUrl(url)) return;
-    setSrcUrl(url);
-    setCapturedUrl(url);
+    const next = atlasViewUrl(url);
+    showOriginalRef.current = false;
+    setShowOriginal(false);
+    retargetedViewRef.current = next !== url ? next : '';
+    retargetSettledRef.current = retargetedViewRef.current === '';
+    setRetargetActive(retargetedViewRef.current !== '');
+    setSrcUrl(next);
+    captureUrl(next);
     autoApplyRef.current = true;
     remountAfterLayout();
     setStatGroups([]);
-  }, [atlasApplyNonce, atlasApplySessionNonce, remountAfterLayout]);
+  }, [atlasApplyNonce, atlasApplySessionNonce, remountAfterLayout, captureUrl]);
 
   // ── Attach navigation + finish-load listeners ─────────────────────────────
   useEffect(() => {
@@ -231,8 +266,26 @@ export const AtlasTreeModule = () => {
     const handleNav = (e: any) => {
       const url: string = e.url ?? '';
       if (!isPathofpathingUrl(url)) return;
-      setCapturedUrl(url);
-      updateSetting('atlasTreeUrl', url);
+      captureUrl(url);
+      const retargeted = retargetedViewRef.current;
+      const initialDocumentNavigation = e.type === 'did-navigate'
+        && url.split('#')[0] === retargeted.split('#')[0]
+        && !url.includes('#');
+      if (retargeted && (!retargetSettledRef.current || url === retargeted || initialDocumentNavigation)) {
+        setRetargetActive(!showOriginalRef.current);
+      } else if (showOriginalRef.current) {
+        // Once the user explicitly chose the authored version, edits remain on
+        // that version instead of silently opting them back into retargeting.
+        retargetedViewRef.current = url;
+        retargetSettledRef.current = true;
+        setRetargetActive(false);
+        updateSetting('atlasTreeUrl', url);
+      } else {
+        retargetedViewRef.current = '';
+        retargetSettledRef.current = true;
+        setRetargetActive(false);
+        updateSetting('atlasTreeUrl', url);
+      }
       readPoints(); // node toggles change the hash — capture the new count
     };
     // Auto-apply to calc when URL is loaded externally (Load Build Settings / import URL)
@@ -241,6 +294,32 @@ export const AtlasTreeModule = () => {
       if (!isPathofpathingUrl(e.url ?? '')) e.preventDefault();
     };
     const handleFinishLoad = async () => {
+      if (retargetedViewRef.current && !retargetSettledRef.current) {
+        // Path of Pathing canonicalizes some equivalent allocation hashes while
+        // initializing. Wait for its rendered counter and two guest frames,
+        // then adopt that canonical URL as the VIEW baseline without persisting
+        // it. Only a later navigation can represent a user-authored edit.
+        await pollUntil(() =>
+          (wv as any).executeJavaScript(
+            `Promise.resolve(!!document.getElementById('skillTreeNormalNodeCount'))`,
+          ).catch(() => false),
+        );
+        await (wv as any).executeJavaScript(
+          `new Promise(function(resolve) { requestAnimationFrame(function() { requestAnimationFrame(resolve); }); })`,
+        ).catch(() => undefined);
+        let lastUrl = capturedUrlRef.current;
+        let stableSince = Date.now();
+        const stableDeadline = Date.now() + 2000;
+        while (Date.now() < stableDeadline && Date.now() - stableSince < 250) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 50));
+          if (capturedUrlRef.current !== lastUrl) {
+            lastUrl = capturedUrlRef.current;
+            stableSince = Date.now();
+          }
+        }
+        retargetedViewRef.current = capturedUrlRef.current;
+        retargetSettledRef.current = true;
+      }
       readPoints(); // restored sessions: capture points once the page is up
       if (!autoApplyRef.current) return;
       autoApplyRef.current = false;
@@ -262,7 +341,7 @@ export const AtlasTreeModule = () => {
       wv.removeEventListener('did-navigate-in-page', handleNav);
       wv.removeEventListener('did-finish-load', handleFinishLoad);
     };
-  }, [key, webviewReady, updateSetting]);
+  }, [key, webviewReady, updateSetting, captureUrl]);
 
   // Close pathofpathing's own stats panel after we scraped it - OUR overlay
   // presents the data, so theirs must never stay stuck open behind it
@@ -375,8 +454,43 @@ export const AtlasTreeModule = () => {
   // re-captured the STALE url into the session, destroying the newer one
   // (found 2026-07-20). Re-source from the live captured state instead.
   const reload = () => {
-    const url = useSessionStore.getState().settings.atlasTreeUrl;
-    if (isPathofpathingUrl(url)) { setSrcUrl(url); setCapturedUrl(url); }
+    const url = capturedUrl;
+    if (isPathofpathingUrl(url)) { setSrcUrl(url); captureUrl(url); }
+    remountAfterLayout();
+    setStatGroups([]);
+  };
+
+  const loadOriginal = () => {
+    const authored = useSessionStore.getState().settings.atlasTreeUrl;
+    if (!isPathofpathingUrl(authored)) return;
+    // Protect the authored URL through Path of Pathing's own initialization
+    // normalization, but keep the UI in original-view mode rather than marking
+    // it as an active retarget.
+    retargetedViewRef.current = authored;
+    retargetSettledRef.current = false;
+    showOriginalRef.current = true;
+    setShowOriginal(true);
+    setRetargetActive(false);
+    setSrcUrl(authored);
+    captureUrl(authored);
+    remountAfterLayout();
+    setStatGroups([]);
+  };
+
+  const loadCurrentVersion = () => {
+    const authored = useSessionStore.getState().settings.atlasTreeUrl;
+    if (!isPathofpathingUrl(authored)) return;
+    const current = atlasViewUrl(authored);
+    if (current === authored || current === BASE_URL) return;
+    // This is the inverse of Load original: change only the guest view while
+    // retaining the authored URL in the session for provenance and recovery.
+    showOriginalRef.current = false;
+    setShowOriginal(false);
+    retargetedViewRef.current = current;
+    retargetSettledRef.current = false;
+    setRetargetActive(true);
+    setSrcUrl(current);
+    captureUrl(current);
     remountAfterLayout();
     setStatGroups([]);
   };
@@ -384,12 +498,10 @@ export const AtlasTreeModule = () => {
   const hasTree = capturedUrl !== BASE_URL && capturedUrl.includes('#');
   const urlShort = capturedUrl.replace('https://pathofpathing.com', '') || '/';
 
-  // Atlas-tree version flag (rollover §5.4 Tier 1). Compare the loaded tree's
-  // ?v= against the manifest's atlasTreeVersion — but ONLY when BOTH are known.
-  // Manifest '' = unobserved for this patch -> stay silent (no false 'outdated',
-  // matching the strategyCompat discipline). Lights up at 3.29 once the version
-  // is recorded in the manifest.
-  const treeVersion    = atlasVersionOf(capturedUrl);
+  // Atlas-tree version flag (rollover §5.4 Tier 1). Compare the AUTHORED URL,
+  // not the optionally retargeted guest URL, so provenance remains truthful.
+  const authoredUrl = isPathofpathingUrl(atlasTreeUrl) ? atlasTreeUrl : capturedUrl;
+  const treeVersion    = atlasVersionOf(authoredUrl);
   const currentVersion = getManifest().atlasTreeVersion;
   const versionMismatch = !!treeVersion && !!currentVersion && treeVersion !== currentVersion;
 
@@ -397,8 +509,14 @@ export const AtlasTreeModule = () => {
   const loadImportUrl = () => {
     const url = importUrl.trim();
     if (!isPathofpathingUrl(url)) return;
-    setSrcUrl(url);
-    setCapturedUrl(url);
+    const next = atlasViewUrl(url);
+    showOriginalRef.current = false;
+    setShowOriginal(false);
+    retargetedViewRef.current = next !== url ? next : '';
+    retargetSettledRef.current = retargetedViewRef.current === '';
+    setRetargetActive(retargetedViewRef.current !== '');
+    setSrcUrl(next);
+    captureUrl(next);
     updateSetting('atlasTreeUrl', url);
     autoApplyRef.current = true; // auto-apply calc after load
     remountAfterLayout();
@@ -449,9 +567,21 @@ export const AtlasTreeModule = () => {
         </Text>
         {hasTree && <Badge size="xs" color="green" variant="dot">Tree saved</Badge>}
         {versionMismatch && (
-          <Tooltip label={`This tree was built for atlas version ${treeVersion}; current is ${currentVersion}. Node values may differ under the new patch.`} withArrow multiline w={230}>
+          <Tooltip label={retargetActive
+            ? `Authored for atlas ${treeVersion}; shown on ${currentVersion}. The stored URL is unchanged.`
+            : `Authored for atlas ${treeVersion}; the original version is shown. Current atlas is ${currentVersion}.`} withArrow multiline w={250}>
             <Badge size="xs" color="yellow" variant="light" style={{ cursor: 'help' }}>v{treeVersion}</Badge>
           </Tooltip>
+        )}
+        {versionMismatch && retargetActive && (
+          <Button size="compact-xs" variant="subtle" color="yellow" onClick={loadOriginal}>
+            Load original
+          </Button>
+        )}
+        {versionMismatch && showOriginal && (
+          <Button size="compact-xs" variant="subtle" color="yellow" onClick={loadCurrentVersion}>
+            Show on {currentVersion.replace(/\.0-atlas$/, '')}
+          </Button>
         )}
         {statGroups.length > 0 && (
           <Tooltip label="Apply node stats to Atlas Calc (small nodes, Mounting Modifiers, fragments)">

@@ -55,10 +55,10 @@ describe('bundled manifest invariants', () => {
       status: 'renamed', aliasOf: 'abyss-scarab-of-crystals',
     });
     expect(scarab('Abyss Scarab of Profound Depth')).toMatchObject({
-      status: 'renamed', aliasOf: 'abyssal-scarab-of-the-consort',
+      status: 'renamed', aliasOf: 'abyss-scarab-of-the-consort',
     });
     expect(scarab('Abyss Scarab of Crystals')?.status).toBe('reworked');
-    expect(scarab('Abyssal Scarab of the Consort')?.status).toBe('reworked');
+    expect(scarab('Abyss Scarab of the Consort')?.status).toBe('reworked');
     expect(scarab('Abyss Scarab')?.status).toBe('reworked');
     expect(scarab('Abyss Scarab of Multitudes')?.status).toBe('reworked');
 
@@ -90,7 +90,7 @@ describe('bundled manifest invariants', () => {
       value: 'Abyss Scarab of Crystals', label: 'Abyss Scarab of Crystals',
     });
     expect(scarabs).toContainEqual({
-      value: 'Abyssal Scarab of the Consort', label: 'Abyssal Scarab of the Consort',
+      value: 'Abyss Scarab of the Consort', label: 'Abyss Scarab of the Consort',
     });
     expect(scarabs.some((e) => e.value === 'Trarthan Scarab')).toBe(true);
     expect(scarabs.some((e) => e.value === 'Abyss Scarab of Edifice')).toBe(false);

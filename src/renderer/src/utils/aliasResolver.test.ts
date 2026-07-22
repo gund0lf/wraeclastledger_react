@@ -53,7 +53,7 @@ describe('resolver on the bundled revision-2 manifest', () => {
 
   it('upgrades both renamed Abyss scarabs and the renamed astrolabe', () => {
     expect(currentName('scarabs', 'Abyss Scarab of Edifice')).toBe('Abyss Scarab of Crystals');
-    expect(currentName('scarabs', 'Abyss Scarab of Profound Depth')).toBe('Abyssal Scarab of the Consort');
+    expect(currentName('scarabs', 'Abyss Scarab of Profound Depth')).toBe('Abyss Scarab of the Consort');
     expect(currentName('astrolabes', 'Enshrouded Astrolabe')).toBe('Deceptive Astrolabe');
     expect(resolveEntity('scarabs', 'Abyss Scarab of Edifice').viaAlias).toBe(true);
     expect(isCurrentlyUsable('scarabs', 'Abyss Scarab of Edifice')).toBe(true);

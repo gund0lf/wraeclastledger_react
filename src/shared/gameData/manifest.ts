@@ -4,8 +4,9 @@
  *
  * SOURCE + PROVENANCE: revision 1 was generated 2026-07-06 (session 12) 1:1
  * from the flat arrays that previously lived in constants.ts. Revision 2 was
- * classified from GGG's official 3.29 notes on 2026-07-17, with exact Consort
- * spelling cross-checked against the PoEDB 3.29 mirror. constants.ts now
+ * classified from GGG's official 3.29 notes on 2026-07-17. The Consort rename
+ * was corrected from PoEDB's "Abyssal" form to GGG's official filter-list
+ * spelling, "Abyss Scarab of the Consort", on 2026-07-22. constants.ts now
  * DERIVES its exports from this file; this is the single source of truth.
  *
  * DATA NOTE (found at migration): the old SCARAB_LIST header claimed
@@ -26,8 +27,9 @@
  *  - Any change here bumps `revision` (monotonic, mid-league bumps fine).
  *  - ids are frozen at introduction (slugifyEntityId of the then-current name).
  *
- * atlasTreeVersion is '' — the pathofpathing ?v= string for 3.29 has not been
- * OBSERVED yet ('' is a loud unknown, not a guess; §5.4 Tier 1 parse fills it).
+ * atlasTreeVersion 3.29.0-atlas was observed on Path of Pathing 2026-07-22;
+ * Sad's known 3.28 full-tree hash loaded under it with all 138/138 allocations
+ * preserved and its URL remained byte-identical after initialization.
  */
 import { GameDataManifest } from './types';
 
@@ -36,7 +38,7 @@ export const BUNDLED_MANIFEST: GameDataManifest = {
   schemaVersion: 1,
   contextKey: 'poe1-challenge',
   patchVersion: '3.29',
-  atlasTreeVersion: '',
+  atlasTreeVersion: '3.29.0-atlas',
   mechanics: {
     scarabs: 'active',
     delirium: 'active',
@@ -58,8 +60,8 @@ export const BUNDLED_MANIFEST: GameDataManifest = {
   { id: 'abyss-scarab-of-edifice', name: "Abyss Scarab of Edifice", status: 'renamed', aliasOf: 'abyss-scarab-of-crystals' },
   { id: 'abyss-scarab-of-crystals', name: "Abyss Scarab of Crystals", status: 'reworked', note: "Abyss Pits without a reward instead create an Abyssal Crystal." },
   { id: 'abyss-scarab-of-multitudes', name: "Abyss Scarab of Multitudes", status: 'reworked', note: "Abyss Chasms spawn 100% increased monsters per Soul fed." },
-  { id: 'abyss-scarab-of-profound-depth', name: "Abyss Scarab of Profound Depth", status: 'renamed', aliasOf: 'abyssal-scarab-of-the-consort' },
-  { id: 'abyssal-scarab-of-the-consort', name: "Abyssal Scarab of the Consort", status: 'reworked', note: "One Abyss Pit in the area spawns an Abyssal Consort." },
+  { id: 'abyss-scarab-of-profound-depth', name: "Abyss Scarab of Profound Depth", status: 'renamed', aliasOf: 'abyss-scarab-of-the-consort' },
+  { id: 'abyss-scarab-of-the-consort', name: "Abyss Scarab of the Consort", status: 'reworked', note: "One Abyss Pit in the area spawns an Abyssal Consort." },
   // ── Ambush ──
   { id: 'ambush-scarab', name: "Ambush Scarab", status: 'active' },
   { id: 'ambush-scarab-of-containment', name: "Ambush Scarab of Containment", status: 'active' },

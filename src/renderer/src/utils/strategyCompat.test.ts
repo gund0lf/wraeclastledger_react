@@ -9,7 +9,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
 import { GameDataManifest } from '../../../shared/gameData/types';
 import { initGameData, __resetGameDataForTests } from './gameData';
-import { checkStrategyCompat, atlasVersionOf } from './strategyCompat';
+import { checkStrategyCompat, atlasVersionOf, retargetAtlasUrl } from './strategyCompat';
 import { Strategy } from './strategyConstants';
 
 function strat(partial: Partial<Strategy>): Strategy {
@@ -40,6 +40,31 @@ describe('atlasVersionOf', () => {
   });
 });
 
+describe('retargetAtlasUrl', () => {
+  it('replaces the complete atlas version while preserving the allocation hash', () => {
+    const authored = 'https://pathofpathing.com/?v=3.28.0-atlas-league#AAAABgAADAsAJMFG';
+    expect(retargetAtlasUrl(authored, '3.29.0-atlas')).toBe(
+      'https://pathofpathing.com/?v=3.29.0-atlas#AAAABgAADAsAJMFG',
+    );
+  });
+
+  it('preserves surrounding query parameters', () => {
+    expect(retargetAtlasUrl('https://pathofpathing.com/?foo=1&v=old&bar=2#tree', 'new')).toBe(
+      'https://pathofpathing.com/?foo=1&v=new&bar=2#tree',
+    );
+  });
+
+  it('returns the original for matching, blank, missing, or malformed versions', () => {
+    const matching = 'https://pathofpathing.com/?v=3.29.0-atlas#tree';
+    const missing = 'https://pathofpathing.com/#tree';
+    const malformed = 'https://pathofpathing.com/?v=%E0%A4%A#tree';
+    expect(retargetAtlasUrl(matching, '3.29.0-atlas')).toBe(matching);
+    expect(retargetAtlasUrl(matching, '')).toBe(matching);
+    expect(retargetAtlasUrl(missing, '3.29.0-atlas')).toBe(missing);
+    expect(retargetAtlasUrl(malformed, '3.29.0-atlas')).toBe(malformed);
+  });
+});
+
 describe('compat on the bundled manifest', () => {
   it('a strategy of unchanged scarabs + chisel is ok', () => {
     const r = checkStrategyCompat(strat({
@@ -60,11 +85,10 @@ describe('compat on the bundled manifest', () => {
     expect(checkStrategyCompat(strat({ chisel: '' })).level).toBe('ok');
   });
 
-  it('does not flag atlas when the manifest version is unobserved', () => {
-    // bundled atlasTreeVersion is '' -> never cry outdated
-    const r = checkStrategyCompat(strat({ atlas_tree_url: 'https://pathofpathing.com/?v=anything#x' }));
-    expect(r.atlasOutdated).toBe(false);
-    expect(r.level).toBe('ok');
+  it('flags an atlas tree authored before the bundled manifest version', () => {
+    const r = checkStrategyCompat(strat({ atlas_tree_url: 'https://pathofpathing.com/?v=3.28.0-atlas-league#x' }));
+    expect(r.atlasOutdated).toBe(true);
+    expect(r.level).toBe('changed');
   });
 });
 

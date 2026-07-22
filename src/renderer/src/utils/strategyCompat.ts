@@ -10,9 +10,9 @@
  * SCOPE (D2 wire-shape finding, verified in strategyConstants.ts):
  *   - scarabs: `Strategy.scarabs[].name` — checked.
  *   - chisel:  `Strategy.chisel` (short name) — checked.
- *   - atlas ?v=: compared against manifest.atlasTreeVersion — checked, but ONLY
- *     when both sides are known (manifest '' = unobserved -> we stay silent,
- *     never cry "outdated" on our own missing data).
+ *   - atlas ?v=: compared against manifest.atlasTreeVersion when both are
+ *     known. The viewing layer may retarget this version without mutating the
+ *     authored URL; compatibility continues to report authored provenance.
  *   - delirium orbs / astrolabes: NOT on the wire (they live only in
  *     raw_export free text). A reliable badge needs a server/wire change
  *     (held Traceur queue) — deliberately OUT of scope. See D2.
@@ -49,7 +49,25 @@ export interface CompatResult {
 export function atlasVersionOf(url?: string | null): string {
   if (!url) return '';
   const m = url.match(/[?&]v=([^&#]+)/);
-  return m ? decodeURIComponent(m[1]) : '';
+  if (!m) return '';
+  try { return decodeURIComponent(m[1]); }
+  catch { return ''; }
+}
+
+/**
+ * Retarget a Path of Pathing-style URL to the active atlas version for viewing.
+ * Only the v= value is replaced: all other bytes, including the allocation
+ * hash, remain untouched. This function never mutates its input.
+ */
+export function retargetAtlasUrl(url: string, currentVersion: string): string {
+  if (!url || !currentVersion) return url;
+  const match = /([?&]v=)([^&#]+)/.exec(url);
+  if (!match) return url;
+  let authoredVersion: string;
+  try { authoredVersion = decodeURIComponent(match[2]); }
+  catch { return url; }
+  if (!authoredVersion || authoredVersion === currentVersion) return url;
+  return `${url.slice(0, match.index)}${match[1]}${encodeURIComponent(currentVersion)}${url.slice(match.index + match[0].length)}`;
 }
 
 function checkName(kind: 'scarab' | 'chisel', list: 'scarabs' | 'chisels', stored: string): CompatIssue | null {
