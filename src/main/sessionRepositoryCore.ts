@@ -383,8 +383,8 @@ export async function recoverRecordDirectory(
   const backupPath = join(directory, BACKUP_RECORD_NAME);
   const preserved: string[] = [];
   if (await pathExists(currentPath)) {
+    const currentInspection = inspection.valid.find((candidate) => candidate.role === 'current');
     if (winner.role === 'temporary') {
-      const currentInspection = inspection.valid.find((candidate) => candidate.role === 'current');
       if (currentInspection) {
         await prepareBackupDestination(backupPath, policy, expectedType, retry);
         await retryTransientFileOperation(() => rename(currentPath, backupPath), retry);
@@ -392,7 +392,7 @@ export async function recoverRecordDirectory(
         preserved.push(await quarantine(currentPath, 'damaged', retry));
       }
     } else {
-      preserved.push(await quarantine(currentPath, 'lower', retry));
+      preserved.push(await quarantine(currentPath, currentInspection ? 'lower' : 'damaged', retry));
     }
   }
   await retryTransientFileOperation(() => rename(winner.path, currentPath), retry);

@@ -26,10 +26,13 @@ export type VersionKeepReason =
 export type VersionPruneReason =
   | 'periodic-count-pressure'
   | 'periodic-byte-pressure'
+  | 'periodic-count-and-byte-pressure'
   | 'ordinary-activation-count-pressure'
   | 'ordinary-activation-byte-pressure'
+  | 'ordinary-activation-count-and-byte-pressure'
   | 'excess-protected-count-pressure'
-  | 'excess-protected-byte-pressure';
+  | 'excess-protected-byte-pressure'
+  | 'excess-protected-count-and-byte-pressure';
 
 export interface RetentionDecision<Entry, Reason extends string> {
   entry: Entry;
@@ -102,9 +105,12 @@ export function applyVersionRetention(
     const category = entry.reason === 'periodic'
       ? 'periodic'
       : entry.reason === 'activation' ? 'ordinary-activation' : 'excess-protected';
+    const pressure = countPressure && bytePressure
+      ? 'count-and-byte'
+      : countPressure ? 'count' : 'byte';
     pruned.push({
       entry,
-      reason: `${category}-${countPressure ? 'count' : 'byte'}-pressure` as VersionPruneReason,
+      reason: `${category}-${pressure}-pressure` as VersionPruneReason,
     });
   }
 

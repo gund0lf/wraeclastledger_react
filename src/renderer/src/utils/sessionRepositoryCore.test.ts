@@ -239,6 +239,7 @@ describe('WP14 startup recovery', () => {
     expect(recovery.status).toBe('promoted');
     expect((recovery.record?.body as JsonObject).generation).toBe(1);
     expect(recovery.preserved).toHaveLength(1);
+    expect(recovery.preserved[0]).toContain('.damaged-');
     await expect(readFile(recovery.preserved[0], 'utf8')).resolves.toBe('corrupt-current');
   });
 

@@ -81,6 +81,7 @@ describe('WP14 per-session retention', () => {
     const result = applyVersionRetention(entries);
     expect(result.pruned.slice(0, 3).map(({ entry }) => entry.id))
       .toEqual(['periodic', 'ordinary', 'destructive-0']);
+    expect(result.pruned[0].reason).toBe('periodic-byte-pressure');
     expect(result.storagePressure).toBe(true);
     expect(result.kept.some(({ entry }) => entry.id === 'pinned')).toBe(true);
   });
@@ -94,6 +95,13 @@ describe('WP14 per-session retention', () => {
     expect(result.pruned).toHaveLength(0);
     expect(result.storagePressure).toBe(true);
     expect(result.refuseOptionalCheckpoints).toBe(true);
+  });
+
+  it('reports simultaneous count and byte pressure without under-reporting', () => {
+    const result = applyVersionRetention(Array.from({ length: 25 }, (_, index) => (
+      version(`periodic-${index}`, index, 'periodic', 100_000)
+    )));
+    expect(result.pruned[0].reason).toBe('periodic-count-and-byte-pressure');
   });
 });
 
