@@ -130,6 +130,9 @@ const createEnvelope = (
 
 const createCurrentV17Envelope = (seed: number): PersistEnvelope => {
   const state = stateDefaults();
+  // Preserve the historical v17 wire shape. Additive fields introduced after
+  // v17 are intentionally absent even though the live store defaults contain them.
+  delete state.retrospectiveCloseouts;
   const saved = createSavedSession(seed, 0);
   state.savedSessions = { [saved.id]: saved };
   state.maps = clone(saved.maps);

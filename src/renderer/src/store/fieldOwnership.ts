@@ -32,6 +32,7 @@ export const FIELD_OWNERSHIP = {
   regexSets: 'user-preference-cache',
   leagueOverride: 'user-preference-cache',
   atlasBonusByLeague: 'user-preference-cache',
+  retrospectiveCloseouts: 'user-preference-cache',
   regexBuilderGroups: 'user-preference-cache',
   scarabPresets: 'user-preference-cache',
   onboardingDismissed: 'user-preference-cache',

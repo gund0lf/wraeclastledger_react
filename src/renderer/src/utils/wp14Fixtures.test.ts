@@ -69,7 +69,6 @@ describe('WP14 Phase 0 deterministic fixture generation', () => {
   it('keeps every current v17 data field in full current envelopes', () => {
     const fixtures = generateSmallWp14Fixtures();
     for (const name of [
-      'legacy-v17-envelope.json',
       'active-named-dirty-envelope.json',
       'unnamed-working-envelope.json',
     ]) {
@@ -79,6 +78,14 @@ describe('WP14 Phase 0 deterministic fixture generation', () => {
       expect(envelope.version).toBe(WP14_STORE_VERSION);
       expect(Object.keys(envelope.state).sort()).toEqual(Object.keys(FIELD_OWNERSHIP).sort());
     }
+  });
+
+  it('preserves the pre-retrospective historical v17 wire shape', () => {
+    const fixture = generateSmallWp14Fixtures()
+      .find((item) => item.fileName === 'legacy-v17-envelope.json')!;
+    const envelope = parse<PersistEnvelope>(fixture.content);
+    expect(envelope.version).toBe(WP14_STORE_VERSION);
+    expect(envelope.state).not.toHaveProperty('retrospectiveCloseouts');
   });
 
   it('models current rawText but preserves the rawText-free saved-session behavior', () => {
