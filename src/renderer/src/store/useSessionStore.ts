@@ -7,8 +7,9 @@ import { tryFetchDivinePrice, sanitizeExclusionTerms } from '../utils/priceUtils
 import { confirmedLeagueSync, getCurrentLeague, normalizeLeagueOverride, setLeagueOverrideValue } from '../utils/league';
 import { ModGroupState, cloneDefaultGroups } from '../utils/regexBuilderPresets';
 import { isRetrospectiveLeague, normalizeLeagueKey } from '../utils/retrospectives';
+import { MAP_DEVICE_SLOT_COUNT } from '../../../shared/mapDevice';
 
-const STORE_VERSION = 17;
+const STORE_VERSION = 18;
 
 // WP4.2: divine price older than this is refreshed on the next init.
 const DIVINE_PRICE_STALE_MS = 30 * 60_000;
@@ -18,9 +19,10 @@ export const DEFAULT_SETTINGS: SessionSettings = {
   divinePrice: 0,
   chiselUsed: false, chiselType: '', chiselPrice: 0,
   mapType: '6-mod', isSplitSession: false,
-  fragmentsUsed: 0, smallNodesAllocated: 0, mountingModifiers: false,
+  multiplyingModifiersAllocated: false, fragmentCountOverride: null,
+  smallNodesAllocated: 0, mountingModifiers: false,
   baseMapCost: 0,
-  scarabs: Array(5).fill(null).map(() => ({ name: '', cost: 0 })),
+  scarabs: Array(MAP_DEVICE_SLOT_COUNT).fill(null).map(() => ({ name: '', cost: 0 })),
   atlasBonus: false,  // Atlas Bonus session snapshot. Seeded per-league from atlasBonusByLeague on a new live session; per-league progress is top-level, not here.
   leagueName: '',      // auto-populated on startup via poe.ninja
   atlasDetectedTags: [],
@@ -104,6 +106,23 @@ function stripRawText(m: MapData): MapData {
   return patched;
 }
 
+/** v17 -> v18: the old count conflated node allocation with fragment usage.
+ * The legacy Atlas Calc slider was bounded to 1..5 (with 0 meaning off), so
+ * carrying its positive value verbatim cannot exceed the current device cap.
+ * Carry it before defaults fill so historical sessions retain exact math. */
+function migrateMultiplyingModifiers(settings: Record<string, unknown>): void {
+  if (
+    settings['multiplyingModifiersAllocated'] === undefined
+    && settings['fragmentCountOverride'] === undefined
+  ) {
+    const legacyCount = settings['fragmentsUsed'];
+    const hasLegacyCount = typeof legacyCount === 'number' && legacyCount > 0;
+    settings['multiplyingModifiersAllocated'] = hasLegacyCount;
+    settings['fragmentCountOverride'] = hasLegacyCount ? legacyCount : null;
+  }
+  delete settings['fragmentsUsed'];
+}
+
 function migrateState(persisted: any): any {
   // v14→v15: replace investmentNeutralization === -1 sentinel with explicit investmentDismissed boolean
   if (persisted?.investmentNeutralization === -1) {
@@ -125,6 +144,7 @@ function migrateState(persisted: any): any {
     merged['atlasBonus'] = merged['mirageBonus'];
   }
   delete merged['mirageBonus'];
+  migrateMultiplyingModifiers(merged);
   for (const key of Object.keys(defaults)) {
     if (merged[key] === undefined) merged[key] = defaults[key];
   }
@@ -180,6 +200,7 @@ function migrateState(persisted: any): any {
       mergedSs['atlasBonus'] = mergedSs['mirageBonus'];
     }
     delete mergedSs['mirageBonus'];
+    migrateMultiplyingModifiers(mergedSs);
     for (const key of Object.keys(defaults)) {
       if (mergedSs[key] === undefined) mergedSs[key] = defaults[key];
     }

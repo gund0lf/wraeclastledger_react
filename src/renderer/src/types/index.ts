@@ -49,7 +49,10 @@ export interface SessionSettings {
   mapType: '6-mod' | '8-mod';
   // isSplitSession is derived from advSplitPrice > 0; kept for compat
   isSplitSession: boolean;
-  fragmentsUsed: number; smallNodesAllocated: number; mountingModifiers: boolean;
+  multiplyingModifiersAllocated: boolean;
+  /** null = derive from occupied Investment slots, then fully-unlocked default. */
+  fragmentCountOverride: number | null;
+  smallNodesAllocated: number; mountingModifiers: boolean;
   // rollingCostPerMap was removed in store v16 — the session total is derived
   // live via computeRollingSessionTotal (the stored value went stale by design).
   baseMapCost: number;

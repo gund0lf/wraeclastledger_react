@@ -7,6 +7,7 @@ import { computeMultiplier } from '../utils/profit';
 import { inferMapType } from '../utils/mapTypeDetection';
 import { confirmedLeagueSync } from '../utils/league';
 import { COLOR, FONT } from '../utils/uiTokens';
+import { MAP_DEVICE_SLOT_COUNT, MULTIPLYING_EFFECT_PER_FRAGMENT } from '../../../shared/mapDevice';
 
 type ConfigStep = 'mounting' | 'fragments' | 'nodes' | 'atlasBonus';
 
@@ -131,7 +132,7 @@ export const AtlasCalcModule = () => {
     useSessionKeys('maps', 'settings', 'updateSetting', 'setAtlasBonus', 'atlasBonusByLeague', 'activeSessionId', 'sessionNonce');
 
   // ── Derived: always fresh from real settings ──────────────────────────────
-  const isConfigured = settings.mountingModifiers || settings.fragmentsUsed > 0 || settings.smallNodesAllocated > 0;
+  const isConfigured = settings.mountingModifiers || settings.multiplyingModifiersAllocated || settings.smallNodesAllocated > 0;
   // Note: we deliberately do NOT check atlasTreeUrl here — pathofpathing always
   // emits a hash even for a blank tree, which would wrongly skip the wizard.
   // The wizard should only hide when actual calc values are set, or dismissed.
@@ -208,11 +209,11 @@ export const AtlasCalcModule = () => {
 
   // WP1: single source of truth for multiplier math (utils/profit.ts)
   const {
-    multiplier, fragmentEffect, nodeEffect, scarabOfRiskMods, effectiveMods, mountBonus,
+    multiplier, fragmentCount, fragmentCountSource, fragmentEffect, nodeEffect, scarabOfRiskMods, effectiveMods, mountBonus,
     observedModAverage, observedSampleSize, usesObservedMods,
   } = useMemo(
     () => computeMultiplier(settings, maps),
-    [settings.fragmentsUsed, settings.smallNodesAllocated, settings.mountingModifiers, settings.mapType, settings.scarabs, maps] // eslint-disable-line react-hooks/exhaustive-deps
+    [settings.multiplyingModifiersAllocated, settings.fragmentCountOverride, settings.smallNodesAllocated, settings.mountingModifiers, settings.mapType, settings.scarabs, maps] // eslint-disable-line react-hooks/exhaustive-deps
     );
 
   // ── Wizard answer handlers ────────────────────────────────────────────────
@@ -231,8 +232,8 @@ export const AtlasCalcModule = () => {
 
   const answerFragments = (yes: boolean) => {
     setUserAnswered(true);
-    if (!yes) updateSetting('fragmentsUsed', 0);
-    else if (settings.fragmentsUsed === 0) updateSetting('fragmentsUsed', 5);
+    updateSetting('multiplyingModifiersAllocated', yes);
+    if (!yes) updateSetting('fragmentCountOverride', null);
     if (editingPill) { finishWizard(); return; }
     setWizardStep('nodes');
   };
@@ -282,7 +283,7 @@ export const AtlasCalcModule = () => {
 
   const configCount = [
     settings.mountingModifiers,
-    settings.fragmentsUsed > 0,
+    settings.multiplyingModifiersAllocated,
     settings.smallNodesAllocated > 0,
     settings.atlasBonus,
   ].filter(Boolean).length;
@@ -298,6 +299,11 @@ export const AtlasCalcModule = () => {
     : `${settings.mapType} · ${fmt1(effectiveMods)} effective mods${scarabOfRiskMods > 0 ? ` (Risk +${scarabOfRiskMods})` : ''}`;
   const breakdownMeta = `+${fmt1(modifierEffect)}% mods · ${settings.atlasBonus ? '+25% IIQ' : 'no flat IIQ'}`;
   const configMeta = `${usesObservedMods && observedModAverage != null ? `Observed ${observedModAverage.toFixed(1)}` : settings.mapType} · ${configCount} on`;
+  const fragmentSourceLabel = fragmentCountSource === 'override'
+    ? `Override · ${fragmentCount} fragments`
+    : fragmentCountSource === 'observed'
+      ? `Observed from Investment · ${fragmentCount} fragments`
+      : `Default · ${fragmentCount} fragments`;
 
   const questionContent = activeStep && (
     <Stack gap={6}>
@@ -309,15 +315,25 @@ export const AtlasCalcModule = () => {
       {activeStep === 'fragments' && (
         <>
           <Question question="Using Multiplying Modifiers fragments?"
-            hint="3% increased effect of Explicit Modifiers on your Maps per Fragment used with the Map. Up to 5 fragments → 15% increased effect."
+            hint={`${MULTIPLYING_EFFECT_PER_FRAGMENT}% increased effect of Explicit Modifiers on your Maps per Fragment used with the Map. Up to ${MAP_DEVICE_SLOT_COUNT} fragments → ${MAP_DEVICE_SLOT_COUNT * MULTIPLYING_EFFECT_PER_FRAGMENT}% increased effect.`}
             onYes={() => answerFragments(true)} onNo={() => answerFragments(false)} />
-          {settings.fragmentsUsed > 0 && (
+          {settings.multiplyingModifiersAllocated && (
             <Stack gap={2}>
-              <Text size="xs" c="dimmed">Fragments: {settings.fragmentsUsed} (+{fragmentEffect}%)</Text>
-              <Slider value={settings.fragmentsUsed} onChange={(v) => updateSetting('fragmentsUsed', v)}
-                min={1} max={5} step={1} label={(v) => `${v} frags (+${v * 3}%)`}
-                marks={[1, 2, 3, 4, 5].map((v) => ({ value: v, label: String(v) }))}
-                size="xs" mb={6} />
+              <Text size="xs" c="dimmed">{fragmentSourceLabel} (+{fragmentEffect}%)</Text>
+              <Slider value={fragmentCount} onChange={(v) => updateSetting('fragmentCountOverride', v)}
+                min={0} max={MAP_DEVICE_SLOT_COUNT} step={1} label={(v) => `${v} frags (+${v * MULTIPLYING_EFFECT_PER_FRAGMENT}%)`}
+                marks={Array.from({ length: MAP_DEVICE_SLOT_COUNT + 1 }, (_, value) => ({ value, label: String(value) }))}
+                size="xs" mb={18} />
+              {settings.fragmentCountOverride !== null && (
+                <Button
+                  size="compact-xs"
+                  variant="default"
+                  style={{ alignSelf: 'center' }}
+                  onClick={() => updateSetting('fragmentCountOverride', null)}
+                >
+                  Reset to observed/default
+                </Button>
+              )}
               <Button size="xs" variant="subtle" onClick={() => editingPill ? finishWizard() : setWizardStep('nodes')}>
                 {editingPill ? 'Done' : 'Next'}
               </Button>
@@ -432,10 +448,10 @@ export const AtlasCalcModule = () => {
                         <Text size="xs">+{fmt1(mountBonus)}%</Text>
                       </Group>
                     )}
-                    {fragmentEffect > 0 && (
+                    {settings.multiplyingModifiersAllocated && (
                       <Group justify="space-between" wrap="nowrap">
-                        <Text size="xs" c="dimmed">Fragments ({settings.fragmentsUsed} × 3%)</Text>
-                        <Text size="xs">+{fragmentEffect}%</Text>
+                        <Text size="xs" c="dimmed">Multiplying ({fragmentCount} fragments × {MULTIPLYING_EFFECT_PER_FRAGMENT}%)</Text>
+                        <Text size="xs">+{fmt1(fragmentEffect)}%</Text>
                       </Group>
                     )}
                     {nodeEffect > 0 && (
@@ -523,8 +539,8 @@ export const AtlasCalcModule = () => {
                       />
                       <ConfigTile
                         name="Fragments"
-                        value={settings.fragmentsUsed > 0 ? `${settings.fragmentsUsed} × 3% = +${fragmentEffect}%` : 'Off'}
-                        active={settings.fragmentsUsed > 0}
+                        value={settings.multiplyingModifiersAllocated ? `${fragmentSourceLabel} · +${fmt1(fragmentEffect)}%` : 'Off'}
+                        active={settings.multiplyingModifiersAllocated}
                         onClick={() => editPill('fragments')}
                       />
                       <ConfigTile

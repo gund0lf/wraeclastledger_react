@@ -6,7 +6,7 @@ export interface AtlasStatGroup {
 export interface AtlasCalcSettingsPatch {
   smallNodesAllocated?: number;
   mountingModifiers?: true;
-  fragmentsUsed?: 5;
+  multiplyingModifiersAllocated?: true;
 }
 
 export interface AtlasStatsReadResult {
@@ -14,7 +14,10 @@ export interface AtlasStatsReadResult {
   error: string | null;
 }
 
-/** Convert Path of Pathing's displayed stat groups into the Atlas Calc inputs. */
+/** Convert Path of Pathing's displayed stat groups into a positive-only Atlas
+ * Calc patch. A detected stat may enable a setting, but an absent stat is not
+ * authoritative evidence that it is off: the upstream wording or scrape may
+ * have changed. Users disable an existing setting explicitly in Atlas Calc. */
 export function deriveAtlasCalcSettings(groups: AtlasStatGroup[]): AtlasCalcSettingsPatch {
   const allStats = groups.flatMap((group) => group.stats);
   const patch: AtlasCalcSettingsPatch = {};
@@ -28,7 +31,7 @@ export function deriveAtlasCalcSettings(groups: AtlasStatGroup[]): AtlasCalcSett
     patch.mountingModifiers = true;
   }
   if (allStats.some((stat) => stat.includes('per Fragment used with Map'))) {
-    patch.fragmentsUsed = 5;
+    patch.multiplyingModifiersAllocated = true;
   }
   return patch;
 }

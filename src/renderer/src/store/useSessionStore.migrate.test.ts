@@ -15,6 +15,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { migrateState, DEFAULT_SETTINGS, mergePersistedSessionState } from './useSessionStore';
+import { computeMultiplier } from '../utils/profit';
 
 /** Minimal persisted-state factory. Fields mimic real localStorage payloads. */
 const persisted = (over: Record<string, any> = {}): Record<string, any> => ({
@@ -105,6 +106,58 @@ describe('migrateState — v13 -> v14 mirageBonus -> atlasBonus carry', () => {
     }));
     expect(out.savedSessions.s1.settings.atlasBonus).toBe(true);
     expect(out.savedSessions.s1.settings).not.toHaveProperty('mirageBonus');
+  });
+});
+
+describe('migrateState — legacy fragmentsUsed -> Multiplying Modifiers', () => {
+  const legacySettings = (fragmentsUsed?: number): Record<string, unknown> => {
+    const settings: Record<string, unknown> = { ...DEFAULT_SETTINGS };
+    delete settings.multiplyingModifiersAllocated;
+    delete settings.fragmentCountOverride;
+    if (fragmentsUsed !== undefined) settings.fragmentsUsed = fragmentsUsed;
+    return settings;
+  };
+
+  it('carries a positive legacy count before defaults fill and preserves multiplier math', () => {
+    const out = migrateState(persisted({ settings: legacySettings(3) }));
+    expect(out.settings.multiplyingModifiersAllocated).toBe(true);
+    expect(out.settings.fragmentCountOverride).toBe(3);
+    expect(out.settings).not.toHaveProperty('fragmentsUsed');
+    expect(computeMultiplier(out.settings).fragmentEffect).toBe(9);
+  });
+
+  it('maps zero or absent legacy counts to node off with no override', () => {
+    for (const settings of [legacySettings(0), legacySettings()]) {
+      const out = migrateState(persisted({ settings }));
+      expect(out.settings.multiplyingModifiersAllocated).toBe(false);
+      expect(out.settings.fragmentCountOverride).toBeNull();
+      expect(out.settings).not.toHaveProperty('fragmentsUsed');
+    }
+  });
+
+  it('applies the carry inside saved sessions too', () => {
+    const out = migrateState(persisted({
+      savedSessions: { s1: { id: 's1', name: 'old', settings: legacySettings(4) } },
+    }));
+    const settings = out.savedSessions.s1.settings;
+    expect(settings.multiplyingModifiersAllocated).toBe(true);
+    expect(settings.fragmentCountOverride).toBe(4);
+    expect(settings).not.toHaveProperty('fragmentsUsed');
+    expect(computeMultiplier(settings).fragmentEffect).toBe(12);
+  });
+
+  it('does not overwrite settings that already use the new representation', () => {
+    const out = migrateState(persisted({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        multiplyingModifiersAllocated: true,
+        fragmentCountOverride: 0,
+        fragmentsUsed: 5,
+      },
+    }));
+    expect(out.settings.multiplyingModifiersAllocated).toBe(true);
+    expect(out.settings.fragmentCountOverride).toBe(0);
+    expect(out.settings).not.toHaveProperty('fragmentsUsed');
   });
 });
 

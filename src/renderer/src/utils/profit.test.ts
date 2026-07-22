@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { SessionSettings, LootItem, MapData } from '../types';
 import {
   computeCosts, computeProfit, computeMultiplier,
-  computeRollingSessionTotal, isPreservationScarab,
+  computeRollingSessionTotal, isPreservationScarab, resolveFragmentCount,
 } from './profit';
 
 /* ------------------------------------------------------------------ */
@@ -22,7 +22,7 @@ const baseSettings = (over: Partial<SessionSettings> = {}): SessionSettings => (
   divinePrice: 0,
   chiselUsed: false, chiselType: '', chiselPrice: 0,
   mapType: '6-mod', isSplitSession: false,
-  fragmentsUsed: 0, smallNodesAllocated: 0, mountingModifiers: false,
+  multiplyingModifiersAllocated: false, fragmentCountOverride: null, smallNodesAllocated: 0, mountingModifiers: false,
   baseMapCost: 0,
   scarabs: Array(5).fill(null).map(() => ({ name: '', cost: 0 })),
   atlasBonus: false,
@@ -60,7 +60,7 @@ const SAD_PRESERVATION = (): SessionSettings => baseSettings({
   baseMapCost: 1500,
   chiselUsed: true, chiselType: 'Avarice', chiselPrice: 150,
   mapType: '6-mod',
-  fragmentsUsed: 5, smallNodesAllocated: 16, mountingModifiers: true,
+  multiplyingModifiersAllocated: true, fragmentCountOverride: 5, smallNodesAllocated: 16, mountingModifiers: true,
   scarabs: [
     { name: 'Horned Scarab of Preservation', cost: 7 },
     { name: 'Horned Scarab of Bloodlines',   cost: 100 },
@@ -267,6 +267,57 @@ describe('computeProfit — edge cases', () => {
 /* Multiplier                                                          */
 /* ------------------------------------------------------------------ */
 
+describe('resolveFragmentCount', () => {
+  it('returns off and ignores slots and overrides when the node is not allocated', () => {
+    const result = resolveFragmentCount(baseSettings({
+      fragmentCountOverride: 4,
+      scarabs: [{ name: 'Sacrifice at Dusk', cost: 1 }],
+    }));
+    expect(result).toEqual({ count: 0, source: 'off', effect: 0 });
+  });
+
+  it('uses an explicit override before observed Investment slots', () => {
+    const result = resolveFragmentCount(baseSettings({
+      multiplyingModifiersAllocated: true,
+      fragmentCountOverride: 2,
+      scarabs: [{ name: 'Sacrifice at Dusk', cost: 1 }, { name: 'Sacrifice at Dawn', cost: 1 }],
+    }));
+    expect(result).toEqual({ count: 2, source: 'override', effect: 6 });
+  });
+
+  it('preserves an explicit zero as an override rather than treating it as off', () => {
+    const result = resolveFragmentCount(baseSettings({
+      multiplyingModifiersAllocated: true,
+      fragmentCountOverride: 0,
+    }));
+    expect(result).toEqual({ count: 0, source: 'override', effect: 0 });
+  });
+
+  it('observes occupied Investment slots when no override exists', () => {
+    const result = resolveFragmentCount(baseSettings({
+      multiplyingModifiersAllocated: true,
+      scarabs: [{ name: 'Fragment A', cost: 0 }, { name: '', cost: 99 }, { name: 'Fragment B', cost: 1 }],
+    }));
+    expect(result).toEqual({ count: 2, source: 'observed', effect: 6 });
+  });
+
+  it('uses the fully unlocked device capacity when no occupied slots are observed', () => {
+    const result = resolveFragmentCount(baseSettings({ multiplyingModifiersAllocated: true }));
+    expect(result).toEqual({ count: 5, source: 'default', effect: 15 });
+  });
+
+  it('clamps and rounds overrides to the map-device capacity', () => {
+    expect(resolveFragmentCount(baseSettings({
+      multiplyingModifiersAllocated: true,
+      fragmentCountOverride: 99,
+    })).count).toBe(5);
+    expect(resolveFragmentCount(baseSettings({
+      multiplyingModifiersAllocated: true,
+      fragmentCountOverride: 2.6,
+    })).count).toBe(3);
+  });
+});
+
 describe('computeMultiplier', () => {
   it('reproduces the Sad fixture multiplier: 1.63x (5 frags, 16 nodes, mounting, 1 Risk scarab)', () => {
     const m = computeMultiplier(SAD_PRESERVATION());
@@ -280,7 +331,7 @@ describe('computeMultiplier', () => {
 
   it('8-mod base and no mounting', () => {
     const m = computeMultiplier(baseSettings({
-      mapType: '8-mod', fragmentsUsed: 2, smallNodesAllocated: 10, mountingModifiers: false,
+      mapType: '8-mod', multiplyingModifiersAllocated: true, fragmentCountOverride: 2, smallNodesAllocated: 10, mountingModifiers: false,
     }));
     expect(m.effectiveMods).toBe(8);
     expect(m.mountBonus).toBe(0);

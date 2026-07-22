@@ -539,9 +539,9 @@ export const AtlasTreeModule = () => {
       updateSetting('mountingModifiers', true);
       appliedParts.push('Mounting Modifiers');
     }
-    if (patch.fragmentsUsed) {
-      updateSetting('fragmentsUsed', 5);
-      appliedParts.push('5 fragments');
+    if (patch.multiplyingModifiersAllocated) {
+      updateSetting('multiplyingModifiersAllocated', true);
+      appliedParts.push('Multiplying Modifiers');
     }
     if (appliedParts.length > 0) {
       setCalcApplied(appliedParts.join(', '));

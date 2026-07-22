@@ -21,6 +21,7 @@ import { PoeItemIcon } from '../components/ui/PoeItemIcon';
 import { IconTrash, IconDeviceFloppy, IconChevronDown, IconRefresh, IconX, IconSettings, IconLock } from '@tabler/icons-react';
 import { CollapsibleSection } from '../components/ui/CollapsibleSection';
 import { COLOR, FONT } from '../utils/uiTokens'
+import { MAP_DEVICE_SLOT_COUNT } from '../../../shared/mapDevice';
 
 const AdvSection = ({ title, filled, children }: {
   title: string; filled: boolean; children: React.ReactNode;
@@ -542,7 +543,7 @@ export const InvestmentModule = () => {
                     updateSetting('chiselUsed', false);
                     updateSetting('chiselType', '');
                     updateSetting('chiselPrice', 0);
-                    updateSetting('scarabs', Array(5).fill(null).map(() => ({ name: '', cost: 0 })));
+                    updateSetting('scarabs', Array(MAP_DEVICE_SLOT_COUNT).fill(null).map(() => ({ name: '', cost: 0 })));
                     updateAdvSetting('advChaos', 0);
                     updateAdvSetting('advExalt', 0);
                     updateAdvSetting('advExaltPrice', 0);

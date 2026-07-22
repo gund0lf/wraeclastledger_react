@@ -14,6 +14,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: 'Unreleased',
     changes: [
       'Corrective game-data revision 3 removes Obscured Delirium Orb and all four Harbinger Scarabs from new-session pickers after Allflame\'s in-game item list confirmed they are unavailable. Existing sessions and shared strategies keep their historical selections intact.',
+      'Multiplying Modifiers now derives its fragment count from occupied Investment slots, falls back to the fully unlocked Map Device capacity, and supports an explicit 0–5 override. Atlas Calc clearly distinguishes Off, observed, default, and overridden counts while keeping all multiplier and shared-profit math in one calculation path.',
     ],
   },
   {

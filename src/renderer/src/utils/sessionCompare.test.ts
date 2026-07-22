@@ -21,7 +21,7 @@ const baseSettings = (over: Partial<SessionSettings> = {}): SessionSettings => (
   divinePrice: 0,
   chiselUsed: false, chiselType: '', chiselPrice: 0,
   mapType: '6-mod', isSplitSession: false,
-  fragmentsUsed: 0, smallNodesAllocated: 0, mountingModifiers: false,
+  multiplyingModifiersAllocated: false, fragmentCountOverride: null, smallNodesAllocated: 0, mountingModifiers: false,
   baseMapCost: 0,
   scarabs: Array(5).fill(null).map(() => ({ name: '', cost: 0 })),
   atlasBonus: false,
@@ -71,7 +71,7 @@ describe('buildCompareColumn', () => {
   it('matches the profit engine for a session with maps + return CSV', () => {
     const settings = baseSettings({
       divinePrice: 200, baseMapCost: 100,
-      fragmentsUsed: 5, smallNodesAllocated: 16,
+      multiplyingModifiersAllocated: true, fragmentCountOverride: 5, smallNodesAllocated: 16,
     });
     const session = mkSession({
       settings,

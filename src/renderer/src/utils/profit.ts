@@ -20,6 +20,7 @@
  *     It is removed entirely in store migration v16 (WP2).
  */
 import { SessionSettings, LootItem, ScarabSlot, MapData } from '../types';
+import { MAP_DEVICE_SLOT_COUNT, MULTIPLYING_EFFECT_PER_FRAGMENT } from '../../../shared/mapDevice';
 
 /* ------------------------------------------------------------------ */
 /* Scarabs                                                             */
@@ -150,7 +151,9 @@ export function computeProfit(input: ProfitInputs): ProfitResult {
 
 export interface MultiplierResult {
   multiplier: number;
-  fragmentEffect: number;   // fragmentsUsed x 3
+  fragmentCount: number;
+  fragmentCountSource: FragmentCountSource;
+  fragmentEffect: number;
   nodeEffect: number;       // smallNodesAllocated x 2
   scarabOfRiskMods: number; // +2 mods per "...of Risk" scarab
   effectiveMods: number;    // selected/observed base mods + scarabOfRiskMods
@@ -167,6 +170,48 @@ export interface ObservedModSample {
   sampleSize: number;
 }
 
+export type FragmentCountSource = 'off' | 'override' | 'observed' | 'default';
+
+export interface FragmentCountResolution {
+  count: number;
+  source: FragmentCountSource;
+  effect: number;
+}
+
+type FragmentSettings = Pick<
+  SessionSettings,
+  'multiplyingModifiersAllocated' | 'fragmentCountOverride' | 'scarabs'
+>;
+
+/** Resolve Multiplying Modifiers from one source of truth. Explicit override
+ * wins; otherwise occupied Investment slots are observed when nonzero, then
+ * the fully-unlocked device capacity is the documented default. */
+export function resolveFragmentCount(settings: FragmentSettings): FragmentCountResolution {
+  if (!settings.multiplyingModifiersAllocated) return { count: 0, source: 'off', effect: 0 };
+
+  if (settings.fragmentCountOverride !== null) {
+    const count = Math.min(
+      MAP_DEVICE_SLOT_COUNT,
+      Math.max(0, Math.round(settings.fragmentCountOverride)),
+    );
+    return { count, source: 'override', effect: count * MULTIPLYING_EFFECT_PER_FRAGMENT };
+  }
+
+  const occupied = settings.scarabs
+    .slice(0, MAP_DEVICE_SLOT_COUNT)
+    .filter((slot) => slot.name.trim().length > 0)
+    .length;
+  if (occupied > 0) {
+    return { count: occupied, source: 'observed', effect: occupied * MULTIPLYING_EFFECT_PER_FRAGMENT };
+  }
+
+  return {
+    count: MAP_DEVICE_SLOT_COUNT,
+    source: 'default',
+    effect: MAP_DEVICE_SLOT_COUNT * MULTIPLYING_EFFECT_PER_FRAGMENT,
+  };
+}
+
 /** Exact observed mode is deliberately all-or-nothing: a partial advanced-copy
  * sample could be biased toward whichever maps the user happened to copy that
  * way. Unidentified maps also make the session incomplete. */
@@ -180,10 +225,11 @@ export function computeObservedModSample(maps: readonly ObservedModMap[]): Obser
 }
 
 export function computeMultiplier(
-  settings: Pick<SessionSettings, 'fragmentsUsed' | 'smallNodesAllocated' | 'mountingModifiers' | 'mapType' | 'scarabs'>,
+  settings: Pick<SessionSettings, 'multiplyingModifiersAllocated' | 'fragmentCountOverride' | 'smallNodesAllocated' | 'mountingModifiers' | 'mapType' | 'scarabs'>,
   maps: readonly ObservedModMap[] = [],
 ): MultiplierResult {
-  const fragmentEffect   = settings.fragmentsUsed * 3;
+  const fragments        = resolveFragmentCount(settings);
+  const fragmentEffect   = fragments.effect;
   const nodeEffect       = settings.smallNodesAllocated * 2;
   const scarabOfRiskMods = settings.scarabs.filter((s) => s.name.toLowerCase().includes('of risk')).length * 2;
   const observed         = computeObservedModSample(maps);
@@ -193,7 +239,8 @@ export function computeMultiplier(
   const mountBonus       = settings.mountingModifiers ? effectiveMods * 2 : 0;
   const multiplier       = 1 + (fragmentEffect + nodeEffect + mountBonus) / 100;
   return {
-    multiplier, fragmentEffect, nodeEffect, scarabOfRiskMods, effectiveMods, mountBonus,
+    multiplier, fragmentCount: fragments.count, fragmentCountSource: fragments.source,
+    fragmentEffect, nodeEffect, scarabOfRiskMods, effectiveMods, mountBonus,
     observedModAverage: observed?.average ?? null,
     observedSampleSize: observed?.sampleSize ?? 0,
     usesObservedMods,

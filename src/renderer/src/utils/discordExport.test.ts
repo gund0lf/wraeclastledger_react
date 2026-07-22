@@ -24,7 +24,7 @@ const settings = (over: Partial<SessionSettings> = {}): SessionSettings => ({
   divinePrice: 500,
   chiselUsed: true, chiselType: 'Avarice', chiselPrice: 150,
   mapType: '6-mod', isSplitSession: false,
-  fragmentsUsed: 5, smallNodesAllocated: 16, mountingModifiers: true,
+  multiplyingModifiersAllocated: true, fragmentCountOverride: 5, smallNodesAllocated: 16, mountingModifiers: true,
   baseMapCost: 1500, // (the legacy stored rollingCostPerMap:2120 field was removed in v16 — the builder derives the session total live)
   scarabs: [
     { name: 'Horned Scarab of Preservation', cost: 7 },
@@ -110,7 +110,7 @@ describe('buildDiscordExport — corrected money lines (Sad fixture parity)', ()
     const out = buildDiscordExport({
       maps: observedMaps,
       settings: settings({
-        fragmentsUsed: 0, smallNodesAllocated: 0, mountingModifiers: true,
+        multiplyingModifiersAllocated: false, fragmentCountOverride: null, smallNodesAllocated: 0, mountingModifiers: true,
         scarabs: [],
       }),
       lootItems: [], baselineTotal: 0, investmentNeutralization: 0,

@@ -13,7 +13,7 @@ describe('deriveAtlasCalcSettings', () => {
     }])).toEqual({
       smallNodesAllocated: 16,
       mountingModifiers: true,
-      fragmentsUsed: 5,
+      multiplyingModifiersAllocated: true,
     });
   });
 

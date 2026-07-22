@@ -77,7 +77,7 @@ export const StrategyBrowserModule = () => {
       const patch = deriveAtlasCalcSettings(result.groups);
       if (patch.smallNodesAllocated !== undefined) updateSetting('smallNodesAllocated', patch.smallNodesAllocated);
       if (patch.mountingModifiers) updateSetting('mountingModifiers', true);
-      if (patch.fragmentsUsed) updateSetting('fragmentsUsed', patch.fragmentsUsed);
+      if (patch.multiplyingModifiersAllocated) updateSetting('multiplyingModifiersAllocated', true);
     }).catch((error: unknown) => {
       if (useSessionStore.getState().sessionNonce !== targetSessionNonce) return;
       const message = error instanceof Error ? error.message : 'unknown error';
