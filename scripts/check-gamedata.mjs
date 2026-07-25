@@ -57,6 +57,7 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { cargoStringLiteral, decodeCargoText } from './cargo-query.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MANIFEST_PATH = join(__dirname, '..', 'src', 'shared', 'gameData', 'manifest.ts');
@@ -202,8 +203,8 @@ async function fetchJson(url) {
  */
 async function fetchCargoRows(cfg) {
   const fields = `${FIELD.name},${FIELD.dropEnabled},${FIELD.removalVersion}`;
-  let where = `${FIELD.class}="${cfg.cargoClass.replace(/"/g, '\\"')}"`;
-  if (cfg.nameLike) where += ` AND ${FIELD.name} LIKE "${cfg.nameLike.replace(/"/g, '\\"')}"`;
+  let where = `${FIELD.class}=${cargoStringLiteral(cfg.cargoClass)}`;
+  if (cfg.nameLike) where += ` AND ${FIELD.name} LIKE ${cargoStringLiteral(cfg.nameLike)}`;
 
   const pageSize = 500;
   const rows = [];
@@ -226,8 +227,9 @@ async function fetchCargoRows(cfg) {
     }
     for (const r of batch) {
       const t = r?.title ?? {};
-      const name = t[READ.name];
-      if (typeof name !== 'string' || name.length === 0) continue;
+      const rawName = t[READ.name];
+      if (typeof rawName !== 'string' || rawName.length === 0) continue;
+      const name = decodeCargoText(rawName);
       // Drop-disabled signal: non-empty removal_version is primary (that's what
       // the wiki's drop-disabled list keys on); drop_enabled=false secondary.
       // NOTE the spaced READ keys — the query used underscores, the JSON doesn't.
