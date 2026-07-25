@@ -74,9 +74,9 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
   // the mod section would be and must NOT count as a mod.
   const isUnidentified  = lines.includes('Unidentified');
 
-  // Ctrl+Alt+C advanced tooltips include exactly one header per real affix,
-  // even when that affix produces several description lines. Normal Ctrl+C
-  // has no headers, so leave the exact count unknown rather than guessing.
+  // Since 3.29, regular Ctrl+C uses the advanced format and includes exactly
+  // one header per real affix, even when that affix has several description
+  // lines. Legacy headerless copies leave the exact count unknown.
   const explicitHeaders = lines.filter((line) => /^\{ (?:Prefix|Suffix) Modifier\b/.test(line));
   const explicitModCount = !isUnidentified && explicitHeaders.length > 0
     ? explicitHeaders.length

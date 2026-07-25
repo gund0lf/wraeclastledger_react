@@ -16,7 +16,11 @@ describe('rollover cache expiry and mutation guard integration', () => {
   it('expiry detects the next league while preserving prior-league live provenance and price', async () => {
     vi.useFakeTimers({ now: new Date('2026-07-16T12:00:00Z') });
     const probe = vi.fn(async (league: string) => ({
-      lines: league === 'Ancestors' ? lines(8, 180) : lines(8, 310),
+      lines: league === 'Allflame'
+        ? []
+        : league === 'Ancestors'
+          ? lines(8, 180)
+          : lines(8, 310),
       error: null,
     }));
     vi.stubGlobal('window', {
@@ -51,7 +55,9 @@ describe('rollover cache expiry and mutation guard integration', () => {
     const probe = vi.fn(async (league: string) => ({
       // One line lets the price lookup succeed but is insufficient to confirm
       // a league during detection (>5 is required).
-      lines: league === 'Mirage' && Date.now() < Date.parse('2026-07-20T22:00:00Z')
+      lines: league === 'Allflame'
+        ? lines(1, 320)
+        : league === 'Mirage' && Date.now() < Date.parse('2026-07-20T22:00:00Z')
         ? lines(8, 250)
         : lines(1, 320),
       error: null,

@@ -73,9 +73,10 @@ describe('bundled manifest invariants', () => {
       'Metamorph Scarab of Curiosity', 'Metamorph Scarab of Specimen',
     ]) expect(scarab(name)?.status, name).toBe('removed');
 
-    for (const name of ['Abyssal', 'Fossilised', 'Kalguuran', 'Obscured', 'Timeless']) {
+    for (const name of ['Abyssal', 'Fossilised', 'Kalguuran', 'Timeless']) {
       expect(deli(name)?.status, name).toBe('removed');
     }
+    expect(deli('Obscured')?.status).toBe('active');
     expect(deli('Primal')).toBeUndefined();
 
     expect(astro('Enshrouded Astrolabe')).toMatchObject({
@@ -98,7 +99,7 @@ describe('bundled manifest invariants', () => {
 
     const deli = selectableDeliriumOrbList();
     expect(deli.some((e) => e.value === 'Fossilised')).toBe(false);
-    expect(deli.some((e) => e.value === 'Obscured')).toBe(false);
+    expect(deli.some((e) => e.value === 'Obscured')).toBe(true);
 
     const astrolabes = selectableAstrolabeList();
     expect(astrolabes.some((e) => e.value === 'Deceptive Astrolabe')).toBe(true);

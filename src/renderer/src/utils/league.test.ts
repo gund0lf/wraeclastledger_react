@@ -11,10 +11,8 @@ import {
   LEAGUE_ENDS_AT, isLeagueEnded, activeKnownLeagues,
 } from './league';
 
-// D5(b): detection consults activeKnownLeagues() with REAL time. The legacy
-// probe expectations assume KNOWN_LEAGUES[0] (Ancestors) is still live, so
-// the whole suite pins the clock to before its endsAt — otherwise these
-// tests would silently change behaviour after 2026-07-17.
+// D5(b): lifecycle tests cross the retired 3.28 leagues' endsAt values while
+// the undated Allflame entry remains the current detection target.
 const BEFORE_EVENT_END = new Date('2026-07-01T12:00:00Z');
 
 type LeagueModule = typeof import('./league');
@@ -59,7 +57,7 @@ describe('D5(b) — ended-league handling', () => {
     expect(activeKnownLeagues(BEFORE_END)).toEqual([...KNOWN_LEAGUES]);
     const after = activeKnownLeagues(AFTER_END);
     expect(after).not.toContain(ANCESTORS);
-    expect(after[0]).toBe('Mirage');
+    expect(after[0]).toBe('Allflame');
   });
 
   it('activeKnownLeagues FAILS OPEN to the full list if everything is ended', () => {
@@ -74,9 +72,9 @@ describe('D5(b) — ended-league handling', () => {
     vi.setSystemTime(new Date(AFTER_END));
     const league = await freshLeague();
     // Frozen data scenario: dead Ancestors still returns a full response.
-    const spy = stubProbe({ [ANCESTORS]: 10, Mirage: 10 });
+    const spy = stubProbe({ Allflame: 10, [ANCESTORS]: 10, Mirage: 10 });
     const ctx = await league.getActiveContext();
-    expect(ctx).toEqual({ leagueName: 'Mirage', source: 'detected' });
+    expect(ctx).toEqual({ leagueName: 'Allflame', source: 'detected' });
     expect(spy).not.toHaveBeenCalledWith(ANCESTORS);
   });
 
@@ -84,13 +82,15 @@ describe('D5(b) — ended-league handling', () => {
     vi.setSystemTime(new Date(AFTER_END));
     const league = await freshLeague();
     stubProbe({}); // every probe fails
-    const ctx = await league.getActiveContext();
-    expect(ctx).toEqual({ leagueName: 'Mirage', source: 'fallback' });
+    expect(await league.getActiveContext()).toEqual({
+      leagueName: 'Allflame',
+      source: 'fallback',
+    });
   });
 
   it('invalidates a cached context when its league ends while the app stays open', async () => {
     const league = await freshLeague();
-    const spy = stubProbe({ [ANCESTORS]: 10, Mirage: 10 });
+    const spy = stubProbe({ Allflame: 0, [ANCESTORS]: 10, Mirage: 10 });
     expect(await league.getCurrentLeague()).toBe(ANCESTORS);
 
     vi.setSystemTime(new Date(AFTER_END));
@@ -109,19 +109,20 @@ describe('D5(b) — ended-league handling', () => {
     expect(ctx).toEqual({ leagueName: ANCESTORS, source: 'override' });
   });
 
-  it('all-ended interregnum fails closed to an unconfirmed fallback', async () => {
+  it('uses the undated successor after both 3.28 leagues have ended', async () => {
     vi.setSystemTime(new Date(Date.parse(LEAGUE_ENDS_AT.Mirage) + 60_000));
     const league = await freshLeague();
-    const spy = stubProbe({ Ancestors: 10, Mirage: 10 });
+    const spy = stubProbe({ Allflame: 10, Ancestors: 10, Mirage: 10 });
     const ctx = await league.getActiveContext();
-    expect(ctx.source).toBe('fallback');
-    expect(league.confirmedLeagueSync()).toBeNull();
-    expect(spy).not.toHaveBeenCalled();
+    expect(ctx).toEqual({ leagueName: 'Allflame', source: 'detected' });
+    expect(league.confirmedLeagueSync()).toBe('Allflame');
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith('Allflame');
   });
 
   it('cached context expires and re-detects the next live league', async () => {
     const league = await freshLeague();
-    const spy = stubProbe({ Ancestors: 10, Mirage: 10 });
+    const spy = stubProbe({ Allflame: 0, Ancestors: 10, Mirage: 10 });
     expect(await league.getActiveContext()).toEqual({ leagueName: 'Ancestors', source: 'detected' });
     vi.setSystemTime(new Date(AFTER_END));
     expect(await league.getActiveContext()).toEqual({ leagueName: 'Mirage', source: 'detected' });

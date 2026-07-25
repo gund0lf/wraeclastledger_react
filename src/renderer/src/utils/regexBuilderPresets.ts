@@ -73,9 +73,9 @@ export const CURRENCY_MODS: NamedMod[] = [
   },
   {
     id: 'fph', tier: 'A',
-    label: 'Punishing — Reflect Phys & Ele (+47%)',
-    token: MOD_TOKENS.uber_reflect_20_physical_elemental,
-    detail: '"Monsters reflect 20% of Physical Damage · Monsters reflect 20% of Elemental Damage" · +47% Currency · 10% Quant · Token: "t 20" from "reflec**t 20**%" — top tier version reflects only 18%, so targeting the 20% value is unique',
+    label: 'Punishing/Mirrored — Thorns (+47%)',
+    token: MOD_TOKENS.thorns_reflection,
+    detail: 'Rare Monsters have Physical and/or Elemental Thorns reflecting damage · catches the combined Punishing mod and split Thorns variants · Token: "horns"',
   },
   {
     id: 'life', tier: 'A',

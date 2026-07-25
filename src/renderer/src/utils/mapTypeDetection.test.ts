@@ -16,7 +16,7 @@ describe('isEightModCandidate', () => {
     expect(isEightModCandidate(map({ explicitModCount: 8, modCount: 10 }))).toBe(true);
   });
 
-  it('retains the legacy heuristic for normal Ctrl+C copies', () => {
+  it('retains the legacy heuristic for headerless persisted copies', () => {
     expect(isEightModCandidate(map({ explicitModCount: undefined, modCount: 10 }))).toBe(true);
     expect(isEightModCandidate(map({ explicitModCount: undefined, modCount: 6 }))).toBe(false);
   });

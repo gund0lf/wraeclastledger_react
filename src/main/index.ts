@@ -3,7 +3,12 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { autoUpdater } from 'electron-updater'
-import { BRICK_MOD_DEFS, brickRegexTerm } from '../shared/brickMods'
+import {
+  BRICK_MOD_DEFS,
+  brickRegexTerm,
+  expandSelectedBrickStatIds,
+  tradeStatMatchesBrick,
+} from '../shared/brickMods'
 import type { AtlasStatGroup, AtlasStatsReadResult } from '../shared/atlasStats'
 import { createKeyedSerialTask, isAllowedPathOfPathingUrl } from '../shared/atlasReaderSafety'
 import { resolveUserDataPath } from '../shared/appProfile'
@@ -209,8 +214,9 @@ const STAT_LOOKUPS: Record<string, string> = {
 // live in src/shared/brickMods.ts so main and the renderer share ONE definition
 // and the stash tokens are defined once, in shared/modTokens.ts (WP12).
 
-// Resolved brick mod cache: label → statId
-const BRICK_MOD_CACHE = new Map<string, string>();
+// Resolved brick mod cache: label → every Trade stat id for that logical mod.
+// 3.29 Thorns is one user-facing brick backed by separate Physical/Elemental ids.
+const BRICK_MOD_CACHE = new Map<string, string[]>();
 
 async function ensureStatsLoaded(): Promise<void> {
   if (STATS_CACHE.size > 0) return;
@@ -234,9 +240,10 @@ async function ensureStatsLoaded(): Promise<void> {
           }
           if (group.id === 'explicit') {
             for (const def of BRICK_MOD_DEFS) {
-              if (BRICK_MOD_CACHE.has(def.label)) continue;
-              if (entry.text.toLowerCase().includes(def.needle.toLowerCase())) {
-                BRICK_MOD_CACHE.set(def.label, entry.id);
+              if (tradeStatMatchesBrick(entry.text, def)) {
+                const ids = BRICK_MOD_CACHE.get(def.label) ?? [];
+                if (!ids.includes(entry.id)) ids.push(entry.id);
+                BRICK_MOD_CACHE.set(def.label, ids);
               }
             }
           }
@@ -247,20 +254,21 @@ async function ensureStatsLoaded(): Promise<void> {
   return statsFetchPromise;
 }
 
-// Returns the full resolved brick mod list (deduped by statId, includes regexTerm)
+// Returns one representative statId per logical brick. Trade searches expand
+// that representative to every resolved ID before building the NOT filters.
 ipcMain.handle('trade:get-brick-mods', async () => {
   await ensureStatsLoaded();
   const seen = new Set<string>();
   return BRICK_MOD_DEFS
     .filter((def) => {
-      const statId = BRICK_MOD_CACHE.get(def.label);
+      const statId = BRICK_MOD_CACHE.get(def.label)?.[0];
       if (!statId || seen.has(statId)) return false;
       seen.add(statId);
       return true;
     })
     .map((def) => ({
       label:     def.label,
-      statId:    BRICK_MOD_CACHE.get(def.label)!,
+      statId:    BRICK_MOD_CACHE.get(def.label)![0],
       regexTerm: brickRegexTerm(def),
       category:  def.category,
     }));
@@ -345,14 +353,13 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
     if (resolvedIds.length > 0) statsArray.push({ type: 'if', filters: resolvedIds });
   }
 
-  if (brickExclusions.length > 0)
-    statsArray.push({ type: 'not', filters: brickExclusions.map((id) => ({ id })) });
-
-  // Always exclude Shaper/Elder influenced and Conqueror-occupied maps
-  statsArray.push({ type: 'not', filters: [
-    { id: 'implicit.stat_1792283443' }, // Area is influenced by # (Shaper/Elder)
-    { id: 'implicit.stat_3624393862' }, // Map is occupied by # (Conquerors)
-  ] });
+  if (brickExclusions.length > 0) {
+    const resolvedBrickIds = expandSelectedBrickStatIds(
+      brickExclusions,
+      [...BRICK_MOD_CACHE.values()],
+    );
+    statsArray.push({ type: 'not', filters: resolvedBrickIds.map((id) => ({ id })) });
+  }
 
   const query = {
     query: {

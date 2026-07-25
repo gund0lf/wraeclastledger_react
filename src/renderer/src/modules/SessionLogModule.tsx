@@ -104,8 +104,8 @@ export const SessionLogModule = () => {
              the capture switch leads, the count keeps its place. */
           <Group gap="xs">
             <Tooltip multiline w={260} label={isWatching
-              ? 'Capturing — Ctrl+Alt+C is preferred for an exact modifier count; Ctrl+C also works.'
-              : 'Paused — turn on Capture, then copy a map. Ctrl+Alt+C is preferred for exact modifiers.'}>
+              ? 'Capturing — copy a map with Ctrl+C; 3.29 records exact modifier counts automatically.'
+              : 'Paused — turn on Capture, then copy a map with Ctrl+C.'}>
               <Switch checked={isWatching} onChange={toggleWatch}
                 color="green" size="sm" labelPosition="left"
                 label={isWatching ? 'Capture: Active' : 'Capture: Paused'}
@@ -114,9 +114,6 @@ export const SessionLogModule = () => {
                   : <IconPlayerPauseFilled size={10} />} />
             </Tooltip>
             <Text fw={700} size="sm">{maps.length} map{maps.length !== 1 ? 's' : ''}{search.trim() && filtered.length !== maps.length ? ` · ${filtered.length} shown` : ''}</Text>
-            <Tooltip label="Preferred capture: Ctrl+Alt+C records the exact explicit-mod count. Normal Ctrl+C remains supported.">
-              <Badge size="xs" color="blue" variant="light" style={{ cursor: 'help' }}>Ctrl+Alt+C: exact</Badge>
-            </Tooltip>
           </Group>
         }
         right={
@@ -159,7 +156,7 @@ export const SessionLogModule = () => {
               <Table.Th>Name</Table.Th>
               <Table.Th>Tier</Table.Th>
               <Table.Th>
-                <Tooltip label="Exact explicit modifiers from Ctrl+Alt+C; dash means a normal Ctrl+C copy">
+                <Tooltip label="Exact explicit modifiers from advanced copies; dash means a legacy headerless copy">
                   <span style={{ cursor: 'help' }}>Mods</span>
                 </Tooltip>
               </Table.Th>
@@ -186,7 +183,7 @@ export const SessionLogModule = () => {
                         For Pace estimates, copy each map before running it; copy the next after finishing. Pasting an old batch cannot reconstruct playtime.
                       </Text>
                       <Text size="xs" c="dimmed" ta="center">
-                        Optional: Ctrl+Alt+C also logs the map and records its exact explicit-mod count from the advanced tooltip.
+                        PoE 3.29 Ctrl+C records the exact explicit-mod count automatically. Ctrl+Alt+C remains supported.
                       </Text>
                     </Stack>
                   ) : (

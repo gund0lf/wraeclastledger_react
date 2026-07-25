@@ -183,7 +183,7 @@ export const FromSessionTab = () => {
     const regular   = brickMods.filter((m) => m.category === 'regular').map((m) => ({ value: m.statId, label: m.label }));
     const nightmare = brickMods.filter((m) => m.category === 'nightmare').map((m) => ({ value: m.statId, label: m.label }));
     const result: { group: string; items: { value: string; label: string }[] }[] = [];
-    if (regular.length   > 0) result.push({ group: 'Regular',   items: regular });
+    if (regular.length   > 0) result.push({ group: 'Regular / shared', items: regular });
     if (nightmare.length > 0) result.push({ group: 'Nightmare', items: nightmare });
     return result;
   }, [brickMods]);
@@ -705,7 +705,7 @@ export const FromSessionTab = () => {
               /* Side-by-side category pickers — no scroll-past-Regular to reach
                  Nightmare, and the headers make the old purple note redundant. */
               <SimpleGrid cols={2} spacing={6}>
-                <MultiSelect size="xs" label="Regular mods" placeholder="Search…" searchable clearable
+                <MultiSelect size="xs" label="Regular / shared mods" placeholder="Search…" searchable clearable
                   data={brickMods.filter((m) => m.category === 'regular').map((m) => ({ value: m.statId, label: m.label }))}
                   filter={brickModFilter}
                   value={selectedIdsOf('regular')}

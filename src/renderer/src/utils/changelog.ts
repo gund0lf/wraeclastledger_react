@@ -11,8 +11,11 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '1.0.70',
-    date: 'Unreleased',
+    date: '2026-07-26',
     changes: [
+      'Curse of the Allflame is now the active league context. Revision 2 keeps Obscured Delirium Orbs available after launch-day confirmation in the in-game Currency Exchange, while Fossilised and Kalguuran Orbs remain historical-only.',
+      'PoE Trade and stash brick exclusions now treat the 3.29 Punishing and Mirrored Thorns modifiers as one hazard. One “horns” exclusion catches physical, elemental, split, and combined variants; Trade searches expand it to both official stat IDs, saved reflect exclusions upgrade automatically, and obsolete influence filters no longer appear as unavailable stats.',
+      'Map Log now reflects Path of Exile 3.29’s universal advanced Ctrl+C format: exact explicit-mod counts are captured automatically, while Ctrl+Alt+C remains supported and old headerless maps keep their safe fallback.',
       'Saved sessions no longer inherit stale strategy-preview metadata from the previously viewed strategy. Historical divine-price labels now keep their stored league name at every panel width, Strategy Browser headers remain aligned when its list scrolls, and Loot Tracker totals stay pinned below the visible item list.',
       'Atlas Tree now opens older live and historical allocations against the active 3.29 tree while preserving their exact authored URLs. A provenance badge explains the shown version and offers Load original whenever the view was retargeted.',
       'The 3.29 game-data bundle now uses GGG\'s official Abyss Scarab of the Consort name and the verified Path of Pathing 3.29.0-atlas version.',

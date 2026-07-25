@@ -11,7 +11,13 @@
 
 import { describe, it, expect } from 'vitest';
 import { MOD_TOKENS } from '../../../shared/modTokens';
-import { BRICK_MOD_DEFS, brickRegexTerm } from '../../../shared/brickMods';
+import {
+  BRICK_MOD_DEFS,
+  brickRegexTerm,
+  expandSelectedBrickStatIds,
+  normalizeTradeStatText,
+  tradeStatMatchesBrick,
+} from '../../../shared/brickMods';
 
 describe('MOD_TOKENS integrity', () => {
   const entries = Object.entries(MOD_TOKENS);
@@ -67,8 +73,7 @@ describe('MOD_TOKENS integrity', () => {
 // captured before the move; the tests prove the refactor changed NONE of them, and
 // act as the drift guard going forward (add/remove a brick -> update this snapshot).
 const BRICK_REGEX_SNAPSHOT: Record<string, string> = {
-  'Reflect Physical Damage': 's ref',
-  'Reflect Elemental Damage': 'f ele',
+  'Thorns Reflection (all tiers)': 'horns',
   'Reduced Non-Curse Aura Effect': 'non-c',
   'Reduced Max Resistances': 'um re',
   'Cannot Regenerate Life/Mana/ES': 'reg',
@@ -153,7 +158,6 @@ const BRICK_REGEX_SNAPSHOT: Record<string, string> = {
   'Rare Monsters +1 Modifier': '1 add',
   'Unstable Tentacle Fiends': 'nsta',
   'Frenzy Charge + Max Frenzy': 'mum f',
-  'Reflect 20% Physical + Elemental': 't 20',
   'Penetrates Elemental Resistances': 'net',
   'Skills Chain + Terrain Chain': 'lid',
   'Grasping Vines on Hit': 'rasp',
@@ -207,5 +211,40 @@ describe('BRICK_MOD_DEFS <-> MOD_TOKENS alignment (WP12)', () => {
   it('brick ids are unique', () => {
     const ids = BRICK_MOD_DEFS.map((d) => d.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe('3.29 Thorns trade-stat resolution', () => {
+  const thorns = BRICK_MOD_DEFS.find((def) => def.id === 'thorns_reflection')!;
+
+  it('normalizes Trade API tag markup before matching the human label', () => {
+    const tagged =
+      'Rare Monsters have [ElementalThorns|Elemental Thorns] reflecting # Elemental Damage';
+    expect(normalizeTradeStatText(tagged)).toBe(
+      'Rare Monsters have Elemental Thorns reflecting # Elemental Damage',
+    );
+    expect(tradeStatMatchesBrick(tagged, thorns)).toBe(true);
+  });
+
+  it('matches both physical and elemental Thorns with one logical brick', () => {
+    expect(tradeStatMatchesBrick(
+      'Rare Monsters have [PhysicalThorns|Physical Thorns] reflecting # Physical Damage',
+      thorns,
+    )).toBe(true);
+    expect(tradeStatMatchesBrick(
+      'Rare Monsters have [ElementalThorns|Elemental Thorns] reflecting # Elemental Damage',
+      thorns,
+    )).toBe(true);
+  });
+
+  it('expands the representative stat id to both Trade filters', () => {
+    expect(expandSelectedBrickStatIds(
+      ['explicit.stat_physical', 'unrelated.stat'],
+      [['explicit.stat_physical', 'explicit.stat_elemental']],
+    )).toEqual([
+      'explicit.stat_physical',
+      'explicit.stat_elemental',
+      'unrelated.stat',
+    ]);
   });
 });

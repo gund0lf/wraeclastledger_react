@@ -11,6 +11,7 @@
  *
  * Verification key:
  *   [V:game]  = manually verified in PoE stash search in-game
+ *   [V:trade] = verified against the live official Trade stat text
  *   [V:py]    = verified via Python substring check against mod text
  *   [V:uber]  = from the verified uber-map modifier dataset used during token review
  *
@@ -26,8 +27,12 @@ export const MOD_TOKENS = {
 
   // ── Damage & Reflect ────────────────────────────────────────────
 
-  reflect_physical_damage: 's ref',  // [V:py] Reflect Physical Damage
-  reflect_elemental_damage: 'f ele',  // [V:py] Reflect Elemental Damage
+  // 3.29 replaces every reflect tier with Physical/Elemental Thorns wording.
+  // One substring catches the combined Punishing mod and the split variants.
+  thorns_reflection: 'horns',  // [V:game] Physical or Elemental Thorns reflecting
+  // Legacy persisted exclusions are normalized to thorns_reflection on read.
+  reflect_physical_damage: 's ref',
+  reflect_elemental_damage: 'f ele',
   high_crit_chance_multiplier: 'ike m',  // [V:py] High Crit Chance + Multiplier
   extra_chaos_damage_withered: 'withe',  // [V:py] Extra Chaos Damage + Withered
   extra_fire_damage: 'fire',  // [V:py] Extra Fire Damage
@@ -144,7 +149,7 @@ export const MOD_TOKENS = {
   uber_rare_monsters_1_modifier: '1 add',  // [V:py] Rare Monsters +1 Modifier
   uber_unstable_tentacle_fiends: 'nsta',  // [V:uber] Unstable Tentacle Fiends
   uber_frenzy_charge_max_frenzy: 'mum f',  // [V:game] Frenzy Charge + Max Frenzy
-  uber_reflect_20_physical_elemental: 't 20',  // [V:game] Reflect 20% Physical + Elemental
+  uber_reflect_20_physical_elemental: 't 20',  // legacy; normalized to thorns_reflection
   uber_penetrates_elemental_resistances: 'net',  // [V:game] Penetrates Elemental Resistances
   uber_skills_chain_terrain_chain: 'lid',  // [V:game] Skills Chain + Terrain Chain
   uber_grasping_vines_on_hit: 'rasp',  // [V:game] Grasping Vines on Hit

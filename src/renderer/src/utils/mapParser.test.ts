@@ -469,7 +469,7 @@ describe('parseMapClipboard — regular 8-mod corrupted', () => {
   });
 });
 
-describe('parseMapClipboard — advanced Ctrl+Alt+C explicit affix count', () => {
+describe('parseMapClipboard — advanced explicit affix count', () => {
   it('counts modifier headers, not their multi-line descriptions', () => {
     const map = parseMapClipboard(ADVANCED_8_AFFIX_CORRUPTED);
     expect(map).not.toBeNull();
@@ -477,7 +477,7 @@ describe('parseMapClipboard — advanced Ctrl+Alt+C explicit affix count', () =>
     expect(map!.modCount).toBeGreaterThan(8);
   });
 
-  it('leaves exact count unknown for a normal Ctrl+C copy', () => {
+  it('leaves exact count unknown for a legacy headerless copy', () => {
     expect(parseMapClipboard(REGULAR_8MOD_CORRUPTED)!.explicitModCount).toBeUndefined();
   });
 });

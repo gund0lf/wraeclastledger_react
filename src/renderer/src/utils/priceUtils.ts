@@ -1,4 +1,5 @@
 import { getCurrentLeague } from './league';
+import { MOD_TOKENS } from './modTokens';
 
 export const parsePriceInput = (raw: string, divinePrice: number): number => {
   let s = raw.trim().toLowerCase().replace(/,/g, '');
@@ -31,9 +32,16 @@ export function trimmedMean(values: number[]): number {
 // rather than a bare term. This cleans up corrupted data where the whole
 // '"!nsta|eche"' string ended up stored as a single element.
 export function sanitizeExclusionTerms(terms: string[]): string[] {
-  return terms
+  const legacyReflectTerms = new Set<string>([
+    MOD_TOKENS.reflect_physical_damage,
+    MOD_TOKENS.reflect_elemental_damage,
+    MOD_TOKENS.uber_reflect_20_physical_elemental,
+  ]);
+  const sanitized = terms
     .map((t) => t.trim().replace(/^"|"$/g, '').replace(/^!/, ''))
+    .map((t) => legacyReflectTerms.has(t) ? MOD_TOKENS.thorns_reflection : t)
     .filter((t) => t.length > 0 && !t.includes('"') && !t.includes('(') && !t.includes('*'));
+  return [...new Set(sanitized)];
 }
 
 // ─── Regex helpers ────────────────────────────────────────────────────────────

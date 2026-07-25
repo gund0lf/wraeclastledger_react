@@ -30,13 +30,15 @@
 // (below) auto-selects whichever KNOWN_LEAGUES entry has live data first, so adding
 // a new event/league does NOT require changing CURRENT_LEAGUE — it only requires
 // adding the entry to KNOWN_LEAGUES (newest-first).
-export const CURRENT_LEAGUE = 'Ancestors';
+export const CURRENT_LEAGUE = 'Allflame';
 
 export const KNOWN_LEAGUES: string[] = [
+  // Curse of the Allflame (3.29). Exact poe.ninja string verified against
+  // live exchange data on launch day; endsAt intentionally remains unknown.
+  'Allflame',
   // Return of the Ancestors event (live Jun 25 2026, ends ~Jul 16). poe.ninja's
   // league string is the plain "Ancestors" (trade: /trade/search/Ancestors).
-  // activeKnownLeagues()[0] drives the Strategy Browser default filter.
-  'Ancestors',                // event — 3.28-based economy; MUST stay above Mirage
+  'Ancestors',                // event — 3.28-based economy
   'Mirage',                   // 3.28 — parent league, kept as a live-data fallback
   // Standard intentionally removed: never a trackable league for this app.
   // (itemIcons.ts fetches Standard separately for legacy item icons only.)

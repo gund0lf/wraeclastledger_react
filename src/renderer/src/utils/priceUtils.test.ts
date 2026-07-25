@@ -167,6 +167,10 @@ describe('sanitizeExclusionTerms', () => {
   it('drops strings that become empty after stripping prefixes', () => {
     expect(sanitizeExclusionTerms(['""', '!', '!""'])).toEqual([]);
   });
+
+  it('migrates and deduplicates every legacy reflect token to 3.29 Thorns', () => {
+    expect(sanitizeExclusionTerms(['s ref', 'f ele', 't 20', 'horns'])).toEqual(['horns']);
+  });
 });
 
 // ─── generateRunRegex ─────────────────────────────────────────────────────────

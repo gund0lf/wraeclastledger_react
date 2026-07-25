@@ -218,7 +218,9 @@ export const BUNDLED_MANIFEST: GameDataManifest = {
   { id: 'deli-fragmented', name: "Fragmented", label: "Fragmented (Fragments)", status: 'active' },
   { id: 'deli-jeweller', name: "Jeweller", label: "Jeweller's (Jewels)", status: 'active' },
   { id: 'deli-kalguuran', name: "Kalguuran", label: "Kalguuran (Kalguur)", status: 'removed' },
-  { id: 'deli-obscured', name: "Obscured", label: "Obscured (Heist)", status: 'removed' },
+  // Launch-day in-game Currency Exchange filter confirms this remains
+  // obtainable in Allflame. poe.ninja omitted it from its initial listing.
+  { id: 'deli-obscured', name: "Obscured", label: "Obscured (Heist)", status: 'active' },
   { id: 'deli-singular', name: "Singular", label: "Singular (Unique)", status: 'active' },
   { id: 'deli-skittering', name: "Skittering", label: "Skittering (Scarabs)", status: 'active' },
   { id: 'deli-thaumaturge', name: "Thaumaturge", label: "Thaumaturge's (Metamorph)", status: 'active' },

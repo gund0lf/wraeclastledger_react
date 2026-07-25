@@ -364,6 +364,60 @@ Players have -20% to amount of Suppressed Spell Damage Prevented
 Travel to a Map of this tier or lower by using this in a personal Map Device. Maps can only be used once. 
 --------
 Split`,
+
+  /** Real Allflame 3.29 Ctrl+C capture from Sad: four affixes, split Thorns. */
+  allflameHateRoute: `Item Class: Maps
+Rarity: Rare
+Hate Route
+Map (Tier 2)
+--------
+Item Quantity: +40% (augmented)
+Item Rarity: +24% (augmented)
+Monster Pack Size: +16% (augmented)
+--------
+Item Level: 69
+--------
+Monster Level: 69
+--------
+{ Prefix Modifier "Punishing" (Tier: 1) — Damage, Physical }
+Rare Monsters have Physical Thorns reflecting 400 Physical Damage
+{ Prefix Modifier "Mirrored" (Tier: 1) — Damage, Elemental }
+Rare Monsters have Elemental Thorns reflecting 900 Elemental Damage
+{ Suffix Modifier "of Bloodlines" (Tier: 1) }
+26(20-30)% increased Magic Monsters
+{ Suffix Modifier "of Insulation" (Tier: 1) — Elemental, Fire, Cold, Lightning, Ailment }
+Monsters have 30% chance to Avoid Elemental Ailments
+(Elemental Ailments are Ignited, Scorched, Chilled, Frozen, Brittle, Shocked, and Sapped)
+--------
+Travel to a Map of this tier or lower by using this in a personal Map Device. Maps can only be used once.`,
+
+  /** PoEDB 3.29 Punishing shape: one affix owns both Thorns lines and riders.
+   * Trade listings confirm the More Currency summary exists, but a genuine
+   * advanced clipboard sample still needs to replace this synthetic fixture;
+   * otherwise a format mismatch could leave that value at zero. */
+  allflameDualThorns: `Item Class: Maps
+Rarity: Rare
+Dire Crossing
+Map (Tier 16)
+--------
+Item Quantity: +10% (augmented)
+Item Rarity: +8% (augmented)
+Monster Pack Size: +5% (augmented)
+More Currency: +47% (augmented)
+--------
+Item Level: 83
+--------
+Monster Level: 83
+--------
+{ Prefix Modifier "Punishing" (Tier: 1) — Damage, Physical, Elemental }
+Rare Monsters have Physical Thorns reflecting 1500 Physical Damage
+Rare Monsters have Elemental Thorns reflecting 2500 Elemental Damage
+10% increased Quantity of Items found in this Area
+8% increased Rarity of Items found in this Area
+5% increased Pack size
+47% more Currency found in Area
+--------
+Travel to a Map of this tier or lower by using this in a personal Map Device. Maps can only be used once.`,
 } as const;
 
 /**

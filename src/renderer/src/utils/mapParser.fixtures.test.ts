@@ -72,6 +72,23 @@ describe('real fixtures — regular maps', () => {
   });
 });
 
+describe('real 3.29 advanced-copy fixtures', () => {
+  it('counts Sad’s split-Thorns Hate Route as exactly four affixes', () => {
+    const m = parse('allflameHateRoute');
+    expect(m.name).toBe('Hate Route');
+    expect(m.tier).toBe(2);
+    expect(m.explicitModCount).toBe(4);
+    expect(m.rawText).toContain('26(20-30)% increased Magic Monsters');
+  });
+
+  it('counts a dual-line Punishing block as one affix and tolerates new riders', () => {
+    const m = parse('allflameDualThorns');
+    expect(m.explicitModCount).toBe(1);
+    expect(m.moreCurrency).toBe(47);
+    expect(m.rawText).toContain('47% more Currency found in Area');
+  });
+});
+
 describe('real fixtures — subtypes', () => {
   it('8-mod corrupted T16 (Rune Crosscut): Corrupted section detected; modCount counts LINES', () => {
     const m = parse('eightModCorrupted');

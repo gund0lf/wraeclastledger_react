@@ -29,8 +29,7 @@ export interface BrickModDef {
 
 export const BRICK_MOD_DEFS: BrickModDef[] = [
   // ── Regular ──
-  { id: 'reflect_physical_damage', label: 'Reflect Physical Damage', needle: 'Monsters reflect #% of Physical Damage', category: 'regular' },
-  { id: 'reflect_elemental_damage', label: 'Reflect Elemental Damage', needle: 'Monsters reflect #% of Elemental Damage', category: 'regular' },
+  { id: 'thorns_reflection', label: 'Thorns Reflection (all tiers)', needle: 'Thorns reflecting', category: 'regular' },
   { id: 'reduced_non_curse_aura_effect', label: 'Reduced Non-Curse Aura Effect', needle: 'Non-Curse Auras', category: 'regular' },
   { id: 'reduced_max_resistances', label: 'Reduced Max Resistances', needle: 'to all maximum Resistances', category: 'regular' },
   { id: 'cannot_regenerate_life_mana_es', label: 'Cannot Regenerate Life/Mana/ES', needle: 'cannot Regenerate Life, Mana', category: 'regular' },
@@ -124,7 +123,6 @@ export const BRICK_MOD_DEFS: BrickModDef[] = [
   { id: 'uber_unstable_tentacle_fiends', label: 'Unstable Tentacle Fiends', needle: 'Unstable Tentacle Fiends', category: 'nightmare' },
   // 'm f' from 'Maximum Frenzy' — position 6-8 of 'Maximum': 'm[space]F'. Clean: 'gain a Frenzy' has no 'm' before the 'F'.
   { id: 'uber_frenzy_charge_max_frenzy', label: 'Frenzy Charge + Max Frenzy', needle: 'Maximum Frenzy Charges', category: 'nightmare' },
-  { id: 'uber_reflect_20_physical_elemental', label: 'Reflect 20% Physical + Elemental', needle: 'Monsters reflect 20% of Physical Damage', category: 'nightmare' },
   { id: 'uber_penetrates_elemental_resistances', label: 'Penetrates Elemental Resistances', needle: 'Penetrates', category: 'nightmare' },
   { id: 'uber_skills_chain_terrain_chain', label: 'Skills Chain + Terrain Chain', needle: 'Chain when colliding', category: 'nightmare' },
   { id: 'uber_grasping_vines_on_hit', label: 'Grasping Vines on Hit', needle: 'Grasping Vine', category: 'nightmare' },
@@ -167,3 +165,26 @@ export const BRICK_MOD_DEFS: BrickModDef[] = [
 /** The short stash-highlight token for a brick mod, sourced from MOD_TOKENS
  *  (single source of truth). */
 export const brickRegexTerm = (def: BrickModDef): string => MOD_TOKENS[def.id];
+
+/** Trade stat text may wrap display names as [machine-tag|human label].
+ *  Match against the human form so one Thorns brick resolves both stat IDs. */
+export function normalizeTradeStatText(text: string): string {
+  return text.replace(/\[[^|\]]+\|([^\]]+)\]/g, '$1');
+}
+
+export function tradeStatMatchesBrick(text: string, def: BrickModDef): boolean {
+  return normalizeTradeStatText(text).toLowerCase().includes(def.needle.toLowerCase());
+}
+
+/** Expand a selected representative stat ID to every ID belonging to the same
+ *  logical brick. Unknown IDs pass through unchanged. */
+export function expandSelectedBrickStatIds(
+  selected: readonly string[],
+  resolvedGroups: readonly (readonly string[])[],
+): string[] {
+  const byId = new Map<string, readonly string[]>();
+  for (const group of resolvedGroups) {
+    for (const id of group) byId.set(id, group);
+  }
+  return [...new Set(selected.flatMap((id) => byId.get(id) ?? [id]))];
+}

@@ -471,7 +471,7 @@ export const AtlasCalcModule = () => {
                     <Group justify="space-between" gap={6} wrap="nowrap">
                       <Text size="xs" fw={500}>Map Type</Text>
                       {observedModAverage != null ? (
-                        <Tooltip multiline w={280} label={`Exact Ctrl+Alt+C coverage: ${observedSampleSize}/${maps.length} maps. Scarab of Risk modifiers are added after this observed average.`}>
+                        <Tooltip multiline w={280} label={`Exact advanced-copy coverage: ${observedSampleSize}/${maps.length} maps. Scarab of Risk modifiers are added after this observed average.`}>
                           <div style={{
                             padding: '2px 8px',
                             borderRadius: 10,
