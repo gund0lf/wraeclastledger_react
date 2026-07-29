@@ -1,7 +1,7 @@
 /**
  * aliasResolver.test.ts — read-time historical-name resolution (rollover step 3).
  *
- * Revision 2 carries real 3.29 rename edges. Synthetic manifests still cover
+ * The bundled manifest carries real 3.29 rename edges. Synthetic manifests cover
  * removed/reworked states and malformed chains independently.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -24,7 +24,7 @@ afterEach(() => {
   __resetGameDataForTests();
 });
 
-describe('resolver on the bundled revision-2 manifest', () => {
+describe('resolver on the bundled manifest', () => {
   it('resolves a current scarab name to itself, not via alias', () => {
     const r = resolveEntity('scarabs', 'Abyss Scarab');
     expect(r.entity?.name).toBe('Abyss Scarab');

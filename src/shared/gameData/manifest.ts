@@ -1,5 +1,5 @@
 /**
- * BUNDLED game-data manifest — revision 2 (patch 3.29 / Curse of the
+ * BUNDLED game-data manifest — revision 3 (patch 3.29 / Curse of the
  * Allflame). Revision 1 remains immutable as the published Mirage-era floor.
  *
  * SOURCE + PROVENANCE: revision 1 was generated 2026-07-06 (session 12) 1:1
@@ -8,6 +8,9 @@
  * was corrected from PoEDB's "Abyssal" form to GGG's official filter-list
  * spelling, "Abyss Scarab of the Consort", on 2026-07-22. constants.ts now
  * DERIVES its exports from this file; this is the single source of truth.
+ * Revision 3 corrects live Allflame availability from the actual in-game item
+ * list on 2026-07-29: Obscured Delirium Orb and all four Harbinger scarabs are
+ * unavailable. A Faustus catalogue entry alone is not existence evidence.
  *
  * DATA NOTE (found at migration): the old SCARAB_LIST header claimed
  * "111 droppable scarabs verified for 3.28" but the array actually contained
@@ -34,7 +37,7 @@
 import { GameDataManifest } from './types';
 
 export const BUNDLED_MANIFEST: GameDataManifest = {
-  revision: 2,
+  revision: 3,
   schemaVersion: 1,
   contextKey: 'poe1-challenge',
   patchVersion: '3.29',
@@ -131,10 +134,10 @@ export const BUNDLED_MANIFEST: GameDataManifest = {
   { id: 'expedition-scarab-of-runefinding', name: "Expedition Scarab of Runefinding", status: 'active' },
   { id: 'expedition-scarab-of-verisium-powder', name: "Expedition Scarab of Verisium Powder", status: 'active' },
   // ── Harbinger ──
-  { id: 'harbinger-scarab', name: "Harbinger Scarab", status: 'active' },
-  { id: 'harbinger-scarab-of-obelisks', name: "Harbinger Scarab of Obelisks", status: 'active' },
-  { id: 'harbinger-scarab-of-regency', name: "Harbinger Scarab of Regency", status: 'active' },
-  { id: 'harbinger-scarab-of-warhoards', name: "Harbinger Scarab of Warhoards", status: 'active' },
+  { id: 'harbinger-scarab', name: "Harbinger Scarab", status: 'removed', note: "Unavailable in Allflame's in-game item list." },
+  { id: 'harbinger-scarab-of-obelisks', name: "Harbinger Scarab of Obelisks", status: 'removed', note: "Unavailable in Allflame's in-game item list." },
+  { id: 'harbinger-scarab-of-regency', name: "Harbinger Scarab of Regency", status: 'removed', note: "Unavailable in Allflame's in-game item list." },
+  { id: 'harbinger-scarab-of-warhoards', name: "Harbinger Scarab of Warhoards", status: 'removed', note: "Unavailable in Allflame's in-game item list." },
   // ── Harvest ──
   { id: 'harvest-scarab', name: "Harvest Scarab", status: 'active' },
   { id: 'harvest-scarab-of-cornucopia', name: "Harvest Scarab of Cornucopia", status: 'active' },
@@ -218,9 +221,9 @@ export const BUNDLED_MANIFEST: GameDataManifest = {
   { id: 'deli-fragmented', name: "Fragmented", label: "Fragmented (Fragments)", status: 'active' },
   { id: 'deli-jeweller', name: "Jeweller", label: "Jeweller's (Jewels)", status: 'active' },
   { id: 'deli-kalguuran', name: "Kalguuran", label: "Kalguuran (Kalguur)", status: 'removed' },
-  // Launch-day in-game Currency Exchange filter confirms this remains
-  // obtainable in Allflame. poe.ninja omitted it from its initial listing.
-  { id: 'deli-obscured', name: "Obscured", label: "Obscured (Heist)", status: 'active' },
+  // Faustus lists this as a possible market product, but the actual Allflame
+  // item list does not contain it. Challenge-league availability governs.
+  { id: 'deli-obscured', name: "Obscured", label: "Obscured (Heist)", status: 'removed', note: "Unavailable in Allflame's in-game item list." },
   { id: 'deli-singular', name: "Singular", label: "Singular (Unique)", status: 'active' },
   { id: 'deli-skittering', name: "Skittering", label: "Skittering (Scarabs)", status: 'active' },
   { id: 'deli-thaumaturge', name: "Thaumaturge", label: "Thaumaturge's (Metamorph)", status: 'active' },

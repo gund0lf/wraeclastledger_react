@@ -39,7 +39,7 @@ describe('bundled manifest invariants', () => {
     expect(getGameDataStatus().revision).toBe(BUNDLED_MANIFEST.revision);
   });
 
-  it('carries the revision-2 entity counts (129 scarabs / 17 deli / 11 astrolabes / 6 chisels)', () => {
+  it('carries the revision-3 entity counts (129 scarabs / 17 deli / 11 astrolabes / 6 chisels)', () => {
     expect(BUNDLED_MANIFEST.scarabs).toHaveLength(129);
     expect(BUNDLED_MANIFEST.deliriumOrbs).toHaveLength(17);
     expect(BUNDLED_MANIFEST.astrolabes).toHaveLength(11);
@@ -71,12 +71,13 @@ describe('bundled manifest invariants', () => {
       'Heist Scarab', 'Heist Scarab of Lockpicking', 'Heist Scarab of Many Clients',
       'Heist Scarab of the Wealthy', 'Metamorph Scarab', 'Metamorph Scarab of Catalogue',
       'Metamorph Scarab of Curiosity', 'Metamorph Scarab of Specimen',
+      'Harbinger Scarab', 'Harbinger Scarab of Obelisks',
+      'Harbinger Scarab of Regency', 'Harbinger Scarab of Warhoards',
     ]) expect(scarab(name)?.status, name).toBe('removed');
 
-    for (const name of ['Abyssal', 'Fossilised', 'Kalguuran', 'Timeless']) {
+    for (const name of ['Abyssal', 'Fossilised', 'Kalguuran', 'Obscured', 'Timeless']) {
       expect(deli(name)?.status, name).toBe('removed');
     }
-    expect(deli('Obscured')?.status).toBe('active');
     expect(deli('Primal')).toBeUndefined();
 
     expect(astro('Enshrouded Astrolabe')).toMatchObject({
@@ -85,7 +86,7 @@ describe('bundled manifest invariants', () => {
     expect(astro('Deceptive Astrolabe')?.status).toBe('active');
   });
 
-  it('offers only current/reworked revision-2 products in new-input pickers', () => {
+  it('offers only current/reworked revision-3 products in new-input pickers', () => {
     const scarabs = selectableScarabOptions();
     expect(scarabs).toContainEqual({
       value: 'Abyss Scarab of Crystals', label: 'Abyss Scarab of Crystals',
@@ -96,10 +97,11 @@ describe('bundled manifest invariants', () => {
     expect(scarabs.some((e) => e.value === 'Trarthan Scarab')).toBe(true);
     expect(scarabs.some((e) => e.value === 'Abyss Scarab of Edifice')).toBe(false);
     expect(scarabs.some((e) => e.value === 'Heist Scarab')).toBe(false);
+    expect(scarabs.some((e) => e.value === 'Harbinger Scarab')).toBe(false);
 
     const deli = selectableDeliriumOrbList();
     expect(deli.some((e) => e.value === 'Fossilised')).toBe(false);
-    expect(deli.some((e) => e.value === 'Obscured')).toBe(true);
+    expect(deli.some((e) => e.value === 'Obscured')).toBe(false);
 
     const astrolabes = selectableAstrolabeList();
     expect(astrolabes.some((e) => e.value === 'Deceptive Astrolabe')).toBe(true);
@@ -110,6 +112,12 @@ describe('bundled manifest invariants', () => {
     });
     expect(preserveHistoricalSelection(deli, 'Fossilised')).toContainEqual({
       value: 'Fossilised', label: 'Fossilised — Historical',
+    });
+    expect(preserveHistoricalSelection(deli, 'Obscured')).toContainEqual({
+      value: 'Obscured', label: 'Obscured — Historical',
+    });
+    expect(preserveHistoricalSelection(scarabs, 'Harbinger Scarab')).toContainEqual({
+      value: 'Harbinger Scarab', label: 'Harbinger Scarab — Historical',
     });
   });
 
@@ -386,7 +394,7 @@ describe('derived view helpers (call-time, revision-aware)', () => {
 });
 
 describe('mechanic flags (step 5, §5.3)', () => {
-  it('bundled revision 2 keeps live mechanics active and explicitly removes split input', () => {
+  it('bundled revision 3 keeps live mechanics active and explicitly removes split input', () => {
     expect(mechanicStatus('scarabs')).toBe('active');
     expect(mechanicStatus('delirium')).toBe('active');
     expect(mechanicStatus('astrolabe')).toBe('active');

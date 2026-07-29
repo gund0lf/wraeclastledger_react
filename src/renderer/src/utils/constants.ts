@@ -19,7 +19,7 @@
 import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
 
 // ─── SCARAB LIST (derived) ────────────────────────────────────────────────────
-// Current ACTIVE entries from bundled revision 2. Reworked entries remain
+// Current ACTIVE entries from the bundled revision. Reworked entries remain
 // selectable through the call-time helpers in gameData.ts, not this legacy view.
 export const SCARAB_LIST: string[] =
   BUNDLED_MANIFEST.scarabs.filter((e) => e.status === 'active').map((e) => e.name);

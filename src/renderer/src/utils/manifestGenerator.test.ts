@@ -15,8 +15,10 @@ const makeTempDir = (): string => {
 };
 
 const clone = <T>(value: T): T => structuredClone(value);
-const seedRevision1 = (outDir: string): void => {
-  writeFileSync(join(outDir, 'manifest-1.json'), '{}\n');
+const seedPriorRevisions = (outDir: string): void => {
+  for (let revision = 1; revision < BUNDLED_MANIFEST.revision; revision++) {
+    writeFileSync(join(outDir, `manifest-${revision}.json`), '{}\n');
+  }
 };
 
 afterEach(() => {
@@ -30,27 +32,27 @@ const run = (args: string[]): string => execFileSync(process.execPath, [script, 
 describe('manifest JSON generator CLI', () => {
   it('creates deterministic JSON, then verifies the existing revision without rewriting', () => {
     const outDir = makeTempDir();
-    seedRevision1(outDir);
-    expect(run(['--out-dir', outDir])).toContain('revision 2 created');
-    const target = join(outDir, 'manifest-2.json');
+    seedPriorRevisions(outDir);
+    expect(run(['--out-dir', outDir])).toContain('revision 3 created');
+    const target = join(outDir, 'manifest-3.json');
     const first = readFileSync(target, 'utf8');
     expect(first.endsWith('\n')).toBe(true);
     expect(JSON.parse(first)).toEqual(BUNDLED_MANIFEST);
 
-    expect(run(['--out-dir', outDir])).toContain('revision 2 verified');
+    expect(run(['--out-dir', outDir])).toContain('revision 3 verified');
     expect(readFileSync(target, 'utf8')).toBe(first);
   });
 
   it('refuses to overwrite a published revision that differs', () => {
     const outDir = makeTempDir();
-    seedRevision1(outDir);
+    seedPriorRevisions(outDir);
     run(['--out-dir', outDir]);
-    const target = join(outDir, 'manifest-2.json');
+    const target = join(outDir, 'manifest-3.json');
     const corrupt = clone(BUNDLED_MANIFEST);
     corrupt.patchVersion = 'corrupt';
     writeFileSync(target, JSON.stringify(corrupt));
 
-    expect(() => run(['--out-dir', outDir])).toThrow(/refusing to overwrite published revision 2/);
+    expect(() => run(['--out-dir', outDir])).toThrow(/refusing to overwrite published revision 3/);
   });
 
   it('rejects missing alias targets and alias cycles', () => {
@@ -89,8 +91,8 @@ describe('manifest JSON generator CLI', () => {
     skipped.contextKey = 'poe1-challenge';
     const skippedSource = join(outDir, 'skipped.ts');
     writeFileSync(skippedSource, `export const BUNDLED_MANIFEST = ${JSON.stringify(skipped)};`);
-    seedRevision1(outDir);
-    expect(() => run(['--source', skippedSource, '--out-dir', outDir])).toThrow(/new revision must be 2/);
+    seedPriorRevisions(outDir);
+    expect(() => run(['--source', skippedSource, '--out-dir', outDir])).toThrow(/new revision must be 3/);
   });
 
   it('requires supported schema and context metadata after legacy revision 1', () => {
@@ -101,7 +103,7 @@ describe('manifest JSON generator CLI', () => {
     };
     revision2.schemaVersion = undefined;
     revision2.contextKey = undefined;
-    seedRevision1(outDir);
+    seedPriorRevisions(outDir);
     const source = join(outDir, 'revision2.ts');
     writeFileSync(source, `export const BUNDLED_MANIFEST = ${JSON.stringify(revision2)};`);
     expect(() => run(['--source', source, '--out-dir', outDir])).toThrow(/schemaVersion must be 1/);
