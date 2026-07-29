@@ -10,6 +10,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.72',
+    date: 'Unreleased',
+    changes: [
+      'Corrective game-data revision 3 removes Obscured Delirium Orb and all four Harbinger Scarabs from new-session pickers after Allflame\'s in-game item list confirmed they are unavailable. Existing sessions and shared strategies keep their historical selections intact.',
+    ],
+  },
+  {
     version: '1.0.71',
     date: '2026-07-29',
     changes: [
