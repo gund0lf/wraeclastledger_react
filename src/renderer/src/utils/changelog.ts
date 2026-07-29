@@ -10,6 +10,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.71',
+    date: '2026-07-29',
+    changes: [
+      'PoE Trade brick exclusions now resolve all 113 catalogue entries by their exact live stat definitions instead of loose substrings. Nine exclusions no longer fan out into unrelated equipment stats or exceed the logged-out query budget; ambiguous or missing definitions fail closed with a visible warning, and regular/Nightmare names remain independently discoverable when GGG gives their tier variants one shared Trade stat.',
+      'Copy Regex in the Trade modal now reflects the exclusions currently selected there, while preserving genuinely custom session terms and respecting known bricks you deliberately deselected. Exclusions-only searches also expose the copy action instead of silently producing no regex.',
+      'Generated Run and Trade stash regexes now apply their quantity floor to Item Quantity instead of accidentally applying a second Pack Size threshold.',
+      'Regular 8-mod Trade searches now exclude Shaper- and Elder-influenced maps alongside Originator maps. If any required special-map implicit changes upstream, the search fails visibly instead of silently admitting the wrong maps.',
+    ],
+  },
+  {
     version: '1.0.70',
     date: '2026-07-26',
     changes: [

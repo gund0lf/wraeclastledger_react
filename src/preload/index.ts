@@ -11,7 +11,9 @@ type TradeParams = {
   deliRewardTypes: string[]; brickExclusions: string[];
 };
 
-type BrickMod = { label: string; statId: string; regexTerm: string; category: 'regular' | 'nightmare' };
+type BrickMod = { id: string; label: string; regexTerm: string; category: 'regular' | 'nightmare' };
+type UnavailableBrickMod = { id: string; label: string; expectedCount: number; actualCount: number };
+type BrickModResult = { mods: BrickMod[]; unavailable: UnavailableBrickMod[]; error: string | null };
 
 const api = {
   onClipboardCapture: (callback: (text: string) => void): void => {
@@ -22,7 +24,7 @@ const api = {
   setClipboardWatch: (on: boolean): void => { ipcRenderer.send('clipboard:set-watch', on) },
   searchMapsOnTrade: (params: TradeParams): Promise<{ url: string | null; error: string | null }> =>
     ipcRenderer.invoke('trade:search-maps', params),
-  getBrickMods: (): Promise<BrickMod[]> => ipcRenderer.invoke('trade:get-brick-mods'),
+  getBrickMods: (): Promise<BrickModResult> => ipcRenderer.invoke('trade:get-brick-mods'),
   fetchCurrencyOverview: (league: string): Promise<{ lines: { id: string; primaryValue?: number }[] | null; error: string | null }> =>
     ipcRenderer.invoke('poeninja:currency-overview', league),
   fetchEconomyIcons: (family: 'exchange' | 'stash', league: string, type: string): Promise<{ icons: { name: string; icon: string }[] | null; slugs: string[]; names: string[]; error: string | null }> =>

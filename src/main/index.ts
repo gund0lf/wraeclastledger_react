@@ -4,14 +4,19 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { autoUpdater } from 'electron-updater'
 import {
-  BRICK_MOD_DEFS,
   brickRegexTerm,
-  expandSelectedBrickStatIds,
-  tradeStatMatchesBrick,
+  expandSelectedBrickIds,
+  resolveBrickTradeStats,
 } from '../shared/brickMods'
+import type { ResolvedBrickTradeStat, UnavailableBrickTradeStat } from '../shared/brickMods'
 import type { AtlasStatGroup, AtlasStatsReadResult } from '../shared/atlasStats'
 import { createKeyedSerialTask, isAllowedPathOfPathingUrl } from '../shared/atlasReaderSafety'
 import { resolveUserDataPath } from '../shared/appProfile'
+import {
+  SPECIAL_MAP_STAT_TEXT,
+  resolveEightModSpecialStatIds,
+  resolveSpecialMapTradeStats,
+} from '../shared/tradeMapFilters'
 
 // The installed build and `npm run dev` used to share one Chromium profile.
 // Their file:// and localhost origins could then touch the same LevelDB while
@@ -184,7 +189,6 @@ const PSEUDO_IDS: Record<string, string> = {
 };
 
 const STAT_LOOKUPS: Record<string, string> = {
-  originator:      "Originator's Memories",
   empowered:       'Empowered Mirage which covers the entire Map',
   delirious_pct:   'enchant:Players in Area are #% Delirious',
   deli_currency:   'enchant:Delirium Reward Type: Currency',
@@ -210,13 +214,17 @@ const STAT_LOOKUPS: Record<string, string> = {
   deli_talismans:  'enchant:Delirium Reward Type: Talismans',
 };
 
-// Brick mod catalogue (id/label/needle/category) + the regexTerm resolver now
+// Brick mod catalogue (id/label/exact Trade patterns/category) + the regexTerm resolver now
 // live in src/shared/brickMods.ts so main and the renderer share ONE definition
 // and the stash tokens are defined once, in shared/modTokens.ts (WP12).
 
-// Resolved brick mod cache: label → every Trade stat id for that logical mod.
-// 3.29 Thorns is one user-facing brick backed by separate Physical/Elemental ids.
-const BRICK_MOD_CACHE = new Map<string, string[]>();
+// Stable catalogue ids stay renderer-facing; only main expands them into live
+// Trade stat ids. This preserves distinct regular/Nightmare labels even when
+// GGG maps multiple tier variants to one Trade stat.
+let BRICK_MOD_RESOLVED: ResolvedBrickTradeStat[] = [];
+let BRICK_MOD_UNAVAILABLE: UnavailableBrickTradeStat[] = [];
+let SPECIAL_MAP_STAT_IDS = new Map<keyof typeof SPECIAL_MAP_STAT_TEXT, string>();
+let statsLoadError: string | null = null;
 
 async function ensureStatsLoaded(): Promise<void> {
   if (STATS_CACHE.size > 0) return;
@@ -226,8 +234,13 @@ async function ensureStatsLoaded(): Promise<void> {
       const res = await fetch('https://www.pathofexile.com/api/trade/data/stats', {
         headers: { 'User-Agent': 'WraeclastLedger/1.0 (github.com/gund0lf/wraeclastledger_react)' },
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        statsLoadError = `PoE Trade stats request failed (HTTP ${res.status})`;
+        return;
+      }
       const data = await res.json() as { result: { id: string; entries: { id: string; text: string }[] }[] };
+      const explicitEntries = data.result.find((group) => group.id === 'explicit')?.entries ?? [];
+      const allEntries = data.result.flatMap((group) => group.entries);
       for (const group of data.result) {
         if (group.id.includes('2')) continue;
         for (const entry of group.entries) {
@@ -238,40 +251,30 @@ async function ensureStatsLoaded(): Promise<void> {
             if (enchantOnly && group.id !== 'enchant') continue;
             if (entry.text.includes(needle)) STATS_CACHE.set(key, entry.id);
           }
-          if (group.id === 'explicit') {
-            for (const def of BRICK_MOD_DEFS) {
-              if (tradeStatMatchesBrick(entry.text, def)) {
-                const ids = BRICK_MOD_CACHE.get(def.label) ?? [];
-                if (!ids.includes(entry.id)) ids.push(entry.id);
-                BRICK_MOD_CACHE.set(def.label, ids);
-              }
-            }
-          }
         }
       }
-    } catch { /* silently fail */ }
+      const brickResolution = resolveBrickTradeStats(explicitEntries);
+      BRICK_MOD_RESOLVED = brickResolution.resolved;
+      BRICK_MOD_UNAVAILABLE = brickResolution.unavailable;
+      SPECIAL_MAP_STAT_IDS = resolveSpecialMapTradeStats(allEntries).resolved;
+    } catch (error) {
+      statsLoadError = error instanceof Error ? error.message : 'PoE Trade stats failed to load';
+    }
   })();
   return statsFetchPromise;
 }
 
-// Returns one representative statId per logical brick. Trade searches expand
-// that representative to every resolved ID before building the NOT filters.
+// Returns stable catalogue ids. Trade stat ids never cross into the renderer.
 ipcMain.handle('trade:get-brick-mods', async () => {
   await ensureStatsLoaded();
-  const seen = new Set<string>();
-  return BRICK_MOD_DEFS
-    .filter((def) => {
-      const statId = BRICK_MOD_CACHE.get(def.label)?.[0];
-      if (!statId || seen.has(statId)) return false;
-      seen.add(statId);
-      return true;
-    })
-    .map((def) => ({
+  const mods = BRICK_MOD_RESOLVED
+    .map(({ def }) => ({
+      id:        def.id,
       label:     def.label,
-      statId:    BRICK_MOD_CACHE.get(def.label)![0],
       regexTerm: brickRegexTerm(def),
       category:  def.category,
     }));
+  return { mods, unavailable: BRICK_MOD_UNAVAILABLE, error: statsLoadError };
 });
 
 // ── Trade params ──────────────────────────────────────────────────────────────
@@ -330,17 +333,39 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
   if (minMaps     > 0) pseudoFilters.push({ id: PSEUDO_IDS.maps,     value: { min: minMaps     } });
   if (pseudoFilters.length > 0) statsArray.push({ type: 'and', filters: pseudoFilters });
 
-  if (mapType === 'originator' && STATS_CACHE.has('originator'))
-    statsArray.push({ type: 'and', filters: [{ id: STATS_CACHE.get('originator')! }] });
+  const originatorStatId = SPECIAL_MAP_STAT_IDS.get('originator');
+  if ((mapType === 'originator' || mapType === 'nightmare') && !originatorStatId) {
+    return {
+      url: null,
+      error: `Special-map exclusion unavailable: ${SPECIAL_MAP_STAT_TEXT.originator}`,
+    };
+  }
+
+  if (mapType === 'originator')
+    statsArray.push({ type: 'and', filters: [{ id: originatorStatId! }] });
 
   if (empowered && STATS_CACHE.has('empowered'))
     statsArray.push({ type: 'and', filters: [{ id: STATS_CACHE.get('empowered')! }] });
 
-  if ((mapType === 'nightmare' || mapType === '8mod') && STATS_CACHE.has('originator'))
-    statsArray.push({ type: 'not', filters: [{ id: STATS_CACHE.get('originator')! }] });
+  if (mapType === 'nightmare')
+    statsArray.push({ type: 'not', filters: [{ id: originatorStatId! }] });
 
-  if (mapType === '8mod')
+  if (mapType === '8mod') {
+    const specialMapStats = resolveEightModSpecialStatIds(SPECIAL_MAP_STAT_IDS);
+    if (specialMapStats.missing.length > 0) {
+      return {
+        url: null,
+        error: `8-mod special-map exclusions unavailable: ${specialMapStats.missing
+          .map((key) => SPECIAL_MAP_STAT_TEXT[key])
+          .join(', ')}`,
+      };
+    }
+    statsArray.push({
+      type: 'not',
+      filters: specialMapStats.ids.map((id) => ({ id })),
+    });
     statsArray.push({ type: 'and', filters: [{ id: 'pseudo.pseudo_number_of_affix_mods', value: { min: 8 } }] });
+  }
 
   if (minDelirious >= 0 && STATS_CACHE.has('delirious_pct'))
     statsArray.push({ type: 'and', filters: [{ id: STATS_CACHE.get('delirious_pct')!, value: { min: minDelirious } }] });
@@ -354,11 +379,13 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
   }
 
   if (brickExclusions.length > 0) {
-    const resolvedBrickIds = expandSelectedBrickStatIds(
+    const resolvedBrickIds = expandSelectedBrickIds(
       brickExclusions,
-      [...BRICK_MOD_CACHE.values()],
+      BRICK_MOD_RESOLVED,
     );
-    statsArray.push({ type: 'not', filters: resolvedBrickIds.map((id) => ({ id })) });
+    if (resolvedBrickIds.length > 0) {
+      statsArray.push({ type: 'not', filters: resolvedBrickIds.map((id) => ({ id })) });
+    }
   }
 
   const query = {

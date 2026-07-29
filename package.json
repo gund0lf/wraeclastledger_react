@@ -1,6 +1,6 @@
 {
   "name": "WraeclastLedger",
-  "version": "1.0.70",
+  "version": "1.0.71",
   "description": "WraeclastLedger",
   "license": "PolyForm-Noncommercial-1.0.0",
   "main": "./out/main/index.js",
@@ -19,6 +19,7 @@
     "test": "vitest run && node --test scripts/cargo-query.test.mjs",
     "test:watch": "vitest",
     "game-data:generate": "node scripts/gen-manifest-json.mjs",
+    "trade-stats:check": "node scripts/check-tradestats.mjs",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "electron-vite build",

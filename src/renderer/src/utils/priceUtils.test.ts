@@ -6,6 +6,8 @@ import {
   sanitizeExclusionTerms,
   generateRunRegex,
   generateSlamRegex,
+  generateTradeRegex,
+  resolveTradeRegexExclusions,
 } from './priceUtils';
 
 // ─── parsePriceInput ──────────────────────────────────────────────────────────
@@ -246,13 +248,20 @@ describe('generateRunRegex', () => {
   describe('quantity gate', () => {
     it('omits quantity quote when avgQuant <= 20', () => {
       const r = generateRunRegex({ ...baseAvg, avgQuant: 20, avgCurr: 60, avgPack: 50 });
+      expect(r).not.toContain('m q.*');
+    });
+
+    it('targets Item Quantity rather than accidentally targeting Pack Size', () => {
+      // avgQuant=50 → 0.6 × 50 = 30 → quantFloor=30
+      const r = generateRunRegex({ ...baseAvg, avgQuant: 50, avgCurr: 60, avgPack: 50 });
+      expect(r).toContain('"m q.*([3-9].|\\d..)%"');
       expect(r).not.toContain('iz.*');
     });
 
-    it('includes quantity quote when avgQuant > 20', () => {
-      // avgQuant=50 → 0.6 × 50 = 30 → quantFloor=30
-      const r = generateRunRegex({ ...baseAvg, avgQuant: 50, avgCurr: 60, avgPack: 50 });
-      expect(r).toContain('"iz.*');
+    it('keeps quantity and pack as distinct quoted conditions', () => {
+      const r = generateRunRegex({ ...baseAvg, avgQuant: 100, avgPack: 40, avgCurr: 0 });
+      expect(r).toContain('"ack.*([4-9].|\\d..)%"');
+      expect(r).toContain('"m q.*([6-9].|\\d..)%"');
     });
   });
 
@@ -294,6 +303,45 @@ describe('generateRunRegex', () => {
 });
 
 // ─── generateSlamRegex ────────────────────────────────────────────────────────
+describe('Trade modal regex', () => {
+  const bricks = [
+    { id: 'brick.max-res', regexTerm: 'um re' },
+    { id: 'brick.regen', regexTerm: 'reg' },
+    { id: 'brick.accuracy', regexTerm: 'ss acc' },
+  ];
+
+  it('uses the live modal selection while preserving custom session terms', () => {
+    expect(resolveTradeRegexExclusions(
+      ['brick.regen', 'brick.accuracy'],
+      bricks,
+      ['um re', 'custom-token'],
+    )).toEqual(['reg', 'ss acc', 'custom-token']);
+  });
+
+  it('does not restore a known session brick deselected in the modal', () => {
+    expect(resolveTradeRegexExclusions(
+      ['brick.regen'],
+      bricks,
+      ['um re', 'reg'],
+    )).toEqual(['reg']);
+  });
+
+  it('copies exclusions even when every numeric Trade threshold is zero', () => {
+    expect(generateTradeRegex(['reg', 'ss acc'], 0, 0, 0, 0)).toBe('"!reg|ss acc"');
+  });
+
+  it('hides Copy Regex only when exclusions and thresholds are both empty', () => {
+    expect(generateTradeRegex([], 0, 0, 0, 0)).toBe('');
+  });
+
+  it('uses the Item Quantity anchor for the modal IIQ floor', () => {
+    const regex = generateTradeRegex(['reg'], 100, 40, 0, 0);
+    expect(regex).toBe(
+      '"!reg" "ack.*([4-9].|\\d..)%" "m q.*([6-9].|\\d..)%"',
+    );
+  });
+});
+
 describe('generateSlamRegex', () => {
   const baseAvg = {
     avgQuant: 0, avgPack: 0, avgCurr: 0, avgRarity: 0, avgScarabs: 0,

@@ -10,13 +10,14 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { createHash } from 'node:crypto';
 import { MOD_TOKENS } from '../../../shared/modTokens';
 import {
   BRICK_MOD_DEFS,
   brickRegexTerm,
-  expandSelectedBrickStatIds,
+  expandSelectedBrickIds,
   normalizeTradeStatText,
-  tradeStatMatchesBrick,
+  resolveBrickTradeStats,
 } from '../../../shared/brickMods';
 
 describe('MOD_TOKENS integrity', () => {
@@ -214,37 +215,117 @@ describe('BRICK_MOD_DEFS <-> MOD_TOKENS alignment (WP12)', () => {
   });
 });
 
-describe('3.29 Thorns trade-stat resolution', () => {
-  const thorns = BRICK_MOD_DEFS.find((def) => def.id === 'thorns_reflection')!;
+describe('exact Trade-stat resolution', () => {
+  const byId = (id: string) => BRICK_MOD_DEFS.find((def) => def.id === id)!;
 
-  it('normalizes Trade API tag markup before matching the human label', () => {
-    const tagged =
-      'Rare Monsters have [ElementalThorns|Elemental Thorns] reflecting # Elemental Damage';
+  it('normalizes Trade API tag markup before exact matching', () => {
+    const tagged = 'Rare Monsters have [ElementalThorns|Elemental Thorns] reflecting # Elemental Damage';
     expect(normalizeTradeStatText(tagged)).toBe(
       'Rare Monsters have Elemental Thorns reflecting # Elemental Damage',
     );
-    expect(tradeStatMatchesBrick(tagged, thorns)).toBe(true);
   });
 
-  it('matches both physical and elemental Thorns with one logical brick', () => {
-    expect(tradeStatMatchesBrick(
-      'Rare Monsters have [PhysicalThorns|Physical Thorns] reflecting # Physical Damage',
-      thorns,
-    )).toBe(true);
-    expect(tradeStatMatchesBrick(
-      'Rare Monsters have [ElementalThorns|Elemental Thorns] reflecting # Elemental Damage',
-      thorns,
-    )).toBe(true);
+  it('resolves intended map stats without collecting global gear-stat decoys', () => {
+    const ids = [
+      'reduced_max_resistances',
+      'reduced_non_curse_aura_effect',
+      'cannot_regenerate_life_mana_es',
+      'less_recovery_rate',
+      'high_crit_chance_multiplier',
+      'reduced_block_less_armour',
+      'avoid_elemental_ailments',
+      'more_monster_life',
+      'players_less_accuracy',
+    ];
+    const definitions = ids.map(byId);
+    const intended = definitions.flatMap((def) =>
+      def.tradePatterns.map((pattern, index) => ({
+        id: pattern.statId ?? `intended.${def.id}.${index}`,
+        text: pattern.text
+          .replace('Elemental Thorns', '[ElementalThorns|Elemental Thorns]')
+          .replace('Physical Thorns', '[PhysicalThorns|Physical Thorns]'),
+      })),
+    );
+    const decoys = [
+      { id: 'gear.max-res', text: '+#% to all maximum Resistances while you have no Endurance Charges' },
+      { id: 'gear.spectre-max-res', text: 'Raised Spectres have +#% to all maximum Resistances' },
+      { id: 'gear.aura', text: '#% increased effect of Non-Curse Auras from your Skills on Enemies' },
+      { id: 'gear.recovery', text: '#% increased Recovery Rate of Life and Energy Shield' },
+      { id: 'gear.block', text: '#% reduced Chance to Block Attack and Spell Damage' },
+      { id: 'gear.ailments', text: '#% chance to Avoid Elemental Ailments while Phasing' },
+      { id: 'obsolete.more-life', text: '#% more Monster Life' },
+      { id: 'gear.accuracy', text: '+# to Accuracy Rating' },
+      { id: 'gear.accuracy-percent', text: '#% increased Accuracy Rating' },
+    ];
+
+    const result = resolveBrickTradeStats([...intended, ...decoys], definitions);
+    expect(result.unavailable).toEqual([]);
+    expect(Object.fromEntries(result.resolved.map(({ def, statIds }) => [def.id, statIds]))).toEqual(
+      Object.fromEntries(definitions.map((def) => [
+        def.id,
+        def.tradePatterns.map((pattern, index) => pattern.statId ?? `intended.${def.id}.${index}`),
+      ])),
+    );
+    const expanded = expandSelectedBrickIds(ids, result.resolved);
+    expect(expanded).toHaveLength(9);
+    expect(expanded.every((id) => id.startsWith('intended.') || id.startsWith('explicit.'))).toBe(true);
   });
 
-  it('expands the representative stat id to both Trade filters', () => {
-    expect(expandSelectedBrickStatIds(
-      ['explicit.stat_physical', 'unrelated.stat'],
-      [['explicit.stat_physical', 'explicit.stat_elemental']],
+  it('keeps the historically inverted player-accuracy label separate from monster accuracy', () => {
+    const playerAccuracy = byId('players_less_accuracy');
+    const monsterAccuracy = byId('monsters_increased_accuracy_rating');
+    expect(playerAccuracy.tradePatterns[0].text).toBe('Players have #% more Accuracy Rating');
+    expect(monsterAccuracy.tradePatterns[0].text).toBe('Monsters have #% increased Accuracy Rating');
+  });
+
+  it('fails a brick closed when an exact pattern is missing or ambiguous', () => {
+    const maxRes = byId('reduced_max_resistances');
+    expect(resolveBrickTradeStats([], [maxRes]).unavailable).toEqual([{
+      id: maxRes.id,
+      label: maxRes.label,
+      expectedCount: 1,
+      actualCount: 0,
+    }]);
+
+    const duplicateText = maxRes.tradePatterns[0].text;
+    expect(resolveBrickTradeStats([
+      { id: 'duplicate.one', text: duplicateText },
+      { id: 'duplicate.two', text: duplicateText },
+    ], [maxRes]).unavailable[0]).toMatchObject({
+      id: maxRes.id,
+      expectedCount: 1,
+      actualCount: 2,
+    });
+  });
+
+  it('pins the complete exact-pattern registry', () => {
+    const snapshot = BRICK_MOD_DEFS.map(({ id, tradePatterns }) => ({ id, tradePatterns }));
+    expect(createHash('sha256').update(JSON.stringify(snapshot)).digest('hex')).toBe(
+      'a894dfce98e5a5d61b4a9773b1cf41f0586f5d6f95aa29a5c1a90722ff3e42b6',
+    );
+  });
+
+  it('expands one stable brick id to both Thorns Trade filters', () => {
+    const thorns = byId('thorns_reflection');
+    expect(expandSelectedBrickIds(
+      [thorns.id, 'unknown.brick'],
+      [{ def: thorns, statIds: ['explicit.stat_physical', 'explicit.stat_elemental'] }],
     )).toEqual([
       'explicit.stat_physical',
       'explicit.stat_elemental',
-      'unrelated.stat',
     ]);
+  });
+
+  it('keeps tier labels independently selectable while deduplicating a shared Trade stat', () => {
+    const regular = byId('reduced_max_resistances');
+    const nightmare = byId('uber_20_max_resistances');
+    expect(regular.label).not.toBe(nightmare.label);
+    expect(expandSelectedBrickIds(
+      [regular.id, nightmare.id],
+      [
+        { def: regular, statIds: ['explicit.shared-max-res'] },
+        { def: nightmare, statIds: ['explicit.shared-max-res'] },
+      ],
+    )).toEqual(['explicit.shared-max-res']);
   });
 });

@@ -7,17 +7,17 @@ import { useDisclosure } from '@mantine/hooks';
 import { useState, useMemo, useEffect } from 'react';
 import { useSessionKeys } from '../store/useSessionStore';
 import { IconTrash, IconCopy, IconCheck, IconWand, IconX, IconExternalLink, IconStar, IconDeviceFloppy, IconChevronDown } from '@tabler/icons-react';
-import { generateRunRegex, generateSlamRegex, trimmedMean, sanitizeExclusionTerms } from '../utils/priceUtils';
+import {
+  generateRunRegex,
+  generateSlamRegex,
+  generateTradeRegex,
+  resolveTradeRegexExclusions,
+  trimmedMean,
+  sanitizeExclusionTerms,
+} from '../utils/priceUtils';
 import { CURRENT_LEAGUE, KNOWN_LEAGUES } from '../utils/league';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { RegexLine } from '../components/ui/RegexLine'
-
-// Generate an approximate stash regex from the trade search parameters
-function generateTradeRegex(exclusions: string[], minIIQ: number, minPack: number, minCurr: number, minIIR: number): string {
-  const avg = { avgQuant: minIIQ || 0, avgPack: minPack || 0, avgCurr: minCurr || 0, avgRarity: minIIR || 0, avgScarabs: 0 };
-  if (avg.avgQuant === 0 && avg.avgPack === 0 && avg.avgCurr === 0) return '';
-  return generateRunRegex(avg, exclusions);
-}
 
 const TYPE_COLORS: Record<string, string> = { run: 'green', slam: 'orange', other: 'gray' };
 const TYPE_LABELS: Record<string, string> = { run: 'Run', slam: 'Slam', other: 'Other' };
@@ -32,7 +32,7 @@ type CorruptedFilter = 'any' | 'yes' | 'no';
 const MAP_TYPE_OPTIONS: { value: MapType; label: string; description: string }[] = [
   { value: 'any',        label: 'Any',         description: 'No map type filter applied' },
   { value: 'regular',    label: 'Regular',      description: 'Non-corrupted maps, standard mod pool. Pseudo stats left at 0.' },
-  { value: '8mod',       label: '8-mod',        description: 'Corrupted maps only, NOT Originator. High IIQ/pack narrows to quality 8-mod maps.' },
+  { value: '8mod',       label: '8-mod',        description: 'Corrupted ordinary maps only; excludes Originator and Shaper/Elder influence. High IIQ/pack narrows to quality 8-mod maps.' },
   { value: 'nightmare',  label: 'Nightmare',    description: 'Has uber pseudo stats (currency/scarabs/maps > 0) and is NOT Originator. Set at least one pseudo min.' },
   { value: 'originator', label: 'Originator',   description: 'Has Originator\'s Memories implicit. Includes all variants.' },
 ];
@@ -134,8 +134,9 @@ export const FromSessionTab = () => {
   const [tradeCorrupted,    setTradeCorrupted]    = useState<CorruptedFilter>('any');
   const [tradeLoading,      setTradeLoading]      = useState(false);
   const [tradeError,        setTradeError]        = useState<string | null>(null);
-  const [brickMods,         setBrickMods]         = useState<{ label: string; statId: string; regexTerm: string; category: 'regular' | 'nightmare' }[]>([]);
-  const [brickModsError,    setBrickModsError]    = useState(false);
+  const [brickMods,         setBrickMods]         = useState<{ id: string; label: string; regexTerm: string; category: 'regular' | 'nightmare' }[]>([]);
+  const [brickModsError,    setBrickModsError]    = useState<string | null>(null);
+  const [unavailableBricks, setUnavailableBricks] = useState<{ label: string; expectedCount: number; actualCount: number }[]>([]);
   const [tradeBrickExcl,    setTradeBrickExcl]    = useState<string[]>([]);
 
   const exclusions: string[]  = settings.regexExclusions ?? [];
@@ -154,8 +155,16 @@ export const FromSessionTab = () => {
   useEffect(() => {
     try {
       const fn = window.api?.getBrickMods;
-      if (typeof fn === 'function') fn().then(setBrickMods).catch(() => setBrickModsError(true));
-    } catch { setBrickModsError(true); }
+      if (typeof fn === 'function') {
+        fn()
+          .then((result) => {
+            setBrickMods(result.mods);
+            setUnavailableBricks(result.unavailable);
+            setBrickModsError(result.error);
+          })
+          .catch(() => setBrickModsError('PoE Trade exclusions failed to load'));
+      }
+    } catch { setBrickModsError('PoE Trade exclusions failed to load'); }
   }, []);
 
   const generatedRegex = useMemo(() => {
@@ -174,14 +183,14 @@ export const FromSessionTab = () => {
     };
   }, [maps, exclusions, is8Mod]);
 
-  const nightmareStatIds = useMemo(
-    () => new Set(brickMods.filter((m) => m.category === 'nightmare').map((m) => m.statId)),
+  const nightmareBrickIds = useMemo(
+    () => new Set(brickMods.filter((m) => m.category === 'nightmare').map((m) => m.id)),
     [brickMods]
   );
 
   const brickModData = useMemo(() => {
-    const regular   = brickMods.filter((m) => m.category === 'regular').map((m) => ({ value: m.statId, label: m.label }));
-    const nightmare = brickMods.filter((m) => m.category === 'nightmare').map((m) => ({ value: m.statId, label: m.label }));
+    const regular   = brickMods.filter((m) => m.category === 'regular').map((m) => ({ value: m.id, label: m.label }));
+    const nightmare = brickMods.filter((m) => m.category === 'nightmare').map((m) => ({ value: m.id, label: m.label }));
     const result: { group: string; items: { value: string; label: string }[] }[] = [];
     if (regular.length   > 0) result.push({ group: 'Regular / shared', items: regular });
     if (nightmare.length > 0) result.push({ group: 'Nightmare', items: nightmare });
@@ -195,14 +204,14 @@ export const FromSessionTab = () => {
   );
 
   const renderBrickOption = ({ option }: { option: { value: string; label: string } }) => (
-    <Text size="xs" style={{ color: nightmareStatIds.has(option.value) ? COLOR.nightmare : undefined }}>
+    <Text size="xs" style={{ color: nightmareBrickIds.has(option.value) ? COLOR.nightmare : undefined }}>
       {option.label}
     </Text>
   );
 
-  const addBrickModsToRegex = (statIds: string[]) => {
-    const terms = statIds
-      .map((id) => brickMods.find((m) => m.statId === id)?.regexTerm)
+  const addBrickModsToRegex = (brickIds: string[]) => {
+    const terms = brickIds
+      .map((id) => brickMods.find((m) => m.id === id)?.regexTerm)
       .filter((t): t is string => !!t && !exclusions.includes(t));
     if (terms.length > 0) updateSetting('regexExclusions', [...exclusions, ...terms]);
   };
@@ -214,12 +223,12 @@ export const FromSessionTab = () => {
     const catTerms = new Set(brickMods.filter((m) => m.category === cat).map((m) => m.regexTerm));
     const kept = exclusions.filter((e) => !catTerms.has(e));
     const newTerms = selected
-      .map((id) => brickMods.find((m) => m.statId === id)?.regexTerm)
+      .map((id) => brickMods.find((m) => m.id === id)?.regexTerm)
       .filter((t): t is string => !!t);
     updateSetting('regexExclusions', [...new Set([...kept, ...newTerms])]);
   };
   const selectedIdsOf = (cat: 'regular' | 'nightmare') =>
-    brickMods.filter((m) => m.category === cat && exclusions.includes(m.regexTerm)).map((m) => m.statId);
+    brickMods.filter((m) => m.category === cat && exclusions.includes(m.regexTerm)).map((m) => m.id);
   const doPresetSave = () => {
     const name = presetSaveName.trim();
     if (!name) return;
@@ -281,7 +290,7 @@ export const FromSessionTab = () => {
     setTradeCorrupted('any');
     setTradeMinTier(16);
     setTradeError(null);
-    const autoSelected = brickMods.filter((m) => exclusions.includes(m.regexTerm)).map((m) => m.statId);
+    const autoSelected = brickMods.filter((m) => exclusions.includes(m.regexTerm)).map((m) => m.id);
     setTradeBrickExcl(autoSelected);
     openTrade();
   };
@@ -457,11 +466,20 @@ export const FromSessionTab = () => {
             </Text>
             {brickModsError && (
               <Alert color="orange" variant="light" p="xs">
-                <Text size="xs">Mod list failed to load — restart the app to retry. Brick exclusions by regex term still work.</Text>
+                <Text size="xs">{brickModsError} — restart the app to retry. Brick exclusions by regex term still work.</Text>
+              </Alert>
+            )}
+            {unavailableBricks.length > 0 && (
+              <Alert color="orange" variant="light" p="xs">
+                <Text size="xs">
+                  {unavailableBricks.length} exclusion{unavailableBricks.length === 1 ? '' : 's'} unavailable because the current PoE Trade definitions did not match exactly: {unavailableBricks.map((brick) => `${brick.label} (expected ${brick.expectedCount}, found ${brick.actualCount})`).join(', ')}.
+                </Text>
               </Alert>
             )}
             <MultiSelect size="xs"
-              placeholder={brickModsError ? 'Unavailable' : brickMods.length === 0 ? 'Loading…' : 'Search and select mods to exclude'}
+              placeholder={brickModsError || unavailableBricks.length > 0 && brickMods.length === 0
+                ? 'Unavailable'
+                : brickMods.length === 0 ? 'Loading…' : 'Search and select mods to exclude'}
               searchable clearable filter={brickModFilter}
               data={brickModData} value={tradeBrickExcl} onChange={setTradeBrickExcl}
               renderOption={renderBrickOption}
@@ -488,12 +506,23 @@ export const FromSessionTab = () => {
               Search on PoE Trade
             </Button>
             {(() => {
-              const r = generateTradeRegex(exclusions, tradeMinIIQ, tradeMinPack, tradeMinCurrency, tradeMinIIR);
+              const modalExclusions = resolveTradeRegexExclusions(
+                tradeBrickExcl,
+                brickMods,
+                exclusions,
+              );
+              const r = generateTradeRegex(
+                modalExclusions,
+                tradeMinIIQ,
+                tradeMinPack,
+                tradeMinCurrency,
+                tradeMinIIR,
+              );
               if (!r) return null;
               return (
                 <CopyButton value={r} timeout={2000}>
                   {({ copied, copy }) => (
-                    <Tooltip label={copied ? 'Copied!' : 'Copy matching stash regex'} withArrow>
+                    <Tooltip label={copied ? 'Copied!' : 'Copy approximate stash regex from these controls'} withArrow>
                       <Button variant={copied ? 'light' : 'default'} color={copied ? 'teal' : undefined} onClick={copy}
                         style={{ minWidth: 110 }}
                         leftSection={copied ? <IconCheck size={13} /> : <IconCopy size={13} />}>
@@ -706,7 +735,7 @@ export const FromSessionTab = () => {
                  Nightmare, and the headers make the old purple note redundant. */
               <SimpleGrid cols={2} spacing={6}>
                 <MultiSelect size="xs" label="Regular / shared mods" placeholder="Search…" searchable clearable
-                  data={brickMods.filter((m) => m.category === 'regular').map((m) => ({ value: m.statId, label: m.label }))}
+                  data={brickMods.filter((m) => m.category === 'regular').map((m) => ({ value: m.id, label: m.label }))}
                   filter={brickModFilter}
                   value={selectedIdsOf('regular')}
                   onChange={handleCategoryChange('regular')}
@@ -719,7 +748,7 @@ export const FromSessionTab = () => {
                     section: { alignItems: 'flex-start', paddingTop: 5 },
                   }} />
                 <MultiSelect size="xs" label="Nightmare mods" placeholder="Search…" searchable clearable
-                  data={brickMods.filter((m) => m.category === 'nightmare').map((m) => ({ value: m.statId, label: m.label }))}
+                  data={brickMods.filter((m) => m.category === 'nightmare').map((m) => ({ value: m.id, label: m.label }))}
                   filter={brickModFilter}
                   value={selectedIdsOf('nightmare')}
                   onChange={handleCategoryChange('nightmare')}

@@ -89,7 +89,10 @@ export const generateRunRegex = (avg: MapAverages, exclusions?: string[]): strin
 
   if (avg.avgQuant > 20) {
     const quantFloor = Math.max(Math.floor(avg.avgQuant * 0.6 / 10) * 10, 20);
-    parts.push(`"iz.*(${thresholdPat(quantFloor)})%"`);
+    // `m q` targets Item Quantity. Keep it distinct from the `ack` Pack Size
+    // anchor: the previous `iz` anchor also matched Pack Size and therefore
+    // turned the quantity gate into a second, stricter pack-size gate.
+    parts.push(`"m q.*(${thresholdPat(quantFloor)})%"`);
   }
   if (avg.avgRarity > 40) {
     const rarFloor = Math.max(Math.floor(avg.avgRarity * 0.6 / 10) * 10, 30);
@@ -97,6 +100,53 @@ export const generateRunRegex = (avg: MapAverages, exclusions?: string[]): strin
   }
   return parts.join(' ');
 };
+
+export interface TradeRegexBrick {
+  id: string;
+  regexTerm: string;
+}
+
+/**
+ * The modal selection is authoritative for catalogue bricks. Preserve only
+ * genuinely custom session terms so deselecting a known brick in the modal
+ * cannot be undone by stale session settings.
+ */
+export function resolveTradeRegexExclusions(
+  selectedBrickIds: readonly string[],
+  bricks: readonly TradeRegexBrick[],
+  sessionExclusions: readonly string[],
+): string[] {
+  const knownTerms = new Set(sanitizeExclusionTerms(bricks.map((brick) => brick.regexTerm)));
+  const byBrickId = new Map(bricks.map((brick) => [brick.id, brick.regexTerm]));
+  const selectedTerms = selectedBrickIds
+    .map((brickId) => byBrickId.get(brickId))
+    .filter((term): term is string => !!term);
+  const customTerms = sanitizeExclusionTerms([...sessionExclusions])
+    .filter((term) => !knownTerms.has(term));
+  return sanitizeExclusionTerms([...selectedTerms, ...customTerms]);
+}
+
+/** Generate the modal's approximate stash regex from its live controls. */
+export function generateTradeRegex(
+  exclusions: string[],
+  minIIQ: number,
+  minPack: number,
+  minCurr: number,
+  minIIR: number,
+): string {
+  const avg = {
+    avgQuant: minIIQ || 0,
+    avgPack: minPack || 0,
+    avgCurr: minCurr || 0,
+    avgRarity: minIIR || 0,
+    avgScarabs: 0,
+  };
+  if (avg.avgQuant === 0 && avg.avgPack === 0 && avg.avgCurr === 0 && avg.avgRarity === 0) {
+    const cleanExclusions = sanitizeExclusionTerms(exclusions);
+    return cleanExclusions.length > 0 ? `"!${cleanExclusions.join('|')}"` : '';
+  }
+  return generateRunRegex(avg, exclusions);
+}
 
 export const generateSlamRegex = (avg: MapAverages, exclusions?: string[]): string => {
   const parts: string[] = [];

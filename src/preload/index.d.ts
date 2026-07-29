@@ -10,7 +10,9 @@ type TradeParams = {
   deliRewardTypes: string[]; brickExclusions: string[];
 };
 
-type BrickMod = { label: string; statId: string; regexTerm: string; category: 'regular' | 'nightmare' };
+type BrickMod = { id: string; label: string; regexTerm: string; category: 'regular' | 'nightmare' };
+type UnavailableBrickMod = { id: string; label: string; expectedCount: number; actualCount: number };
+type BrickModResult = { mods: BrickMod[]; unavailable: UnavailableBrickMod[]; error: string | null };
 
 declare global {
   interface Window {
@@ -20,7 +22,7 @@ declare global {
       removeClipboardListener: () => void
       setClipboardWatch:   (on: boolean) => void
       searchMapsOnTrade:   (params: TradeParams) => Promise<{ url: string | null; error: string | null }>
-      getBrickMods:        () => Promise<BrickMod[]>
+      getBrickMods:        () => Promise<BrickModResult>
       fetchCurrencyOverview: (league: string) => Promise<{ lines: { id: string; primaryValue?: number }[] | null; error: string | null }>
       fetchEconomyIcons: (family: 'exchange' | 'stash', league: string, type: string) => Promise<{ icons: { name: string; icon: string }[] | null; slugs: string[]; names: string[]; error: string | null }>
       fetchLeagueIndex: () => Promise<{ leagues: string[] | null; error: string | null }>
