@@ -66,7 +66,13 @@ export const StrategyBrowserModule = () => {
   const [browserView, setBrowserView] = useState<'live' | 'retrospectives'>('live');
   const LIMIT = 20;
 
-  const requestCurrentAtlasApply = (url: string) => {
+  const requestCurrentAtlasApply = (
+    url: string,
+    multiplyingModifiers?: Pick<
+      DiscordImport,
+      'multiplyingModifiersAllocated' | 'multiplyingModifiersFragmentCount'
+    >,
+  ) => {
     const targetSessionNonce = useSessionStore.getState().sessionNonce;
     requestAtlasApply(targetSessionNonce); // visible Atlas Tree lifecycle/reload
     void window.api.readAtlasTreeStats(url).then((result) => {
@@ -78,7 +84,23 @@ export const StrategyBrowserModule = () => {
       const patch = deriveAtlasCalcSettings(result.groups);
       if (patch.smallNodesAllocated !== undefined) updateSetting('smallNodesAllocated', patch.smallNodesAllocated);
       if (patch.mountingModifiers) updateSetting('mountingModifiers', true);
-      if (patch.multiplyingModifiersAllocated) updateSetting('multiplyingModifiersAllocated', true);
+      // A schema-v2 authored value is authoritative. Atlas stats may confirm
+      // the notable is allocated, but cannot reconstruct the authored fragment
+      // count and must never turn an explicit Off back on asynchronously.
+      if (multiplyingModifiers && multiplyingModifiers.multiplyingModifiersAllocated !== null) {
+        updateSetting(
+          'multiplyingModifiersAllocated',
+          multiplyingModifiers.multiplyingModifiersAllocated,
+        );
+        updateSetting(
+          'fragmentCountOverride',
+          multiplyingModifiers.multiplyingModifiersAllocated
+            ? multiplyingModifiers.multiplyingModifiersFragmentCount
+            : null,
+        );
+      } else if (patch.multiplyingModifiersAllocated) {
+        updateSetting('multiplyingModifiersAllocated', true);
+      }
     }).catch((error: unknown) => {
       if (useSessionStore.getState().sessionNonce !== targetSessionNonce) return;
       const message = error instanceof Error ? error.message : 'unknown error';
@@ -187,6 +209,7 @@ export const StrategyBrowserModule = () => {
   // ── Load build (called by both StrategyCard and ImportModal) ─────────────────
   const applyStrategyBuild = (s: Strategy) => {
     newSession();
+    const parsed = s.raw_export ? parseDiscordExport(s.raw_export) : null;
     if (s.map_type === '6-mod' || s.map_type === '8-mod') {
       updateSetting('mapType', s.map_type);
     }
@@ -206,28 +229,34 @@ export const StrategyBrowserModule = () => {
       // URL is unchanged (loading the SAME strategy twice). newSession() zeroed the
       // calc config; without this the URL-change effect can't fire on an unchanged
       // URL, so the calc would stay empty and the setup wizard would reappear.
-      requestCurrentAtlasApply(s.atlas_tree_url);
+      requestCurrentAtlasApply(s.atlas_tree_url, parsed ?? undefined);
     }
-    if (s.raw_export) {
-      const parsed = parseDiscordExport(s.raw_export);
-      if (parsed) {
-        if (parsed.mapType === '6-mod' || parsed.mapType === '8-mod') {
-          updateSetting('mapType', parsed.mapType);
-        }
-        if (parsed.deliOrbType) {
-          updateAdvSetting('advDeliOrbType', parsed.deliOrbType);
-          if (parsed.deliOrbQty   > 0) updateAdvSetting('advDeliOrbQtyPerMap',  parsed.deliOrbQty);
-          if (parsed.deliOrbPrice > 0) updateAdvSetting('advDeliOrbPriceEach',  parsed.deliOrbPrice);
-        }
-        if (parsed.astroType) {
-          updateAdvSetting('advAstrolabeType', parsed.astroType);
-          if (parsed.astroCount > 0) updateAdvSetting('advAstrolabeCount', parsed.astroCount);
-          if (parsed.astroPrice > 0) updateAdvSetting('advAstrolabePrice', parsed.astroPrice);
-        }
+    if (parsed) {
+      if (parsed.multiplyingModifiersAllocated !== null) {
+        updateSetting('multiplyingModifiersAllocated', parsed.multiplyingModifiersAllocated);
+        updateSetting(
+          'fragmentCountOverride',
+          parsed.multiplyingModifiersAllocated
+            ? parsed.multiplyingModifiersFragmentCount
+            : null,
+        );
+      }
+      if (parsed.mapType === '6-mod' || parsed.mapType === '8-mod') {
+        updateSetting('mapType', parsed.mapType);
+      }
+      if (parsed.deliOrbType) {
+        updateAdvSetting('advDeliOrbType', parsed.deliOrbType);
+        if (parsed.deliOrbQty   > 0) updateAdvSetting('advDeliOrbQtyPerMap',  parsed.deliOrbQty);
+        if (parsed.deliOrbPrice > 0) updateAdvSetting('advDeliOrbPriceEach',  parsed.deliOrbPrice);
+      }
+      if (parsed.astroType) {
+        updateAdvSetting('advAstrolabeType', parsed.astroType);
+        if (parsed.astroCount > 0) updateAdvSetting('advAstrolabeCount', parsed.astroCount);
+        if (parsed.astroPrice > 0) updateAdvSetting('advAstrolabePrice', parsed.astroPrice);
       }
     }
     setLoadedMsg(`Loaded ${s.discord_username}'s build — scarabs, chisel, atlas tree, deli orbs & astrolabe applied.`);
-    const p = s.raw_export ? parseDiscordExport(s.raw_export) : null;
+    const p = parsed;
     const runRegex = p?.runRegex || s.run_regex;
     if (runRegex) {
       setLoadedStrategyInfo({
@@ -342,7 +371,19 @@ export const StrategyBrowserModule = () => {
         if (parsed.scarabCosts[i] > 0) updateScarab(i, 'cost', parsed.scarabCosts[i]);
       });
     }
-    if (parsed.atlasTreeUrl) { updateSetting('atlasTreeUrl', parsed.atlasTreeUrl); requestCurrentAtlasApply(parsed.atlasTreeUrl); }
+    if (parsed.multiplyingModifiersAllocated !== null) {
+      updateSetting('multiplyingModifiersAllocated', parsed.multiplyingModifiersAllocated);
+      updateSetting(
+        'fragmentCountOverride',
+        parsed.multiplyingModifiersAllocated
+          ? parsed.multiplyingModifiersFragmentCount
+          : null,
+      );
+    }
+    if (parsed.atlasTreeUrl) {
+      updateSetting('atlasTreeUrl', parsed.atlasTreeUrl);
+      requestCurrentAtlasApply(parsed.atlasTreeUrl, parsed);
+    }
     if (parsed.deliOrbType)  { updateAdvSetting('advDeliOrbType', parsed.deliOrbType); updateAdvSetting('advDeliOrbQtyPerMap', parsed.deliOrbQty); updateAdvSetting('advDeliOrbPriceEach', parsed.deliOrbPrice); }
     if (parsed.astroType)    { updateAdvSetting('advAstrolabeType', parsed.astroType); updateAdvSetting('advAstrolabeCount', parsed.astroCount); updateAdvSetting('advAstrolabePrice', parsed.astroPrice); }
     if (parsed.runRegex) {

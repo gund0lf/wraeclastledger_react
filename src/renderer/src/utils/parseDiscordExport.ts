@@ -44,6 +44,9 @@ export interface DiscordImport {
   setupFingerprint: string | null;
   gameDataRevision: number | null;
   gameDataPatchVersion: string | null;
+  /** null means the pre-schema-v2 wire did not record Multiplying Modifiers. */
+  multiplyingModifiersAllocated: boolean | null;
+  multiplyingModifiersFragmentCount: number | null;
 }
 
 export function parseDiscordExport(raw: string): DiscordImport | null {
@@ -200,6 +203,13 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     const gameDataM = text.match(/Game Data:\s*r(\d+)\s*(?:[·-]\s*)?patch\s+([\w.-]+)/i);
     const gameDataRevision = gameDataM ? parseInt(gameDataM[1]) : null;
     const gameDataPatchVersion = gameDataM ? gameDataM[2] : null;
+    const multiplyingM = text.match(/Multiplying Modifiers:\s*(Off|(\d+)\s+fragments?)/i);
+    const multiplyingModifiersAllocated = multiplyingM
+      ? multiplyingM[1].toLowerCase() !== 'off'
+      : null;
+    const multiplyingModifiersFragmentCount = multiplyingM
+      ? multiplyingModifiersAllocated ? parseInt(multiplyingM[2]) : 0
+      : null;
     if (mapCount === 0) return null;
     return { mapCount, mapType, multiplier, avgQuant, avgRarity, avgPack, avgCurr,
              perMapCost, totalInvest, totalReturn, netProfit, divPerMap, divPrice,
@@ -211,7 +221,8 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
              operation, operationError, updateStrategyId,
              evidenceTargetStrategyId, evidenceExpectedRevision, evidenceRunKey,
              evidenceRunStartedAt, evidenceRunEndedAt, setupFingerprint,
-             gameDataRevision, gameDataPatchVersion };
+             gameDataRevision, gameDataPatchVersion,
+             multiplyingModifiersAllocated, multiplyingModifiersFragmentCount };
   } catch { return null; }
 }
 

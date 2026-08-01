@@ -16,7 +16,7 @@
  */
 import { SessionSettings, LootItem } from '../types';
 import { generateRunRegex, generateSlamRegex, trimmedMean } from './priceUtils';
-import { computeProfit, computeMultiplier } from './profit';
+import { computeProfit, computeMultiplier, resolveFragmentCount } from './profit';
 import { EXPORT_EMOJI as E } from './discordEmoji';
 
 /** Minimal structural map shape - keeps tests free of full MapData fixtures. */
@@ -84,6 +84,7 @@ export function buildDiscordExport(input: DiscordExportInput): string {
     settings, mapCount: n, lootItems, baselineTotal, investmentNeutralization,
   });
   const { multiplier, usesObservedMods, observedModAverage } = computeMultiplier(settings, maps);
+  const multiplyingModifiers = resolveFragmentCount(settings);
 
   const excludedItems = lootItems.filter((l) => l.excluded);
   const gemNetPL = (settings.advGemCount * settings.advGemSellPrice) - (settings.advGemCount * settings.advGemBuyPrice);
@@ -182,6 +183,9 @@ export function buildDiscordExport(input: DiscordExportInput): string {
     ...(hasGameDataProvenance
       ? [`**Game Data:** r${gameDataRevision} \u00B7 patch ${gameDataPatchVersion}`]
       : []),
+    `**Multiplying Modifiers:** ${multiplyingModifiers.source === 'off'
+      ? 'Off'
+      : `${multiplyingModifiers.count} fragments`}`,
     ...(stratName   ? [`${E.strategy.uni} **Strategy:** ${stratName}`] : []),
     ...(shareTags.length > 0 ? [`${E.tags.uni} **Tags:** ${shareTags.join(', ')}`] : []),
     ...(stratNotes  ? [`${E.notes.uni} **Notes:** ${stratNotes}`] : []),

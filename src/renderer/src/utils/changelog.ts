@@ -11,11 +11,12 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '1.0.72',
-    date: 'Unreleased',
+    date: '2026-08-02',
     changes: [
       'Corrective game-data revision 3 removes Obscured Delirium Orb and all four Harbinger Scarabs from new-session pickers after Allflame\'s in-game item list confirmed they are unavailable. Existing sessions and shared strategies keep their historical selections intact.',
       'Multiplying Modifiers now derives its fragment count from occupied Investment slots, falls back to the fully unlocked Map Device capacity, and supports an explicit 0–5 override. Atlas Calc clearly distinguishes Off, observed, default, and overridden counts while keeping all multiplier and shared-profit math in one calculation path.',
       'Strategy authors can start a fresh evidence run from one of their published cards, preserving the target through saved sessions while cloning its exact setup into an empty run. Sharing rechecks the current revision, every stable setup field, and every map timestamp before emitting an idempotent evidence marker; per-run observed multiplier changes remain provenance instead of falsely blocking compatible evidence.',
+      'New evidence pools record Multiplying Modifiers as authored setup: Off or the resolved fragment count must match on later runs. Legacy pools remain open because they never recorded that field, while importing or loading a new share restores its explicit state without letting the Atlas reader overwrite it.',
       'Pooled strategies show their run count beneath the map total without obscuring the author, label pooled profit as historical, and expose a paginated per-run breakdown with each run\'s capture time, divine-price snapshot, duration, and game-data provenance.',
       'Strategy sharing and Browser filters now include Mercenaries and Trarthus tags, with automatic suggestions when their scarabs are present and decoration-proof Discord export/import round trips.',
       'Strategy sharing no longer warns that investment is missing when scarab or chisel costs are present.',

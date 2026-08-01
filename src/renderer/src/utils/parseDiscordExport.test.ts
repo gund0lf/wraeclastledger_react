@@ -153,6 +153,21 @@ describe('parseDiscordExport', () => {
     expect(r!.gemInfo).toBeNull();
     expect(r!.deliOrbQty).toBe(0);
     expect(r!.astroType).toBe('');
+    expect(r!.multiplyingModifiersAllocated).toBeNull();
+    expect(r!.multiplyingModifiersFragmentCount).toBeNull();
+  });
+
+  it('parses explicit Multiplying Modifiers state without inventing legacy values', () => {
+    const allocated = parseDiscordExport(`${FULL_EXPORT}\nMultiplying Modifiers: 4 fragments`);
+    expect(allocated).toMatchObject({
+      multiplyingModifiersAllocated: true,
+      multiplyingModifiersFragmentCount: 4,
+    });
+    const off = parseDiscordExport(`${FULL_EXPORT}\n**Multiplying Modifiers:** Off`);
+    expect(off).toMatchObject({
+      multiplyingModifiersAllocated: false,
+      multiplyingModifiersFragmentCount: 0,
+    });
   });
 });
 

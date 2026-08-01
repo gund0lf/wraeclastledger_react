@@ -54,6 +54,10 @@ function makeExport(
   });
 }
 
+function asLegacyWire(raw: string): string {
+  return raw.replace(/^\*\*Multiplying Modifiers:\*\*.*(?:\r?\n|$)/m, '');
+}
+
 async function targetFingerprint(raw: string): Promise<string> {
   const parsed = parseDiscordExport(raw);
   if (!parsed) throw new Error('fixture did not parse');
@@ -82,7 +86,7 @@ describe('evidence submission preflight', () => {
       mapParsedAt: [1_000, 2_000],
     });
     expect(proof).toEqual({
-      runKey: 'sha256-v1:d447c9f23365de2444f5d90fdea2f5404e7f6d4ce114cafa2f22e923af0eadad',
+      runKey: 'sha256-v1:4133b452cd1690a1905e177ee67acbc0fceccf35e4896fdc0cf66b58fb0a73fd',
       runStartedAt: '1970-01-01T00:00:01.000Z',
       runEndedAt: '1970-01-01T00:00:02.000Z',
       setupFingerprint: await targetFingerprint(raw),
@@ -147,6 +151,45 @@ describe('evidence submission preflight', () => {
       localRawExport: localRaw,
       mapParsedAt: [1_000, 2_000],
     })).resolves.toMatchObject({ mapCount: 2 });
+  });
+
+  it('applies target-authoritative Multiplying Modifiers compatibility', async () => {
+    const currentTarget = makeExport(makeSettings({
+      multiplyingModifiersAllocated: true,
+      fragmentCountOverride: 4,
+    }));
+    const legacyTarget = asLegacyWire(currentTarget);
+
+    await expect(prepareEvidenceSubmission({
+      targetRawExport: legacyTarget,
+      targetCurrentRevision: 4,
+      expectedRevision: 4,
+      persistedTargetFingerprint: await targetFingerprint(legacyTarget),
+      localRawExport: currentTarget,
+      mapParsedAt: [1_000, 2_000],
+    })).resolves.toMatchObject({ mapCount: 2 });
+
+    await expectCode(prepareEvidenceSubmission({
+      targetRawExport: currentTarget,
+      targetCurrentRevision: 4,
+      expectedRevision: 4,
+      persistedTargetFingerprint: await targetFingerprint(currentTarget),
+      localRawExport: legacyTarget,
+      mapParsedAt: [1_000, 2_000],
+    }), 'setup_mismatch');
+
+    const changedCount = makeExport(makeSettings({
+      multiplyingModifiersAllocated: true,
+      fragmentCountOverride: 3,
+    }));
+    await expectCode(prepareEvidenceSubmission({
+      targetRawExport: currentTarget,
+      targetCurrentRevision: 4,
+      expectedRevision: 4,
+      persistedTargetFingerprint: await targetFingerprint(currentTarget),
+      localRawExport: changedCount,
+      mapParsedAt: [1_000, 2_000],
+    }), 'setup_mismatch');
   });
 
   it('accepts the live published 1.51 and evidence 1.49 observed-multiplier case', async () => {

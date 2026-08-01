@@ -4,14 +4,15 @@
  * The API is authoritative. This module deliberately mirrors its canonical
  * snapshot and hashing rules so ShareModal can fail early and emit the exact
  * identity that the bot and API will independently reconstruct. Keep
- * utils/fixtures/evidence-identity-v1.json byte-identical to the server copy;
- * each repository pins that shared input and its expected hashes locally.
+ * both evidence-identity fixture files byte-identical to the server copies;
+ * each repository pins those shared inputs and their expected hashes locally.
  */
 import type { DiscordImport } from './parseDiscordExport';
 import { normalizeLeagueKey } from './retrospectives';
 
 export const EVIDENCE_IDENTITY_KIND = 'sha256-v1' as const;
 export const SETUP_SCHEMA_VERSION = 1 as const;
+export const SETUP_SCHEMA_VERSION_V2 = 2 as const;
 
 export interface EvidenceSetupSnapshotV1 {
   schemaVersion: 1;
@@ -26,6 +27,34 @@ export interface EvidenceSetupSnapshotV1 {
   multiplierMilli: number;
   gameDataRevision: number | null;
   gameDataPatchVersion: string | null;
+}
+
+export interface EvidenceSetupSnapshotV2 extends Omit<EvidenceSetupSnapshotV1, 'schemaVersion'> {
+  schemaVersion: 2;
+  multiplyingModifiers: {
+    allocated: boolean;
+    fragmentCount: number;
+  };
+}
+
+export type EvidenceSetupSnapshot = EvidenceSetupSnapshotV1 | EvidenceSetupSnapshotV2;
+
+export interface SetupSnapshotInput {
+  league: string;
+  mapType: string;
+  groupSize: number | null;
+  isGroupPlay: boolean;
+  chiselType: string;
+  scarabs: Array<string | { name: string }>;
+  deliriumType: string;
+  deliriumCountPerMap: number;
+  astrolabeType: string;
+  atlasTreeUrl: string;
+  multiplier: number;
+  gameDataRevision: number | null;
+  gameDataPatchVersion: string | null;
+  multiplyingModifiersAllocated?: boolean | null;
+  multiplyingModifiersFragmentCount?: number | null;
 }
 
 export interface EvidenceAuthoredRollupV1 {
@@ -51,28 +80,30 @@ export interface EvidenceRunIdentityV1 {
     runStartedAt: string;
     runEndedAt: string;
     authoredRollup: EvidenceAuthoredRollupV1;
-    setupSnapshot: EvidenceSetupSnapshotV1;
+    setupSnapshot: EvidenceSetupSnapshot;
   };
   runKey: string;
 }
 
+type HardSetupField = keyof Pick<
+  EvidenceSetupSnapshotV1,
+  | 'leagueKey'
+  | 'mapType'
+  | 'partySize'
+  | 'chiselType'
+  | 'scarabs'
+  | 'delirium'
+  | 'astrolabeType'
+  | 'atlasAllocationHash'
+>;
+
 export interface SetupMismatch {
-  field: keyof Pick<
-    EvidenceSetupSnapshotV1,
-    | 'leagueKey'
-    | 'mapType'
-    | 'partySize'
-    | 'chiselType'
-    | 'scarabs'
-    | 'delirium'
-    | 'astrolabeType'
-    | 'atlasAllocationHash'
-  >;
+  field: HardSetupField | 'multiplyingModifiers';
   expected: unknown;
   actual: unknown;
 }
 
-const HARD_SETUP_FIELDS: SetupMismatch['field'][] = [
+const HARD_SETUP_FIELDS: HardSetupField[] = [
   'leagueKey',
   'mapType',
   'partySize',
@@ -117,21 +148,7 @@ export function canonicalMultiplierMilli(multiplier: number): number {
   return Math.round(multiplier * 1000);
 }
 
-export function buildSetupSnapshotV1(input: {
-  league: string;
-  mapType: string;
-  groupSize: number | null;
-  isGroupPlay: boolean;
-  chiselType: string;
-  scarabs: Array<string | { name: string }>;
-  deliriumType: string;
-  deliriumCountPerMap: number;
-  astrolabeType: string;
-  atlasTreeUrl: string;
-  multiplier: number;
-  gameDataRevision: number | null;
-  gameDataPatchVersion: string | null;
-}): EvidenceSetupSnapshotV1 {
+export function buildSetupSnapshotV1(input: SetupSnapshotInput): EvidenceSetupSnapshotV1 {
   if (!Number.isInteger(input.deliriumCountPerMap) || input.deliriumCountPerMap < 0) {
     throw new TypeError('deliriumCountPerMap must be a non-negative integer');
   }
@@ -160,9 +177,37 @@ export function buildSetupSnapshotV1(input: {
   };
 }
 
+export function buildSetupSnapshotV2(input: SetupSnapshotInput): EvidenceSetupSnapshotV2 {
+  if (typeof input.multiplyingModifiersAllocated !== 'boolean') {
+    throw new TypeError('multiplyingModifiersAllocated must be a boolean');
+  }
+  if (
+    !Number.isInteger(input.multiplyingModifiersFragmentCount)
+    || input.multiplyingModifiersFragmentCount! < 0
+  ) {
+    throw new TypeError('multiplyingModifiersFragmentCount must be a non-negative integer');
+  }
+  return {
+    ...buildSetupSnapshotV1(input),
+    schemaVersion: SETUP_SCHEMA_VERSION_V2,
+    multiplyingModifiers: {
+      allocated: input.multiplyingModifiersAllocated,
+      fragmentCount: input.multiplyingModifiersAllocated
+        ? input.multiplyingModifiersFragmentCount!
+        : 0,
+    },
+  };
+}
+
+export function buildSetupSnapshot(input: SetupSnapshotInput): EvidenceSetupSnapshot {
+  return typeof input.multiplyingModifiersAllocated === 'boolean'
+    ? buildSetupSnapshotV2(input)
+    : buildSetupSnapshotV1(input);
+}
+
 /** Build from the exact values reconstructed from the Discord wire. */
-export function setupSnapshotFromDiscordImport(parsed: DiscordImport): EvidenceSetupSnapshotV1 {
-  return buildSetupSnapshotV1({
+export function setupSnapshotFromDiscordImport(parsed: DiscordImport): EvidenceSetupSnapshot {
+  return buildSetupSnapshot({
     league: parsed.league,
     mapType: parsed.mapType,
     groupSize: parsed.groupSize,
@@ -176,6 +221,8 @@ export function setupSnapshotFromDiscordImport(parsed: DiscordImport): EvidenceS
     multiplier: parsed.multiplier,
     gameDataRevision: parsed.gameDataRevision,
     gameDataPatchVersion: parsed.gameDataPatchVersion,
+    multiplyingModifiersAllocated: parsed.multiplyingModifiersAllocated,
+    multiplyingModifiersFragmentCount: parsed.multiplyingModifiersFragmentCount,
   });
 }
 
@@ -251,7 +298,7 @@ async function sha256V1(value: string): Promise<string> {
   return `${EVIDENCE_IDENTITY_KIND}:${hex}`;
 }
 
-export async function fingerprintSetupSnapshot(snapshot: EvidenceSetupSnapshotV1): Promise<string> {
+export async function fingerprintSetupSnapshot(snapshot: EvidenceSetupSnapshot): Promise<string> {
   assertSetupSnapshotDomain(snapshot);
   return sha256V1(canonicalJson(snapshot));
 }
@@ -260,7 +307,7 @@ export async function buildEvidenceRunIdentityV1(input: {
   runStartedAt: string;
   runEndedAt: string;
   authoredRollup: EvidenceAuthoredRollupV1;
-  setupSnapshot: EvidenceSetupSnapshotV1;
+  setupSnapshot: EvidenceSetupSnapshot;
 }): Promise<EvidenceRunIdentityV1> {
   const start = new Date(input.runStartedAt);
   const end = new Date(input.runEndedAt);
@@ -284,13 +331,29 @@ export async function buildEvidenceRunIdentityV1(input: {
 }
 
 export function compareSetupSnapshots(
-  expected: EvidenceSetupSnapshotV1,
-  actual: EvidenceSetupSnapshotV1,
+  expected: EvidenceSetupSnapshot,
+  actual: EvidenceSetupSnapshot,
 ): SetupMismatch[] {
   const mismatches: SetupMismatch[] = [];
   for (const field of HARD_SETUP_FIELDS) {
     if (canonicalJson(expected[field]) !== canonicalJson(actual[field])) {
       mismatches.push({ field, expected: expected[field], actual: actual[field] });
+    }
+  }
+  // Compatibility is directional: the published target pool is authoritative.
+  // A v1 target never recorded Multiplying Modifiers and accepts either schema;
+  // a v2 target requires an explicit, identical v2 field.
+  if (expected.schemaVersion === SETUP_SCHEMA_VERSION_V2) {
+    const expectedValue = expected.multiplyingModifiers;
+    const actualValue = actual.schemaVersion === SETUP_SCHEMA_VERSION_V2
+      ? actual.multiplyingModifiers
+      : undefined;
+    if (actualValue === undefined || canonicalJson(expectedValue) !== canonicalJson(actualValue)) {
+      mismatches.push({
+        field: 'multiplyingModifiers',
+        expected: expectedValue,
+        actual: actualValue,
+      });
     }
   }
   return mismatches;

@@ -378,7 +378,9 @@ describe('strategy evidence wire markers', () => {
   });
 
   it('round-trips every evidence marker by text label', () => {
-    expect(parseDiscordExport(buildEvidence())).toMatchObject({
+    const exported = buildEvidence();
+    expect(exported).toContain('**Multiplying Modifiers:** 5 fragments');
+    expect(parseDiscordExport(exported)).toMatchObject({
       operation: 'evidence',
       operationError: null,
       evidenceTargetStrategyId: UUID,
@@ -387,6 +389,26 @@ describe('strategy evidence wire markers', () => {
       evidenceRunStartedAt: '2026-07-29T18:00:00.000Z',
       evidenceRunEndedAt: '2026-07-29T18:30:00.000Z',
       setupFingerprint: FINGERPRINT,
+      multiplyingModifiersAllocated: true,
+      multiplyingModifiersFragmentCount: 5,
+    });
+  });
+
+  it('round-trips an allocated Multiplying Modifiers fragment count', () => {
+    const exported = buildDiscordExport({
+      maps,
+      settings: settings({
+        multiplyingModifiersAllocated: true,
+        fragmentCountOverride: 4,
+      }),
+      lootItems,
+      baselineTotal,
+      investmentNeutralization: 0,
+    });
+    expect(exported).toContain('**Multiplying Modifiers:** 4 fragments');
+    expect(parseDiscordExport(exported)).toMatchObject({
+      multiplyingModifiersAllocated: true,
+      multiplyingModifiersFragmentCount: 4,
     });
   });
 

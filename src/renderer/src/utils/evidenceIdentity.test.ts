@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import goldenFixture from './fixtures/evidence-identity-v1.json';
+import goldenFixtureV2 from './fixtures/evidence-identity-v2.json';
 import {
   atlasAllocationHash,
   buildEvidenceRunIdentityV1,
   buildSetupSnapshotV1,
+  buildSetupSnapshotV2,
   canonicalJson,
   canonicalMultiplierMilli,
   compareSetupSnapshots,
@@ -59,5 +61,39 @@ describe('client evidence identity contract', () => {
       setupSnapshot,
     });
     expect(identity.runKey).toBe(goldenFixture.expectedRunKey);
+  });
+
+  it('matches the API schema-v2 golden setup and run identities', async () => {
+    const snapshot = buildSetupSnapshotV2(goldenFixtureV2.setupInput);
+    expect(snapshot).toEqual(goldenFixtureV2.expectedSetupSnapshot);
+    expect(await fingerprintSetupSnapshot(snapshot)).toBe(goldenFixtureV2.expectedSetupFingerprint);
+    const identity = await buildEvidenceRunIdentityV1({
+      ...goldenFixtureV2.runInput,
+      setupSnapshot: snapshot,
+    });
+    expect(identity.runKey).toBe(goldenFixtureV2.expectedRunKey);
+  });
+
+  it('uses target-authoritative directional Multiplying Modifiers compatibility', () => {
+    const legacyTarget = buildSetupSnapshotV1(setupInput());
+    const current = buildSetupSnapshotV2(setupInput({
+      multiplyingModifiersAllocated: true,
+      multiplyingModifiersFragmentCount: 4,
+    }));
+    expect(compareSetupSnapshots(legacyTarget, current)).toEqual([]);
+    expect(compareSetupSnapshots(current, legacyTarget)).toEqual([
+      {
+        field: 'multiplyingModifiers',
+        expected: { allocated: true, fragmentCount: 4 },
+        actual: undefined,
+      },
+    ]);
+    const changed = buildSetupSnapshotV2(setupInput({
+      multiplyingModifiersAllocated: true,
+      multiplyingModifiersFragmentCount: 3,
+    }));
+    expect(compareSetupSnapshots(current, changed).map((entry) => entry.field)).toEqual([
+      'multiplyingModifiers',
+    ]);
   });
 });
