@@ -3,8 +3,9 @@
  *
  * The API is authoritative. This module deliberately mirrors its canonical
  * snapshot and hashing rules so ShareModal can fail early and emit the exact
- * identity that the bot and API will independently reconstruct. Keep the
- * golden fixtures in evidenceIdentity.test.ts aligned with api/evidenceCore.js.
+ * identity that the bot and API will independently reconstruct. Keep
+ * utils/fixtures/evidence-identity-v1.json byte-identical to the server copy;
+ * each repository pins that shared input and its expected hashes locally.
  */
 import type { DiscordImport } from './parseDiscordExport';
 import { normalizeLeagueKey } from './retrospectives';
