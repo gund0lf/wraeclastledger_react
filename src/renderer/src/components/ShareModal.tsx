@@ -16,6 +16,11 @@ import { COLOR, FONT } from '../utils/uiTokens'
 import { getManifest } from '../utils/gameData';
 import { hasImpossibleAtlasPoints, leagueShareBlock } from '../utils/shareValidation';
 import { DISCORD_MSG_LIMIT, STRAT_NAME_MAX, computeShareBudget } from '../utils/exportBudget';
+import {
+  EvidencePreflightError,
+  prepareEvidenceSubmission,
+  type EvidenceSubmissionProof,
+} from '../utils/evidencePreflight';
 
 interface Props {
   opened: boolean;
@@ -42,6 +47,23 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     updateSetting('updateTargetStrategyId', null);
     updateSetting('updateTargetStrategyName', null);
   };
+  const evidenceTargetId = settings.evidenceTargetStrategyId ?? null;
+  const evidenceTargetName = settings.evidenceTargetStrategyName ?? null;
+  const evidenceExpectedRevision = settings.evidenceTargetExpectedRevision ?? null;
+  const evidenceTargetFingerprint = settings.evidenceTargetSetupFingerprint ?? null;
+  const clearEvidenceTarget = () => {
+    updateSetting('evidenceTargetStrategyId', null);
+    updateSetting('evidenceTargetStrategyName', null);
+    updateSetting('evidenceTargetExpectedRevision', null);
+    updateSetting('evidenceTargetSetupFingerprint', null);
+  };
+  const switchEvidenceToUpdate = () => {
+    const id = evidenceTargetId;
+    const name = evidenceTargetName;
+    clearEvidenceTarget();
+    updateSetting('updateTargetStrategyId', id);
+    updateSetting('updateTargetStrategyName', name);
+  };
 
   const [shareTags,  setShareTags]  = useState<string[]>(initialTags);
   const [stratName,  setStratName]  = useState('');
@@ -49,6 +71,47 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   const [isGroupPlay, setIsGroupPlay] = useState(false);
   const [groupSize,  setGroupSize]  = useState(2);
   const [timeText,   setTimeText]   = useState('');
+  const [evidenceCurrent, setEvidenceCurrent] = useState<Strategy | null>(null);
+  const [evidenceFetchError, setEvidenceFetchError] = useState<string | null>(null);
+  const [evidenceProof, setEvidenceProof] = useState<EvidenceSubmissionProof | null>(null);
+  const [evidencePreflightError, setEvidencePreflightError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!opened || !evidenceTargetId) {
+      setEvidenceCurrent(null);
+      setEvidenceFetchError(null);
+      return;
+    }
+    let cancelled = false;
+    setEvidenceCurrent(null);
+    setEvidenceFetchError(null);
+    fetch(`${STRATEGY_API_URL}/strategies/${evidenceTargetId}`)
+      .then((response) => (
+        response.ok ? response.json() : Promise.reject(new Error(String(response.status)))
+      ))
+      .then((strategy: Strategy) => {
+        if (cancelled) return;
+        const parsed = strategy.raw_export ? parseDiscordExport(strategy.raw_export) : null;
+        if (!parsed || parsed.operationError) {
+          setEvidenceFetchError('The current published strategy export cannot be verified.');
+          return;
+        }
+        setEvidenceCurrent(strategy);
+        setStratName(strategy.strategy_name || parsed.strategyName || '');
+        setStratNotes(strategy.strategy_notes || parsed.strategyNotes || '');
+        const apiTags = (strategy.type_tag ?? '')
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean);
+        setShareTags(apiTags.length > 0 ? apiTags : parsed.typeTags);
+        setIsGroupPlay(parsed.isGroupPlay);
+        setGroupSize(parsed.groupSize ?? 2);
+      })
+      .catch(() => {
+        if (!cancelled) setEvidenceFetchError('Could not load the current published strategy. Evidence sharing is blocked until it can be rechecked.');
+      });
+    return () => { cancelled = true; };
+  }, [opened, evidenceTargetId]);
 
   // Re-sync tags when the modal is opened with new initial tags
   // (parent calls onOpen which triggers a new initialTags value)
@@ -84,17 +147,87 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
 
   // All math lives in utils/profit.ts via buildDiscordExport (WP1) — the export
   // is guaranteed to match the Dashboard.
-  const discordExport = useMemo(() => buildDiscordExport({
+  const baseDiscordExport = useMemo(() => buildDiscordExport({
     maps, settings, lootItems, baselineTotal, investmentNeutralization,
     stratName, stratNotes, shareTags, isGroupPlay,
     groupSize: isGroupPlay ? groupSize : null,
     sessionMinutes,
-    updateStrategyId: updateTargetId,
+    updateStrategyId: evidenceTargetId ? null : updateTargetId,
     gameDataRevision: activeManifest.revision,
     gameDataPatchVersion: activeManifest.patchVersion,
   }), [maps, settings, lootItems, baselineTotal, investmentNeutralization,
        stratName, stratNotes, shareTags, isGroupPlay, groupSize, sessionMinutes,
-       updateTargetId, activeManifest.revision, activeManifest.patchVersion]);
+       updateTargetId, evidenceTargetId, activeManifest.revision, activeManifest.patchVersion]);
+
+  useEffect(() => {
+    if (!opened || !evidenceTargetId) {
+      setEvidenceProof(null);
+      setEvidencePreflightError(null);
+      return;
+    }
+    if (
+      !evidenceCurrent?.raw_export
+      || !Number.isInteger(evidenceCurrent.current_revision)
+      || !Number.isInteger(evidenceExpectedRevision)
+      || !evidenceTargetFingerprint
+    ) {
+      setEvidenceProof(null);
+      if (!evidenceCurrent) setEvidencePreflightError(null);
+      if (evidenceCurrent && !evidenceFetchError) {
+        setEvidencePreflightError('The published strategy is missing revision or setup provenance.');
+      }
+      return;
+    }
+    let cancelled = false;
+    setEvidenceProof(null);
+    setEvidencePreflightError(null);
+    prepareEvidenceSubmission({
+      targetRawExport: evidenceCurrent.raw_export,
+      targetCurrentRevision: evidenceCurrent.current_revision!,
+      expectedRevision: evidenceExpectedRevision!,
+      persistedTargetFingerprint: evidenceTargetFingerprint,
+      localRawExport: baseDiscordExport,
+      mapParsedAt: maps.map((map) => map.parsedAt),
+    }).then((proof) => {
+      if (!cancelled) setEvidenceProof(proof);
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      if (error instanceof EvidencePreflightError) {
+        const fields = error.mismatches.map((mismatch) => mismatch.field).join(', ');
+        setEvidencePreflightError(fields ? `${error.message} Incompatible: ${fields}.` : error.message);
+      } else {
+        setEvidencePreflightError('The evidence proof could not be generated.');
+      }
+    });
+    return () => { cancelled = true; };
+  }, [opened, evidenceTargetId, evidenceCurrent, evidenceExpectedRevision,
+      evidenceTargetFingerprint, evidenceFetchError, baseDiscordExport, maps]);
+
+  const discordExport = useMemo(() => {
+    if (!evidenceTargetId || !evidenceProof || evidenceExpectedRevision == null) {
+      return baseDiscordExport;
+    }
+    return buildDiscordExport({
+      maps, settings, lootItems, baselineTotal, investmentNeutralization,
+      stratName, stratNotes, shareTags, isGroupPlay,
+      groupSize: isGroupPlay ? groupSize : null,
+      sessionMinutes,
+      updateStrategyId: null,
+      evidence: {
+        targetStrategyId: evidenceTargetId,
+        expectedRevision: evidenceExpectedRevision,
+        runKey: evidenceProof.runKey,
+        runStartedAt: evidenceProof.runStartedAt,
+        runEndedAt: evidenceProof.runEndedAt,
+        setupFingerprint: evidenceProof.setupFingerprint,
+      },
+      gameDataRevision: activeManifest.revision,
+      gameDataPatchVersion: activeManifest.patchVersion,
+    });
+  }, [baseDiscordExport, evidenceTargetId, evidenceExpectedRevision, evidenceProof,
+      maps, settings, lootItems, baselineTotal, investmentNeutralization,
+      stratName, stratNotes, shareTags, isGroupPlay, groupSize, sessionMinutes,
+      activeManifest.revision, activeManifest.patchVersion]);
 
   // Same export with EMPTY notes: the character budget derives the live notes
   // cap from everything else in the card (exportBudget.ts). Cheap - the pure
@@ -104,12 +237,21 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     stratName, stratNotes: '', shareTags, isGroupPlay,
     groupSize: isGroupPlay ? groupSize : null,
     sessionMinutes,
-    updateStrategyId: updateTargetId,
+    updateStrategyId: evidenceTargetId ? null : updateTargetId,
+    evidence: evidenceTargetId && evidenceProof && evidenceExpectedRevision != null ? {
+      targetStrategyId: evidenceTargetId,
+      expectedRevision: evidenceExpectedRevision,
+      runKey: evidenceProof.runKey,
+      runStartedAt: evidenceProof.runStartedAt,
+      runEndedAt: evidenceProof.runEndedAt,
+      setupFingerprint: evidenceProof.setupFingerprint,
+    } : null,
     gameDataRevision: activeManifest.revision,
     gameDataPatchVersion: activeManifest.patchVersion,
   }), [maps, settings, lootItems, baselineTotal, investmentNeutralization,
        stratName, shareTags, isGroupPlay, groupSize, sessionMinutes,
-       updateTargetId, activeManifest.revision, activeManifest.patchVersion]);
+       updateTargetId, evidenceTargetId, evidenceExpectedRevision, evidenceProof,
+       activeManifest.revision, activeManifest.patchVersion]);
 
   const budget = computeShareBudget(discordExport, discordExportNoNotes, stratNotes.length);
   // Ended/missing league blocks sharing outright (decided 2026-07-19): the
@@ -120,7 +262,8 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   const impossibleAtlasPoints = hasImpossibleAtlasPoints(settings.atlasPoints, settings.atlasPointsMax);
   // Preview is WITHHELD for invalid-content blocks (atlas, league); a size
   // overflow keeps the preview visible so the author can see what to trim.
-  const previewWithheld = impossibleAtlasPoints || leagueBlock !== null;
+  const evidenceBlocked = evidenceTargetId !== null && evidenceProof === null;
+  const previewWithheld = impossibleAtlasPoints || leagueBlock !== null || evidenceBlocked;
   const copyDisabled = previewWithheld || !budget.fitsPlain;
 
   // ── Update run: compare the about-to-publish numbers to what's live now ─────
@@ -162,12 +305,46 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
         <Text size="xs" c="dimmed">
           Copy this export and paste it into your strategy Discord channel. The bot picks it up automatically.
         </Text>
+        {evidenceTargetId && (
+          <Alert color={evidenceFetchError || evidencePreflightError ? 'red' : 'teal'} variant="light" p="xs">
+            <Text size="xs" mb={4}>
+              Adding run {evidenceCurrent ? (evidenceCurrent.evidence_run_count ?? 1) + 1 : '...'} to {' '}
+              <Text span fw={700}>{evidenceTargetName ?? 'your strategy'}</Text>
+              {evidenceCurrent?.current_revision
+                ? <Text span c="dimmed"> (published v{evidenceCurrent.current_revision})</Text>
+                : null}
+              . This adds evidence without replacing the published setup.
+            </Text>
+            {evidenceCurrent && (
+              <Text size="xs" c="dimmed" mb={4}>
+                Current pool: {evidenceCurrent.evidence_run_count ?? 1} run{(evidenceCurrent.evidence_run_count ?? 1) === 1 ? '' : 's'} / {' '}
+                {evidenceCurrent.evidence_map_count ?? evidenceCurrent.map_count ?? 0} maps. This run: {maps.length} maps.
+              </Text>
+            )}
+            {evidenceFetchError && <Text size="xs" mb={4}>{evidenceFetchError}</Text>}
+            {evidencePreflightError && <Text size="xs" mb={4}>{evidencePreflightError}</Text>}
+            {!evidenceFetchError && !evidencePreflightError && evidenceProof && (
+              <Text size="xs" c="teal" mb={4}>
+                Revision, setup and all {evidenceProof.mapCount} map timestamps verified.
+              </Text>
+            )}
+            <Group gap="xs">
+              <Button size="xs" variant="default" onClick={switchEvidenceToUpdate}>Update instead</Button>
+              <Button size="xs" variant="default" onClick={clearEvidenceTarget}>Share as new</Button>
+              <Button size="xs" variant="subtle" onClick={onClose}>Cancel</Button>
+            </Group>
+          </Alert>
+        )}
         {updateTargetId && (
           <Alert color="indigo" variant="light" p="xs">
             <Text size="xs" mb={4}>
               Updating <Text span fw={700}>{updateTargetName ?? 'your strategy'}</Text>
               {compareCurrent?.current_revision ? <Text span c="dimmed"> (currently v{compareCurrent.current_revision})</Text> : null}
               {' '}— this share replaces your published result in place (votes and post date kept).
+            </Text>
+
+            <Text size="xs" c="dimmed" mb={4}>
+              The updated revision starts a fresh one-run evidence pool; the previous revision keeps its historical pool.
             </Text>
 
             {compareError && (
@@ -266,15 +443,18 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
           description="A short label others see in the Strategy Browser — not your private session name"
           placeholder="e.g. Shrine strat with Memory Tears"
           maxLength={STRAT_NAME_MAX}
+          disabled={evidenceTargetId !== null}
           value={stratName} onChange={(e) => setStratName(e.currentTarget.value)} />
         <MultiSelect size="xs" label="Strategy type tags"
           description="Select tags that describe this strategy"
           data={ALL_TYPE_TAGS.map((t) => ({ value: t, label: t.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') }))}
-          value={shareTags} onChange={setShareTags} maxDropdownHeight={200} searchable clearable />
+          value={shareTags} onChange={setShareTags} maxDropdownHeight={200} searchable clearable
+          disabled={evidenceTargetId !== null} />
         <Stack gap={2}>
           <Textarea size="xs" label="Session notes (optional)"
             placeholder="Only what the setup can't show — e.g. prices assume early-week scarab costs"
             value={stratNotes} onChange={(e) => setStratNotes(e.currentTarget.value)}
+            disabled={evidenceTargetId !== null}
             // Never hard-cut text the user already typed: if the budget shrinks
             // (e.g. more scarabs added), the red counter + disabled copy handle it.
             maxLength={Math.max(budget.notesMax, stratNotes.length)}
@@ -292,6 +472,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
               size="xs"
               value={isGroupPlay ? 'group' : 'solo'}
               onChange={(v) => setIsGroupPlay(v === 'group')}
+              disabled={evidenceTargetId !== null}
               data={[
                 { value: 'solo', label: 'Solo' },
                 { value: 'group', label: 'Group / Party' },
@@ -308,6 +489,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
                 value={groupSize}
                 onChange={(v) => setGroupSize(Math.min(6, Math.max(2, Number(v) || 2)))}
                 aria-label="Party size including you"
+                disabled={evidenceTargetId !== null}
               />
               <Text size="xs" c="dimmed">players (including you)</Text>
             </Group>
@@ -334,7 +516,11 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
         {previewWithheld ? (
           <Alert color="red" variant="light" p="xs">
             <Text size="xs">
-              {impossibleAtlasPoints
+              {evidenceBlocked
+                ? evidenceFetchError || evidencePreflightError
+                  ? 'Preview withheld until the evidence preflight above passes.'
+                  : 'Preparing the revision and setup evidence proof...'
+                : impossibleAtlasPoints
                 ? 'Preview withheld until the impossible Atlas allocation is corrected.'
                 : 'Preview withheld — this league no longer accepts new shares.'}
             </Text>

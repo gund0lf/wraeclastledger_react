@@ -47,6 +47,8 @@ const settings = (over: Partial<SessionSettings> = {}): SessionSettings => ({
   atlasTreeUrl: 'https://pathofpathing.com/?v=3.28.0-atlas-league#AAAABgAADAsAJMFG',
   atlasPoints: null, atlasPointsMax: null,
   updateTargetStrategyId: null, updateTargetStrategyName: null,
+  evidenceTargetStrategyId: null, evidenceTargetStrategyName: null,
+  evidenceTargetExpectedRevision: null, evidenceTargetSetupFingerprint: null,
   ...over,
 });
 
@@ -344,5 +346,90 @@ describe('strategy-versioning update marker (design v3.1 client half)', () => {
   it('uppercase uuid is normalised to lowercase', () => {
     const p = parseDiscordExport(buildWith(UUID.toUpperCase()));
     expect(p!.updateStrategyId).toBe(UUID);
+  });
+});
+
+describe('strategy evidence wire markers', () => {
+  const UUID = 'be00f19f-b74c-4c4f-9a1c-ee54d2ffaabc';
+  const RUN_KEY = `sha256-v1:${'a'.repeat(64)}`;
+  const FINGERPRINT = `sha256-v1:${'b'.repeat(64)}`;
+
+  const buildEvidence = () => buildDiscordExport({
+    maps, settings: settings(), lootItems, baselineTotal,
+    investmentNeutralization: 0,
+    evidence: {
+      targetStrategyId: UUID,
+      expectedRevision: 7,
+      runKey: RUN_KEY,
+      runStartedAt: '2026-07-29T18:00:00.000Z',
+      runEndedAt: '2026-07-29T18:30:00.000Z',
+      setupFingerprint: FINGERPRINT,
+    },
+  });
+
+  it('emits all four evidence markers as one atomic wire operation', () => {
+    expect(buildEvidence().split('\n').slice(0, 5)).toEqual([
+      '[WraeclastLedger Session]',
+      `Add evidence to: ${UUID}@7`,
+      `Evidence run: ${RUN_KEY}`,
+      'Run window: 2026-07-29T18:00:00.000Z/2026-07-29T18:30:00.000Z',
+      `Setup fingerprint: ${FINGERPRINT}`,
+    ]);
+  });
+
+  it('round-trips every evidence marker by text label', () => {
+    expect(parseDiscordExport(buildEvidence())).toMatchObject({
+      operation: 'evidence',
+      operationError: null,
+      evidenceTargetStrategyId: UUID,
+      evidenceExpectedRevision: 7,
+      evidenceRunKey: RUN_KEY,
+      evidenceRunStartedAt: '2026-07-29T18:00:00.000Z',
+      evidenceRunEndedAt: '2026-07-29T18:30:00.000Z',
+      setupFingerprint: FINGERPRINT,
+    });
+  });
+
+  it('rejects mutually exclusive update and evidence operations', () => {
+    expect(() => buildDiscordExport({
+      maps, settings: settings(), lootItems, baselineTotal,
+      investmentNeutralization: 0,
+      updateStrategyId: UUID,
+      evidence: {
+        targetStrategyId: UUID,
+        expectedRevision: 7,
+        runKey: RUN_KEY,
+        runStartedAt: '2026-07-29T18:00:00.000Z',
+        runEndedAt: '2026-07-29T18:30:00.000Z',
+        setupFingerprint: FINGERPRINT,
+      },
+    })).toThrow(/both an update and evidence/);
+  });
+
+  it('never lets partial or competing marker sets fall through as a share', () => {
+    const partial = buildEvidence().replace(`Setup fingerprint: ${FINGERPRINT}\n`, '');
+    expect(parseDiscordExport(partial)).toMatchObject({
+      operation: null,
+      operationError: 'incomplete_evidence_markers',
+    });
+
+    const competing = `${buildEvidence()}\nUpdate strategy: ${UUID}`;
+    expect(parseDiscordExport(competing)).toMatchObject({
+      operation: null,
+      operationError: 'multiple_operation_markers',
+    });
+  });
+});
+
+describe('Allflame strategy taxonomy tags', () => {
+  it('round-trips Mercenaries and Trarthus through the Discord wire', () => {
+    const exported = buildDiscordExport({
+      maps: [{ quantity: 80, rarity: 60, packSize: 40, moreCurrency: 100, moreScarabs: 0 }],
+      settings: settings({ leagueName: 'Allflame' }),
+      lootItems: [], baselineTotal: 0, investmentNeutralization: 0,
+      shareTags: ['mercenaries', 'trarthus'],
+    });
+    expect(exported).toContain('**Tags:** mercenaries, trarthus');
+    expect(parseDiscordExport(exported)?.typeTags).toEqual(['mercenaries', 'trarthus']);
   });
 });

@@ -14,6 +14,7 @@ export interface DiscordImport {
   chisel: string; runRegex: string; slamRegex: string; scarabs: string[]; scarabCosts: number[];
   atlasTreeUrl: string;
   strategyName: string; strategyNotes: string;
+  typeTags: string[];
   deliOrbQty: number; deliOrbType: string; deliOrbPrice: number;
   astroType: string; astroCount: number; astroPrice: number;
   excludedDrops: { name: string; value: number }[];
@@ -25,11 +26,22 @@ export interface DiscordImport {
   sessionMinutes: number | null;
   atlasPoints: number | null;
   atlasPointsMax: number | null;
+  league: string;
+  observedModAverage: number | null;
+  observedModSampleSize: number | null;
   /** Strategy-versioning marker (`Update strategy: <uuid>`): exposed for
    *  PROVENANCE only. Import Strategy must NEVER adopt it as the viewer's
    *  own update target (design v3.1 round-2 point 3d). null = no marker or
    *  malformed uuid. */
   updateStrategyId: string | null;
+  operation: 'share' | 'update' | 'evidence' | null;
+  operationError: 'multiple_operation_markers' | 'invalid_operation_marker' | 'incomplete_evidence_markers' | null;
+  evidenceTargetStrategyId: string | null;
+  evidenceExpectedRevision: number | null;
+  evidenceRunKey: string | null;
+  evidenceRunStartedAt: string | null;
+  evidenceRunEndedAt: string | null;
+  setupFingerprint: string | null;
   gameDataRevision: number | null;
   gameDataPatchVersion: string | null;
 }
@@ -49,9 +61,57 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     // the uuid out of a marker placed above the real Strategy: line. Malformed
     // markers are stripped too (never allowed to leak into other fields) but
     // yield null (no silent half-parse).
-    const markerM = textRaw.match(/^\s*Update strategy:\s*([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\s*$/im);
-    const updateStrategyId = markerM ? markerM[1].toLowerCase() : null;
-    const text = textRaw.replace(/^\s*Update strategy:[^\n]*$/gim, '').trim();
+    const operationLabels = ['Update strategy', 'Add evidence to', 'Evidence run', 'Run window', 'Setup fingerprint'];
+    const countLabel = (label: string): number => (
+      textRaw.match(new RegExp(`^\\s*${label}:`, 'gim')) ?? []
+    ).length;
+    const updateCount = countLabel('Update strategy');
+    const evidenceCounts = operationLabels.slice(1).map(countLabel);
+    const hasEvidenceMarker = evidenceCounts.some((count) => count > 0);
+    let operation: DiscordImport['operation'] = 'share';
+    let operationError: DiscordImport['operationError'] = null;
+    let updateStrategyId: string | null = null;
+    let evidenceTargetStrategyId: string | null = null;
+    let evidenceExpectedRevision: number | null = null;
+    let evidenceRunKey: string | null = null;
+    let evidenceRunStartedAt: string | null = null;
+    let evidenceRunEndedAt: string | null = null;
+    let setupFingerprint: string | null = null;
+
+    const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+    const hash = 'sha256-v1:[0-9a-f]{64}';
+    if (updateCount > 1 || evidenceCounts.some((count) => count > 1) || (updateCount > 0 && hasEvidenceMarker)) {
+      operation = null;
+      operationError = 'multiple_operation_markers';
+    } else if (updateCount === 1) {
+      const marker = textRaw.match(new RegExp(`^\\s*Update strategy:\\s*(${uuid})\\s*$`, 'im'));
+      if (!marker) {
+        operation = null;
+        operationError = 'invalid_operation_marker';
+      } else {
+        operation = 'update';
+        updateStrategyId = marker[1].toLowerCase();
+      }
+    } else if (hasEvidenceMarker) {
+      const target = textRaw.match(new RegExp(`^\\s*Add evidence to:\\s*(${uuid})@(\\d+)\\s*$`, 'im'));
+      const run = textRaw.match(new RegExp(`^\\s*Evidence run:\\s*(${hash})\\s*$`, 'm'));
+      const window = textRaw.match(/^\s*Run window:\s*([^\s/]+)\/([^\s]+)\s*$/im);
+      const fingerprint = textRaw.match(new RegExp(`^\\s*Setup fingerprint:\\s*(${hash})\\s*$`, 'm'));
+      if (!evidenceCounts.every((count) => count === 1) || !target || !run || !window || !fingerprint) {
+        operation = null;
+        operationError = 'incomplete_evidence_markers';
+      } else {
+        operation = 'evidence';
+        evidenceTargetStrategyId = target[1].toLowerCase();
+        evidenceExpectedRevision = parseInt(target[2]);
+        evidenceRunKey = run[1];
+        evidenceRunStartedAt = window[1];
+        evidenceRunEndedAt = window[2];
+        setupFingerprint = fingerprint[1];
+      }
+    }
+    const labels = operationLabels.join('|');
+    const text = textRaw.replace(new RegExp(`^\\s*(?:${labels}):.*(?:\\r?\\n|$)`, 'gim'), '').trim();
     const num = (patterns: RegExp[]): number => {
       for (const p of patterns) { const m = text.match(p); if (m) return parseFloat(m[1].replace(/,/g, '')); }
       return 0;
@@ -62,6 +122,9 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     };
     const mapCount    = num([/Maps:\s*(\d+)/]);
     const multiplier  = num([/Multiplier:\s*([\d.]+)[x\u00d7]/i]);
+    const observedM = text.match(/Observed Mods:\s*([\d.]+)\s+average\s*\((\d+)\/\d+\s+exact maps\)/i);
+    const observedModAverage = observedM ? parseFloat(observedM[1]) : null;
+    const observedModSampleSize = observedM ? parseInt(observedM[2]) : null;
     const avgQuant    = num([/Avg Quant:\s*(\d+)%/]);
     const avgRarity   = num([/Avg Rarity:\s*(\d+)%/]);
     const avgPack     = num([/Avg Pack:\s*(\d+)%/]);
@@ -97,6 +160,11 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     const strategyName     = strategyNameRaw.replace(/[^\x00-\x7F]/g, '').trim();
     const strategyNotesRaw = str([/Notes:\s*([^\n]+)/]);
     const strategyNotes    = strategyNotesRaw.replace(/[^\x00-\x7F]/g, '').trim();
+    const typeTagsRaw      = str([/Tags:\s*([^\n]+)/]);
+    const typeTags         = typeTagsRaw
+      .split(',')
+      .map((tag) => tag.trim().toLowerCase())
+      .filter(Boolean);
     const deliOrbMatch    = text.match(/Delirium Orbs:\s*(\d+)x\s+([^\s(]+)[^\n]*?(\d+\.?\d*)c each/i);
     const deliOrbQty      = deliOrbMatch ? parseInt(deliOrbMatch[1]) : 0;
     const deliOrbType     = deliOrbMatch ? deliOrbMatch[2].replace(/[^\x00-\x7F]/g, '').trim() : '';
@@ -128,17 +196,22 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     const ptsM           = text.match(/Atlas Points:\s*(\d+)\s*\/\s*(\d+)/i);
     const atlasPoints    = ptsM ? parseInt(ptsM[1]) : null;
     const atlasPointsMax = ptsM ? parseInt(ptsM[2]) : null;
+    const league = str([/League:\s*([^\n]+)/]);
     const gameDataM = text.match(/Game Data:\s*r(\d+)\s*(?:[·-]\s*)?patch\s+([\w.-]+)/i);
     const gameDataRevision = gameDataM ? parseInt(gameDataM[1]) : null;
     const gameDataPatchVersion = gameDataM ? gameDataM[2] : null;
     if (mapCount === 0) return null;
     return { mapCount, mapType, multiplier, avgQuant, avgRarity, avgPack, avgCurr,
              perMapCost, totalInvest, totalReturn, netProfit, divPerMap, divPrice,
-             chisel, runRegex, slamRegex, scarabs, scarabCosts, atlasTreeUrl, strategyName, strategyNotes,
+             chisel, runRegex, slamRegex, scarabs, scarabCosts, atlasTreeUrl, strategyName, strategyNotes, typeTags,
              deliOrbQty, deliOrbType, deliOrbPrice, astroType, astroCount, astroPrice,
              excludedDrops, gemInfo, isGroupPlay,
              groupSize, sessionMinutes, atlasPoints, atlasPointsMax,
-             updateStrategyId, gameDataRevision, gameDataPatchVersion };
+             league, observedModAverage, observedModSampleSize,
+             operation, operationError, updateStrategyId,
+             evidenceTargetStrategyId, evidenceExpectedRevision, evidenceRunKey,
+             evidenceRunStartedAt, evidenceRunEndedAt, setupFingerprint,
+             gameDataRevision, gameDataPatchVersion };
   } catch { return null; }
 }
 

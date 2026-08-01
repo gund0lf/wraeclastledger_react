@@ -49,6 +49,16 @@ export interface DiscordExportInput {
    *  header. Legacy-safe — every pre-versioning parser ignores unknown lines.
    *  null/undefined = normal share, no marker. */
   updateStrategyId?: string | null;
+  /** Evidence-pooling wire markers. All four lines are an atomic operation
+   * marker and are mutually exclusive with updateStrategyId. */
+  evidence?: {
+    targetStrategyId: string;
+    expectedRevision: number;
+    runKey: string;
+    runStartedAt: string;
+    runEndedAt: string;
+    setupFingerprint: string;
+  } | null;
   /** Manifest provenance active when the author shares. Both fields must be
    * present or the line is suppressed (legacy/test callers remain valid). */
   gameDataRevision?: number | null;
@@ -126,6 +136,10 @@ export function buildDiscordExport(input: DiscordExportInput): string {
   const allInPerMap = n > 0 ? profit.totalInvest / n : profit.perMapBase;
 
   const updateStrategyId = input.updateStrategyId ?? null;
+  const evidence = input.evidence ?? null;
+  if (updateStrategyId && evidence) {
+    throw new TypeError('Discord export cannot be both an update and evidence');
+  }
   const gameDataRevision = input.gameDataRevision ?? null;
   const gameDataPatchVersion = input.gameDataPatchVersion?.trim() ?? '';
   const hasGameDataProvenance = Number.isInteger(gameDataRevision)
@@ -138,6 +152,12 @@ export function buildDiscordExport(input: DiscordExportInput): string {
     // matching (the live TEST-bot finding \u2014 an unanchored Strategy: matcher
     // must never read the uuid as the strategy name).
     ...(updateStrategyId ? [`Update strategy: ${updateStrategyId}`] : []),
+    ...(evidence ? [
+      `Add evidence to: ${evidence.targetStrategyId}@${evidence.expectedRevision}`,
+      `Evidence run: ${evidence.runKey}`,
+      `Run window: ${evidence.runStartedAt}/${evidence.runEndedAt}`,
+      `Setup fingerprint: ${evidence.setupFingerprint}`,
+    ] : []),
     // The "**Map Session \u2014 WraeclastLedger**" title line was retired
     // 2026-07-20: it duplicated the bracket header above, no parser anchors
     // on it (the bot triggers on the 'WraeclastLedger' substring, both

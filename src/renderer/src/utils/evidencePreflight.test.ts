@@ -1,0 +1,147 @@
+import { describe, expect, it } from 'vitest';
+import { DEFAULT_SETTINGS } from '../store/useSessionStore';
+import { buildDiscordExport } from './discordExport';
+import { fingerprintSetupSnapshot, setupSnapshotFromDiscordImport } from './evidenceIdentity';
+import { EvidencePreflightError, prepareEvidenceSubmission } from './evidencePreflight';
+import { parseDiscordExport } from './parseDiscordExport';
+import type { SessionSettings } from '../types';
+
+const maps = [
+  { quantity: 100, rarity: 60, packSize: 40, moreCurrency: 20, moreScarabs: 10, explicitModCount: 6 },
+  { quantity: 110, rarity: 70, packSize: 45, moreCurrency: 25, moreScarabs: 15, explicitModCount: 6 },
+];
+
+function makeSettings(overrides: Partial<SessionSettings> = {}): SessionSettings {
+  return {
+    ...DEFAULT_SETTINGS,
+    leagueName: 'Allflame',
+    mapType: '6-mod',
+    chiselUsed: true,
+    chiselType: 'Currency',
+    chiselPrice: 2,
+    scarabs: [
+      { name: 'Trarthan Scarab', cost: 2 },
+      { name: '', cost: 0 },
+      { name: '', cost: 0 },
+      { name: '', cost: 0 },
+      { name: '', cost: 0 },
+    ],
+    atlasTreeUrl: 'https://pathofpathing.com/?v=3.29.0-atlas#ABC123',
+    mountingModifiers: true,
+    smallNodesAllocated: 7,
+    atlasBonus: true,
+    ...overrides,
+  };
+}
+
+function makeExport(settings: SessionSettings, revision = 3): string {
+  return buildDiscordExport({
+    maps,
+    settings,
+    lootItems: [],
+    baselineTotal: 0,
+    investmentNeutralization: 0,
+    stratName: 'Evidence fixture',
+    shareTags: ['regular'],
+    isGroupPlay: false,
+    sessionMinutes: 10,
+    gameDataRevision: revision,
+    gameDataPatchVersion: '3.29.0',
+  });
+}
+
+async function targetFingerprint(raw: string): Promise<string> {
+  const parsed = parseDiscordExport(raw);
+  if (!parsed) throw new Error('fixture did not parse');
+  return fingerprintSetupSnapshot(setupSnapshotFromDiscordImport(parsed));
+}
+
+async function expectCode(promise: Promise<unknown>, code: string): Promise<void> {
+  try {
+    await promise;
+    throw new Error('expected preflight to reject');
+  } catch (error: unknown) {
+    expect(error).toBeInstanceOf(EvidencePreflightError);
+    expect((error as EvidencePreflightError).code).toBe(code);
+  }
+}
+
+describe('evidence submission preflight', () => {
+  it('builds a deterministic proof for a compatible timestamped run', async () => {
+    const raw = makeExport(makeSettings());
+    const proof = await prepareEvidenceSubmission({
+      targetRawExport: raw,
+      targetCurrentRevision: 4,
+      expectedRevision: 4,
+      persistedTargetFingerprint: await targetFingerprint(raw),
+      localRawExport: raw,
+      mapParsedAt: [1_000, 2_000],
+    });
+    expect(proof).toEqual({
+      runKey: 'sha256-v1:d447c9f23365de2444f5d90fdea2f5404e7f6d4ce114cafa2f22e923af0eadad',
+      runStartedAt: '1970-01-01T00:00:01.000Z',
+      runEndedAt: '1970-01-01T00:00:02.000Z',
+      setupFingerprint: await targetFingerprint(raw),
+      mapCount: 2,
+    });
+  });
+
+  it('blocks stale revisions before accepting evidence', async () => {
+    const raw = makeExport(makeSettings());
+    await expectCode(prepareEvidenceSubmission({
+      targetRawExport: raw,
+      targetCurrentRevision: 5,
+      expectedRevision: 4,
+      persistedTargetFingerprint: await targetFingerprint(raw),
+      localRawExport: raw,
+      mapParsedAt: [1_000, 2_000],
+    }), 'revision_conflict');
+  });
+
+  it('blocks a changed target and a locally incompatible setup', async () => {
+    const targetRaw = makeExport(makeSettings());
+    const changedTarget = makeExport(makeSettings({ chiselType: 'Scarab' }));
+    await expectCode(prepareEvidenceSubmission({
+      targetRawExport: changedTarget,
+      targetCurrentRevision: 4,
+      expectedRevision: 4,
+      persistedTargetFingerprint: await targetFingerprint(targetRaw),
+      localRawExport: changedTarget,
+      mapParsedAt: [1_000, 2_000],
+    }), 'target_changed');
+
+    await expectCode(prepareEvidenceSubmission({
+      targetRawExport: targetRaw,
+      targetCurrentRevision: 4,
+      expectedRevision: 4,
+      persistedTargetFingerprint: await targetFingerprint(targetRaw),
+      localRawExport: makeExport(makeSettings({ mapType: '8-mod' })),
+      mapParsedAt: [1_000, 2_000],
+    }), 'setup_mismatch');
+  });
+
+  it('blocks old maps without timestamps', async () => {
+    const raw = makeExport(makeSettings());
+    await expectCode(prepareEvidenceSubmission({
+      targetRawExport: raw,
+      targetCurrentRevision: 4,
+      expectedRevision: 4,
+      persistedTargetFingerprint: await targetFingerprint(raw),
+      localRawExport: raw,
+      mapParsedAt: [1_000, undefined],
+    }), 'missing_timestamps');
+  });
+
+  it('allows game-data revision provenance to differ when the setup still matches', async () => {
+    const targetRaw = makeExport(makeSettings(), 2);
+    const localRaw = makeExport(makeSettings(), 3);
+    await expect(prepareEvidenceSubmission({
+      targetRawExport: targetRaw,
+      targetCurrentRevision: 4,
+      expectedRevision: 4,
+      persistedTargetFingerprint: await targetFingerprint(targetRaw),
+      localRawExport: localRaw,
+      mapParsedAt: [1_000, 2_000],
+    })).resolves.toMatchObject({ mapCount: 2 });
+  });
+});

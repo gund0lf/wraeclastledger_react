@@ -98,6 +98,15 @@ export interface SessionSettings {
    *  authoritative revision number). */
   updateTargetStrategyId: string | null;
   updateTargetStrategyName: string | null;
+  /** Evidence-pooling target. These four values are one atomic targeting
+   *  record: id/name identify the published strategy, expectedRevision pins
+   *  the author-approved base, and setupFingerprint pins its canonical setup.
+   *  A session may target an update OR evidence, never both. Like the update
+   *  target, save/load preserves this record while new/import clears it. */
+  evidenceTargetStrategyId: string | null;
+  evidenceTargetStrategyName: string | null;
+  evidenceTargetExpectedRevision: number | null;
+  evidenceTargetSetupFingerprint: string | null;
   leagueName: string;          // Current league, auto-detected from poe.ninja
   atlasDetectedTags: string[]; // Tags inferred from atlas tree node group titles
 }

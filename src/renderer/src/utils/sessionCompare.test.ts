@@ -38,6 +38,8 @@ const baseSettings = (over: Partial<SessionSettings> = {}): SessionSettings => (
   atlasTreeUrl: 'https://pathofpathing.com',
   atlasPoints: null, atlasPointsMax: null,
   updateTargetStrategyId: null, updateTargetStrategyName: null,
+  evidenceTargetStrategyId: null, evidenceTargetStrategyName: null,
+  evidenceTargetExpectedRevision: null, evidenceTargetSetupFingerprint: null,
   ...over,
 });
 

@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { IconRefresh, IconBrandDiscord, IconShare2 } from '@tabler/icons-react';
 import { DEFAULT_SETTINGS, useSessionKeys, useSessionStore } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
-import { KNOWN_LEAGUES, activeKnownLeagues } from '../utils/league';
+import { KNOWN_LEAGUES, activeKnownLeagues, isLeagueEnded } from '../utils/league';
 import { parseDiscordExport } from '../utils/parseDiscordExport';
 import {
   Strategy, ApiResponse, ALL_TYPE_TAGS, BROWSER_COLS, BROWSER_GRID_TEMPLATE, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X,
@@ -25,6 +25,7 @@ import { COLOR, FONT } from '../utils/uiTokens'
 import { WorkingSessionGuardModal } from '../components/WorkingSessionGuardModal';
 import { isWorkingSessionMeaningful } from '../utils/workingSession';
 import { deriveAtlasCalcSettings } from '../../../shared/atlasStats';
+import { fingerprintSetupSnapshot, setupSnapshotFromDiscordImport } from '../utils/evidenceIdentity';
 
 // API base (incl. the VITE_STRATEGY_API_URL dev override) moved to
 // strategyConstants.STRATEGY_API_URL — shared with the game-data loader.
@@ -105,6 +106,7 @@ export const StrategyBrowserModule = () => {
       ['divination','divination'],['harbinger','harbinger'],['titanic','titanic'],
       ['torment','torment'],['ultimatum','ultimatum'],['kalguuran','kalguur'],
       ['heist','heist'],['metamorph','metamorph'],['ambush','ambush'],['cartography','cartography'],
+      ['mercenar','mercenaries'],['trarth','trarthus'],
     ];
     return cats.filter(([kw]) => names.includes(kw)).map(([, tag]) => tag);
   }, [settings.scarabs]);
@@ -185,6 +187,9 @@ export const StrategyBrowserModule = () => {
   // ── Load build (called by both StrategyCard and ImportModal) ─────────────────
   const applyStrategyBuild = (s: Strategy) => {
     newSession();
+    if (s.map_type === '6-mod' || s.map_type === '8-mod') {
+      updateSetting('mapType', s.map_type);
+    }
     if (s.chisel && s.chisel !== 'None') {
       updateSetting('chiselType', s.chisel.split(' ')[0]);
       updateSetting('chiselUsed', true);
@@ -206,6 +211,9 @@ export const StrategyBrowserModule = () => {
     if (s.raw_export) {
       const parsed = parseDiscordExport(s.raw_export);
       if (parsed) {
+        if (parsed.mapType === '6-mod' || parsed.mapType === '8-mod') {
+          updateSetting('mapType', parsed.mapType);
+        }
         if (parsed.deliOrbType) {
           updateAdvSetting('advDeliOrbType', parsed.deliOrbType);
           if (parsed.deliOrbQty   > 0) updateAdvSetting('advDeliOrbQtyPerMap',  parsed.deliOrbQty);
@@ -263,6 +271,62 @@ export const StrategyBrowserModule = () => {
       updateSetting('updateTargetStrategyName', s.strategy_name || s.discord_username || null);
       setLoadedMsg(`Update run started for "${s.strategy_name || 'your strategy'}" — setup cloned into a fresh session. Sharing it will UPDATE the published result.`);
     });
+  };
+
+  // -- Add evidence (author-only v1) ---------------------------------------
+  // The list card is only a hint. Before starting a run we fetch the current
+  // authoritative detail, reconstruct its canonical setup, and persist the
+  // exact revision + fingerprint that ShareModal must re-check later.
+  const [evidenceCandidate, setEvidenceCandidate] = useState<Strategy | null>(null);
+  const [evidenceStarting, setEvidenceStarting] = useState(false);
+  const [evidenceStartError, setEvidenceStartError] = useState<string | null>(null);
+
+  const openEvidenceCandidate = (s: Strategy) => {
+    setEvidenceStartError(null);
+    setEvidenceCandidate(s);
+  };
+
+  const confirmAddEvidence = async (candidate: Strategy) => {
+    setEvidenceStarting(true);
+    setEvidenceStartError(null);
+    try {
+      const response = await fetch(`${apiUrl}/strategies/${candidate.id}`);
+      if (!response.ok) throw new Error(`Strategy server returned ${response.status}`);
+      const current = await response.json() as Strategy;
+      const parsed = current.raw_export ? parseDiscordExport(current.raw_export) : null;
+      if (!parsed || parsed.operationError) {
+        throw new Error('The current strategy export cannot be verified. Refresh the card or report it before adding evidence.');
+      }
+      const targetLeague = parsed.league || current.league || '';
+      if (!targetLeague) throw new Error('The strategy has no authoring league, so compatibility cannot be proved.');
+      if (isLeagueEnded(targetLeague)) {
+        throw new Error(`Evidence is closed for ended league ${targetLeague}.`);
+      }
+      const revision = current.current_revision;
+      if (!Number.isInteger(revision) || revision! < 1) {
+        throw new Error('The strategy revision is unavailable. Refresh and try again.');
+      }
+      const setupFingerprint = await fingerprintSetupSnapshot(
+        setupSnapshotFromDiscordImport(parsed),
+      );
+
+      setEvidenceCandidate(null);
+      requestReplacement(() => {
+        applyStrategyBuild(current);
+        updateSetting('leagueName', targetLeague);
+        updateSetting('updateTargetStrategyId', null);
+        updateSetting('updateTargetStrategyName', null);
+        updateSetting('evidenceTargetStrategyId', current.id);
+        updateSetting('evidenceTargetStrategyName', current.strategy_name || current.discord_username || null);
+        updateSetting('evidenceTargetExpectedRevision', revision!);
+        updateSetting('evidenceTargetSetupFingerprint', setupFingerprint);
+        setLoadedMsg(`Evidence run started for "${current.strategy_name || 'your strategy'}" - published build settings cloned into a fresh session; final compatibility is rechecked when sharing.`);
+      });
+    } catch (error: unknown) {
+      setEvidenceStartError(error instanceof Error ? error.message : 'Could not start the evidence run.');
+    } finally {
+      setEvidenceStarting(false);
+    }
   };
 
   const applyImportedBuild = (parsed: DiscordImport) => {
@@ -400,6 +464,43 @@ export const StrategyBrowserModule = () => {
         </Stack>
       </Modal>
 
+      <Modal opened={evidenceCandidate !== null}
+        onClose={() => { if (!evidenceStarting) setEvidenceCandidate(null); }}
+        title={`Add evidence to "${evidenceCandidate?.strategy_name || 'your strategy'}"?`} size="sm">
+        <Stack gap="sm">
+          <Text size="xs">
+            This clones the published build settings into a fresh, empty session. Run more maps with
+            that exact setup, then Share to add this run to the existing evidence pool.
+            The published strategy is not replaced.
+          </Text>
+          <Text size="xs" c="dimmed">
+            League, map type, party size, chisel, scarabs, delirium, astrolabe, Atlas
+            allocation and final multiplier must still match when you share. Incompatible
+            runs are blocked rather than mixed into the pool.
+          </Text>
+          <Text size="xs" c="dimmed">
+            The button is only a convenience for cards matching your saved Discord tag.
+            The Discord bot independently verifies that you are the original author.
+          </Text>
+          {(evidenceCandidate?.evidence_run_count ?? 0) > 0 && (
+            <Text size="xs" c="teal">
+              Current pool: {evidenceCandidate!.evidence_run_count} runs / {evidenceCandidate!.evidence_map_count ?? evidenceCandidate!.map_count ?? 0} maps
+            </Text>
+          )}
+          {evidenceStartError && (
+            <Alert color="red" variant="light" p="xs"><Text size="xs">{evidenceStartError}</Text></Alert>
+          )}
+          <Group justify="flex-end" gap="xs">
+            <Button size="xs" variant="default" disabled={evidenceStarting}
+              onClick={() => setEvidenceCandidate(null)}>Cancel</Button>
+            <Button size="xs" color="teal" loading={evidenceStarting}
+              onClick={() => evidenceCandidate && void confirmAddEvidence(evidenceCandidate)}>
+              Clone setup &amp; start evidence run
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
       <div style={{ height: '100%', overflowX: 'auto', overflowY: 'hidden' }}>
       <Card shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ display: 'flex', flexDirection: 'column', minWidth: BROWSER_MIN_CONTENT_WIDTH }}>
         {/* session-16: "Strategy Browser" title dropped (redundant with the
@@ -521,7 +622,9 @@ export const StrategyBrowserModule = () => {
                 const grp = s.is_group_play || (s.raw_export ? /Party Play:\s*Yes/i.test(s.raw_export) : false);
                 return !grp;
               })
-              .map((s) => <StrategyCard key={s.id} strategy={s} onLoadBuild={handleLoadBuild} onUpdateStrategy={setUpdateCandidate} discordTag={discordTag} />)}
+              .map((s) => <StrategyCard key={s.id} strategy={s} onLoadBuild={handleLoadBuild}
+                onUpdateStrategy={setUpdateCandidate} onAddEvidence={openEvidenceCandidate}
+                discordTag={discordTag} />)}
           </Stack>
           {hasMore && !loading && (
             <Button variant="subtle" size="xs" fullWidth mt={8} onClick={() => fetchStrategies(offset + LIMIT)}>

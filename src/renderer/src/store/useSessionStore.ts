@@ -39,6 +39,10 @@ export const DEFAULT_SETTINGS: SessionSettings = {
   atlasPoints: null, atlasPointsMax: null, // captured by AtlasTreeModule; null = no tree read yet
   // Versioning client half: null = normal session; uuid = update run (see types/index.ts)
   updateTargetStrategyId: null, updateTargetStrategyName: null,
+  // Evidence targeting is an atomic four-field record, mutually exclusive
+  // with update targeting. Additive fields need no store-version bump.
+  evidenceTargetStrategyId: null, evidenceTargetStrategyName: null,
+  evidenceTargetExpectedRevision: null, evidenceTargetSetupFingerprint: null,
 };
 
 // v16: user-scoped fields lifted OUT of SessionSettings so loadSession can

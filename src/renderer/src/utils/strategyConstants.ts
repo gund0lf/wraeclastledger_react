@@ -44,6 +44,7 @@ export interface Strategy {
   strategy_name?: string | null;
   strategy_notes?: string | null;
   score?: number | null;
+  league?: string | null;
   is_group_play?: boolean | null;
   // Optional author-declared metadata (server migration 008 / shared-metadata
   // batch 2026-07). All nullable — absence = no claim, never penalised.
@@ -57,6 +58,13 @@ export interface Strategy {
   // updated_at is null until the first update. Both public + safe.
   current_revision?: number | null;
   updated_at?: string | null;
+  // Evidence-pooling fields are additive and optional until the coordinated
+  // server slice is deployed. Cards remain fully usable against the legacy
+  // response shape; when present these drive the audit-friendly pool summary.
+  evidence_run_count?: number | null;
+  evidence_map_count?: number | null;
+  evidence_generation?: number | null;
+  setup_fingerprint?: string | null;
   game_data_revision?: number | null;
   game_data_patch_version?: string | null;
 }
@@ -96,6 +104,8 @@ export const TAG_OPTIONS = [
   { value: 'heist',       label: 'Heist' },
   { value: 'ambush',      label: 'Ambush' },
   { value: 'cartography', label: 'Cartography' },
+  { value: 'mercenaries', label: 'Mercenaries' },
+  { value: 'trarthus',    label: 'Trarthus' },
   { value: 'boss-rush',   label: 'Boss Rush' },
   { value: 'mirage-rush', label: 'Mirage Rush' },
   { value: 'eater',       label: 'Eater of Worlds' },
@@ -124,6 +134,7 @@ export const TAG_COLORS: Record<string, string> = {
   divination: 'blue', harbinger: 'gray', titanic: 'orange', torment: 'dark',
   ultimatum: 'red', kalguur: 'yellow', heist: 'dark', metamorph: 'grape',
   ambush: 'cyan', cartography: 'gray', 'boss-rush': 'red', 'mirage-rush': 'violet',
+  mercenaries: 'orange', trarthus: 'teal',
   eater: 'blue', exarch: 'red',
   'astrolabe': 'teal', 'astrolabe-templar': 'teal', 'astrolabe-enshrouded': 'grape',
   'astrolabe-timeless': 'yellow', 'astrolabe-grasping': 'violet', 'astrolabe-nameless': 'red',

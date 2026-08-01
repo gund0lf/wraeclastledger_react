@@ -71,6 +71,14 @@ export const ImportModal = ({ opened, onClose, onLoadBuild }: Props) => {
         )}
         {importResult && repriced && (
           <Stack gap="xs">
+            {importResult.operationError && (
+              <Alert color="red" variant="light" p="xs" title="Invalid strategy operation marker">
+                <Text size="xs">
+                  This export contains incomplete, malformed, or competing update/evidence markers.
+                  It can be inspected, but its build cannot be loaded as a normal strategy.
+                </Text>
+              </Alert>
+            )}
             <Divider label="Parsed" labelPosition="left" />
             {importResult.strategyName && (
               <Text size="sm" fw={600}>{importResult.strategyName}</Text>
@@ -204,6 +212,7 @@ export const ImportModal = ({ opened, onClose, onLoadBuild }: Props) => {
             )}
 
             <Button variant="light" color="blue" size="xs"
+              disabled={importResult.operationError !== null}
               onClick={() => { onLoadBuild(importResult); handleClose(); }}>
               Load Build Settings
             </Button>

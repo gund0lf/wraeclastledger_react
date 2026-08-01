@@ -15,6 +15,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     changes: [
       'Corrective game-data revision 3 removes Obscured Delirium Orb and all four Harbinger Scarabs from new-session pickers after Allflame\'s in-game item list confirmed they are unavailable. Existing sessions and shared strategies keep their historical selections intact.',
       'Multiplying Modifiers now derives its fragment count from occupied Investment slots, falls back to the fully unlocked Map Device capacity, and supports an explicit 0–5 override. Atlas Calc clearly distinguishes Off, observed, default, and overridden counts while keeping all multiplier and shared-profit math in one calculation path.',
+      'Strategy authors can start a fresh evidence run from one of their published cards, preserving the target through saved sessions while cloning its exact setup into an empty run. Sharing rechecks the current revision, every compatibility field, and every map timestamp before emitting an idempotent evidence marker; stale or contaminated runs are blocked with Update and Share-as-new alternatives.',
+      'Strategy sharing and Browser filters now include Mercenaries and Trarthus tags, with automatic suggestions when their scarabs are present and decoration-proof Discord export/import round trips.',
     ],
   },
   {

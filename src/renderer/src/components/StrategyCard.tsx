@@ -128,6 +128,7 @@ export const StrategyCard = ({
   strategy,
   onLoadBuild,
   onUpdateStrategy,
+  onAddEvidence,
   discordTag,
   frozen = false,
 }: {
@@ -136,6 +137,10 @@ export const StrategyCard = ({
    *  (own-detection via discordTag is display heuristic only — the server
    *  enforces real ownership by discord_user_id and rejects loudly). */
   onUpdateStrategy?: (s: Strategy) => void;
+  /** Evidence pooling v1 is author-only. This display heuristic only decides
+   *  whether to offer the action; the bot/API independently enforce Discord
+   *  ownership before accepting a run. */
+  onAddEvidence?: (s: Strategy) => void;
   discordTag?: string;
   /** Frozen snapshot cards remain loadable but can never enter the update flow. */
   frozen?: boolean;
@@ -511,6 +516,14 @@ export const StrategyCard = ({
                 <Button size="xs" variant="light" color="indigo"
                   onClick={(e) => { e.stopPropagation(); onUpdateStrategy(strategy); }}>
                   Update strategy
+                </Button>
+              </Tooltip>
+            )}
+            {!frozen && isOwn && onAddEvidence && (
+              <Tooltip label="Start a fresh run with this exact setup and add its maps to the published evidence pool. Incompatible setup changes are blocked before sharing." withArrow multiline w={280}>
+                <Button size="xs" variant="light" color="teal"
+                  onClick={(e) => { e.stopPropagation(); onAddEvidence(strategy); }}>
+                  Add evidence
                 </Button>
               </Tooltip>
             )}
