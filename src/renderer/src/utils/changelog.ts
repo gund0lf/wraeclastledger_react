@@ -19,6 +19,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Pooled strategies show their run count beneath the map total without obscuring the author, label pooled profit as historical, and expose a paginated per-run breakdown with each run\'s capture time, divine-price snapshot, duration, and game-data provenance.',
       'Strategy sharing and Browser filters now include Mercenaries and Trarthus tags, with automatic suggestions when their scarabs are present and decoration-proof Discord export/import round trips.',
       'Strategy sharing no longer warns that investment is missing when scarab or chisel costs are present.',
+      'Atlas Tree\'s toolbar Apply to Calc action now reads the currently displayed tree before applying it instead of reusing stale cached stats. Successful applies keep both stats panels closed, while the explicit stats-reader action remains available for inspection.',
     ],
   },
   {

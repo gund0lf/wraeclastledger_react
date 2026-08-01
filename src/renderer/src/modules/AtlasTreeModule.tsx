@@ -329,7 +329,7 @@ export const AtlasTreeModule = () => {
           `Promise.resolve(!!document.getElementById('skillTreeStats_ShowHide'))`,
         ).catch(() => false),
       );
-      await readStats(true);
+      await readStats('apply');
     };
     wv.addEventListener('will-navigate', handleWillNavigate);
     wv.addEventListener('did-navigate', handleNav);
@@ -360,10 +360,16 @@ export const AtlasTreeModule = () => {
   };
 
   // ── Read atlas tree stats via JS injection ─────────────────────────────────
-  const readStats = async (autoApply = false) => {
-    const wv = webviewRef.current;
-    if (!wv) return;
+  const readStats = async (mode: 'inspect' | 'apply' = 'inspect') => {
     setStatsError(null);
+    setCalcApplied(null);
+    const wv = webviewRef.current;
+    if (!wv) {
+      setStatGroups([]);
+      setStatsError('The Atlas Tree is still loading. Wait for it to appear, then try again.');
+      setStatsOpen(true);
+      return;
+    }
     try {
       const result = await wv.executeJavaScript(`
         (async function() {
@@ -412,7 +418,9 @@ export const AtlasTreeModule = () => {
         setStatsError((result as any)?.error
           ?? 'No stats found. Select some nodes in the atlas tree first — if nodes ARE selected and this keeps happening, pathofpathing may have changed its layout; please report it.');
         setStatGroups([]);
-        if (!autoApply) setStatsOpen(true);
+        // A failed apply must be visible and actionable; otherwise the toolbar
+        // would appear to do nothing. Successful apply flows stay overlay-free.
+        setStatsOpen(true);
         return;
       }
 
@@ -421,7 +429,7 @@ export const AtlasTreeModule = () => {
         : Object.entries(result as Record<string, string[]>).map(([title, stats]) => ({ title, stats }));
 
       setStatGroups(groups);
-      if (!autoApply) setStatsOpen(true);
+      setStatsOpen(mode === 'inspect');
 
       const TITLE_TO_TAG: Record<string, string> = {
         'delirium': 'delirium', 'beyond': 'beyond', 'legion': 'legion',
@@ -439,11 +447,11 @@ export const AtlasTreeModule = () => {
         .filter(Boolean) as string[];
       if (detected.length > 0) updateSetting('atlasDetectedTags', detected);
 
-      // Auto-apply calc if triggered by external URL load
-      if (autoApply) applyGroupsToCalc(groups);
+      // Auto-apply calc if triggered by an external URL load or toolbar action.
+      if (mode === 'apply' && !applyGroupsToCalc(groups)) setStatsOpen(true);
     } catch {
       setStatsError('Could not read stats — try navigating the tree first. If this keeps happening, pathofpathing may have changed its layout; please report it.');
-      if (!autoApply) setStatsOpen(true);
+      setStatsOpen(true);
     }
   };
 
@@ -528,7 +536,7 @@ export const AtlasTreeModule = () => {
   // ── Apply stats to Atlas Calc ─────────────────────────────────────────────
   // applyGroupsToCalc takes groups directly (avoids stale-state issues when
   // called right after readStats resolves)
-  const applyGroupsToCalc = (groups: AtlasStatGroup[]) => {
+  const applyGroupsToCalc = (groups: AtlasStatGroup[]): boolean => {
     const patch = deriveAtlasCalcSettings(groups);
     const appliedParts: string[] = [];
     if (patch.smallNodesAllocated !== undefined) {
@@ -546,14 +554,19 @@ export const AtlasTreeModule = () => {
     if (appliedParts.length > 0) {
       setCalcApplied(appliedParts.join(', '));
       setTimeout(() => setCalcApplied(null), 5000);
+      return true;
     } else {
-      setCalcApplied('No matching stats found');
-      setTimeout(() => setCalcApplied(null), 3000);
+      setStatsError('No supported Atlas Calc stats were found in the current tree. Review the stats below or configure Atlas Calc manually.');
+      return false;
     }
   };
 
-  // applyToAtlasCalc is the manual toolbar button — reads from current state
-  const applyToAtlasCalc = () => applyGroupsToCalc(statGroups);
+  // The toolbar action always scrapes the current guest before applying.
+  const applyToAtlasCalc = () => readStats('apply');
+
+  const applyVisibleStatsToCalc = () => {
+    if (applyGroupsToCalc(statGroups)) setStatsOpen(false);
+  };
 
   return (
     <Card shadow="sm" padding={0} radius="md" withBorder h="100%"
@@ -583,8 +596,8 @@ export const AtlasTreeModule = () => {
             Show on {currentVersion.replace(/\.0-atlas$/, '')}
           </Button>
         )}
-        {statGroups.length > 0 && (
-          <Tooltip label="Apply node stats to Atlas Calc (small nodes, Mounting Modifiers, fragments)">
+        {hasTree && (
+          <Tooltip label="Read the current tree and apply its node stats to Atlas Calc">
             <Button size="compact-xs" variant="default"
               onClick={applyToAtlasCalc}>
               Apply to Calc
@@ -598,10 +611,8 @@ export const AtlasTreeModule = () => {
           </ActionIcon>
         </Tooltip>
         <Tooltip label="Read allocated node stats">
-          {/* Wrap in arrow function so the click MouseEvent isn't passed as the
-              `autoApply` parameter — that would always be truthy and silently
-              put readStats into auto-apply mode on every manual click. */}
-          <ActionIcon size="md" variant="subtle" color="gray" onClick={() => readStats()}>
+          {/* Keep the click event out of readStats' mode argument. */}
+          <ActionIcon size="md" variant="subtle" color="gray" onClick={() => readStats('inspect')}>
             <IconChartBar size={14} />
           </ActionIcon>
         </Tooltip>
@@ -657,7 +668,7 @@ export const AtlasTreeModule = () => {
                   (Sad, 2026-07-20). */}
               {statGroups.length > 0 && (
                 <Button size="compact-xs" variant="light"
-                  onClick={() => applyGroupsToCalc(statGroups)}>
+                  onClick={applyVisibleStatsToCalc}>
                   Apply to Calc
                 </Button>
               )}
