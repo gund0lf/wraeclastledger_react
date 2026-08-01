@@ -151,7 +151,8 @@ describe('evidence submission preflight', () => {
 
   it('accepts the live published 1.51 and evidence 1.49 observed-multiplier case', async () => {
     const settings = makeSettings({
-      fragmentsUsed: 5,
+      multiplyingModifiersAllocated: true,
+      fragmentCountOverride: 5,
       smallNodesAllocated: 16,
       mountingModifiers: true,
     });
