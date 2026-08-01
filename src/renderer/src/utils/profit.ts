@@ -92,6 +92,11 @@ export function computeCosts(settings: SessionSettings, mapCount: number): CostB
   return { chiselCost, hasPreservation, perMapScarabs, oneTimeScarabs, perMapBase, rollingSessionTotal, totalInvest };
 }
 
+/** True when any configured investment contributes to the session total. */
+export function hasInvestmentCosts(settings: SessionSettings, mapCount: number): boolean {
+  return computeCosts(settings, mapCount).totalInvest > 0;
+}
+
 /* ------------------------------------------------------------------ */
 /* Profit                                                              */
 /* ------------------------------------------------------------------ */

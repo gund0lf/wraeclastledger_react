@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { IconBrandDiscord, IconCheck } from '@tabler/icons-react';
 import { useSessionKeys } from '../store/useSessionStore';
 import { buildDiscordExport } from '../utils/discordExport';
-import { computeRollingSessionTotal } from '../utils/profit';
+import { hasInvestmentCosts } from '../utils/profit';
 import { parseTimeInput } from '../utils/sessionTime';
 import { computeTimeEstimate, formatActiveTime } from '../utils/timeEstimate';
 import { ALL_TYPE_TAGS, STRATEGY_API_URL, type Strategy } from '../utils/strategyConstants';
@@ -258,7 +258,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   // server rejects it anyway - stop the wasted export at the source.
   const leagueBlock = leagueShareBlock(settings.leagueName);
 
-  const rollingSessionTotal = computeRollingSessionTotal(settings, maps.length);
+  const hasConfiguredInvestment = hasInvestmentCosts(settings, maps.length);
   const impossibleAtlasPoints = hasImpossibleAtlasPoints(settings.atlasPoints, settings.atlasPointsMax);
   // Preview is WITHHELD for invalid-content blocks (atlas, league); a size
   // overflow keeps the preview visible so the author can see what to trim.
@@ -416,7 +416,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
             </Text>
           </Alert>
         )}
-        {settings.baseMapCost === 0 && rollingSessionTotal === 0 && (
+        {!hasConfiguredInvestment && (
           <Alert color="yellow" variant="light" p="xs">
             <Text size="xs">No investment costs set. Fill in Advanced Costs before sharing.</Text>
           </Alert>

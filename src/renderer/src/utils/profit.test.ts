@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { SessionSettings, LootItem, MapData } from '../types';
 import {
   computeCosts, computeProfit, computeMultiplier,
-  computeRollingSessionTotal, isPreservationScarab, resolveFragmentCount,
+  computeRollingSessionTotal, hasInvestmentCosts, isPreservationScarab, resolveFragmentCount,
 } from './profit';
 
 /* ------------------------------------------------------------------ */
@@ -146,6 +146,22 @@ describe('computeCosts — preservation split', () => {
     expect(c.perMapScarabs).toBe(200);
     expect(c.oneTimeScarabs).toBe(0);
     expect(c.perMapBase).toBe(1850);    // 1500 + 150 + 200
+  });
+});
+
+describe('hasInvestmentCosts', () => {
+  it('recognises scarab-only and chisel-only investment', () => {
+    const scarabOnly = baseSettings({
+      scarabs: [
+        { name: 'Trarthan Scarab', cost: 17 },
+        ...Array(4).fill(null).map(() => ({ name: '', cost: 0 })),
+      ],
+    });
+    const chiselOnly = baseSettings({ chiselType: 'Avarice', chiselPrice: 5 });
+
+    expect(hasInvestmentCosts(scarabOnly, 1)).toBe(true);
+    expect(hasInvestmentCosts(chiselOnly, 1)).toBe(true);
+    expect(hasInvestmentCosts(baseSettings(), 1)).toBe(false);
   });
 });
 

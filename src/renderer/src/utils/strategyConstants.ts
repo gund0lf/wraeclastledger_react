@@ -64,6 +64,12 @@ export interface Strategy {
   evidence_run_count?: number | null;
   evidence_map_count?: number | null;
   evidence_generation?: number | null;
+  historical_div_per_map?: number | null;
+  historical_total_divines?: number | null;
+  timed_run_count?: number | null;
+  timed_map_count?: number | null;
+  timed_session_minutes?: number | null;
+  timed_total_divines?: number | null;
   setup_fingerprint?: string | null;
   game_data_revision?: number | null;
   game_data_patch_version?: string | null;
@@ -183,7 +189,7 @@ export const TAG_SHORT: Record<string, string> = {
 // direction matches the server default so the header arrow is truthful before
 // the user ever sends an explicit ?order=. div_per_hour is NEVER the default
 // sort (locked decision — self-reported time must not outrank div/map) and is
-// computed server-side from author-declared session_minutes, NULLS LAST.
+// computed server-side from author-declared timed evidence only, NULLS LAST.
 
 export type SortKey =
   | 'posted_at' | 'div_per_map' | 'net_profit' | 'score'

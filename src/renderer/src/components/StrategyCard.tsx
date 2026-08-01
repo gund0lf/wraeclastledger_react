@@ -18,7 +18,9 @@ import { PoeItemIcon } from './ui/PoeItemIcon';
 import { SectionLabel } from './ui/SectionLabel';
 import { StatTile } from './ui/StatTile';
 import { RegexLine } from './ui/RegexLine';
-import { COLOR, FONT } from '../utils/uiTokens'
+import { EvidenceRunsDisclosure } from './EvidenceRunsDisclosure';
+import { evidencePresentation } from '../utils/evidenceApi';
+import { COLOR, FONT } from '../utils/uiTokens';
 
 // ─── CopyRegex ────────────────────────────────────────────────────────────────
 
@@ -167,17 +169,16 @@ export const StrategyCard = ({
     if (!strategy.updated_at) return null;
     try { return new Date(strategy.updated_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' }); } catch { return null; }
   })();
-  const div = strategy.div_per_map ??
-    (strategy.net_profit != null && strategy.divine_price != null && strategy.divine_price > 0 && strategy.map_count != null && strategy.map_count > 0
-      ? strategy.net_profit / strategy.divine_price / strategy.map_count
-      : null);
-  // ALL-IN cost per map, derived from stored totals so EVERY strategy — old
-  // recurring-only exports included — displays the same definition as the
-  // in-app Investment badge (total_invest / maps). Falls back to the parsed
-  // per_map_cost only for rows missing totals. Decision 2026-07-02.
-  const costPerMap = strategy.total_invest != null && strategy.map_count != null && strategy.map_count > 0
-    ? strategy.total_invest / strategy.map_count
-    : strategy.per_map_cost ?? null;
+  const {
+    runCount: evidenceRunCount,
+    mapCount: displayMapCount,
+    isPooled,
+    divPerMap: div,
+    costPerMap,
+    historicalProfitDivines,
+    divPerHour,
+    timedRunCount,
+  } = evidencePresentation(strategy);
   const divColor    = div != null ? (div >= 8 ? COLOR.profit : div >= 4 ? COLOR.accent : div >= 1 ? COLOR.warning : COLOR.textFaint) : COLOR.textFaint;
   const score       = strategy.score ?? 0;
   const scoreColor  = score > 0 ? COLOR.profit : score < 0 ? COLOR.loss : COLOR.dim;
@@ -185,9 +186,6 @@ export const StrategyCard = ({
   // Author-declared div/hour: total session divines over reported active time.
   // Null unless the author shared session_minutes — never penalised, never a
   // default/primary ranking (div/map stays primary); the Browser column shows '—' when null.
-  const divPerHour = strategy.session_minutes && div != null && strategy.map_count
-    ? (div * strategy.map_count) / (strategy.session_minutes / 60)
-    : null;
   const observedModAverage = strategy.observed_mod_average;
   const observedModSampleSize = strategy.observed_mod_sample_size;
   const hasObservedMods = observedModAverage != null && observedModSampleSize != null
@@ -235,6 +233,15 @@ export const StrategyCard = ({
                 </Badge>
               </Tooltip>
             )}
+            {isPooled && displayMapCount != null && (
+              <Tooltip
+                label={`${evidenceRunCount} independently submitted runs, ${displayMapCount} maps total. Aggregate profit uses each run's historical divine-price snapshot.`}
+                withArrow multiline w={260}>
+                <Badge size="xs" color="blue" variant="light" style={{ fontSize: FONT.micro, padding: '0 3px', flexShrink: 0, cursor: 'help' }}>
+                  {evidenceRunCount} runs {'\u00b7'} {displayMapCount} maps
+                </Badge>
+              </Tooltip>
+            )}
             {frozen && (
               <Tooltip label="Frozen at league close; later votes and strategy updates do not change this result" withArrow multiline w={240}>
                 <Badge size="xs" color="cyan" variant="light" style={{ fontSize: FONT.micro, padding: '0 3px', flexShrink: 0, cursor: 'help' }}>
@@ -268,34 +275,39 @@ export const StrategyCard = ({
         ) : (
           <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.mod, flexShrink: 0, fontSize: FONT.small }}>{modDisplay}</Text>
         )}
-        <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.maps, flexShrink: 0 }}>{strategy.map_count != null ? strategy.map_count : '—'}</Text>
+        <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.maps, flexShrink: 0 }}>{displayMapCount != null ? displayMapCount : '—'}</Text>
         <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.cost, flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {costPerMap != null ? fcSep(costPerMap) : '—'}
         </Text>
         <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.invest, flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {fc(strategy.total_invest)}
-          {strategy.total_invest != null && strategy.divine_price != null && strategy.divine_price > 0 && (
+          {!isPooled && strategy.total_invest != null && strategy.divine_price != null && strategy.divine_price > 0 && (
             <Text span style={{ color: COLOR.dim, fontSize: FONT.label }}> ({(strategy.total_invest / strategy.divine_price).toFixed(1)}d)</Text>
           )}
         </Text>
         <Text size="xs" fw={600} style={{ width: BROWSER_COLS.profit, flexShrink: 0, fontVariantNumeric: 'tabular-nums', color: profitColor, whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {fc(strategy.net_profit, true)}
-          {strategy.net_profit != null && strategy.divine_price != null && strategy.divine_price > 0 && (
-            <Text span style={{ color: COLOR.dim, fontSize: FONT.label }}> ({strategy.net_profit >= 0 ? '+' : ''}{(strategy.net_profit / strategy.divine_price).toFixed(1)}d)</Text>
+          {strategy.net_profit != null && historicalProfitDivines != null && (
+            <Text span style={{ color: COLOR.dim, fontSize: FONT.label }}> ({strategy.net_profit >= 0 ? '+' : ''}{historicalProfitDivines.toFixed(1)}d)</Text>
           )}
         </Text>
         <Group gap={2} style={{ width: BROWSER_COLS.score, flexShrink: 0 }} align="center">
           {score >= 0 ? <IconThumbUp size={10} style={{ color: scoreColor }} /> : <IconThumbDown size={10} style={{ color: scoreColor }} />}
           <Text size="xs" style={{ color: scoreColor, fontVariantNumeric: 'tabular-nums' }}>{score > 0 ? `+${score}` : score}</Text>
         </Group>
-        <Tooltip label={divPerHour != null ? 'Optional author-reported context — selectable as a sort, but never the default ranking; div/map stays primary' : 'No session time shared — div/h unavailable'} withArrow multiline w={250}>
+        <Tooltip label={divPerHour != null ? (isPooled ? `Historical timed evidence only — ${timedRunCount}/${evidenceRunCount} runs reported active time` : 'Optional author-reported context — selectable as a sort, but never the default ranking; div/map stays primary') : 'No session time shared — div/h unavailable'} withArrow multiline w={250}>
           <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.dph, textAlign: 'right', flexShrink: 0, fontVariantNumeric: 'tabular-nums', cursor: 'help' }}>
             {divPerHour != null ? `${divPerHour.toFixed(1)}` : '—'}
           </Text>
         </Tooltip>
-        <Text size="sm" fw={800} style={{ width: BROWSER_COLS.dpm, flexShrink: 0, textAlign: 'right', color: divColor, fontVariantNumeric: 'tabular-nums' }}>
-          {div != null ? `${div.toFixed(3)}d` : '—'}
-        </Text>
+        <Tooltip disabled={!isPooled} label="Historical d/map — map-weighted across runs using each run's divine-price snapshot" withArrow multiline w={240}>
+          <Stack gap={0} align="flex-end" style={{ width: BROWSER_COLS.dpm, flexShrink: 0 }}>
+            <Text size="sm" fw={800} style={{ color: divColor, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+              {div != null ? `${div.toFixed(3)}d` : '—'}
+            </Text>
+            {isPooled && <Text c="dimmed" style={{ fontSize: FONT.micro, lineHeight: 1.1 }}>historical</Text>}
+          </Stack>
+        </Tooltip>
       </div>
 
       <Collapse in={open}>
@@ -322,7 +334,7 @@ export const StrategyCard = ({
                 </div>
               </Tooltip>
             )}
-            {strategy.net_profit   != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Net Profit" value={`${fcSep(strategy.net_profit, true)}${strategy.divine_price ? ` (${strategy.net_profit >= 0 ? '+' : ''}${(strategy.net_profit / strategy.divine_price).toFixed(1)}d)` : ''}`} color={strategy.net_profit >= 0 ? COLOR.profit : COLOR.loss} />}
+            {strategy.net_profit   != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label={isPooled ? 'Historical Net' : 'Net Profit'} value={`${fcSep(strategy.net_profit, true)}${historicalProfitDivines != null ? ` (${strategy.net_profit >= 0 ? '+' : ''}${historicalProfitDivines.toFixed(1)}d)` : ''}`} color={strategy.net_profit >= 0 ? COLOR.profit : COLOR.loss} />}
           </SimpleGrid>
 
           <Group gap="md" mb={8} wrap="wrap">
@@ -330,19 +342,21 @@ export const StrategyCard = ({
             {revision > 1 && updatedDate && (
               <Group gap={4}><SectionLabel>Last updated</SectionLabel><Text size="xs" c="dimmed">{updatedDate}</Text></Group>
             )}
-            {strategy.divine_price != null && <Group gap={4}><SectionLabel>Divine at time</SectionLabel><Text size="xs" c="dimmed">{strategy.divine_price.toFixed(0)}c</Text></Group>}
+            {isPooled
+              ? <Group gap={4}><SectionLabel>Divine pricing</SectionLabel><Text size="xs" c="dimmed">Per-run snapshots</Text></Group>
+              : strategy.divine_price != null && <Group gap={4}><SectionLabel>Divine at time</SectionLabel><Text size="xs" c="dimmed">{strategy.divine_price.toFixed(0)}c</Text></Group>}
             {strategy.game_data_revision != null && (
               <Tooltip label="The game-data snapshot active when this result was shared" withArrow>
                 <Group gap={4}><SectionLabel>Game data</SectionLabel><Text size="xs" c="dimmed">r{strategy.game_data_revision}{strategy.game_data_patch_version ? ` · ${strategy.game_data_patch_version}` : ''}</Text></Group>
               </Tooltip>
             )}
-            {strategy.total_invest != null && <Group gap={4}><SectionLabel>Total invest</SectionLabel><Text size="xs" c="dimmed">{fcSep(strategy.total_invest)}{strategy.divine_price ? ` (${(strategy.total_invest / strategy.divine_price).toFixed(1)}d)` : ''}</Text></Group>}
+            {strategy.total_invest != null && <Group gap={4}><SectionLabel>Total invest</SectionLabel><Text size="xs" c="dimmed">{fcSep(strategy.total_invest)}{!isPooled && strategy.divine_price ? ` (${(strategy.total_invest / strategy.divine_price).toFixed(1)}d)` : ''}</Text></Group>}
           </Group>
           {(() => {
             // Optional author-declared session context (shared-metadata batch
             // 2026-07): time (+ derived div/h) and atlas points. Absent fields
             // simply do not render — no placeholder, no penalty.
-            const mins = strategy.session_minutes;
+            const mins = isPooled ? strategy.timed_session_minutes : strategy.session_minutes;
             const pts  = strategy.atlas_points;
             const ptsMax = strategy.atlas_points_max;
             if (!mins && pts == null) return null;
@@ -353,7 +367,7 @@ export const StrategyCard = ({
                   <Tooltip label="Optional author-reported context — selectable as a sort, but never the default ranking; div/map stays primary" withArrow multiline w={250}>
                     <Group gap={4} wrap="nowrap" style={{ cursor: 'help' }}>
                       <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>Time</Text>
-                      <Text size="xs">{formatActiveTime(mins * 60_000)}{divPerHour != null ? ` · ${divPerHour.toFixed(2)} div/h` : ''}</Text>
+                      <Text size="xs">{formatActiveTime(mins * 60_000)}{divPerHour != null ? ` · ${divPerHour.toFixed(2)} div/h` : ''}{isPooled ? ` · ${timedRunCount}/${evidenceRunCount} timed runs` : ''}</Text>
                     </Group>
                   </Tooltip>
                 ) : null}
@@ -366,6 +380,14 @@ export const StrategyCard = ({
               </Group>
             );
           })()}
+
+          {!frozen && isPooled && displayMapCount != null && (
+            <EvidenceRunsDisclosure
+              strategyId={strategy.id}
+              runCount={evidenceRunCount}
+              mapCount={displayMapCount}
+            />
+          )}
 
           {(() => {
             // Breakdown of the ALL-IN per-map figure. The remainder after
