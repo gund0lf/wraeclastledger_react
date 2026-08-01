@@ -34,9 +34,13 @@ function makeSettings(overrides: Partial<SessionSettings> = {}): SessionSettings
   };
 }
 
-function makeExport(settings: SessionSettings, revision = 3): string {
+function makeExport(
+  settings: SessionSettings,
+  revision = 3,
+  runMaps = maps,
+): string {
   return buildDiscordExport({
-    maps,
+    maps: runMaps,
     settings,
     lootItems: [],
     baselineTotal: 0,
@@ -143,5 +147,42 @@ describe('evidence submission preflight', () => {
       localRawExport: localRaw,
       mapParsedAt: [1_000, 2_000],
     })).resolves.toMatchObject({ mapCount: 2 });
+  });
+
+  it('accepts the live published 1.51 and evidence 1.49 observed-multiplier case', async () => {
+    const settings = makeSettings({
+      fragmentsUsed: 5,
+      smallNodesAllocated: 16,
+      mountingModifiers: true,
+    });
+    const targetMaps = Array.from({ length: 6 }, () => ({
+      quantity: 100,
+      rarity: 60,
+      packSize: 40,
+      moreCurrency: 20,
+      moreScarabs: 10,
+      explicitModCount: 2,
+    }));
+    const localMaps = Array.from({ length: 9 }, () => ({
+      quantity: 100,
+      rarity: 60,
+      packSize: 40,
+      moreCurrency: 20,
+      moreScarabs: 10,
+      explicitModCount: 1,
+    }));
+    const targetRaw = makeExport(settings, 3, targetMaps);
+    const localRaw = makeExport(settings, 3, localMaps);
+    expect(parseDiscordExport(targetRaw)?.multiplier).toBe(1.51);
+    expect(parseDiscordExport(localRaw)?.multiplier).toBe(1.49);
+
+    await expect(prepareEvidenceSubmission({
+      targetRawExport: targetRaw,
+      targetCurrentRevision: 1,
+      expectedRevision: 1,
+      persistedTargetFingerprint: await targetFingerprint(targetRaw),
+      localRawExport: localRaw,
+      mapParsedAt: localMaps.map((_, index) => 1_000 + index),
+    })).resolves.toMatchObject({ mapCount: 9 });
   });
 });

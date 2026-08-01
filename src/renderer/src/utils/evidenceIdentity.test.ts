@@ -36,17 +36,19 @@ describe('client evidence identity contract', () => {
     await expect(fingerprintSetupSnapshot(snapshot)).rejects.toThrow(/ASCII text/);
   });
 
-  it('treats game-data revision as provenance while hard fields block', () => {
+  it('keeps revision and observed multiplier as provenance while hard fields block', () => {
     const expected = buildSetupSnapshotV1(setupInput());
-    const revisionOnly = buildSetupSnapshotV1(setupInput({
+    const provenanceOnly = buildSetupSnapshotV1(setupInput({
       gameDataRevision: 4,
       gameDataPatchVersion: '3.29.1',
+      multiplier: 1.51,
     }));
-    expect(compareSetupSnapshots(expected, revisionOnly)).toEqual([]);
+    expect(provenanceOnly.multiplierMilli).toBe(1510);
+    expect(compareSetupSnapshots(expected, provenanceOnly)).toEqual([]);
 
-    const changed = buildSetupSnapshotV1(setupInput({ multiplier: 1.2355 }));
+    const changed = buildSetupSnapshotV1(setupInput({ mapType: '6-mod' }));
     expect(compareSetupSnapshots(expected, changed).map((entry) => entry.field)).toEqual([
-      'multiplierMilli',
+      'mapType',
     ]);
   });
 

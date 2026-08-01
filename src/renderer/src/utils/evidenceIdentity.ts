@@ -67,7 +67,6 @@ export interface SetupMismatch {
     | 'delirium'
     | 'astrolabeType'
     | 'atlasAllocationHash'
-    | 'multiplierMilli'
   >;
   expected: unknown;
   actual: unknown;
@@ -82,7 +81,6 @@ const HARD_SETUP_FIELDS: SetupMismatch['field'][] = [
   'delirium',
   'astrolabeType',
   'atlasAllocationHash',
-  'multiplierMilli',
 ];
 
 function canonicalText(value: unknown): string | null {
