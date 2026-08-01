@@ -233,15 +233,6 @@ export const StrategyCard = ({
                 </Badge>
               </Tooltip>
             )}
-            {isPooled && displayMapCount != null && (
-              <Tooltip
-                label={`${evidenceRunCount} independently submitted runs, ${displayMapCount} maps total. Aggregate profit uses each run's historical divine-price snapshot.`}
-                withArrow multiline w={260}>
-                <Badge size="xs" color="blue" variant="light" style={{ fontSize: FONT.micro, padding: '0 3px', flexShrink: 0, cursor: 'help' }}>
-                  {evidenceRunCount} runs {'\u00b7'} {displayMapCount} maps
-                </Badge>
-              </Tooltip>
-            )}
             {frozen && (
               <Tooltip label="Frozen at league close; later votes and strategy updates do not change this result" withArrow multiline w={240}>
                 <Badge size="xs" color="cyan" variant="light" style={{ fontSize: FONT.micro, padding: '0 3px', flexShrink: 0, cursor: 'help' }}>
@@ -275,7 +266,19 @@ export const StrategyCard = ({
         ) : (
           <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.mod, flexShrink: 0, fontSize: FONT.small }}>{modDisplay}</Text>
         )}
-        <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.maps, flexShrink: 0 }}>{displayMapCount != null ? displayMapCount : '—'}</Text>
+        <Tooltip
+          disabled={!isPooled || displayMapCount == null}
+          label={`${evidenceRunCount} independently submitted runs, ${displayMapCount} maps total. Aggregate profit uses each run's historical divine-price snapshot.`}
+          withArrow multiline w={260}>
+          <Stack gap={0} align="center" style={{ width: BROWSER_COLS.maps, flexShrink: 0, cursor: isPooled ? 'help' : undefined }}>
+            <Text size="xs" c="dimmed" style={{ lineHeight: 1 }}>{displayMapCount != null ? displayMapCount : '—'}</Text>
+            {isPooled && (
+              <Text c="blue" style={{ fontSize: FONT.micro, lineHeight: 1.1, whiteSpace: 'nowrap' }}>
+                {evidenceRunCount} runs
+              </Text>
+            )}
+          </Stack>
+        </Tooltip>
         <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.cost, flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {costPerMap != null ? fcSep(costPerMap) : '—'}
         </Text>
