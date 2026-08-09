@@ -65,6 +65,28 @@ jobs:
       - name: Build the AppImage without publishing
         run: npm run build:linux -- --config.publish.channel="$WL_LINUX_CHANNEL"
 
+      - name: Extract the packaged updater configuration
+        shell: bash
+        run: |
+          APPIMAGE="$(find dist -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          if [[ -z "$APPIMAGE" ]]; then
+            echo "No AppImage was produced" >&2
+            exit 1
+          fi
+          chmod +x "$APPIMAGE"
+          rm -rf dist/squashfs-root
+          (
+            cd dist
+            "./$(basename "$APPIMAGE")" --appimage-extract >/dev/null
+          )
+          PACKAGED_CONFIG="$(find dist/squashfs-root -type f -path '*/resources/app-update.yml' -print -quit)"
+          if [[ -z "$PACKAGED_CONFIG" ]]; then
+            echo "The AppImage does not contain resources/app-update.yml" >&2
+            exit 1
+          fi
+          cp "$PACKAGED_CONFIG" dist/packaged-app-update.yml
+          rm -rf dist/squashfs-root
+
       - name: Verify the updater artifacts and channel isolation
         run: npm run verify:linux:canary
 
@@ -77,6 +99,7 @@ jobs:
             dist/*.AppImage
             dist/*.AppImage.blockmap
             dist/*-linux.yml
+            dist/packaged-app-update.yml
             dist/linux-canary-evidence.json
             electron-builder.yml
 

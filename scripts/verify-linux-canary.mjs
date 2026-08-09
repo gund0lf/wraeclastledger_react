@@ -3,7 +3,11 @@ import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
 function fail(message) {
-  throw new Error(`[linux-canary] ${message}`);
+  console.error(`[linux-canary] ${message}`);
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    console.error(`::error title=Linux canary verification::${message}`);
+  }
+  process.exit(1);
 }
 
 function requireFile(path, minimumBytes = 1) {
@@ -32,7 +36,7 @@ const appImagePath = join('dist', appImageName);
 const blockmapPath = `${appImagePath}.blockmap`;
 const metadataPath = join('dist', `${channel}-linux.yml`);
 const stableMetadataPath = join('dist', 'latest-linux.yml');
-const packagedUpdaterConfigPath = join('dist', 'linux-unpacked', 'resources', 'app-update.yml');
+const packagedUpdaterConfigPath = join('dist', 'packaged-app-update.yml');
 
 const appImageBytes = requireFile(appImagePath, 50 * 1024 * 1024);
 const blockmapBytes = requireFile(blockmapPath, 100);
