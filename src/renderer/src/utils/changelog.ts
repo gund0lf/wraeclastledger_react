@@ -11,7 +11,7 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '1.0.73',
-    date: 'Unreleased',
+    date: '2026-08-09',
     changes: [
       'Evidence run details now preserve and show each run\'s authored chisel, scarab, Delirium Orb, and Astrolabe prices. Pooled strategy cards no longer imply that one run\'s prices describe the whole historical pool.',
       'Published strategies now use one Continue strategy flow: choose Add another run or Replace published strategy, then either start a clean run with the published setup or apply the target to your current session. Both paths run the same compatibility checks before sharing.',
