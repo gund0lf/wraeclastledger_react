@@ -118,6 +118,37 @@ describe('WP10 auto-save', () => {
     expect(useSessionStore.getState().loadedStrategyInfo).toBeNull();
   });
 
+  it('explicitly assigns a missing saved-session league and persists it immediately', () => {
+    const id = saveActive('Missing league');
+    expect(useSessionStore.getState().savedSessions[id].settings.leagueName).toBe('');
+
+    useSessionStore.getState().assignMissingSessionLeague('Allflame');
+
+    expect(useSessionStore.getState().settings.leagueName).toBe('Allflame');
+    expect(useSessionStore.getState().savedSessions[id].settings.leagueName).toBe('Allflame');
+  });
+
+  it('never reassigns existing saved-session league provenance', () => {
+    useSessionStore.setState((state) => ({
+      settings: { ...state.settings, leagueName: 'Mirage' },
+    }));
+    const id = saveActive('Mirage session');
+
+    useSessionStore.getState().assignMissingSessionLeague('Allflame');
+
+    expect(useSessionStore.getState().settings.leagueName).toBe('Mirage');
+    expect(useSessionStore.getState().savedSessions[id].settings.leagueName).toBe('Mirage');
+  });
+
+  it('rejects invalid league provenance repair values', () => {
+    const id = saveActive('Missing league');
+
+    useSessionStore.getState().assignMissingSessionLeague('Standard');
+
+    expect(useSessionStore.getState().settings.leagueName).toBe('');
+    expect(useSessionStore.getState().savedSessions[id].settings.leagueName).toBe('');
+  });
+
   it('flushes pending edits into the old session when loading another', () => {
     const idA = saveActive('A');
     useSessionStore.getState().newSession();

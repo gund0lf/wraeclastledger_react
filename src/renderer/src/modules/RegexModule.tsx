@@ -18,6 +18,11 @@ import {
 import { CURRENT_LEAGUE, KNOWN_LEAGUES } from '../utils/league';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { RegexLine } from '../components/ui/RegexLine'
+import {
+  buildBrickModSelectGroups,
+  filterBrickModSelectOptions,
+  type BrickModSelectOption,
+} from '../utils/brickModSelect';
 
 // Badge tooltips explaining how each generated regex is derived (Sad 2026-07-09).
 const RUN_TOOLTIP = 'Run = maps ready to run: floors derived from your session averages — currency and pack (both required on high-currency sessions), plus quantity/rarity riders at 60% of your averages.';
@@ -65,19 +70,7 @@ const TAG_TO_MAP_TYPE: Record<string, MapType> = {
 
 // Word-based fuzzy filter over the exact PoE Trade wording shown to the user.
 const brickModFilter = ({ options, search }: { options: any[]; search: string }) => {
-  const words = (search ?? '').trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return options;
-  const matchItem = (item: { value: string; label: string }) =>
-    words.every((word) => item.label.toLowerCase().includes(word.toLowerCase()));
-  return options
-    .map((opt) => {
-      if (opt.items) {
-        const filtered = opt.items.filter(matchItem);
-        return filtered.length > 0 ? { ...opt, items: filtered } : null;
-      }
-      return matchItem(opt) ? opt : null;
-    })
-    .filter(Boolean);
+  return filterBrickModSelectOptions(options, search ?? '');
 };
 
 // ─── From Session tab ─────────────────────────────────────────────────────────
@@ -191,18 +184,7 @@ export const FromSessionTab = () => {
     [brickMods]
   );
 
-  const brickModData = useMemo(() => {
-    const toOption = (mod: (typeof brickMods)[number]) => ({
-      value: mod.id,
-      label: mod.tradeTexts.length > 0 ? mod.tradeTexts.join(' / ') : mod.label,
-    });
-    const regular   = brickMods.filter((m) => m.category === 'regular').map(toOption);
-    const nightmare = brickMods.filter((m) => m.category === 'nightmare').map(toOption);
-    const result: { group: string; items: { value: string; label: string }[] }[] = [];
-    if (regular.length   > 0) result.push({ group: 'Regular / shared', items: regular });
-    if (nightmare.length > 0) result.push({ group: 'Nightmare', items: nightmare });
-    return result;
-  }, [brickMods]);
+  const brickModData = useMemo(() => buildBrickModSelectGroups(brickMods), [brickMods]);
   const tradeLeagueOptions = useMemo(
     () => Array.from(new Set(
       [settings.leagueName?.trim(), ...KNOWN_LEAGUES].filter((name): name is string => !!name)
@@ -210,13 +192,17 @@ export const FromSessionTab = () => {
     [settings.leagueName]
   );
 
-  const renderBrickOption = ({ option, checked }: { option: { value: string; label: string }; checked?: boolean }) => {
+  const renderBrickOption = ({ option, checked }: {
+    option: { value: string; label: string };
+    checked?: boolean;
+  }) => {
+    const richOption = option as BrickModSelectOption;
     return (
       <Group gap={6} wrap="nowrap" align="flex-start">
         {checked && <IconCheck size={12} style={{ flexShrink: 0, marginTop: 2 }} />}
         <Text size="xs" lineClamp={2}
           style={{ color: nightmareBrickIds.has(option.value) ? COLOR.nightmare : undefined }}>
-          {option.label}
+          {richOption.tradeLabel ?? option.label}
         </Text>
       </Group>
     );
@@ -500,7 +486,13 @@ export const FromSessionTab = () => {
               onChange={(selected) => applySelectedModsChange(selected, setTradeBrickExcl)}
               onKeyDownCapture={(event) => protectSelectedModsOnBackspace(event, tradeBrickExcl.length > 0)}
               renderOption={renderBrickOption}
-              maxDropdownHeight={240} disabled={brickMods.length === 0} />
+              maxDropdownHeight={240} disabled={brickMods.length === 0}
+              style={{ maxWidth: '100%' }}
+              styles={{
+                input: { overflow: 'hidden' },
+                pillsList: { maxWidth: '100%', overflow: 'hidden' },
+                pill: { maxWidth: '100%' },
+              }} />
             {tradeBrickExcl.length > 0 && (
               <Group gap={4} align="center">
                 <Text size="xs" c="red" style={{ fontSize: FONT.small }}>

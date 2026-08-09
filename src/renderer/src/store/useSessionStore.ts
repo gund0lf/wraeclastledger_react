@@ -343,6 +343,10 @@ interface SessionState {
   setRegexBuilderGroups: (groups: ModGroupState[]) => void;
   setDiscordTag: (tag: string) => void;
   setLeagueOverride: (league: string | null) => void;
+  /** Explicitly repairs missing session provenance. Existing non-empty league
+   *  names are immutable through this path; historical reassignment remains
+   *  deliberately unsupported. */
+  assignMissingSessionLeague: (league: string) => void;
   setDefaultPreset: () => void; // saves current regexExclusions as persistent default
   clearDefaultPreset: () => void;
   saveExclusionPreset: (name: string, literalRegex?: string) => void;
@@ -590,7 +594,7 @@ export const useSessionStore = create<SessionState>()(
         // Never seed/prompt under a guessed league (that reintroduces the rollover bug).
         const known = confirmedLeagueSync();
         const seededBonus = known ? (get().atlasBonusByLeague[known] ?? false) : false;
-        set((s) => ({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, settings: { ...DEFAULT_SETTINGS, atlasBonus: seededBonus }, pendingAtlasBonusSeed: known === null, pendingAtlasBonusValue: null, activeSessionId: null, activeSessionName: null, isWatching: false, loadedStrategyInfo: null, sessionNonce: s.sessionNonce + 1 }));
+        set((s) => ({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, settings: { ...DEFAULT_SETTINGS, leagueName: known ?? '', atlasBonus: seededBonus }, pendingAtlasBonusSeed: known === null, pendingAtlasBonusValue: null, activeSessionId: null, activeSessionName: null, isWatching: false, loadedStrategyInfo: null, sessionNonce: s.sessionNonce + 1 }));
       },
 
       saveScarabPreset: (name) => {
@@ -621,8 +625,10 @@ export const useSessionStore = create<SessionState>()(
           if (!live) return { leagueOverride: v }; // never mutate a loaded historical session
           if (v) {
             // Explicit override to a known league on a live session: re-seed its
-            // Atlas Bonus from that league's stored value (supersedes any held choice).
-            return { leagueOverride: v, pendingAtlasBonusSeed: false, pendingAtlasBonusValue: null, settings: { ...s.settings, atlasBonus: s.atlasBonusByLeague[v] ?? false } };
+            // Atlas Bonus from that league's stored value (supersedes any held
+            // choice). Stamp only a BLANK working session: an already-recorded
+            // league is provenance and an override must never rewrite it.
+            return { leagueOverride: v, pendingAtlasBonusSeed: false, pendingAtlasBonusValue: null, settings: { ...s.settings, ...(s.settings.leagueName.trim() ? {} : { leagueName: v }), atlasBonus: s.atlasBonusByLeague[v] ?? false } };
           }
           // Cleared override on a live session: the active league becomes whatever
           // detection resolves — defer the re-seed to initDivinePrice.
@@ -632,6 +638,28 @@ export const useSessionStore = create<SessionState>()(
         // new league immediately. force bypasses BOTH the staleness guard and
         // the fetch cooldown — an explicit league change must never be skipped.
         get().initDivinePrice({ force: true });
+      },
+      assignMissingSessionLeague: (league) => {
+        const v = normalizeLeagueOverride(league);
+        if (!v) return;
+        set((s) => {
+          // This action is a one-way repair, not a historical league editor.
+          if (s.settings.leagueName.trim()) return {};
+          const settings = { ...s.settings, leagueName: v };
+          if (s.activeSessionId === null) return { settings };
+          const saved = s.savedSessions[s.activeSessionId];
+          if (!saved) return {};
+          return {
+            settings,
+            savedSessions: {
+              ...s.savedSessions,
+              [s.activeSessionId]: {
+                ...saved,
+                settings: { ...saved.settings, leagueName: v },
+              },
+            },
+          };
+        });
       },
       setAtlasBonus: (value) =>
         set((s) => {

@@ -67,12 +67,12 @@ export const InvestmentModule = () => {
   const compactPanel = panelWidth > 0 && panelWidth < 310;
   const {
     maps, settings, updateSetting, updateAdvSetting, updateScarab, clearScarab, initDivinePrice,
-    setDivinePriceManual, leagueOverride, setLeagueOverride,
-    scarabPresets, saveScarabPreset, loadScarabPreset, deleteScarabPreset, activeSessionId,
+    setDivinePriceManual, leagueOverride, setLeagueOverride, assignMissingSessionLeague,
+    scarabPresets, saveScarabPreset, loadScarabPreset, deleteScarabPreset, activeSessionId, sessionNonce,
   } = useSessionKeys(
     'maps', 'settings', 'updateSetting', 'updateAdvSetting', 'updateScarab', 'clearScarab', 'initDivinePrice',
-    'setDivinePriceManual', 'leagueOverride', 'setLeagueOverride',
-    'scarabPresets', 'saveScarabPreset', 'loadScarabPreset', 'deleteScarabPreset', 'activeSessionId',
+    'setDivinePriceManual', 'leagueOverride', 'setLeagueOverride', 'assignMissingSessionLeague',
+    'scarabPresets', 'saveScarabPreset', 'loadScarabPreset', 'deleteScarabPreset', 'activeSessionId', 'sessionNonce',
   );
   const [advOpen, { open: openAdv, close: closeAdv }] = useDisclosure(false);
   const [presetSaveOpen, setPresetSaveOpen] = useState(false); // scarab preset "Save current as…" dialog
@@ -87,6 +87,7 @@ export const InvestmentModule = () => {
   // KNOWN_LEAGUES with a loud console.warn if the endpoint fails).
   const [leagueList, setLeagueList] = useState<string[]>(KNOWN_LEAGUES);
   const [leagueListRequested, setLeagueListRequested] = useState(false);
+  const [pendingSessionLeague, setPendingSessionLeague] = useState<string | null>(null);
   const loadLeagueOptions = async () => {
     if (leagueListRequested) return;
     setLeagueListRequested(true);
@@ -97,11 +98,29 @@ export const InvestmentModule = () => {
     // The persisted override must always be selectable, even if the index
     // no longer lists it (e.g. an ended event league).
     if (leagueOverride && !names.includes(leagueOverride)) names.unshift(leagueOverride);
+    if (settings.leagueName && !names.includes(settings.leagueName)) names.unshift(settings.leagueName);
+    const loaded = activeSessionId !== null;
     return [
-      { value: '', label: !leagueOverride && settings.leagueName ? `Auto: ${settings.leagueName}` : 'Auto-detect' },
+      {
+        value: '',
+        label: loaded
+          ? 'Unassigned session'
+          : (!leagueOverride && settings.leagueName ? `Auto: ${settings.leagueName}` : 'Auto-detect'),
+      },
       ...names.map((n) => ({ value: n, label: n })),
     ];
-  }, [leagueList, leagueOverride, settings.leagueName]);
+  }, [activeSessionId, leagueList, leagueOverride, settings.leagueName]);
+  const leagueSelectValue = activeSessionId !== null
+    ? settings.leagueName
+    : (leagueOverride ?? '');
+  const handleLeagueChange = (value: string | null): void => {
+    const next = value || null;
+    if (activeSessionId === null) {
+      setLeagueOverride(next);
+      return;
+    }
+    if (!settings.leagueName.trim() && next) setPendingSessionLeague(next);
+  };
 
   const divinePrice = settings.divinePrice || 1;
   const scarabOptions = selectableScarabOptions();
@@ -157,7 +176,7 @@ export const InvestmentModule = () => {
       if (active) setConfirmedActiveLeague(confirmedLeagueSync());
     });
     return () => { active = false; };
-  }, [activeSessionId, leagueOverride, initDivinePrice]);
+  }, [activeSessionId, leagueOverride, sessionNonce, initDivinePrice]);
 
   // Manual refresh button: bypasses the cooldown via { force: true }, since
   // an explicit user action shouldn't be silently skipped.
@@ -432,6 +451,26 @@ export const InvestmentModule = () => {
         </Stack>
       </Modal>
 
+      <Modal opened={pendingSessionLeague !== null} onClose={() => setPendingSessionLeague(null)}
+        title="Assign league to saved session?" size="sm">
+        <Stack gap="sm">
+          <Text size="xs">
+            This saved session has no recorded league. Assigning {pendingSessionLeague ?? 'this league'}
+            {' '}repairs that missing provenance and unlocks sharing. It does not change historical prices,
+            and a recorded league cannot be reassigned here later.
+          </Text>
+          <Group justify="flex-end" gap="xs">
+            <Button size="xs" variant="default" onClick={() => setPendingSessionLeague(null)}>Cancel</Button>
+            <Button size="xs" onClick={() => {
+              if (pendingSessionLeague) assignMissingSessionLeague(pendingSessionLeague);
+              setPendingSessionLeague(null);
+            }}>
+              Assign {pendingSessionLeague ?? 'league'}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
       <Card ref={panelRef} shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ overflow: 'auto' }}>
         <Group justify="space-between" mb={8} wrap="nowrap" gap={compactPanel ? 4 : 'md'}>
           {/* Panel title removed (redundant with the tab label — same call as the
@@ -442,11 +481,16 @@ export const InvestmentModule = () => {
           <Select
             size="xs" searchable
             data={leagueOptions}
-            value={leagueOverride ?? ''}
-            onChange={(v) => setLeagueOverride(v || null)}
+            value={leagueSelectValue}
+            onChange={handleLeagueChange}
             onDropdownOpen={loadLeagueOptions}
             comboboxProps={{ withinPortal: true }}
-            title="League — leave on Auto unless detection picks the wrong league (e.g. you are mapping in the parent league during an event)"
+            disabled={activeSessionId !== null && !!settings.leagueName.trim()}
+            title={activeSessionId !== null
+              ? (settings.leagueName.trim()
+                ? 'Saved-session league provenance is fixed and cannot be reassigned here'
+                : 'Choose the league once to repair this saved session\'s missing provenance')
+              : 'League — leave on Auto unless detection picks the wrong league'}
             style={{ width: compactPanel ? undefined : 170, minWidth: 0, flex: compactPanel ? 1 : undefined }}
           />
           <Group gap={4} style={{ marginLeft: 'auto' }}>

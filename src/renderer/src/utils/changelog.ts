@@ -10,6 +10,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.74',
+    date: 'Unreleased',
+    changes: [
+      'Fresh working sessions now record the confirmed live league immediately. Older saved sessions with missing league provenance can be assigned once with confirmation, while existing historical league provenance remains locked and prices are left unchanged.',
+      'PoE Trade exclusion selections now use compact catalogue labels in the modal while the dropdown and search retain GGG\'s exact Trade wording. Long selections no longer force the fixed-width Trade window to overflow horizontally.',
+    ],
+  },
+  {
     version: '1.0.73',
     date: '2026-08-09',
     changes: [

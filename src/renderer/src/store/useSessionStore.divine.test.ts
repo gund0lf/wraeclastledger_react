@@ -92,8 +92,8 @@ describe('WP4.2 divine price staleness', () => {
   it('different confirmed league refetches but preserves prior-league live state', async () => {
     resetStore(300, Date.now());
     useSessionStore.setState((s) => ({ settings: { ...s.settings, leagueName: 'Ancestors' } }));
-    leagueState.current = 'Curse of the Allflame';
-    leagueState.confirmed = 'Curse of the Allflame';
+    leagueState.current = 'Allflame';
+    leagueState.confirmed = 'Allflame';
 
     await useSessionStore.getState().initDivinePrice();
 
@@ -115,6 +115,28 @@ describe('WP4.2 divine price staleness', () => {
     resetStore(300, Date.now());
     useSessionStore.getState().setLeagueOverride('Standard');
     expect(useSessionStore.getState().leagueOverride).toBeNull();
+    await Promise.resolve();
+  });
+
+  it('stamps a new working session with the synchronously confirmed league', () => {
+    resetStore(300, Date.now());
+    leagueState.confirmed = 'Allflame';
+
+    useSessionStore.getState().newSession();
+
+    expect(useSessionStore.getState().settings.leagueName).toBe('Allflame');
+  });
+
+  it('an explicit live override stamps only missing provenance', async () => {
+    resetStore(300, Date.now());
+    useSessionStore.getState().setLeagueOverride('Allflame');
+    expect(useSessionStore.getState().settings.leagueName).toBe('Allflame');
+
+    useSessionStore.setState((state) => ({
+      settings: { ...state.settings, leagueName: 'Mirage' },
+    }));
+    useSessionStore.getState().setLeagueOverride('Ancestors');
+    expect(useSessionStore.getState().settings.leagueName).toBe('Mirage');
     await Promise.resolve();
   });
 
