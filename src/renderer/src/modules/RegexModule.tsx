@@ -1,12 +1,12 @@
 import {
   Text, Button, Group, Stack, Badge, ActionIcon,
   TextInput, Select, MultiSelect, Modal, CopyButton, Code, Divider, ScrollArea, Tooltip,
-  NumberInput, Switch, Alert, Menu, SimpleGrid, UnstyledButton,
+  NumberInput, Switch, Alert, Menu, SimpleGrid, UnstyledButton, SegmentedControl,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, type KeyboardEvent } from 'react';
 import { useSessionKeys } from '../store/useSessionStore';
-import { IconTrash, IconCopy, IconCheck, IconWand, IconX, IconExternalLink, IconStar, IconDeviceFloppy, IconChevronDown } from '@tabler/icons-react';
+import { IconTrash, IconCopy, IconCheck, IconWand, IconX, IconExternalLink, IconStar, IconDeviceFloppy, IconChevronDown, IconPencil, IconSettings } from '@tabler/icons-react';
 import {
   generateRunRegex,
   generateSlamRegex,
@@ -18,9 +18,6 @@ import {
 import { CURRENT_LEAGUE, KNOWN_LEAGUES } from '../utils/league';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { RegexLine } from '../components/ui/RegexLine'
-
-const TYPE_COLORS: Record<string, string> = { run: 'green', slam: 'orange', other: 'gray' };
-const TYPE_LABELS: Record<string, string> = { run: 'Run', slam: 'Slam', other: 'Other' };
 
 // Badge tooltips explaining how each generated regex is derived (Sad 2026-07-09).
 const RUN_TOOLTIP = 'Run = maps ready to run: floors derived from your session averages — currency and pack (both required on high-currency sessions), plus quantity/rarity riders at 60% of your averages.';
@@ -66,13 +63,7 @@ const TAG_TO_MAP_TYPE: Record<string, MapType> = {
   '8mod': '8mod', 'empowered': 'any', 'empowered-originator': 'originator',
 };
 
-function parseExclusionsFromRegex(text: string): string[] {
-  const m = text.match(/"!([^"]+)"/);
-  if (!m) return [];
-  return m[1].split('|').map((t) => t.trim()).filter(Boolean);
-}
-
-// Word-based fuzzy filter — "boss life" finds "Boss More Life + AoE"
+// Word-based fuzzy filter over the exact PoE Trade wording shown to the user.
 const brickModFilter = ({ options, search }: { options: any[]; search: string }) => {
   const words = (search ?? '').trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return options;
@@ -91,33 +82,30 @@ const brickModFilter = ({ options, search }: { options: any[]; search: string })
 
 // ─── From Session tab ─────────────────────────────────────────────────────────
 // WP8: the generate/exclusions/trade content of the merged Regex panel. The
-// saved-sets list now lives in SavedSetsTab; the internal RegexLine/CopyLine
-// were replaced by the shared components/ui/RegexLine.
+// internal RegexLine/CopyLine were replaced by the shared components/ui/RegexLine.
 
 export const FromSessionTab = () => {
-  const { settings, updateSetting, saveRegexSet,
+  const { settings, updateSetting,
     setDefaultPreset,
-    exclusionPresets, saveExclusionPreset, loadExclusionPreset, deleteExclusionPreset,
-    maps, loadedStrategyInfo, activeSessionId,
+    exclusionPresets, saveExclusionPreset, updateExclusionPreset,
+    loadExclusionPreset, setExclusionPresetDefault, deleteExclusionPreset,
+    maps, loadedStrategyInfo,
   } = useSessionKeys(
-    'settings', 'updateSetting', 'saveRegexSet',
+    'settings', 'updateSetting',
     'setDefaultPreset',
-    'exclusionPresets', 'saveExclusionPreset', 'loadExclusionPreset', 'deleteExclusionPreset',
-    'maps', 'loadedStrategyInfo', 'activeSessionId',
+    'exclusionPresets', 'saveExclusionPreset', 'updateExclusionPreset',
+    'loadExclusionPreset', 'setExclusionPresetDefault', 'deleteExclusionPreset',
+    'maps', 'loadedStrategyInfo',
   );
 
-  const [saveAsOpen, { open: openSaveAs, close: closeSaveAs }] = useDisclosure(false);
   const [tradeOpen,  { open: openTrade,  close: closeTrade  }] = useDisclosure(false);
 
-  const [saveAsLabel,  setSaveAsLabel]  = useState('');
-  const [saveAsRegex,  setSaveAsRegex]  = useState(''); // the regex being saved, not editable
-  const [saveAsType,   setSaveAsType]   = useState<'run' | 'slam' | 'other'>('run');
   const [presetSaveOpen, setPresetSaveOpen] = useState(false); // "Save current as…" name dialog
   const [presetSaveName, setPresetSaveName] = useState('');
+  const [presetMode, setPresetMode] = useState<'structured' | 'literal'>('structured');
+  const [presetLiteralRegex, setPresetLiteralRegex] = useState('');
+  const [presetEditId, setPresetEditId] = useState<string | null>(null);
   const [hoveredExclTrashId, setHoveredExclTrashId] = useState<string | null>(null); // preset delete red hover
-
-  const [parsedRegex,  setParsedRegex]  = useState('');
-  const [parsedTerms,  setParsedTerms]  = useState<string[]>([]);
 
   const [tradeMapType,      setTradeMapType]      = useState<MapType>('any');
   const [tradeLeague,       setTradeLeague]       = useState(settings.leagueName?.trim() || CURRENT_LEAGUE);
@@ -134,23 +122,38 @@ export const FromSessionTab = () => {
   const [tradeCorrupted,    setTradeCorrupted]    = useState<CorruptedFilter>('any');
   const [tradeLoading,      setTradeLoading]      = useState(false);
   const [tradeError,        setTradeError]        = useState<string | null>(null);
-  const [brickMods,         setBrickMods]         = useState<{ id: string; label: string; regexTerm: string; category: 'regular' | 'nightmare' }[]>([]);
+  const [brickMods,         setBrickMods]         = useState<{ id: string; label: string; regexTerm: string; tradeTexts: string[]; category: 'regular' | 'nightmare' }[]>([]);
   const [brickModsError,    setBrickModsError]    = useState<string | null>(null);
   const [unavailableBricks, setUnavailableBricks] = useState<{ label: string; expectedCount: number; actualCount: number }[]>([]);
   const [tradeBrickExcl,    setTradeBrickExcl]    = useState<string[]>([]);
+  const ignoreEmptySearchBackspaceRef = useRef(false);
 
-  const exclusions: string[]  = settings.regexExclusions ?? [];
+  // Mantine removes the last selected pill on an empty-search Backspace even
+  // when the native key event is prevented. Keep the controlled value stable
+  // for that one synchronous change while preserving chip X / clear-all.
+  const protectSelectedModsOnBackspace = (
+    event: KeyboardEvent<HTMLInputElement>,
+    hasSelection: boolean,
+  ) => {
+    if (event.key !== 'Backspace' || event.currentTarget.value.length > 0 || !hasSelection) return;
+    event.preventDefault();
+    ignoreEmptySearchBackspaceRef.current = true;
+    queueMicrotask(() => { ignoreEmptySearchBackspaceRef.current = false; });
+  };
+
+  const applySelectedModsChange = (selected: string[], apply: (value: string[]) => void) => {
+    if (!ignoreEmptySearchBackspaceRef.current) apply(selected);
+  };
+
+  const exclusions = useMemo(
+    () => settings.regexExclusions ?? [],
+    [settings.regexExclusions],
+  );
 
   const removeExclusion = (term: string) =>
     updateSetting('regexExclusions', exclusions.filter((e) => e !== term));
 
   const is8Mod = maps.length > 0 && maps.every((m) => m.modCount > 6 || m.isNightmare);
-
-  // Clear paste preview on session change or strategy load
-  useEffect(() => {
-    setParsedRegex('');
-    setParsedTerms([]);
-  }, [activeSessionId, loadedStrategyInfo]);
 
   useEffect(() => {
     try {
@@ -189,8 +192,12 @@ export const FromSessionTab = () => {
   );
 
   const brickModData = useMemo(() => {
-    const regular   = brickMods.filter((m) => m.category === 'regular').map((m) => ({ value: m.id, label: m.label }));
-    const nightmare = brickMods.filter((m) => m.category === 'nightmare').map((m) => ({ value: m.id, label: m.label }));
+    const toOption = (mod: (typeof brickMods)[number]) => ({
+      value: mod.id,
+      label: mod.tradeTexts.length > 0 ? mod.tradeTexts.join(' / ') : mod.label,
+    });
+    const regular   = brickMods.filter((m) => m.category === 'regular').map(toOption);
+    const nightmare = brickMods.filter((m) => m.category === 'nightmare').map(toOption);
     const result: { group: string; items: { value: string; label: string }[] }[] = [];
     if (regular.length   > 0) result.push({ group: 'Regular / shared', items: regular });
     if (nightmare.length > 0) result.push({ group: 'Nightmare', items: nightmare });
@@ -203,11 +210,17 @@ export const FromSessionTab = () => {
     [settings.leagueName]
   );
 
-  const renderBrickOption = ({ option }: { option: { value: string; label: string } }) => (
-    <Text size="xs" style={{ color: nightmareBrickIds.has(option.value) ? COLOR.nightmare : undefined }}>
-      {option.label}
-    </Text>
-  );
+  const renderBrickOption = ({ option, checked }: { option: { value: string; label: string }; checked?: boolean }) => {
+    return (
+      <Group gap={6} wrap="nowrap" align="flex-start">
+        {checked && <IconCheck size={12} style={{ flexShrink: 0, marginTop: 2 }} />}
+        <Text size="xs" lineClamp={2}
+          style={{ color: nightmareBrickIds.has(option.value) ? COLOR.nightmare : undefined }}>
+          {option.label}
+        </Text>
+      </Group>
+    );
+  };
 
   const addBrickModsToRegex = (brickIds: string[]) => {
     const terms = brickIds
@@ -231,26 +244,34 @@ export const FromSessionTab = () => {
     brickMods.filter((m) => m.category === cat && exclusions.includes(m.regexTerm)).map((m) => m.id);
   const doPresetSave = () => {
     const name = presetSaveName.trim();
-    if (!name) return;
-    saveExclusionPreset(name);
+    const literal = presetLiteralRegex.trim();
+    if (!name || (presetMode === 'literal' && !literal)) return;
+    if (presetEditId) updateExclusionPreset(presetEditId, name, presetMode === 'literal' ? literal : undefined);
+    else saveExclusionPreset(name, presetMode === 'literal' ? literal : undefined);
     setPresetSaveName('');
+    setPresetLiteralRegex('');
+    setPresetMode('structured');
+    setPresetEditId(null);
     setPresetSaveOpen(false);
   };
 
-  // Add a single parsed term to current exclusions
-  const addSingleTerm = (term: string) => {
-    if (!exclusions.includes(term))
-      updateSetting('regexExclusions', [...exclusions, term]);
+  const closePresetEditor = () => {
+    setPresetSaveOpen(false);
+    setPresetSaveName('');
+    setPresetLiteralRegex('');
+    setPresetMode('structured');
+    setPresetEditId(null);
   };
 
-  const openSaveAsModal = (regex: string, type: 'run' | 'slam' | 'other' = 'run') => {
-    setSaveAsRegex(regex);
-    setSaveAsType(type);
-    setSaveAsLabel('');
-    openSaveAs();
+  const openPresetEditor = (preset?: (typeof exclusionPresets)[number]) => {
+    setPresetEditId(preset?.id ?? null);
+    setPresetSaveName(preset?.name ?? '');
+    setPresetMode(preset?.kind === 'literal' ? 'literal' : 'structured');
+    setPresetLiteralRegex(preset?.literalRegex ?? '');
+    setPresetSaveOpen(true);
   };
 
-  const handleOpenTradeModal = () => {
+  useEffect(() => {
     setTradeLeague(settings.leagueName?.trim() || CURRENT_LEAGUE);
     const src = generatedRegex ?? (loadedStrategyInfo ? {
       avg: {
@@ -292,6 +313,10 @@ export const FromSessionTab = () => {
     setTradeError(null);
     const autoSelected = brickMods.filter((m) => exclusions.includes(m.regexTerm)).map((m) => m.id);
     setTradeBrickExcl(autoSelected);
+  }, [settings.leagueName, generatedRegex, loadedStrategyInfo, maps, brickMods, exclusions]);
+
+  const handleOpenTradeModal = () => {
+    setTradeError(null);
     openTrade();
   };
 
@@ -303,7 +328,7 @@ export const FromSessionTab = () => {
         league, minIIQ: tradeMinIIQ, minIIR: tradeMinIIR, minPack: tradeMinPack,
         minCurrency: tradeMinCurrency, minScarabs: tradeMinScarabs, minMaps: tradeMinMaps,
         minTier: tradeMinTier, corruptedFilter: tradeCorrupted,
-        mapType: tradeMapType, empowered: tradeEmpowered,
+        mapType: tradeMapType, empowered: tradeLeague.toLowerCase() === 'allflame' ? false : tradeEmpowered,
         minDelirious: tradeMinDelirious, deliRewardTypes: tradeDeliRewards,
         brickExclusions: tradeBrickExcl,
       });
@@ -317,26 +342,6 @@ export const FromSessionTab = () => {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, padding: 8 }}>
-      {/* ── Save As modal (name only, regex is pre-filled) ── */}
-      <Modal opened={saveAsOpen} onClose={closeSaveAs} title="Save Regex Set" size="sm">
-        <Stack gap="sm">
-          <TextInput label="Name" placeholder="e.g. My 8-mod setup" autoFocus
-            value={saveAsLabel} onChange={(e) => setSaveAsLabel(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && saveAsLabel.trim()) {
-                saveRegexSet({ label: saveAsLabel.trim(), type: saveAsType, lines: [saveAsRegex] });
-                closeSaveAs();
-              }
-            }} />
-          <Code style={{ fontSize: FONT.label, wordBreak: 'break-all', color: COLOR.textFaint }}>{saveAsRegex}</Code>
-          <Button onClick={() => {
-            if (!saveAsLabel.trim()) return;
-            saveRegexSet({ label: saveAsLabel.trim(), type: saveAsType, lines: [saveAsRegex] });
-            closeSaveAs();
-          }} disabled={!saveAsLabel.trim()}>Save</Button>
-        </Stack>
-      </Modal>
-
       {/* ── Trade search modal ── */}
       <Modal opened={tradeOpen} onClose={closeTrade} title="PoE Trade Map Search" size="md" scrollAreaComponent={ScrollArea.Autosize}>
         <Stack gap="md">
@@ -357,7 +362,10 @@ export const FromSessionTab = () => {
               </Menu.Target>
               <Menu.Dropdown>
                 {tradeLeagueOptions.map((league) => (
-                  <Menu.Item key={league} onClick={() => setTradeLeague(league)}>
+                  <Menu.Item key={league} onClick={() => {
+                    setTradeLeague(league);
+                    if (league.toLowerCase() === 'allflame') setTradeEmpowered(false);
+                  }}>
                     {league}
                   </Menu.Item>
                 ))}
@@ -383,31 +391,38 @@ export const FromSessionTab = () => {
             )}
           </Stack>
 
-          <Group justify="space-between" align="center">
-            <Stack gap={0}>
-              <Text size="xs" fw={600}>Empowered Mirage enchant</Text>
-              <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>Require Empowered Mirage enchant</Text>
-            </Stack>
-            <Switch size="sm" checked={tradeEmpowered} onChange={(e) => setTradeEmpowered(e.currentTarget.checked)} />
-          </Group>
+          {tradeLeague.toLowerCase() !== 'allflame' && (
+            <Group justify="space-between" align="center">
+              <Stack gap={0}>
+                <Text size="xs" fw={600}>Empowered Mirage enchant</Text>
+                <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>Require Empowered Mirage enchant</Text>
+              </Stack>
+              <Switch size="sm" checked={tradeEmpowered} onChange={(e) => setTradeEmpowered(e.currentTarget.checked)} />
+            </Group>
+          )}
 
           <Stack gap={4}>
             <Text size="xs" fw={600}>Delirium</Text>
             <Group gap="md" grow>
-              <Select size="xs" label="Min % Delirious"
+              <Select size="xs" label="Delirium state"
                 data={[
                   { value: '-1',  label: 'Any (no filter)' },
-                  { value: '0',   label: '0% (has delirium enchant)' },
-                  { value: '20',  label: '20% (1 orb)' },
-                  { value: '40',  label: '40% (2 orbs)' },
-                  { value: '60',  label: '60% (3 orbs)' },
-                  { value: '80',  label: '80% (4 orbs)' },
-                  { value: '100', label: '100% (5 orbs)' },
+                  { value: '0',   label: 'None (exclude Delirious maps)' },
+                  { value: '20',  label: 'Exactly 20% (1 orb)' },
+                  { value: '40',  label: 'Exactly 40% (2 orbs)' },
+                  { value: '60',  label: 'Exactly 60% (3 orbs)' },
+                  { value: '80',  label: 'Exactly 80% (4 orbs)' },
+                  { value: '100', label: 'Exactly 100% (5 orbs)' },
                 ]}
                 value={String(tradeMinDelirious)}
-                onChange={(v) => setTradeMinDelirious(Number(v ?? '-1'))} />
+                onChange={(v) => {
+                  const next = Number(v ?? '-1');
+                  setTradeMinDelirious(next);
+                  if (next === 0) setTradeDeliRewards([]);
+                }} />
               <MultiSelect size="xs" label="Reward types (optional)" placeholder="Any"
                 clearable searchable
+                disabled={tradeMinDelirious === 0}
                 data={DELI_REWARD_OPTIONS}
                 value={tradeDeliRewards} onChange={setTradeDeliRewards} maxDropdownHeight={200}
                 styles={{
@@ -481,7 +496,9 @@ export const FromSessionTab = () => {
                 ? 'Unavailable'
                 : brickMods.length === 0 ? 'Loading…' : 'Search and select mods to exclude'}
               searchable clearable filter={brickModFilter}
-              data={brickModData} value={tradeBrickExcl} onChange={setTradeBrickExcl}
+              data={brickModData} value={tradeBrickExcl}
+              onChange={(selected) => applySelectedModsChange(selected, setTradeBrickExcl)}
+              onKeyDownCapture={(event) => protectSelectedModsOnBackspace(event, tradeBrickExcl.length > 0)}
               renderOption={renderBrickOption}
               maxDropdownHeight={240} disabled={brickMods.length === 0} />
             {tradeBrickExcl.length > 0 && (
@@ -517,6 +534,7 @@ export const FromSessionTab = () => {
                 tradeMinPack,
                 tradeMinCurrency,
                 tradeMinIIR,
+                tradeMinDelirious,
               );
               if (!r) return null;
               return (
@@ -537,16 +555,43 @@ export const FromSessionTab = () => {
         </Stack>
       </Modal>
 
-      {/* ── Exclusion-preset save modal (name only) ── */}
-      <Modal opened={presetSaveOpen} onClose={() => { setPresetSaveOpen(false); setPresetSaveName(''); }} title="Save Exclusion Preset" size="sm">
+      {/* Named structured-exclusion and literal-regex preset editor. */}
+      <Modal opened={presetSaveOpen} onClose={closePresetEditor}
+        title={presetEditId ? 'Edit Regex Preset' : 'Create Regex Preset'} size="sm">
         <Stack gap="sm">
-          <TextInput label="Name" placeholder="e.g. Nightmare bricks" autoFocus
+          <TextInput label="Name" placeholder="e.g. Originator maps" autoFocus
             value={presetSaveName} onChange={(e) => setPresetSaveName(e.currentTarget.value)}
             onKeyDown={(e) => e.key === 'Enter' && doPresetSave()} />
-          <Code style={{ fontSize: FONT.label, wordBreak: 'break-all', color: COLOR.textFaint }}>
-            {exclusions.map((t) => `!${t}`).join(' ')}
-          </Code>
-          <Button onClick={doPresetSave} disabled={!presetSaveName.trim()}>Save</Button>
+          <SegmentedControl fullWidth size="xs" value={presetMode}
+            onChange={(value) => setPresetMode(value as 'structured' | 'literal')}
+            data={[
+              { value: 'structured', label: 'Current exclusions' },
+              { value: 'literal', label: 'Complete regex' },
+            ]} />
+          {presetMode === 'structured' ? (
+            <>
+              <Text size="xs" c="dimmed">
+                Dynamic preset: stores the selected exclusions. Session thresholds are regenerated from the current maps.
+              </Text>
+              <Code style={{ fontSize: FONT.label, wordBreak: 'break-all', color: COLOR.textFaint }}>
+                {exclusions.length > 0 ? `"!${exclusions.join('|')}"` : '(no exclusions selected)'}
+              </Code>
+            </>
+          ) : (
+            <>
+              <Text size="xs" c="dimmed">
+                Literal preset: copies this complete regex exactly. It is never combined with generated thresholds or exclusions.
+              </Text>
+              <TextInput label="Complete regex" placeholder='"!non-c|te of" "ack.*..."'
+                value={presetLiteralRegex}
+                onChange={(event) => setPresetLiteralRegex(event.currentTarget.value)}
+                styles={{ input: { fontFamily: 'monospace', fontSize: FONT.small } }} />
+            </>
+          )}
+          <Button onClick={doPresetSave}
+            disabled={!presetSaveName.trim() || (presetMode === 'literal' && !presetLiteralRegex.trim()) || (presetMode === 'structured' && exclusions.length === 0)}>
+            {presetEditId ? 'Save changes' : 'Create preset'}
+          </Button>
         </Stack>
       </Modal>
 
@@ -577,19 +622,21 @@ export const FromSessionTab = () => {
                 )}
               </Stack>
               <Group gap={4}>
-                <Button size="xs" variant="default"
-                  onClick={() => openSaveAsModal(generatedRegex.run, 'run')}>
-                  Save Run As…
+                <CopyButton value={generatedRegex.run} timeout={2000}>
+                  {({ copied, copy }) => (
+                    <Button size="xs" variant="default" onClick={copy}
+                      leftSection={copied ? <IconCheck size={12} /> : <IconCopy size={12} />}>
+                      {copied ? 'Copied' : 'Copy Regex'}
+                    </Button>
+                  )}
+                </CopyButton>
+                <Button size="xs" variant="light" color="orange" loading={tradeLoading}
+                  leftSection={<IconExternalLink size={12} />} onClick={handleSearch}>
+                  Search Trade
                 </Button>
-                {generatedRegex.slam && (
-                  <Button size="xs" variant="default"
-                    onClick={() => openSaveAsModal(generatedRegex.slam!, 'slam')}>
-                    Save Slam As…
-                  </Button>
-                )}
-                <Button size="xs" variant="light" color="orange" ml="auto"
-                  leftSection={<IconExternalLink size={12} />} onClick={handleOpenTradeModal}>
-                  Open Trade
+                <Button size="xs" variant="default" leftSection={<IconSettings size={12} />}
+                  onClick={handleOpenTradeModal}>
+                  Trade settings
                 </Button>
               </Group>
             </Stack>
@@ -620,26 +667,21 @@ export const FromSessionTab = () => {
                   : <Text size="xs" c="orange" style={{ fontSize: FONT.label }}>No exclusions set — set a default preset or pick mods below.</Text>
                 }
                 <Group gap={4}>
-                  <Button size="xs" variant="default"
-                    onClick={() => {
-                      setParsedRegex(loadedStrategyInfo.runRegex);
-                      setParsedTerms(parseExclusionsFromRegex(loadedStrategyInfo.runRegex));
-                    }}>
-                    Show their exclusions
+                  <CopyButton value={run} timeout={2000}>
+                    {({ copied, copy }) => (
+                      <Button size="xs" variant="default" onClick={copy}
+                        leftSection={copied ? <IconCheck size={12} /> : <IconCopy size={12} />}>
+                        {copied ? 'Copied' : 'Copy Regex'}
+                      </Button>
+                    )}
+                  </CopyButton>
+                  <Button size="xs" variant="light" color="orange" loading={tradeLoading}
+                    leftSection={<IconExternalLink size={12} />} onClick={handleSearch}>
+                    Search Trade
                   </Button>
-                  <Button size="xs" variant="default"
-                    onClick={() => openSaveAsModal(run, 'run')}>
-                    Save Run As…
-                  </Button>
-                  {slam && (
-                    <Button size="xs" variant="default"
-                      onClick={() => openSaveAsModal(slam, 'slam')}>
-                      Save Slam As…
-                    </Button>
-                  )}
-                  <Button size="xs" variant="light" color="orange" ml="auto"
-                    leftSection={<IconExternalLink size={12} />} onClick={handleOpenTradeModal}>
-                    Open Trade
+                  <Button size="xs" variant="default" leftSection={<IconSettings size={12} />}
+                    onClick={handleOpenTradeModal}>
+                    Trade settings
                   </Button>
                 </Group>
               </Stack>
@@ -650,9 +692,13 @@ export const FromSessionTab = () => {
               showing; this standalone fallback only renders when neither is. */}
           {!generatedRegex && !loadedStrategyInfo && (
             <Group gap={4} justify="flex-end">
-              <Button size="xs" variant="light" color="orange"
-                leftSection={<IconExternalLink size={12} />} onClick={handleOpenTradeModal}>
-                Open Trade
+              <Button size="xs" variant="light" color="orange" loading={tradeLoading}
+                leftSection={<IconExternalLink size={12} />} onClick={handleSearch}>
+                Search Trade
+              </Button>
+              <Button size="xs" variant="default" leftSection={<IconSettings size={12} />}
+                onClick={handleOpenTradeModal}>
+                Trade settings
               </Button>
             </Group>
           )}
@@ -661,27 +707,36 @@ export const FromSessionTab = () => {
           <Stack gap={4} p="xs" style={{ background: COLOR.tintOliveBg, borderRadius: 6, border: `1px solid ${COLOR.tintOliveBorder}` }}>
             <Group justify="space-between">
               <Group gap={4}>
-                <Text size="xs" fw={700} c="yellow">Brick Exclusions</Text>
+                <Text size="xs" fw={700} c="yellow">Your Regex</Text>
                 <Tooltip multiline w={280}
                   label={
                     <Stack gap={3} p={2}>
                       <Text size="xs" fw={700}>Mods you refuse to run.</Text>
                       <Text size="xs">These terms are prepended to every generated regex as &quot;!a|b&quot;, so maps with a matching mod never highlight in your stash.</Text>
-                      <Text size="xs">Add them from the mod pickers below, or paste an existing regex to import its exclusions.</Text>
-                      <Text size="xs">Presets (top right): save named term lists to rotate between setups; &quot;Set current as default&quot; auto-applies the current terms whenever you load a strategy.</Text>
+                      <Text size="xs">Choose exclusions below. They are prepended to the thresholds generated from the current session.</Text>
+                      <Text size="xs">Presets can store either dynamic exclusions or a complete literal regex. Literal presets are copied exactly and never mixed with generated output.</Text>
                     </Stack>
                   } withArrow>
                   <Badge size="xs" color="gray" variant="outline" style={{ cursor: 'help' }}>?</Badge>
                 </Tooltip>
               </Group>
-              <Menu shadow="md" width={240} position="bottom-end">
+              <Group gap={4}>
+                <CopyButton value={exclusions.length > 0 ? `"!${exclusions.join('|')}"` : ''} timeout={2000}>
+                  {({ copied, copy }) => (
+                    <Button size="xs" variant="default" disabled={exclusions.length === 0} onClick={copy}
+                      leftSection={copied ? <IconCheck size={12} /> : <IconCopy size={12} />}>
+                      {copied ? 'Copied' : 'Copy exclusions'}
+                    </Button>
+                  )}
+                </CopyButton>
+                <Menu shadow="md" width={300} position="bottom-end">
                 <Menu.Target>
                   <Button size="xs" variant="default" rightSection={<IconChevronDown size={10} />}>Presets</Button>
                 </Menu.Target>
                 <Menu.Dropdown>
-                  <Menu.Item leftSection={<IconDeviceFloppy size={13} />} disabled={exclusions.length === 0}
-                    onClick={() => setPresetSaveOpen(true)}>
-                    Save current as…
+                  <Menu.Item leftSection={<IconDeviceFloppy size={13} />}
+                    onClick={() => openPresetEditor()}>
+                    Create preset…
                   </Menu.Item>
                   <Menu.Item leftSection={<IconStar size={13} />} disabled={exclusions.length === 0}
                     onClick={setDefaultPreset}>
@@ -695,22 +750,43 @@ export const FromSessionTab = () => {
                       <Menu.Label>Load preset</Menu.Label>
                       {exclusionPresets.map((p) => (
                         <Menu.Item key={p.id}
-                          rightSection={<ActionIcon size="sm" variant="subtle" aria-label={`Delete preset ${p.name}`}
-                            onMouseEnter={() => setHoveredExclTrashId(p.id)}
-                            onMouseLeave={() => setHoveredExclTrashId(null)}
-                            style={{ color: hoveredExclTrashId === p.id ? 'var(--mantine-color-red-4)' : 'var(--mantine-color-dimmed)' }}
-                            onClick={(e) => { e.stopPropagation(); setHoveredExclTrashId(null); deleteExclusionPreset(p.id); }}>
-                            <IconTrash size={13} /></ActionIcon>}
-                          onClick={() => loadExclusionPreset(p.id)}>
-                          <Tooltip label={p.terms.map((t) => `!${t}`).join(' ')} withArrow position="left">
-                            <Text size="xs" lineClamp={1}>{p.name} ({p.terms.length})</Text>
+                          rightSection={
+                            <Group gap={2} wrap="nowrap">
+                              {p.kind !== 'literal' && (
+                                <ActionIcon size="sm" variant="subtle" aria-label={`Set ${p.name} as default`}
+                                  onClick={(e) => { e.stopPropagation(); setExclusionPresetDefault(p.id); }}>
+                                  <IconStar size={13} />
+                                </ActionIcon>
+                              )}
+                              <ActionIcon size="sm" variant="subtle" aria-label={`Edit preset ${p.name}`}
+                                onClick={(e) => { e.stopPropagation(); openPresetEditor(p); }}>
+                                <IconPencil size={13} />
+                              </ActionIcon>
+                              <ActionIcon size="sm" variant="subtle" aria-label={`Delete preset ${p.name}`}
+                                onMouseEnter={() => setHoveredExclTrashId(p.id)}
+                                onMouseLeave={() => setHoveredExclTrashId(null)}
+                                style={{ color: hoveredExclTrashId === p.id ? 'var(--mantine-color-red-4)' : 'var(--mantine-color-dimmed)' }}
+                                onClick={(e) => { e.stopPropagation(); setHoveredExclTrashId(null); deleteExclusionPreset(p.id); }}>
+                                <IconTrash size={13} />
+                              </ActionIcon>
+                            </Group>
+                          }
+                          onClick={() => {
+                            if (p.kind === 'literal' && p.literalRegex) navigator.clipboard.writeText(p.literalRegex);
+                            else loadExclusionPreset(p.id);
+                          }}>
+                          <Tooltip label={p.kind === 'literal' ? p.literalRegex : p.terms.map((t) => `!${t}`).join(' ')} withArrow position="left">
+                            <Text size="xs" lineClamp={1}>
+                              {p.name} · {p.kind === 'literal' ? 'copy complete regex' : `${p.terms.length} exclusions`}
+                            </Text>
                           </Tooltip>
                         </Menu.Item>
                       ))}
                     </>
                   )}
                 </Menu.Dropdown>
-              </Menu>
+                </Menu>
+              </Group>
             </Group>
 
             {exclusions.length > 0 && (
@@ -735,10 +811,12 @@ export const FromSessionTab = () => {
                  Nightmare, and the headers make the old purple note redundant. */
               <SimpleGrid cols={2} spacing={6}>
                 <MultiSelect size="xs" label="Regular / shared mods" placeholder="Search…" searchable clearable
-                  data={brickMods.filter((m) => m.category === 'regular').map((m) => ({ value: m.id, label: m.label }))}
+                  data={brickModData.find((group) => group.group === 'Regular / shared')?.items ?? []}
                   filter={brickModFilter}
                   value={selectedIdsOf('regular')}
-                  onChange={handleCategoryChange('regular')}
+                  onChange={(selected) => applySelectedModsChange(selected, handleCategoryChange('regular'))}
+                  onKeyDownCapture={(event) => protectSelectedModsOnBackspace(event, selectedIdsOf('regular').length > 0)}
+                  renderOption={renderBrickOption}
                   maxDropdownHeight={220}
                   styles={{
                     label: { fontSize: FONT.label, color: 'var(--mantine-color-dimmed)' },
@@ -748,13 +826,12 @@ export const FromSessionTab = () => {
                     section: { alignItems: 'flex-start', paddingTop: 5 },
                   }} />
                 <MultiSelect size="xs" label="Nightmare mods" placeholder="Search…" searchable clearable
-                  data={brickMods.filter((m) => m.category === 'nightmare').map((m) => ({ value: m.id, label: m.label }))}
+                  data={brickModData.find((group) => group.group === 'Nightmare')?.items ?? []}
                   filter={brickModFilter}
                   value={selectedIdsOf('nightmare')}
-                  onChange={handleCategoryChange('nightmare')}
-                  renderOption={({ option }) => (
-                    <Text size="xs" style={{ color: COLOR.nightmare }}>{option.label}</Text>
-                  )}
+                  onChange={(selected) => applySelectedModsChange(selected, handleCategoryChange('nightmare'))}
+                  onKeyDownCapture={(event) => protectSelectedModsOnBackspace(event, selectedIdsOf('nightmare').length > 0)}
+                  renderOption={renderBrickOption}
                   maxDropdownHeight={220}
                   styles={{
                     label: { fontSize: FONT.label, color: COLOR.nightmare },
@@ -763,47 +840,6 @@ export const FromSessionTab = () => {
               </SimpleGrid>
             )}
 
-            {/* Regex paste preview — boxed so it reads as its own import tool,
-                not stray helper text (Sad 2026-07-09). Position kept: parsed
-                terms are clickable to add them to the exclusions above. */}
-            <Stack gap={3} p={6}
-              style={{ background: 'rgba(255,255,255,0.03)', border: `1px dashed ${COLOR.borderSoft}`, borderRadius: 5 }}>
-              <Text size="xs" fw={600} c="dimmed">Import from a pasted regex</Text>
-              <TextInput size="xs" placeholder='"!vola|eche|nsta" "(urr.*..."'
-                value={parsedRegex}
-                onChange={(e) => {
-                  const val = e.currentTarget.value;
-                  setParsedRegex(val);
-                  setParsedTerms(val.trim() ? parseExclusionsFromRegex(val) : []);
-                }}
-                styles={{ input: { fontFamily: 'monospace', fontSize: FONT.small } }} />
-              {parsedTerms.length > 0 && (
-                <Stack gap={2}>
-                  <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>
-                    Click a mod to add it to your exclusions:
-                  </Text>
-                  <Group gap={4} wrap="wrap">
-                    {parsedTerms.map((t) => {
-                      const mod = brickMods.find((m) => m.regexTerm === t);
-                      const alreadyAdded = exclusions.includes(t);
-                      return (
-                        <Tooltip key={t} label={alreadyAdded ? 'Already in your exclusions' : 'Click to add'} withArrow>
-                          <Badge
-                            size="xs"
-                            color={mod ? (mod.category === 'nightmare' ? 'grape' : 'yellow') : 'gray'}
-                            variant={alreadyAdded ? 'filled' : 'light'}
-                            style={{ cursor: alreadyAdded ? 'default' : 'pointer' }}
-                            onClick={() => !alreadyAdded && addSingleTerm(t)}>
-                            {mod ? mod.label : `!${t} (custom)`}
-                          </Badge>
-                        </Tooltip>
-                      );
-                    })}
-                  </Group>
-                </Stack>
-              )}
-            </Stack>
-
             <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>
               Preview: <Code style={{ fontSize: FONT.small }}>
                 {exclusions.length > 0 ? `"!${exclusions.join('|')}"` : '(no exclusions)'}
@@ -811,65 +847,6 @@ export const FromSessionTab = () => {
             </Text>
           </Stack>
 
-        </Stack>
-      </ScrollArea>
-    </div>
-  );
-};
-
-// ─── Saved Sets tab ───────────────────────────────────────────────────────────
-// WP8: the shared saved-sets list both the From Session tab and the Builder tab
-// save into (via saveRegexSet).
-
-export const SavedSetsTab = () => {
-  const { regexSets, deleteRegexSet } = useSessionKeys('regexSets', 'deleteRegexSet');
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null); // session-16: delete confirm (persistent cross-session data)
-  const [hoveredTrashId, setHoveredTrashId] = useState<string | null>(null);
-  const targetSet = deleteTarget ? regexSets.find((s) => s.id === deleteTarget) : null;
-
-  return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, padding: 8 }}>
-      <Modal opened={deleteTarget !== null} onClose={() => setDeleteTarget(null)} title="Delete Regex Set" size="sm">
-        <Stack gap="sm">
-          <Text size="sm">
-            Permanently delete <Text span fw={700}>{targetSet?.label ?? ''}</Text>? This cannot be undone.
-          </Text>
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-            <Button color="red" onClick={() => { if (deleteTarget) deleteRegexSet(deleteTarget); setDeleteTarget(null); }}>Delete</Button>
-          </Group>
-        </Stack>
-      </Modal>
-      <ScrollArea style={{ flex: 1, minHeight: 0 }}>
-        <Stack gap="xs">
-          {regexSets.length === 0 && (
-            <Text size="xs" c="dimmed" ta="center" py="md">
-              No regex sets saved. Generate one in From Session or Builder, then Save it here.
-            </Text>
-          )}
-
-          {regexSets.map((set) => (
-            <Stack key={set.id} gap={4} p="xs"
-              style={{ background: COLOR.bgRaised, borderRadius: 6 }}>
-              <Group justify="space-between">
-                <Group gap="xs">
-                  <Badge color={TYPE_COLORS[set.type] ?? 'gray'} size="xs" variant="light">{TYPE_LABELS[set.type] ?? set.type}</Badge>
-                  <Text size="xs" fw={600}>{set.label}</Text>
-                </Group>
-                <ActionIcon size="md" variant="default" aria-label={`Delete regex set ${set.label}`}
-                  onMouseEnter={() => setHoveredTrashId(set.id)}
-                  onMouseLeave={() => setHoveredTrashId(null)}
-                  style={{
-                    color: hoveredTrashId === set.id ? 'var(--mantine-color-red-4)' : undefined,
-                    borderColor: hoveredTrashId === set.id ? 'var(--mantine-color-red-7)' : undefined,
-                  }}
-                  onClick={() => { setHoveredTrashId(null); setDeleteTarget(set.id); }}>
-                  <IconTrash size={15} />
-                </ActionIcon>
-              </Group>
-              {set.lines.map((line, i) => <RegexLine key={i} value={line} />)}
-            </Stack>
-          ))}
         </Stack>
       </ScrollArea>
     </div>

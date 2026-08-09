@@ -51,6 +51,33 @@ describe('named exclusion presets', () => {
     expect(presets[0].terms).toEqual(['deto', 'burn', 'refl']);
   });
 
+  it('stores a complete literal regex without mixing it into structured exclusions', () => {
+    state().saveExclusionPreset('trade buy', '"!reg" "ack.*([4-9].|\\d..)%"');
+    const preset = state().exclusionPresets[0];
+    expect(preset).toMatchObject({
+      name: 'trade buy',
+      kind: 'literal',
+      terms: [],
+      literalRegex: '"!reg" "ack.*([4-9].|\\d..)%"',
+    });
+    state().loadExclusionPreset(preset.id);
+    expect(state().settings.regexExclusions).toEqual([]);
+  });
+
+  it('can rename and explicitly replace a literal preset with current structured terms', () => {
+    state().saveExclusionPreset('old', '"literal"');
+    const id = state().exclusionPresets[0].id;
+    setExclusions(['reg']);
+    state().updateExclusionPreset(id, 'structured');
+    expect(state().exclusionPresets[0]).toMatchObject({
+      id,
+      name: 'structured',
+      kind: 'structured',
+      terms: ['reg'],
+    });
+    expect(state().exclusionPresets[0].literalRegex).toBeUndefined();
+  });
+
   it('saved terms are a copy — later settings edits do not leak into the preset', () => {
     setExclusions(['deto']);
     state().saveExclusionPreset('frozen');
@@ -106,6 +133,17 @@ describe('default exclusion preset', () => {
 
     state().clearDefaultPreset();
     expect(state().defaultExclusionPreset).toEqual([]);
+  });
+
+  it('allows only a structured named preset to become the default', () => {
+    state().saveExclusionPreset('literal', '"literal"');
+    setExclusions(['reg']);
+    state().saveExclusionPreset('structured');
+    const [literal, structured] = state().exclusionPresets;
+    state().setExclusionPresetDefault(literal.id);
+    expect(state().defaultExclusionPreset).toEqual([]);
+    state().setExclusionPresetDefault(structured.id);
+    expect(state().defaultExclusionPreset).toEqual(['reg']);
   });
 
   it('setLoadedStrategyInfo applies the default preset to the session exclusions', () => {

@@ -156,6 +156,7 @@ export const StrategyBrowserModule = () => {
       const a = settings.advAstrolabeType.toLowerCase();
       let astroTag = 'astrolabe';
       if      (a.includes('templar'))         astroTag = 'astrolabe-templar';
+      else if (a.includes('deceptive'))       astroTag = 'astrolabe-deceptive';
       else if (a.includes('enshrouded'))      astroTag = 'astrolabe-enshrouded';
       else if (a.includes('timeless'))        astroTag = 'astrolabe-timeless';
       else if (a.includes('grasping'))        astroTag = 'astrolabe-grasping';
@@ -285,39 +286,42 @@ export const StrategyBrowserModule = () => {
     requestReplacement(() => loadSession(sessionId));
   };
 
-  // ── Update strategy (versioning client half, design v3.1 §2) ─────────────────
-  // Button on OWN cards → confirmation (same-setup wording, round-2 point 7) →
-  // setup-only clone into a fresh session (reuses handleLoadBuild: scarabs,
-  // chisel, atlas tree, deli orbs, astrolabe — never maps/loot/baseline) +
-  // the PERSISTED update target. ShareModal picks the target up from settings.
-  const [updateCandidate, setUpdateCandidate] = useState<Strategy | null>(null);
+  // ── Continue strategy (replacement or evidence, fresh or current) ──────────
+  // The card action deliberately funnels both author workflows through one
+  // choice. A fresh source clones setup into an empty session; a current source
+  // leaves maps, loot and authored prices untouched and only arms the target.
+  const [continueCandidate, setContinueCandidate] = useState<Strategy | null>(null);
+  const [continueOperation, setContinueOperation] = useState<'evidence' | 'replace'>('evidence');
+  const [continueSource, setContinueSource] = useState<'fresh' | 'current'>('fresh');
+  const [continueStarting, setContinueStarting] = useState(false);
+  const [continueError, setContinueError] = useState<string | null>(null);
 
-  const confirmUpdateStrategy = (s: Strategy) => {
-    setUpdateCandidate(null);
-    requestReplacement(() => {
-      applyStrategyBuild(s);
-      updateSetting('updateTargetStrategyId', s.id);
-      updateSetting('updateTargetStrategyName', s.strategy_name || s.discord_username || null);
-      setLoadedMsg(`Update run started for "${s.strategy_name || 'your strategy'}" — setup cloned into a fresh session. Sharing it will UPDATE the published result.`);
-    });
+  const openContinueCandidate = (s: Strategy) => {
+    setContinueOperation('evidence');
+    setContinueSource(maps.length > 0 ? 'current' : 'fresh');
+    setContinueError(null);
+    setContinueCandidate(s);
   };
 
-  // -- Add evidence (author-only v1) ---------------------------------------
-  // The list card is only a hint. Before starting a run we fetch the current
-  // authoritative detail, reconstruct its canonical setup, and persist the
-  // exact revision + fingerprint that ShareModal must re-check later.
-  const [evidenceCandidate, setEvidenceCandidate] = useState<Strategy | null>(null);
-  const [evidenceStarting, setEvidenceStarting] = useState(false);
-  const [evidenceStartError, setEvidenceStartError] = useState<string | null>(null);
-
-  const openEvidenceCandidate = (s: Strategy) => {
-    setEvidenceStartError(null);
-    setEvidenceCandidate(s);
+  const armReplacementTarget = (candidate: Strategy, cloneSetup: boolean) => {
+    const apply = () => {
+      if (cloneSetup) applyStrategyBuild(candidate);
+      updateSetting('evidenceTargetStrategyId', null);
+      updateSetting('evidenceTargetStrategyName', null);
+      updateSetting('evidenceTargetExpectedRevision', null);
+      updateSetting('evidenceTargetSetupFingerprint', null);
+      updateSetting('updateTargetStrategyId', candidate.id);
+      updateSetting('updateTargetStrategyName', candidate.strategy_name || candidate.discord_username || null);
+      setLoadedMsg(`Replacement run armed for "${candidate.strategy_name || 'your strategy'}" using ${cloneSetup ? 'a fresh cloned setup' : 'the current session'}. Sharing it will replace the published strategy while preserving votes.`);
+    };
+    setContinueCandidate(null);
+    if (cloneSetup) requestReplacement(apply);
+    else apply();
   };
 
-  const confirmAddEvidence = async (candidate: Strategy) => {
-    setEvidenceStarting(true);
-    setEvidenceStartError(null);
+  const armEvidenceTarget = async (candidate: Strategy, cloneSetup: boolean) => {
+    setContinueStarting(true);
+    setContinueError(null);
     try {
       const response = await fetch(`${apiUrl}/strategies/${candidate.id}`);
       if (!response.ok) throw new Error(`Strategy server returned ${response.status}`);
@@ -339,23 +343,33 @@ export const StrategyBrowserModule = () => {
         setupSnapshotFromDiscordImport(parsed),
       );
 
-      setEvidenceCandidate(null);
-      requestReplacement(() => {
-        applyStrategyBuild(current);
-        updateSetting('leagueName', targetLeague);
+      const apply = () => {
+        if (cloneSetup) {
+          applyStrategyBuild(current);
+          updateSetting('leagueName', targetLeague);
+        }
         updateSetting('updateTargetStrategyId', null);
         updateSetting('updateTargetStrategyName', null);
         updateSetting('evidenceTargetStrategyId', current.id);
         updateSetting('evidenceTargetStrategyName', current.strategy_name || current.discord_username || null);
         updateSetting('evidenceTargetExpectedRevision', revision!);
         updateSetting('evidenceTargetSetupFingerprint', setupFingerprint);
-        setLoadedMsg(`Evidence run started for "${current.strategy_name || 'your strategy'}" - published build settings cloned into a fresh session; final compatibility is rechecked when sharing.`);
-      });
+        setLoadedMsg(`Evidence run armed for "${current.strategy_name || 'your strategy'}" using ${cloneSetup ? 'a fresh cloned setup' : 'the current session'}. Authored prices may differ between runs; setup compatibility is rechecked when sharing.`);
+      };
+      setContinueCandidate(null);
+      if (cloneSetup) requestReplacement(apply);
+      else apply();
     } catch (error: unknown) {
-      setEvidenceStartError(error instanceof Error ? error.message : 'Could not start the evidence run.');
+      setContinueError(error instanceof Error ? error.message : 'Could not continue the strategy.');
     } finally {
-      setEvidenceStarting(false);
+      setContinueStarting(false);
     }
+  };
+
+  const confirmContinueStrategy = (candidate: Strategy) => {
+    const cloneSetup = continueSource === 'fresh';
+    if (continueOperation === 'replace') armReplacementTarget(candidate, cloneSetup);
+    else void armEvidenceTarget(candidate, cloneSetup);
   };
 
   const applyImportedBuild = (parsed: DiscordImport) => {
@@ -482,61 +496,54 @@ export const StrategyBrowserModule = () => {
         onCancel={cancelReplacement}
       />
 
-      <Modal opened={updateCandidate !== null} onClose={() => setUpdateCandidate(null)}
-        title={`Update "${updateCandidate?.strategy_name || 'your strategy'}"?`} size="sm">
+      <Modal opened={continueCandidate !== null}
+        onClose={() => { if (!continueStarting) setContinueCandidate(null); }}
+        title={`Continue "${continueCandidate?.strategy_name || 'your strategy'}"`} size="sm">
         <Stack gap="sm">
-          <Text size="xs">
-            This starts a fresh measurement run: your setup (scarabs, chisel, atlas tree, deli
-            orbs, astrolabe) is cloned into a new empty session. Run it, import a fresh baseline
-            and return, then Share — the export will replace the published result in place.
-            Votes and the original post date are kept.
-          </Text>
+          <Text size="xs" fw={600}>What should the next share do?</Text>
+          <SegmentedControl
+            fullWidth size="xs" value={continueOperation}
+            onChange={(value) => setContinueOperation(value as 'evidence' | 'replace')}
+            data={[
+              { value: 'evidence', label: 'Add another run' },
+              { value: 'replace', label: 'Replace strategy' },
+            ]}
+          />
+          <Alert color={continueOperation === 'evidence' ? 'teal' : 'indigo'} variant="light" p="xs">
+            <Text size="xs">
+              {continueOperation === 'evidence'
+                ? 'Adds this run to the existing evidence pool without replacing the published strategy. Different authored prices are preserved per run and are not compatibility gates.'
+                : 'Publishes this run as a new revision of the strategy. The previous evidence pool is replaced; votes and the original post date are preserved.'}
+            </Text>
+          </Alert>
+          <Text size="xs" fw={600}>Where should the run start?</Text>
+          <SegmentedControl
+            fullWidth size="xs" value={continueSource}
+            onChange={(value) => setContinueSource(value as 'fresh' | 'current')}
+            data={[
+              { value: 'fresh', label: 'Start fresh session' },
+              { value: 'current', label: `Use current session (${maps.length} maps)` },
+            ]}
+          />
           <Text size="xs" c="dimmed">
-            Use this only for the SAME farming setup. Price changes are expected; changing
-            scarabs, map type, atlas strategy or other core configuration should normally be
-            shared as a new strategy instead.
+            {continueSource === 'fresh'
+              ? 'Clones the published scarabs, chisel, Atlas tree, delirium and astrolabe settings into a new empty session.'
+              : 'Keeps the current maps, loot, settings and authored prices. Compatibility is checked before sharing, so an unrelated setup is blocked rather than mixed into the pool.'}
           </Text>
-          <Group justify="flex-end" gap="xs">
-            <Button size="xs" variant="default" onClick={() => setUpdateCandidate(null)}>Cancel</Button>
-            <Button size="xs" color="indigo" onClick={() => updateCandidate && confirmUpdateStrategy(updateCandidate)}>
-              Load setup &amp; start update run
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
-
-      <Modal opened={evidenceCandidate !== null}
-        onClose={() => { if (!evidenceStarting) setEvidenceCandidate(null); }}
-        title={`Add evidence to "${evidenceCandidate?.strategy_name || 'your strategy'}"?`} size="sm">
-        <Stack gap="sm">
-          <Text size="xs">
-            This clones the published build settings into a fresh, empty session. Run more maps with
-            that exact setup, then Share to add this run to the existing evidence pool.
-            The published strategy is not replaced.
-          </Text>
-          <Text size="xs" c="dimmed">
-            League, map type, party size, chisel, scarabs, delirium, astrolabe, Atlas
-            allocation and final multiplier must still match when you share. Incompatible
-            runs are blocked rather than mixed into the pool.
-          </Text>
-          <Text size="xs" c="dimmed">
-            The button is only a convenience for cards matching your saved Discord tag.
-            The Discord bot independently verifies that you are the original author.
-          </Text>
-          {(evidenceCandidate?.evidence_run_count ?? 0) > 0 && (
+          {continueOperation === 'evidence' && (continueCandidate?.evidence_run_count ?? 0) > 0 && (
             <Text size="xs" c="teal">
-              Current pool: {evidenceCandidate!.evidence_run_count} runs / {evidenceCandidate!.evidence_map_count ?? evidenceCandidate!.map_count ?? 0} maps
+              Current pool: {continueCandidate!.evidence_run_count} runs / {continueCandidate!.evidence_map_count ?? continueCandidate!.map_count ?? 0} maps
             </Text>
           )}
-          {evidenceStartError && (
-            <Alert color="red" variant="light" p="xs"><Text size="xs">{evidenceStartError}</Text></Alert>
+          {continueError && (
+            <Alert color="red" variant="light" p="xs"><Text size="xs">{continueError}</Text></Alert>
           )}
           <Group justify="flex-end" gap="xs">
-            <Button size="xs" variant="default" disabled={evidenceStarting}
-              onClick={() => setEvidenceCandidate(null)}>Cancel</Button>
-            <Button size="xs" color="teal" loading={evidenceStarting}
-              onClick={() => evidenceCandidate && void confirmAddEvidence(evidenceCandidate)}>
-              Clone setup &amp; start evidence run
+            <Button size="xs" variant="default" disabled={continueStarting}
+              onClick={() => setContinueCandidate(null)}>Cancel</Button>
+            <Button size="xs" color={continueOperation === 'evidence' ? 'teal' : 'indigo'} loading={continueStarting}
+              onClick={() => continueCandidate && confirmContinueStrategy(continueCandidate)}>
+              Continue strategy
             </Button>
           </Group>
         </Stack>
@@ -664,7 +671,7 @@ export const StrategyBrowserModule = () => {
                 return !grp;
               })
               .map((s) => <StrategyCard key={s.id} strategy={s} onLoadBuild={handleLoadBuild}
-                onUpdateStrategy={setUpdateCandidate} onAddEvidence={openEvidenceCandidate}
+                onContinueStrategy={openContinueCandidate}
                 discordTag={discordTag} />)}
           </Stack>
           {hasMore && !loading && (

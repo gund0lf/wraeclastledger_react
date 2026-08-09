@@ -78,7 +78,7 @@ const BRICK_REGEX_SNAPSHOT: Record<string, string> = {
   'Reduced Non-Curse Aura Effect': 'non-c',
   'Reduced Max Resistances': 'um re',
   'Cannot Regenerate Life/Mana/ES': 'reg',
-  'Less Recovery Rate': 'covery',
+  'Players: Less Life/ES Recovery Rate': 'te of',
   'Cannot Be Leeched From': 'eche',
   'High Crit Chance + Multiplier': 'ike m',
   'Extra Chaos Damage + Withered': 'withe',

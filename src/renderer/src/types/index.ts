@@ -3,7 +3,15 @@ export interface ScarabPreset { id: string; name: string; scarabs: ScarabSlot[];
 /** Named brick-exclusion term list (Regex panel). User-scoped, top-level +
  *  additive store field — persist's shallow merge defaults it to [] for old
  *  stores (no migration needed). */
-export interface ExclusionPreset { id: string; name: string; terms: string[]; }
+export interface ExclusionPreset {
+  id: string;
+  name: string;
+  terms: string[];
+  /** Missing on legacy records, which are structured exclusion lists. */
+  kind?: 'structured' | 'literal';
+  /** Complete copy-only regex. Never combined with generated thresholds. */
+  literalRegex?: string;
+}
 
 export interface LootItem {
   id: string; name: string; tab: string;

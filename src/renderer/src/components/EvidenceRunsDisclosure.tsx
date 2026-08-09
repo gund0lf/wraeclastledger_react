@@ -29,7 +29,12 @@ function formatTimestamp(value: string | null): string {
   });
 }
 
-const RunRow = ({ run }: { run: PublicEvidenceRun }) => (
+const RunRow = ({ run }: { run: PublicEvidenceRun }) => {
+  const [costsOpen, setCostsOpen] = useState(false);
+  const costs = run.cost_breakdown;
+  const hasLineItems = !!costs?.chisel || (costs?.scarabs?.length ?? 0) > 0
+    || !!costs?.delirium || !!costs?.astrolabe;
+  return (
   <div style={{
     padding: '6px 8px',
     border: `1px solid ${COLOR.border}`,
@@ -72,6 +77,36 @@ const RunRow = ({ run }: { run: PublicEvidenceRun }) => (
             {run.net_profit != null ? `Net ${fcSep(run.net_profit, true)}` : ''}
           </Text>
         )}
+        {hasLineItems && (
+          <>
+            <UnstyledButton onClick={() => setCostsOpen((current) => !current)}>
+              <Group gap={4} wrap="nowrap">
+                {costsOpen ? <IconChevronDown size={11} /> : <IconChevronRight size={11} />}
+                <Text size="xs" c="dimmed" td="underline">Run costs</Text>
+              </Group>
+            </UnstyledButton>
+            <Collapse in={costsOpen}>
+              <Stack gap={1} pl={15}>
+                {costs.chisel && <Text size="xs" c="dimmed">Chisel: {costs.chisel.name} — {f1(costs.chisel.priceEach)}c/map</Text>}
+                {costs.scarabs.map((scarab, index) => (
+                  <Text key={`${scarab.name}-${index}`} size="xs" c="dimmed">
+                    Scarab: {scarab.name} — {f1(scarab.priceEach)}c authored price
+                  </Text>
+                ))}
+                {costs.delirium && (
+                  <Text size="xs" c="dimmed">
+                    Delirium: {costs.delirium.countPerMap}x {costs.delirium.type} — {f1(costs.delirium.priceEach)}c each
+                  </Text>
+                )}
+                {costs.astrolabe && (
+                  <Text size="xs" c="dimmed">
+                    Astrolabe: {costs.astrolabe.count}x {costs.astrolabe.type} — {f1(costs.astrolabe.priceEach)}c each
+                  </Text>
+                )}
+              </Stack>
+            </Collapse>
+          </>
+        )}
       </Stack>
       <Stack gap={2} align="flex-end" style={{ flexShrink: 0 }}>
         <Badge size="sm" variant="light" color="blue">{run.map_count} maps</Badge>
@@ -81,7 +116,8 @@ const RunRow = ({ run }: { run: PublicEvidenceRun }) => (
       </Stack>
     </Group>
   </div>
-);
+  );
+};
 
 export const EvidenceRunsDisclosure = ({
   strategyId,

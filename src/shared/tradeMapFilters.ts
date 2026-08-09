@@ -71,3 +71,27 @@ export function resolveEightModSpecialStatIds(
   }
   return { ids: [...new Set(ids)], missing };
 }
+
+export type DeliriumTradeStatFilter = {
+  type: 'and' | 'not';
+  filters: { id: string; value?: { min: number; max: number } }[];
+};
+
+/**
+ * Delirium is a state selector, not a minimum slider: -1 omits the filter,
+ * 0 excludes every delirious map, and a positive supported tier is exact.
+ */
+export function buildDeliriumTradeStatFilter(
+  statId: string | undefined,
+  deliriousPercent: number,
+): DeliriumTradeStatFilter | null {
+  if (deliriousPercent < 0) return null;
+  if (!statId) throw new Error('Delirium Trade stat is unavailable');
+  if (deliriousPercent === 0) {
+    return { type: 'not', filters: [{ id: statId }] };
+  }
+  return {
+    type: 'and',
+    filters: [{ id: statId, value: { min: deliriousPercent, max: deliriousPercent } }],
+  };
+}

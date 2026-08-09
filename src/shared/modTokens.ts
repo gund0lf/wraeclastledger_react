@@ -48,7 +48,7 @@ export const MOD_TOKENS = {
   // ── Recovery & Leech ────────────────────────────────────────────
 
   cannot_regenerate_life_mana_es: 'reg',  // [V:py] Cannot Regenerate Life/Mana/ES
-  less_recovery_rate: 'covery',  // [V:py] Less Recovery Rate
+  less_recovery_rate: 'te of',   // [V:game] Players have less Recovery Rate of Life and Energy Shield
   cannot_be_leeched_from: 'eche',  // [V:py] Cannot Be Leeched From
   reduced_flask_charges: 'sk char',  // [V:py] Reduced Flask Charges
   less_cooldown_recovery: 'coo',  // [V:py] Less Cooldown Recovery

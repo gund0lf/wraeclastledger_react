@@ -56,7 +56,7 @@ export const BRICK_MOD_DEFS: BrickModDef[] = [
   { id: 'reduced_non_curse_aura_effect', label: 'Reduced Non-Curse Aura Effect', tradePatterns: [{ text: "Players have #% increased effect of Non-Curse Auras from Skills" }], category: 'regular' },
   { id: 'reduced_max_resistances', label: 'Reduced Max Resistances', tradePatterns: [{ text: "Players have #% to all maximum Resistances" }], category: 'regular' },
   { id: 'cannot_regenerate_life_mana_es', label: 'Cannot Regenerate Life/Mana/ES', tradePatterns: [{ text: "Players cannot Regenerate Life, Mana or Energy Shield" }], category: 'regular' },
-  { id: 'less_recovery_rate', label: 'Less Recovery Rate', tradePatterns: [{ text: "Players have #% less Recovery Rate of Life and Energy Shield" }], category: 'regular' },
+  { id: 'less_recovery_rate', label: 'Players: Less Life/ES Recovery Rate', tradePatterns: [{ text: "Players have #% less Recovery Rate of Life and Energy Shield" }], category: 'regular' },
   { id: 'cannot_be_leeched_from', label: 'Cannot Be Leeched From', tradePatterns: [{ text: "Monsters cannot be Leeched from" }], category: 'regular' },
   { id: 'high_crit_chance_multiplier', label: 'High Crit Chance + Multiplier', tradePatterns: [{ text: "+#% to Monster Critical Strike Multiplier" }], category: 'regular' },
   { id: 'extra_chaos_damage_withered', label: 'Extra Chaos Damage + Withered', tradePatterns: [{ text: "Monsters gain #% of their Physical Damage as Extra Chaos Damage" }], category: 'regular' },

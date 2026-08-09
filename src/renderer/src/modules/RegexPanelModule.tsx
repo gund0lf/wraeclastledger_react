@@ -1,30 +1,18 @@
 /**
- * RegexPanelModule — WP8 merged Regex panel.
- *
- * Combines the former Regex and Regex Builder panels into one tabbed surface:
- *   From Session  → FromSessionTab   (RegexModule.tsx)   — generate/exclusions/trade
- *   Builder       → BuilderTab       (RegexBuilderModule.tsx) — K-of-N POS builder
- *   Saved Sets    → SavedSetsTab     (RegexModule.tsx)   — shared saved-set list
- *
- * Both legacy registry ids map here (see layout/Registry.tsx):
- *   'regex'         → <RegexPanel/>        (opens on From Session)
- *   'regex-builder' → <RegexBuilderPanel/> (opens on Builder)
- * so old saved layouts that still reference 'regex-builder' keep working.
- *
- * keepMounted: all three tabs stay mounted so switching tabs preserves
- * FromSessionTab local state (trade-modal inputs, paste preview) and avoids
- * re-firing the brickMods IPC fetch. Inactive panels get the [hidden] attribute
- * (UA display:none); the active panel's inline flexGrow makes it fill the Card.
+ * WP8 merged Regex panel: From Session owns generated output, exclusions,
+ * presets, and Trade; Builder owns the explicit Any/All/K-of-N workspace.
+ * Both legacy registry ids still map here so old saved layouts survive.
+ * Tabs stay mounted to preserve Trade inputs and avoid refetching brick data.
  */
 
 import { Card, Tabs, Badge, Tooltip, ActionIcon, Group } from '@mantine/core';
 import { IconX } from '@tabler/icons-react';
 import { useState } from 'react';
 import { useSessionKeys } from '../store/useSessionStore';
-import { FromSessionTab, SavedSetsTab } from './RegexModule';
+import { FromSessionTab } from './RegexModule';
 import { BuilderTab } from './RegexBuilderModule';
 
-type TabKey = 'session' | 'builder' | 'saved';
+type TabKey = 'session' | 'builder';
 
 const PANEL_STYLE = { flexGrow: 1, minHeight: 0, overflow: 'hidden' } as const;
 
@@ -33,7 +21,7 @@ const RegexPanelModule = ({ initialTab = 'session' }: { initialTab?: TabKey }) =
   const [clearHover, setClearHover] = useState(false);
   // Default-exclusions badge lives in the tab bar (Sad 2026-07-09): it is
   // user-scoped panel state, the spot is otherwise dead space, and it no
-  // longer pushes the From Session content down. × clears the default.
+  // longer pushes the From Session content down. The close action clears it.
   const { defaultExclusionPreset, clearDefaultPreset } =
     useSessionKeys('defaultExclusionPreset', 'clearDefaultPreset');
 
@@ -56,7 +44,6 @@ const RegexPanelModule = ({ initialTab = 'session' }: { initialTab?: TabKey }) =
         <Tabs.List style={{ flexShrink: 0 }}>
           <Tabs.Tab value="session">From Session</Tabs.Tab>
           <Tabs.Tab value="builder">Builder</Tabs.Tab>
-          <Tabs.Tab value="saved">Saved Sets</Tabs.Tab>
           {defaultExclusionPreset.length > 0 && (
             <Group ml="auto" pr={8} style={{ alignSelf: 'center' }}>
               <Tooltip withArrow multiline w={260}
@@ -88,9 +75,6 @@ const RegexPanelModule = ({ initialTab = 'session' }: { initialTab?: TabKey }) =
         </Tabs.Panel>
         <Tabs.Panel value="builder" style={PANEL_STYLE}>
           <BuilderTab />
-        </Tabs.Panel>
-        <Tabs.Panel value="saved" style={PANEL_STYLE}>
-          <SavedSetsTab />
         </Tabs.Panel>
       </Tabs>
     </Card>

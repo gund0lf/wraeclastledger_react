@@ -345,8 +345,10 @@ interface SessionState {
   setLeagueOverride: (league: string | null) => void;
   setDefaultPreset: () => void; // saves current regexExclusions as persistent default
   clearDefaultPreset: () => void;
-  saveExclusionPreset: (name: string) => void;
+  saveExclusionPreset: (name: string, literalRegex?: string) => void;
+  updateExclusionPreset: (id: string, name: string, literalRegex?: string) => void;
   loadExclusionPreset: (id: string) => void;
+  setExclusionPresetDefault: (id: string) => void;
   deleteExclusionPreset: (id: string) => void;
   setSessionNotes: (notes: string) => void;
   setInvestmentNeutralization: (v: number) => void;
@@ -687,17 +689,37 @@ export const useSessionStore = create<SessionState>()(
         // Save current session exclusions as the persistent default
         set((s) => ({ defaultExclusionPreset: [...s.settings.regexExclusions] })),
       clearDefaultPreset: () => set({ defaultExclusionPreset: [] }),
-      saveExclusionPreset: (name) => {
+      saveExclusionPreset: (name, literalRegex) => {
+        const literal = literalRegex?.trim();
         const p: ExclusionPreset = {
           id: uuidv4(), name,
-          terms: sanitizeExclusionTerms(get().settings.regexExclusions),
+          terms: literal ? [] : sanitizeExclusionTerms(get().settings.regexExclusions),
+          kind: literal ? 'literal' : 'structured',
+          ...(literal ? { literalRegex: literal } : {}),
         };
         set((s) => ({ exclusionPresets: [...s.exclusionPresets, p] }));
       },
+      updateExclusionPreset: (id, name, literalRegex) => {
+        const literal = literalRegex?.trim();
+        set((s) => ({
+          exclusionPresets: s.exclusionPresets.map((preset) => preset.id !== id ? preset : {
+            ...preset,
+            name,
+            terms: literal ? [] : sanitizeExclusionTerms(s.settings.regexExclusions),
+            kind: literal ? 'literal' : 'structured',
+            ...(literal ? { literalRegex: literal } : { literalRegex: undefined }),
+          }),
+        }));
+      },
       loadExclusionPreset: (id) => {
         const p = get().exclusionPresets.find((p) => p.id === id);
-        if (!p) return;
+        if (!p || p.kind === 'literal') return;
         set((s) => ({ settings: { ...s.settings, regexExclusions: [...p.terms] } }));
+      },
+      setExclusionPresetDefault: (id) => {
+        const p = get().exclusionPresets.find((preset) => preset.id === id);
+        if (!p || p.kind === 'literal') return;
+        set({ defaultExclusionPreset: [...p.terms] });
       },
       deleteExclusionPreset: (id) =>
         set((s) => ({ exclusionPresets: s.exclusionPresets.filter((p) => p.id !== id) })),

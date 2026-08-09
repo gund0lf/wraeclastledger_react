@@ -1,5 +1,12 @@
 import { STRATEGY_API_URL, type Strategy } from './strategyConstants';
 
+export interface EvidenceCostBreakdown {
+  chisel: { name: string; priceEach: number } | null;
+  scarabs: { name: string; priceEach: number }[];
+  delirium: { type: string; countPerMap: number; priceEach: number } | null;
+  astrolabe: { type: string; count: number; priceEach: number } | null;
+}
+
 export interface PublicEvidenceRun {
   ordinal: number;
   run_started_at: string | null;
@@ -19,6 +26,7 @@ export interface PublicEvidenceRun {
   div_per_map: number | null;
   divine_price: number | null;
   session_minutes: number | null;
+  cost_breakdown: EvidenceCostBreakdown;
   game_data_revision: number | null;
   game_data_patch_version: string | null;
 }

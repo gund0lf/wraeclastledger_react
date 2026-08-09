@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildDeliriumTradeStatFilter,
   EIGHT_MOD_EXCLUDED_SPECIAL_STATS,
   SPECIAL_MAP_STAT_TEXT,
   resolveEightModSpecialStatIds,
@@ -81,5 +82,30 @@ describe('8-mod special-map exclusions', () => {
       ids: ['implicit.originator'],
       missing: ['shaperInfluence', 'elderInfluence'],
     });
+  });
+});
+
+describe('Delirium Trade filtering', () => {
+  it('omits the filter for Any', () => {
+    expect(buildDeliriumTradeStatFilter('enchant.delirious', -1)).toBeNull();
+  });
+
+  it('uses NOT for None', () => {
+    expect(buildDeliriumTradeStatFilter('enchant.delirious', 0)).toEqual({
+      type: 'not',
+      filters: [{ id: 'enchant.delirious' }],
+    });
+  });
+
+  it('pins a selected tier as an exact range', () => {
+    expect(buildDeliriumTradeStatFilter('enchant.delirious', 20)).toEqual({
+      type: 'and',
+      filters: [{ id: 'enchant.delirious', value: { min: 20, max: 20 } }],
+    });
+  });
+
+  it('fails loudly when a requested Delirium stat is unavailable', () => {
+    expect(() => buildDeliriumTradeStatFilter(undefined, 20))
+      .toThrow('Delirium Trade stat is unavailable');
   });
 });

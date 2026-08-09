@@ -13,7 +13,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Text, Group, Stack, Button, TextInput, ActionIcon,
   NumberInput, Tooltip, CopyButton, ScrollArea, Collapse,
-  Switch, Badge, Modal, Menu, Progress,
+  Switch, Badge, Modal, Menu, Progress, SegmentedControl, Alert,
 } from '@mantine/core';
 import {
   IconCheck,
@@ -21,7 +21,6 @@ import {
   IconChevronRight,
   IconCopy,
   IconDeviceFloppy,
-  IconMinus,
   IconPlus,
   IconX,
 } from '@tabler/icons-react';
@@ -121,13 +120,11 @@ const ModGroupEditor = ({
     setCustomOpen(false);
   };
 
-  const changeMinimum = (difference: number) => {
-    if (group.selected.length === 0) return;
-    onChange({
-      ...group,
-      k: Math.max(1, Math.min(group.selected.length, group.k + difference)),
-    });
-  };
+  const logicMode = group.k <= 1
+    ? 'any'
+    : group.selected.length > 1 && group.k >= group.selected.length
+      ? 'all'
+      : 'at-least';
 
   return (
     <Stack
@@ -162,30 +159,6 @@ const ModGroupEditor = ({
             onChange={(event) => onChange({ ...group, label: event.currentTarget.value })}
           />
         )}
-        <Group gap={4} wrap="nowrap">
-          <Text size="xs" c="dimmed" style={{ fontSize: FONT.label }}>K</Text>
-          <ActionIcon
-            size="xs"
-            variant="default"
-            aria-label="Decrease minimum"
-            disabled={group.selected.length === 0 || group.k <= 1}
-            onClick={() => changeMinimum(-1)}
-          >
-            <IconMinus size={11} />
-          </ActionIcon>
-          <Text size="xs" fw={700} style={{ minWidth: 12, textAlign: 'center' }}>
-            {group.selected.length > 0 ? group.k : '—'}
-          </Text>
-          <ActionIcon
-            size="xs"
-            variant="default"
-            aria-label="Increase minimum"
-            disabled={group.selected.length === 0 || group.k >= group.selected.length}
-            onClick={() => changeMinimum(1)}
-          >
-            <IconPlus size={11} />
-          </ActionIcon>
-        </Group>
         <Tooltip label={`Delete ${displayLabel}`}>
           <ActionIcon
             size="sm"
@@ -204,6 +177,33 @@ const ModGroupEditor = ({
             <IconX size={13} />
           </ActionIcon>
         </Tooltip>
+      </Group>
+
+      <Group gap={6} align="flex-end" wrap="wrap">
+        <SegmentedControl size="xs" value={logicMode}
+          data={[
+            { value: 'any', label: 'Any' },
+            { value: 'all', label: 'All' },
+            { value: 'at-least', label: 'At least N' },
+          ]}
+          onChange={(mode) => {
+            const selectedCount = Math.max(1, group.selected.length);
+            const nextK = mode === 'any' ? 1 : mode === 'all' ? selectedCount : Math.min(2, selectedCount);
+            onChange({ ...group, k: nextK });
+          }} />
+        {logicMode === 'at-least' && (
+          <NumberInput size="xs" label="N" min={1} max={Math.max(1, group.selected.length)}
+            value={group.k} style={{ width: 72 }}
+            onChange={(value) => onChange({
+              ...group,
+              k: Math.max(1, Math.min(group.selected.length || 1, Number(value) || 1)),
+            })} />
+        )}
+        <Text size="xs" c="dimmed" style={{ fontSize: FONT.label }}>
+          {logicMode === 'any' ? 'Match at least one selected mod.'
+            : logicMode === 'all' ? 'Require every selected mod.'
+              : `Require at least ${group.k} selected mods.`}
+        </Text>
       </Group>
 
       <Text size="xs" c="dimmed" style={{ fontSize: FONT.label }}>
@@ -490,8 +490,8 @@ const SectionBar = ({
 // ─── Builder tab ──────────────────────────────────────────────────────────────
 
 export const BuilderTab = () => {
-  const { regexBuilderGroups, setRegexBuilderGroups, saveRegexSet } =
-    useSessionKeys('regexBuilderGroups', 'setRegexBuilderGroups', 'saveRegexSet');
+  const { regexBuilderGroups, setRegexBuilderGroups, saveExclusionPreset } =
+    useSessionKeys('regexBuilderGroups', 'setRegexBuilderGroups', 'saveExclusionPreset');
   const groups = regexBuilderGroups;
   const rootRef = useRef<HTMLDivElement>(null);
   const [craftingOpen, setCraftingOpen] = useState(false);
@@ -574,7 +574,7 @@ export const BuilderTab = () => {
   const doSave = () => {
     const label = saveName.trim();
     if (!label || !finalRegex) return;
-    saveRegexSet({ label, type: 'other', lines: [finalRegex] });
+    saveExclusionPreset(label, finalRegex);
     setSaveOpen(false);
     setSaveName('');
   };
@@ -584,19 +584,26 @@ export const BuilderTab = () => {
       ref={rootRef}
       style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, padding: 8 }}
     >
-      {/* Save-as-Set modal */}
-      <Modal opened={saveOpen} onClose={() => setSaveOpen(false)} title="Save as Regex Set" size="sm">
+      <Modal opened={saveOpen} onClose={() => setSaveOpen(false)} title="Save Complete Regex Preset" size="sm">
         <Stack gap="sm">
           <TextInput label="Name" placeholder="e.g. My K-of-N setup" autoFocus
             value={saveName} onChange={(e) => setSaveName(e.currentTarget.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && saveName.trim()) doSave(); }} />
           <Text style={{ fontFamily: 'monospace', fontSize: FONT.label, wordBreak: 'break-all', color: COLOR.textFaint }}>{finalRegex}</Text>
-          <Button onClick={doSave} disabled={!saveName.trim()}>Save</Button>
+          <Text size="xs" c="dimmed">
+            This is saved as a literal complete regex and will be copied exactly, never merged with session-generated thresholds.
+          </Text>
+          <Button onClick={doSave} disabled={!saveName.trim()}>Save preset</Button>
         </Stack>
       </Modal>
 
       <ScrollArea style={{ flex: 1, minHeight: 0 }} scrollbarSize={4}>
         <Stack gap={10}>
+          <Alert color="blue" variant="light" p="xs">
+            <Text size="xs">
+              This crafting and threshold builder is intended for Originator maps. Groups are ANDed together; within a group, Any/All/At least N controls its OR logic.
+            </Text>
+          </Alert>
           <Stack gap={0}>
             <SectionBar
               open={builderOpen}
@@ -768,7 +775,7 @@ export const BuilderTab = () => {
                         disabled={!finalRegex}
                         onClick={() => setSaveOpen(true)}
                       >
-                        Save as Set
+                        Save preset
                       </Button>
                       <CopyButton value={finalRegex} timeout={2000}>
                         {({ copied, copy }) => (

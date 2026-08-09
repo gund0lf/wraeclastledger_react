@@ -129,20 +129,15 @@ export const TagStrip = ({ tagStr, layoutKey }: { tagStr?: string | null; layout
 export const StrategyCard = ({
   strategy,
   onLoadBuild,
-  onUpdateStrategy,
-  onAddEvidence,
+  onContinueStrategy,
   discordTag,
   frozen = false,
 }: {
   strategy: Strategy; onLoadBuild: (s: Strategy) => void;
-  /** Versioning client half: present = show "Update strategy" on OWN cards
-   *  (own-detection via discordTag is display heuristic only — the server
-   *  enforces real ownership by discord_user_id and rejects loudly). */
-  onUpdateStrategy?: (s: Strategy) => void;
-  /** Evidence pooling v1 is author-only. This display heuristic only decides
+  /** Continuing a strategy is author-only. This display heuristic only decides
    *  whether to offer the action; the bot/API independently enforce Discord
-   *  ownership before accepting a run. */
-  onAddEvidence?: (s: Strategy) => void;
+   *  ownership before accepting either operation. */
+  onContinueStrategy?: (s: Strategy) => void;
   discordTag?: string;
   /** Frozen snapshot cards remain loadable but can never enter the update flow. */
   frozen?: boolean;
@@ -190,7 +185,12 @@ export const StrategyCard = ({
   const observedModSampleSize = strategy.observed_mod_sample_size;
   const hasObservedMods = observedModAverage != null && observedModSampleSize != null
     && Number.isFinite(observedModAverage) && observedModSampleSize > 0;
-  const modDisplay = hasObservedMods ? observedModAverage.toFixed(1) : strategy.map_type ?? '?';
+  const setupBucketDisplay = strategy.map_type === '8-mod'
+    ? '8.0'
+    : strategy.map_type === '6-mod'
+      ? '6.0'
+      : strategy.map_type ?? '?';
+  const modDisplay = hasObservedMods ? observedModAverage.toFixed(1) : setupBucketDisplay;
 
   const isGroup = strategy.is_group_play ||
     (strategy.raw_export ? /Party Play:\s*Yes/i.test(strategy.raw_export) : false);
@@ -264,7 +264,11 @@ export const StrategyCard = ({
             </Text>
           </Tooltip>
         ) : (
-          <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.mod, flexShrink: 0, fontSize: FONT.small }}>{modDisplay}</Text>
+          <Tooltip
+            label={`No complete observed-mod sample is available. Showing the published ${strategy.map_type ?? 'unclassified'} setup bucket instead; observed averages require exact advanced-format data for every map in the run.`}
+            withArrow multiline w={270}>
+            <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.mod, flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>{modDisplay}</Text>
+          </Tooltip>
         )}
         <Tooltip
           disabled={!isPooled || displayMapCount == null}
@@ -327,7 +331,7 @@ export const StrategyCard = ({
             {strategy.avg_quant    != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Quantity" value={`${f1(strategy.avg_quant)}%`} color={COLOR.accent} />}
             {strategy.avg_rarity   != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Rarity" value={`${f1(strategy.avg_rarity)}%`} color={COLOR.accent} />}
             {strategy.avg_pack     != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Pack" value={`${f1(strategy.avg_pack)}%`} color={COLOR.accent} />}
-            {strategy.avg_currency != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Currency" value={`${f1(strategy.avg_currency)}%`} color={COLOR.warning} />}
+            {strategy.avg_currency != null && strategy.avg_currency > 0 && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Currency" value={`${f1(strategy.avg_currency)}%`} color={COLOR.warning} />}
             {costPerMap != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Cost/map" value={`${f1(costPerMap)}c`} />}
             {authorMult != null && (
               <Tooltip withArrow multiline w={260}
@@ -396,7 +400,7 @@ export const StrategyCard = ({
             // Breakdown of the ALL-IN per-map figure. The remainder after
             // scarabs + chisel includes the base map AND amortized session
             // costs / one-time scarabs — labeled honestly as one bucket.
-            if (costPerMap == null || costPerMap <= 0) return null;
+            if (isPooled || costPerMap == null || costPerMap <= 0) return null;
             const scarabTotal = (strategy.scarabs ?? []).reduce((a, s) => a + (s.cost ?? 0), 0);
             const chiselM = strategy.raw_export?.match(/Chisel:\s*[^(]+\((\d+(?:\.\d+)?)c(?:\s*each)?\)/i);
             const chiselCost = chiselM ? parseFloat(chiselM[1]) : 0;
@@ -464,7 +468,11 @@ export const StrategyCard = ({
 
           {strategy.scarabs && strategy.scarabs.length > 0 && (
             <Stack gap={2} mb={8}>
-              <SectionLabel>Scarabs</SectionLabel>
+              <Tooltip
+                label="Setup scarabs. For pooled strategies, authored prices are preserved per run under Evidence runs."
+                withArrow disabled={!isPooled}>
+                <SectionLabel style={isPooled ? { cursor: 'help' } : undefined}>Scarabs</SectionLabel>
+              </Tooltip>
               <Group gap={4} wrap="wrap">
                 {strategy.scarabs.map((s, i) => {
                   // Per-scarab compat cue (step 4). Match the precomputed issue
@@ -479,7 +487,7 @@ export const StrategyCard = ({
                         variant="light"
                         leftSection={<PoeItemIcon name={s.name} size={16} category="scarab" />}
                         style={removed ? { textDecoration: 'line-through', opacity: 0.7 } : undefined}>
-                        {s.name}{s.cost > 0 ? ` · ${s.cost}c` : ''}
+                        {s.name}{!isPooled && s.cost > 0 ? ` · ${s.cost}c` : ''}
                       </Badge>
                     </Tooltip>
                   );
@@ -536,19 +544,11 @@ export const StrategyCard = ({
                 </Button>
               </Tooltip>
             )}
-            {!frozen && isOwn && onUpdateStrategy && (
-              <Tooltip label="Start a fresh measurement run for THIS strategy — clones the setup into a new session; sharing it will replace the published result (votes kept)" withArrow multiline w={260}>
-                <Button size="xs" variant="light" color="indigo"
-                  onClick={(e) => { e.stopPropagation(); onUpdateStrategy(strategy); }}>
-                  Update strategy
-                </Button>
-              </Tooltip>
-            )}
-            {!frozen && isOwn && onAddEvidence && (
-              <Tooltip label="Start a fresh run with this exact setup and add its maps to the published evidence pool. Incompatible setup changes are blocked before sharing." withArrow multiline w={280}>
+            {!frozen && isOwn && onContinueStrategy && (
+              <Tooltip label="Continue with a fresh cloned setup or use your current session, then choose whether the run adds evidence or replaces the published strategy." withArrow multiline w={290}>
                 <Button size="xs" variant="light" color="teal"
-                  onClick={(e) => { e.stopPropagation(); onAddEvidence(strategy); }}>
-                  Add evidence
+                  onClick={(e) => { e.stopPropagation(); onContinueStrategy(strategy); }}>
+                  Continue strategy
                 </Button>
               </Tooltip>
             )}

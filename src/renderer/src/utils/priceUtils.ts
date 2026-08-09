@@ -133,6 +133,7 @@ export function generateTradeRegex(
   minPack: number,
   minCurr: number,
   minIIR: number,
+  deliriousPercent = -1,
 ): string {
   const avg = {
     avgQuant: minIIQ || 0,
@@ -141,11 +142,19 @@ export function generateTradeRegex(
     avgRarity: minIIR || 0,
     avgScarabs: 0,
   };
-  if (avg.avgQuant === 0 && avg.avgPack === 0 && avg.avgCurr === 0 && avg.avgRarity === 0) {
-    const cleanExclusions = sanitizeExclusionTerms(exclusions);
-    return cleanExclusions.length > 0 ? `"!${cleanExclusions.join('|')}"` : '';
-  }
-  return generateRunRegex(avg, exclusions);
+  const numericRegex = avg.avgQuant === 0 && avg.avgPack === 0
+    && avg.avgCurr === 0 && avg.avgRarity === 0
+    ? (() => {
+        const cleanExclusions = sanitizeExclusionTerms(exclusions);
+        return cleanExclusions.length > 0 ? `"!${cleanExclusions.join('|')}"` : '';
+      })()
+    : generateRunRegex(avg, exclusions);
+  const deliriumRegex = deliriousPercent === 0
+    ? '"!deli"'
+    : deliriousPercent > 0
+      ? `"${deliriousPercent}%.+deli"`
+      : '';
+  return [numericRegex, deliriumRegex].filter(Boolean).join(' ');
 }
 
 export const generateSlamRegex = (avg: MapAverages, exclusions?: string[]): string => {

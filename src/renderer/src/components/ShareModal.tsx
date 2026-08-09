@@ -6,11 +6,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { IconBrandDiscord, IconCheck } from '@tabler/icons-react';
 import { useSessionKeys } from '../store/useSessionStore';
 import { buildDiscordExport } from '../utils/discordExport';
-import { hasInvestmentCosts } from '../utils/profit';
 import { parseTimeInput } from '../utils/sessionTime';
 import { computeTimeEstimate, formatActiveTime } from '../utils/timeEstimate';
 import { ALL_TYPE_TAGS, STRATEGY_API_URL, type Strategy } from '../utils/strategyConstants';
 import { parseDiscordExport } from '../utils/parseDiscordExport';
+import { missingShareFields } from '../utils/shareCompleteness';
 import { buildUpdateComparison, rowDirection } from '../utils/updateCompare';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { getManifest } from '../utils/gameData';
@@ -258,12 +258,13 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   // server rejects it anyway - stop the wasted export at the source.
   const leagueBlock = leagueShareBlock(settings.leagueName);
 
-  const hasConfiguredInvestment = hasInvestmentCosts(settings, maps.length);
+  const shareMissingFields = missingShareFields(parseDiscordExport(baseDiscordExport));
+  const shareIncomplete = shareMissingFields.length > 0;
   const impossibleAtlasPoints = hasImpossibleAtlasPoints(settings.atlasPoints, settings.atlasPointsMax);
   // Preview is WITHHELD for invalid-content blocks (atlas, league); a size
   // overflow keeps the preview visible so the author can see what to trim.
   const evidenceBlocked = evidenceTargetId !== null && evidenceProof === null;
-  const previewWithheld = impossibleAtlasPoints || leagueBlock !== null || evidenceBlocked;
+  const previewWithheld = impossibleAtlasPoints || leagueBlock !== null || evidenceBlocked || shareIncomplete;
   const copyDisabled = previewWithheld || !budget.fitsPlain;
 
   // ── Update run: compare the about-to-publish numbers to what's live now ─────
@@ -329,7 +330,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
               </Text>
             )}
             <Group gap="xs">
-              <Button size="xs" variant="default" onClick={switchEvidenceToUpdate}>Update instead</Button>
+              <Button size="xs" variant="default" onClick={switchEvidenceToUpdate}>Replace instead</Button>
               <Button size="xs" variant="default" onClick={clearEvidenceTarget}>Share as new</Button>
               <Button size="xs" variant="subtle" onClick={onClose}>Cancel</Button>
             </Group>
@@ -338,13 +339,13 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
         {updateTargetId && (
           <Alert color="indigo" variant="light" p="xs">
             <Text size="xs" mb={4}>
-              Updating <Text span fw={700}>{updateTargetName ?? 'your strategy'}</Text>
+              Replacing <Text span fw={700}>{updateTargetName ?? 'your strategy'}</Text>
               {compareCurrent?.current_revision ? <Text span c="dimmed"> (currently v{compareCurrent.current_revision})</Text> : null}
               {' '}— this share replaces your published result in place (votes and post date kept).
             </Text>
 
             <Text size="xs" c="dimmed" mb={4}>
-              The updated revision starts a fresh one-run evidence pool; the previous revision keeps its historical pool.
+              The replacement revision starts a fresh one-run evidence pool; the previous revision keeps its historical pool.
             </Text>
 
             {compareError && (
@@ -416,9 +417,11 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
             </Text>
           </Alert>
         )}
-        {!hasConfiguredInvestment && (
-          <Alert color="yellow" variant="light" p="xs">
-            <Text size="xs">No investment costs set. Fill in Advanced Costs before sharing.</Text>
+        {shareIncomplete && (
+          <Alert color="red" variant="light" p="xs">
+            <Text size="xs">
+              Sharing needs: {shareMissingFields.join('; ')}. The Discord bot enforces the same minimums.
+            </Text>
           </Alert>
         )}
         {settings.advAstrolabeType && (
@@ -520,6 +523,8 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
                 ? evidenceFetchError || evidencePreflightError
                   ? 'Preview withheld until the evidence preflight above passes.'
                   : 'Preparing the revision and setup evidence proof...'
+                : shareIncomplete
+                  ? 'Preview withheld until the share requirements above are complete.'
                 : impossibleAtlasPoints
                 ? 'Preview withheld until the impossible Atlas allocation is corrected.'
                 : 'Preview withheld — this league no longer accepts new shares.'}

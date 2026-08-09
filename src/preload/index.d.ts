@@ -10,7 +10,7 @@ type TradeParams = {
   deliRewardTypes: string[]; brickExclusions: string[];
 };
 
-type BrickMod = { id: string; label: string; regexTerm: string; category: 'regular' | 'nightmare' };
+type BrickMod = { id: string; label: string; regexTerm: string; category: 'regular' | 'nightmare'; tradeTexts: string[] };
 type UnavailableBrickMod = { id: string; label: string; expectedCount: number; actualCount: number };
 type BrickModResult = { mods: BrickMod[]; unavailable: UnavailableBrickMod[]; error: string | null };
 

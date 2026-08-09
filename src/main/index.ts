@@ -13,6 +13,7 @@ import type { AtlasStatGroup, AtlasStatsReadResult } from '../shared/atlasStats'
 import { createKeyedSerialTask, isAllowedPathOfPathingUrl } from '../shared/atlasReaderSafety'
 import { resolveUserDataPath } from '../shared/appProfile'
 import {
+  buildDeliriumTradeStatFilter,
   SPECIAL_MAP_STAT_TEXT,
   resolveEightModSpecialStatIds,
   resolveSpecialMapTradeStats,
@@ -273,6 +274,7 @@ ipcMain.handle('trade:get-brick-mods', async () => {
       label:     def.label,
       regexTerm: brickRegexTerm(def),
       category:  def.category,
+      tradeTexts: def.tradePatterns.map((pattern) => pattern.text),
     }));
   return { mods, unavailable: BRICK_MOD_UNAVAILABLE, error: statsLoadError };
 });
@@ -288,7 +290,7 @@ interface TradeParams {
   minMaps:         number;
   mapType:         'any' | 'regular' | '8mod' | 'nightmare' | 'originator';
   empowered:       boolean;
-  minDelirious:    number;   // -1 = any, 0+ = require enchant at >=N%
+  minDelirious:    number;   // -1 = any, 0 = none, positive tiers = exact
   deliRewardTypes: string[];
   brickExclusions: string[];
   minTier:         number;   // 0 = any, 16 = T16+
@@ -367,8 +369,18 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
     statsArray.push({ type: 'and', filters: [{ id: 'pseudo.pseudo_number_of_affix_mods', value: { min: 8 } }] });
   }
 
-  if (minDelirious >= 0 && STATS_CACHE.has('delirious_pct'))
-    statsArray.push({ type: 'and', filters: [{ id: STATS_CACHE.get('delirious_pct')!, value: { min: minDelirious } }] });
+  try {
+    const deliriumFilter = buildDeliriumTradeStatFilter(
+      STATS_CACHE.get('delirious_pct'),
+      minDelirious,
+    );
+    if (deliriumFilter) statsArray.push(deliriumFilter);
+  } catch (error) {
+    return {
+      url: null,
+      error: error instanceof Error ? error.message : 'Delirium Trade stat is unavailable',
+    };
+  }
 
   if (deliRewardTypes.length > 0) {
     const resolvedIds = deliRewardTypes

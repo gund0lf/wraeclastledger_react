@@ -340,6 +340,14 @@ describe('Trade modal regex', () => {
       '"!reg" "ack.*([4-9].|\\d..)%" "m q.*([6-9].|\\d..)%"',
     );
   });
+
+  it('adds an exact delirium percentage to the copied Trade regex', () => {
+    expect(generateTradeRegex([], 0, 0, 0, 0, 20)).toBe('"20%.+deli"');
+  });
+
+  it('uses a negative delirium term when None is selected', () => {
+    expect(generateTradeRegex([], 0, 0, 0, 0, 0)).toBe('"!deli"');
+  });
 });
 
 describe('generateSlamRegex', () => {

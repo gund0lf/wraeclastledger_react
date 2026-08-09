@@ -10,6 +10,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.73',
+    date: 'Unreleased',
+    changes: [
+      'Evidence run details now preserve and show each run\'s authored chisel, scarab, Delirium Orb, and Astrolabe prices. Pooled strategy cards no longer imply that one run\'s prices describe the whole historical pool.',
+      'Published strategies now use one Continue strategy flow: choose Add another run or Replace published strategy, then either start a clean run with the published setup or apply the target to your current session. Both paths run the same compatibility checks before sharing.',
+      'Regex Builder now supports Any, All, and At least N matching groups, uses the exact live PoE Trade wording as the searchable curated-exclusion label, preserves selected modifiers while editing an empty search, and identifies Less Recovery Rate with an exact stash-search fragment instead of also matching cooldown recovery.',
+      'Regex presets now save either structured exclusions or a complete literal regex, support rename/edit/delete/default/copy from one menu, and replace the older saved-set, pasted-regex, and strategy-owner exclusion controls.',
+      'PoE Trade search now separates immediate Search from Advanced settings, keeps Copy Regex beside Search, treats 0% Delirium as a NOT filter and positive percentages as exact values, and explains that the map workflow is intended for Originator maps.',
+      'Allflame hides the unavailable Empowered Mirage option, Share preflight matches the bot\'s minimum requirements, and several Strategy Browser, Nightmare-selection, currency-tile, tag, and multiplier labels now report their actual state consistently.',
+    ],
+  },
+  {
     version: '1.0.72',
     date: '2026-08-02',
     changes: [
