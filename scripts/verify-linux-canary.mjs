@@ -33,13 +33,11 @@ if (packageVersion !== version) {
 const channel = match[1];
 const appImageName = `WraeclastLedger-${version}-x86_64.AppImage`;
 const appImagePath = join('dist', appImageName);
-const blockmapPath = `${appImagePath}.blockmap`;
 const metadataPath = join('dist', `${channel}-linux.yml`);
 const stableMetadataPath = join('dist', 'latest-linux.yml');
 const packagedUpdaterConfigPath = join('dist', 'packaged-app-update.yml');
 
 const appImageBytes = requireFile(appImagePath, 50 * 1024 * 1024);
-const blockmapBytes = requireFile(blockmapPath, 100);
 requireFile(metadataPath, 100);
 requireFile(packagedUpdaterConfigPath, 20);
 if (existsSync(stableMetadataPath)) {
@@ -59,6 +57,10 @@ const metadataVersion = metadata.match(/^version:\s*["']?([^\s"']+)/m)?.[1];
 if (metadataVersion !== version) {
   fail(`${metadataPath} describes ${metadataVersion ?? 'no version'}, expected ${version}`);
 }
+const embeddedBlockMapBytes = Number(metadata.match(/^\s*blockMapSize:\s*(\d+)\s*$/m)?.[1]);
+if (!Number.isSafeInteger(embeddedBlockMapBytes) || embeddedBlockMapBytes < 100) {
+  fail(`${metadataPath} does not describe a valid embedded AppImage block map`);
+}
 const escapedAppImageName = appImageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 if (!new RegExp(`^\\s*-?\\s*(?:url|path):\\s*["']?${escapedAppImageName}["']?\\s*$`, 'm').test(metadata)) {
   fail(`${metadataPath} does not reference ${appImageName}`);
@@ -74,11 +76,7 @@ const evidence = {
     bytes: appImageBytes,
     sha256: sha256(appImagePath),
   },
-  blockmap: {
-    name: basename(blockmapPath),
-    bytes: blockmapBytes,
-    sha256: sha256(blockmapPath),
-  },
+  embeddedBlockMapBytes,
   updateMetadata: basename(metadataPath),
   packagedUpdateChannel: channel,
 };

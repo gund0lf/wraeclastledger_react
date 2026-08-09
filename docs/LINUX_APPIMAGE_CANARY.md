@@ -21,8 +21,10 @@ also be manually dispatched with a prerelease version such as
    not.
 
 Do not publish the prerelease until the artifact-only build has completed and
-its AppImage, blockmap, channel metadata, source builder configuration, and
-`linux-canary-evidence.json` hashes have been inspected. The workflow refuses a
+its AppImage, channel metadata, source builder configuration, and
+`linux-canary-evidence.json` hashes have been inspected. The channel metadata
+must describe the AppImage's embedded block map; AppImage differential updates
+do not use a separate `.AppImage.blockmap` sidecar. The workflow refuses a
 prerelease build that generates stable `latest-linux.yml` metadata or embeds a
 different updater channel in the packaged app.
 
