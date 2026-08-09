@@ -1,0 +1,112 @@
+name: Linux AppImage canary
+
+on:
+  push:
+    branches:
+      - codex/linux-appimage-canary
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semver prerelease version (for example 1.0.74-beta.1)
+        required: true
+        default: 1.0.74-beta.1
+        type: string
+      publish_prerelease:
+        description: Publish a GitHub prerelease after the artifact build passes
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  appimage:
+    runs-on: ubuntu-24.04
+    env:
+      CANARY_VERSION: ${{ inputs.version || '1.0.74-beta.1' }}
+
+    steps:
+      - name: Check out the requested commit
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate the canary version
+        shell: bash
+        run: |
+          if [[ ! "$CANARY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+$ ]]; then
+            echo "Expected a prerelease such as 1.0.74-beta.1; got: $CANARY_VERSION" >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Remove stale build output
+        run: rm -rf dist out
+
+      - name: Stamp the canary version without creating a tag
+        run: npm version "$CANARY_VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Select the isolated prerelease channel
+        shell: bash
+        run: |
+          CHANNEL="${CANARY_VERSION#*-}"
+          CHANNEL="${CHANNEL%%.*}"
+          echo "WL_LINUX_CHANNEL=$CHANNEL" >> "$GITHUB_ENV"
+
+      - name: Run the release gate
+        run: npm run typecheck && npm test && npm run lint
+
+      - name: Build the AppImage without publishing
+        run: npm run build:linux -- --config.publish.channel="$WL_LINUX_CHANNEL"
+
+      - name: Verify the updater artifacts and channel isolation
+        run: npm run verify:linux:canary
+
+      - name: Upload the verified build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: WraeclastLedger-${{ env.CANARY_VERSION }}-linux-x64
+          if-no-files-found: error
+          path: |
+            dist/*.AppImage
+            dist/*.AppImage.blockmap
+            dist/*-linux.yml
+            dist/linux-canary-evidence.json
+            electron-builder.yml
+
+  publish:
+    needs: appimage
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_prerelease }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      CANARY_VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Download the exact verified build
+        uses: actions/download-artifact@v4
+        with:
+          name: WraeclastLedger-${{ env.CANARY_VERSION }}-linux-x64
+          path: canary-artifact
+
+      - name: Publish the verified AppImage prerelease
+        shell: bash
+        run: |
+          CHANNEL="${CANARY_VERSION#*-}"
+          CHANNEL="${CHANNEL%%.*}"
+          gh release create "v${CANARY_VERSION}" \
+            "canary-artifact/dist/WraeclastLedger-${CANARY_VERSION}-x86_64.AppImage" \
+            "canary-artifact/dist/WraeclastLedger-${CANARY_VERSION}-x86_64.AppImage.blockmap" \
+            "canary-artifact/dist/${CHANNEL}-linux.yml" \
+            --target "$GITHUB_SHA" \
+            --title "WraeclastLedger ${CANARY_VERSION} Linux AppImage canary" \
+            --notes "Experimental x86_64 AppImage for CachyOS smoke testing. Not a stable supported release." \
+            --prerelease

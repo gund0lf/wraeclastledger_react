@@ -12,6 +12,7 @@ import type { ResolvedBrickTradeStat, UnavailableBrickTradeStat } from '../share
 import type { AtlasStatGroup, AtlasStatsReadResult } from '../shared/atlasStats'
 import { createKeyedSerialTask, isAllowedPathOfPathingUrl } from '../shared/atlasReaderSafety'
 import { resolveUserDataPath } from '../shared/appProfile'
+import { resolveAutoUpdatePolicy } from '../shared/updatePolicy'
 import {
   buildDeliriumTradeStatFilter,
   SPECIAL_MAP_STAT_TEXT,
@@ -62,7 +63,17 @@ function setClipboardWatch(on: boolean): void {
 ipcMain.on('clipboard:set-watch', (_event, on: boolean) => setClipboardWatch(!!on));
 
 function setupAutoUpdater(mainWindow: BrowserWindow): void {
-  if (is.dev) return;
+  const policy = resolveAutoUpdatePolicy({
+    isDevelopment: is.dev,
+    platform: process.platform,
+    version: app.getVersion(),
+    appImagePath: process.env.APPIMAGE,
+  });
+  if (!policy.enabled) {
+    console.info(`[Updater] Disabled: ${policy.reason}`);
+    return;
+  }
+  autoUpdater.allowPrerelease = policy.allowPrerelease;
   autoUpdater.autoDownload         = true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.on('update-available',     (info) => mainWindow.webContents.send('update-available', info.version));
@@ -78,7 +89,14 @@ function setupAutoUpdater(mainWindow: BrowserWindow): void {
 
 ipcMain.on('install-update', () => autoUpdater.quitAndInstall(false, true));
 ipcMain.on('check-for-updates', () => {
-  if (is.dev) return;
+  const policy = resolveAutoUpdatePolicy({
+    isDevelopment: is.dev,
+    platform: process.platform,
+    version: app.getVersion(),
+    appImagePath: process.env.APPIMAGE,
+  });
+  if (!policy.enabled) return;
+  autoUpdater.allowPrerelease = policy.allowPrerelease;
   autoUpdater.checkForUpdates().catch(() => {});
 });
 
