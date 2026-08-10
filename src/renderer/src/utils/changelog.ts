@@ -10,6 +10,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.75',
+    date: 'Unreleased',
+    changes: [
+      'The More Monster Life stash exclusion now uses a cross-tier-safe token, avoiding false matches on Rare Monsters and Uber-map More Maps modifiers.',
+    ],
+  },
+  {
     version: '1.0.74',
     date: '2026-08-10',
     changes: [

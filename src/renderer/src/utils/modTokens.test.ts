@@ -68,6 +68,25 @@ describe('MOD_TOKENS integrity', () => {
   });
 });
 
+describe('stash-token collision guards', () => {
+  it('matches More Monster Life across tiers without matching Rare Monsters or More Maps', () => {
+    const token = new RegExp(MOD_TOKENS.more_monster_life, 'i');
+
+    expect(token.test('42% more Monster Life')).toBe(true);
+    expect(token.test('100% more Monster Life')).toBe(true);
+
+    const decoys = [
+      'Rare Monsters have Physical Thorns reflecting 800 Physical Damage',
+      '24% increased number of Rare Monsters',
+      'Rare monsters in area Temporarily Revive on death',
+      '35% more Maps found in Area',
+    ];
+    for (const decoy of decoys) {
+      expect(token.test(decoy), decoy).toBe(false);
+    }
+  });
+});
+
 // --- WP12 brick-mod alignment guard ---
 // BRICK_MOD_DEFS moved to src/shared and now derives its stash token from
 // MOD_TOKENS[id] via brickRegexTerm(). This is the FROZEN set of regexTerm values
@@ -116,7 +135,7 @@ const BRICK_REGEX_SNAPSHOT: Record<string, string> = {
   'Cannot Inflict Exposure': 'posure',
   'Monsters Hexproof': 'xpro',
   'Chaos + Elemental Resistances': 'haos re',
-  'More Monster Life': 're mon',
+  'More Monster Life': 'ore mo',
   'Cannot Be Stunned': 'tun',
   'All Damage Ignites': 'lways i',
   'Impale on Hit': 'pale on',

@@ -133,7 +133,7 @@ export const MOD_TOKENS = {
 
   avoid_poison_impale_bleed: 'mpale',  // [V:py] Avoid Poison/Impale/Bleed
   physical_damage_reduction: 'ysic',  // [V:py] Physical Damage Reduction
-  more_monster_life: 're mon',  // [V:py] More Monster Life
+  more_monster_life: 'ore mo',  // [V:py] More Monster Life (top + Uber tiers)
 
   // ══════════════════════════════════════════════════════════════
   // UBER (nightmare/originator) MAP MODS
