@@ -10,6 +10,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.76',
+    date: 'Unreleased',
+    changes: [
+      'The experimental Linux AppImage can now capture each Path of Exile clipboard event directly inside its Proton prefix, with visible connection status and a loud manual-Paste fallback when the Proton bridge is unavailable.',
+    ],
+  },
+  {
     version: '1.0.75',
     date: '2026-08-10',
     changes: [

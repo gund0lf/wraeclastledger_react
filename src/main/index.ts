@@ -1,4 +1,6 @@
 import { app, shell, BrowserWindow, ipcMain, clipboard } from 'electron'
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { copyFile, mkdir } from 'node:fs/promises'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -13,6 +15,10 @@ import type { AtlasStatGroup, AtlasStatsReadResult } from '../shared/atlasStats'
 import { createKeyedSerialTask, isAllowedPathOfPathingUrl } from '../shared/atlasReaderSafety'
 import { resolveUserDataPath } from '../shared/appProfile'
 import { resolveAutoUpdatePolicy } from '../shared/updatePolicy'
+import {
+  ProtonClipboardFrameDecoder,
+  type ClipboardBridgeStatus,
+} from '../shared/protonClipboardBridge'
 import {
   buildDeliriumTradeStatFilter,
   SPECIAL_MAP_STAT_TEXT,
@@ -33,6 +39,114 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock({
 let clipboardInterval: NodeJS.Timeout | null = null;
 let lastClipboardText = '';
 let watchWindow: BrowserWindow | null = null;
+let clipboardBridgeProcess: ChildProcessWithoutNullStreams | null = null;
+let clipboardBridgeGeneration = 0;
+let clipboardBridgeStatus: ClipboardBridgeStatus = { state: 'idle' };
+
+function publishClipboardBridgeStatus(status: ClipboardBridgeStatus): void {
+  clipboardBridgeStatus = status;
+  const win = watchWindow;
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('on-clipboard-bridge-status', status);
+  }
+}
+
+function publishClipboardText(text: string): void {
+  const win = watchWindow;
+  if (!win || win.isDestroyed() || text === lastClipboardText) return;
+  lastClipboardText = text;
+  win.webContents.send('on-clipboard-capture', text);
+}
+
+function stopProtonClipboardBridge(): void {
+  clipboardBridgeGeneration += 1;
+  const child = clipboardBridgeProcess;
+  clipboardBridgeProcess = null;
+  publishClipboardBridgeStatus({ state: 'idle' });
+  if (!child) return;
+  child.stdin.end();
+  const forceKill = setTimeout(() => child.kill(), 1500);
+  forceKill.unref();
+  child.once('exit', () => {
+    clearTimeout(forceKill);
+  });
+}
+
+async function startProtonClipboardBridge(): Promise<void> {
+  if (clipboardBridgeProcess || clipboardBridgeStatus.state === 'connecting') return;
+  const generation = ++clipboardBridgeGeneration;
+  publishClipboardBridgeStatus({
+    state: 'connecting',
+    message: 'Connecting to Path of Exile through Proton...',
+  });
+
+  try {
+    const bundledHelper = process.env.WL_PROTON_CLIPBOARD_HELPER
+      || join(process.resourcesPath, 'linux', 'wl-proton-clipboard.exe');
+    const helperDirectory = join(app.getPath('userData'), 'linux-bridge');
+    const runnableHelper = join(helperDirectory, 'wl-proton-clipboard.exe');
+    await mkdir(helperDirectory, { recursive: true });
+    await copyFile(bundledHelper, runnableHelper);
+    if (generation !== clipboardBridgeGeneration) return;
+
+    const child = spawn(
+      process.env.WL_PROTONTRICKS_LAUNCH || 'protontricks-launch',
+      ['--appid', '238960', runnableHelper],
+      { stdio: ['pipe', 'pipe', 'pipe'] },
+    );
+    clipboardBridgeProcess = child;
+    const decoder = new ProtonClipboardFrameDecoder();
+    let diagnostic = '';
+    let failed = false;
+
+    const fail = (detail: string): void => {
+      if (generation !== clipboardBridgeGeneration || failed) return;
+      failed = true;
+      clipboardBridgeProcess = null;
+      child.stdin.end();
+      child.kill();
+      console.error(`[Clipboard bridge] ${detail}${diagnostic ? `\n${diagnostic}` : ''}`);
+      publishClipboardBridgeStatus({
+        state: 'error',
+        message: `${detail} Automatic Linux capture is unavailable; the Paste button still works.`,
+      });
+    };
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      if (generation !== clipboardBridgeGeneration || failed) return;
+      try {
+        for (const event of decoder.push(chunk)) {
+          if (event.type === 'ready') {
+            publishClipboardBridgeStatus({
+              state: 'ready',
+              message: 'Capturing directly from Path of Exile through Proton.',
+            });
+          } else {
+            publishClipboardText(event.text);
+          }
+        }
+      } catch (error) {
+        fail(error instanceof Error ? error.message : 'The Proton clipboard stream was invalid.');
+      }
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      diagnostic = `${diagnostic}${chunk.toString('utf8')}`.slice(-8192);
+    });
+    child.once('error', (error) => fail(`Could not launch protontricks: ${error.message}`));
+    child.once('exit', (code, signal) => {
+      if (generation !== clipboardBridgeGeneration || failed) return;
+      clipboardBridgeProcess = null;
+      fail(`The Proton clipboard helper stopped (${signal ?? `exit ${code ?? 'unknown'}`}).`);
+    });
+  } catch (error) {
+    if (generation !== clipboardBridgeGeneration) return;
+    console.error('[Clipboard bridge]', error);
+    publishClipboardBridgeStatus({
+      state: 'error',
+      message: `Could not prepare the Proton clipboard helper: ${error instanceof Error ? error.message : 'unknown error'}. Automatic Linux capture is unavailable; the Paste button still works.`,
+    });
+  }
+}
 
 // ── WP13: clipboard polling lifecycle ────────────────────────────────────────
 // Polling only runs while the renderer's Capture toggle is ON (previously it
@@ -42,6 +156,11 @@ let watchWindow: BrowserWindow | null = null;
 // twice in a row while watching still yields identical text and is skipped —
 // the manual Paste button remains the explicit answer for that case.
 function setClipboardWatch(on: boolean): void {
+  if (process.platform === 'linux') {
+    if (on) void startProtonClipboardBridge();
+    else stopProtonClipboardBridge();
+    return;
+  }
   if (on) {
     if (clipboardInterval) return; // already polling
     lastClipboardText = clipboard.readText();
@@ -49,10 +168,7 @@ function setClipboardWatch(on: boolean): void {
       const win = watchWindow;
       if (!win || win.isDestroyed()) return;
       const text = clipboard.readText();
-      if (text !== lastClipboardText) {
-        lastClipboardText = text;
-        win.webContents.send('on-clipboard-capture', text);
-      }
+      publishClipboardText(text);
     }, 200);
   } else if (clipboardInterval) {
     clearInterval(clipboardInterval);
@@ -61,6 +177,7 @@ function setClipboardWatch(on: boolean): void {
 }
 
 ipcMain.on('clipboard:set-watch', (_event, on: boolean) => setClipboardWatch(!!on));
+ipcMain.handle('clipboard:get-bridge-status', () => clipboardBridgeStatus);
 
 function setupAutoUpdater(mainWindow: BrowserWindow): void {
   const policy = resolveAutoUpdatePolicy({
@@ -668,4 +785,5 @@ if (!hasSingleInstanceLock) {
   });
 
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+  app.on('before-quit', stopProtonClipboardBridge);
 }

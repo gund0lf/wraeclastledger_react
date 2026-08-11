@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Semver prerelease version (for example 1.0.74-beta.1)
+        description: Semver prerelease version (for example 1.0.76-beta.1)
         required: true
-        default: 1.0.74-beta.1
+        default: 1.0.76-beta.1
         type: string
       publish_prerelease:
         description: Publish a GitHub prerelease after the artifact build passes
@@ -24,7 +24,7 @@ jobs:
   appimage:
     runs-on: ubuntu-24.04
     env:
-      CANARY_VERSION: ${{ inputs.version || '1.0.74-beta.1' }}
+      CANARY_VERSION: ${{ inputs.version || '1.0.76-beta.1' }}
 
     steps:
       - name: Check out the requested commit
@@ -35,11 +35,14 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install the Windows cross-compiler
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+
       - name: Validate the canary version
         shell: bash
         run: |
           if [[ ! "$CANARY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+$ ]]; then
-            echo "Expected a prerelease such as 1.0.74-beta.1; got: $CANARY_VERSION" >&2
+            echo "Expected a prerelease such as 1.0.76-beta.1; got: $CANARY_VERSION" >&2
             exit 1
           fi
 
@@ -85,6 +88,12 @@ jobs:
             exit 1
           fi
           cp "$PACKAGED_CONFIG" dist/packaged-app-update.yml
+          PACKAGED_HELPER="$(find dist/squashfs-root -type f -path '*/resources/linux/wl-proton-clipboard.exe' -print -quit)"
+          if [[ -z "$PACKAGED_HELPER" ]]; then
+            echo "The AppImage does not contain the Proton clipboard helper" >&2
+            exit 1
+          fi
+          cp "$PACKAGED_HELPER" dist/packaged-wl-proton-clipboard.exe
           rm -rf dist/squashfs-root
 
       - name: Verify the updater artifacts and channel isolation
@@ -99,6 +108,7 @@ jobs:
             dist/*.AppImage
             dist/*-linux.yml
             dist/packaged-app-update.yml
+            dist/packaged-wl-proton-clipboard.exe
             dist/linux-canary-evidence.json
             electron-builder.yml
 

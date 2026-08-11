@@ -27,7 +27,8 @@
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
-    "build:linux": "electron-vite build && electron-builder --linux AppImage --x64 --publish never",
+    "build:linux-helper": "node scripts/build-linux-clipboard-helper.mjs",
+    "build:linux": "npm run build:linux-helper && electron-vite build && electron-builder --linux AppImage --x64 --publish never",
     "verify:linux:canary": "node scripts/verify-linux-canary.mjs",
     "publish:win": "npm run build && electron-builder --win --publish always"
   },
