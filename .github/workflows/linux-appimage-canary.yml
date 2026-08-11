@@ -137,6 +137,7 @@ jobs:
           gh release create "v${CANARY_VERSION}" \
             "canary-artifact/dist/WraeclastLedger-${CANARY_VERSION}-x86_64.AppImage" \
             "canary-artifact/dist/${CHANNEL}-linux.yml" \
+            --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "WraeclastLedger ${CANARY_VERSION} Linux AppImage canary" \
             --notes "Experimental x86_64 AppImage for CachyOS smoke testing. Not a stable supported release." \
