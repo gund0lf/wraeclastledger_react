@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '../store/useSessionStore';
 import { buildDiscordExport } from './discordExport';
-import { fingerprintSetupSnapshot, setupSnapshotFromDiscordImport } from './evidenceIdentity';
+import {
+  authoredRollupFromDiscordImport,
+  fingerprintSetupSnapshot,
+  setupSnapshotFromDiscordImport,
+} from './evidenceIdentity';
 import { EvidencePreflightError, prepareEvidenceSubmission } from './evidencePreflight';
 import { parseDiscordExport } from './parseDiscordExport';
 import type { SessionSettings } from '../types';
@@ -75,6 +79,25 @@ async function expectCode(promise: Promise<unknown>, code: string): Promise<void
 }
 
 describe('evidence submission preflight', () => {
+  it('includes authored setup costs in the run identity rollup', () => {
+    const raw = makeExport(makeSettings({
+      advDeliOrbType: 'Fine',
+      advDeliOrbQtyPerMap: 2,
+      advDeliOrbPriceEach: 5,
+      advAstrolabeType: 'Deceptive Astrolabe',
+      advAstrolabeCount: 3,
+      advAstrolabePrice: 4,
+    }));
+    const parsed = parseDiscordExport(raw);
+    if (!parsed) throw new Error('fixture did not parse');
+    expect(authoredRollupFromDiscordImport(parsed).costBreakdown).toEqual({
+      chisel: { name: 'Currency', priceEach: 2 },
+      scarabs: [{ name: 'Trarthan Scarab', priceEach: 2 }],
+      delirium: { type: 'Fine', countPerMap: 2, priceEach: 5 },
+      astrolabe: { type: 'Deceptive Astrolabe', count: 3, priceEach: 4 },
+    });
+  });
+
   it('builds a deterministic proof for a compatible timestamped run', async () => {
     const raw = makeExport(makeSettings());
     const proof = await prepareEvidenceSubmission({
@@ -86,7 +109,7 @@ describe('evidence submission preflight', () => {
       mapParsedAt: [1_000, 2_000],
     });
     expect(proof).toEqual({
-      runKey: 'sha256-v1:4133b452cd1690a1905e177ee67acbc0fceccf35e4896fdc0cf66b58fb0a73fd',
+      runKey: 'sha256-v1:9c5dd3fd7d830678cfe695aa9d2c7c2059e8a597135a208fcb0a7110cbb70e61',
       runStartedAt: '1970-01-01T00:00:01.000Z',
       runEndedAt: '1970-01-01T00:00:02.000Z',
       setupFingerprint: await targetFingerprint(raw),

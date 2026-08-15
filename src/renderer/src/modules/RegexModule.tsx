@@ -718,7 +718,17 @@ export const FromSessionTab = () => {
           {/* ── Loaded from strategy ── */}
           {!generatedRegex && loadedStrategyInfo && (() => {
             const run  = applyUserExclusionsToRegex(loadedStrategyInfo.runRegex, exclusions);
-            const slam = loadedStrategyInfo.slamRegex ? applyUserExclusionsToRegex(loadedStrategyInfo.slamRegex, exclusions) : null;
+            const neutralSlam = loadedStrategyInfo.slamRegex
+              || (loadedStrategyInfo.mapType === '8mod'
+                ? null
+                : generateSlamRegex({
+                  avgQuant: loadedStrategyInfo.avgQuant,
+                  avgRarity: loadedStrategyInfo.avgRarity,
+                  avgPack: loadedStrategyInfo.avgPack,
+                  avgCurr: loadedStrategyInfo.avgCurr,
+                  avgScarabs: 0,
+                }, []));
+            const slam = neutralSlam ? applyUserExclusionsToRegex(neutralSlam, exclusions) : null;
             return (
               <Stack gap="xs" p="xs" style={{ background: COLOR.tintTealBg, borderRadius: 6, border: `1px solid ${COLOR.tintTealBorder}` }}>
                 <Group gap="xs">

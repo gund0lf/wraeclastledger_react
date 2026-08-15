@@ -15,6 +15,7 @@ import { fetchEvidenceRuns, type PublicEvidenceRun } from '../utils/evidenceApi'
 import { fcSep, f1 } from '../utils/parseDiscordExport';
 import { formatActiveTime } from '../utils/timeEstimate';
 import { COLOR, FONT } from '../utils/uiTokens';
+import { LootEvidenceSummary } from './LootEvidenceSummary';
 
 function formatTimestamp(value: string | null): string {
   if (!value) return 'Legacy published run';
@@ -31,6 +32,7 @@ function formatTimestamp(value: string | null): string {
 
 const RunRow = ({ run }: { run: PublicEvidenceRun }) => {
   const [costsOpen, setCostsOpen] = useState(false);
+  const [lootOpen, setLootOpen] = useState(false);
   const costs = run.cost_breakdown;
   const hasLineItems = !!costs?.chisel || (costs?.scarabs?.length ?? 0) > 0
     || !!costs?.delirium || !!costs?.astrolabe;
@@ -104,6 +106,23 @@ const RunRow = ({ run }: { run: PublicEvidenceRun }) => {
                   </Text>
                 )}
               </Stack>
+            </Collapse>
+          </>
+        )}
+        {run.loot_summary && (
+          <>
+            <UnstyledButton onClick={() => setLootOpen((current) => !current)}>
+              <Group gap={4} wrap="nowrap">
+                {lootOpen ? <IconChevronDown size={11} /> : <IconChevronRight size={11} />}
+                <Text size="xs" c="dimmed" td="underline">
+                  Loot breakdown ({run.loot_summary.rows.length} shown)
+                </Text>
+              </Group>
+            </UnstyledButton>
+            <Collapse in={lootOpen}>
+              <div style={{ paddingTop: 4 }}>
+                <LootEvidenceSummary summary={run.loot_summary} />
+              </div>
             </Collapse>
           </>
         )}

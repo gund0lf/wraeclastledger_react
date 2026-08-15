@@ -23,6 +23,7 @@
  * ASCII-source rule: no raw emoji/middot literals - escapes only.
  */
 import { EXPORT_EMOJI } from './discordEmoji';
+import { LOOT_EVIDENCE_LABEL, type LootSummary } from './lootSummary';
 
 export const DISCORD_MSG_LIMIT = 2000;
 
@@ -73,6 +74,10 @@ export function projectDecoratedLength(text: string): number {
 const NOTES_LINE_OVERHEAD = 1 + EXPORT_EMOJI.notes.uni.length + ' **Notes:** '.length;
 
 export interface ShareBudget {
+  /** Compact author paste length. */
+  wireLength: number;
+  /** True when the compact author paste fits one Discord message. */
+  fitsWire: boolean;
   /** Plain export + worst-case bot header, in UTF-16 units. */
   plainCardLength: number;
   /** Emote-projected export + worst-case bot header. */
@@ -86,6 +91,27 @@ export interface ShareBudget {
   notesRemaining: number;
   /** Cap to apply to the notes input right now (never negative). */
   notesMax: number;
+}
+
+const visibleCardExport = (exportText: string): string => exportText
+  .replace(new RegExp(`^${LOOT_EVIDENCE_LABEL}:\\s*\\S+\\s*(?:\\r?\\n|$)`, 'gim'), '')
+  .trimEnd();
+
+const lootCaption = (summary: LootSummary | null): string => {
+  if (!summary) return '';
+  const manualCount = summary.rows.filter((row) => row.source === 'manual').length;
+  return `**Loot breakdown:** ${summary.rows.length} item rows`
+    + `${manualCount > 0 ? ` \u00B7 ${manualCount} manual (${summary.manualTotal.toFixed(1)}c)` : ''}\n`;
+};
+
+/** Readable body the bot will post, excluding its Discord-author attribution
+ * header (which is unavailable inside the desktop app). */
+export function compactPostedCardPreview(
+  exportText: string,
+  summary: LootSummary | null,
+): string {
+  const caption = lootCaption(summary);
+  return `${caption}${caption ? '\n' : ''}${visibleCardExport(exportText)}`;
 }
 
 /**
@@ -105,6 +131,40 @@ export function computeShareBudget(
     - exportTextNoNotes.length
     - NOTES_LINE_OVERHEAD;
   return {
+    wireLength: exportText.length,
+    fitsWire: exportText.length <= DISCORD_MSG_LIMIT,
+    plainCardLength,
+    decoratedCardLength,
+    fitsPlain: plainCardLength <= DISCORD_MSG_LIMIT,
+    fitsDecorated: decoratedCardLength <= DISCORD_MSG_LIMIT,
+    notesRemaining: budgetForNotes - notesLength,
+    notesMax: Math.max(0, budgetForNotes),
+  };
+}
+
+/** Budget the compact author paste and the bot's reconstructed visible card.
+ * Loot evidence is carried inside wl2 and rendered as an image, so its opaque
+ * wl1 line is deliberately absent from the final-card projection. */
+export function computeCompactShareBudget(
+  wireText: string,
+  exportText: string,
+  exportTextNoNotes: string,
+  notesLength: number,
+  summary: LootSummary | null,
+): ShareBudget {
+  const visible = visibleCardExport(exportText);
+  const visibleNoNotes = visibleCardExport(exportTextNoNotes);
+  const caption = lootCaption(summary);
+  const plainCardLength = CARD_HEADER_ALLOWANCE + caption.length + visible.length;
+  const decoratedCardLength = CARD_HEADER_ALLOWANCE + caption.length + projectDecoratedLength(visible);
+  const budgetForNotes = DISCORD_MSG_LIMIT
+    - CARD_HEADER_ALLOWANCE
+    - caption.length
+    - visibleNoNotes.length
+    - NOTES_LINE_OVERHEAD;
+  return {
+    wireLength: wireText.length,
+    fitsWire: wireText.length <= DISCORD_MSG_LIMIT,
     plainCardLength,
     decoratedCardLength,
     fitsPlain: plainCardLength <= DISCORD_MSG_LIMIT,

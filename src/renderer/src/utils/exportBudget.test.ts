@@ -4,6 +4,8 @@ import {
   CARD_HEADER_ALLOWANCE,
   DISCORD_MSG_LIMIT,
   STRAT_NAME_MAX,
+  compactPostedCardPreview,
+  computeCompactShareBudget,
   computeShareBudget,
   projectDecoratedLength,
 } from './exportBudget';
@@ -66,6 +68,30 @@ describe('exportBudget', () => {
     expect(budget.fitsPlain).toBe(true);
     expect(budget.fitsDecorated).toBe(false);
     expect(budget.decoratedCardLength).toBeGreaterThan(DISCORD_MSG_LIMIT);
+  });
+
+  it('budgets wl2 separately and removes the opaque loot line from the posted card', () => {
+    const noNotes = '[WraeclastLedger Session]\nMaps: 10\nLoot Evidence: wl1.' + 'x'.repeat(1000);
+    const withNotes = noNotes + '\n' + EXPORT_EMOJI.notes.uni + ' **Notes:** hello';
+    const summary = {
+      version: 1 as const,
+      rowLimit: 30 as const,
+      rows: [], categories: [], hasBaseline: true,
+      csvPositive: 0, csvNegative: 0, csvNet: 0, csvAdjustment: 0,
+      manualTotal: 0, gemCorrection: 0, investmentCorrection: 0,
+      reportedReturn: 0, omittedCsvRows: 0, omittedCsvValue: 0,
+      omittedManualRows: 0, omittedManualValue: 0,
+    };
+    const wire = 'wl2.' + 'a'.repeat(1500);
+    const budget = computeCompactShareBudget(wire, withNotes, noNotes, 5, summary);
+    expect(budget.wireLength).toBe(1504);
+    expect(budget.fitsWire).toBe(true);
+    expect(budget.plainCardLength).toBeLessThan(noNotes.length);
+    expect(budget.fitsPlain).toBe(true);
+    const preview = compactPostedCardPreview(withNotes, summary);
+    expect(preview).toContain('**Loot breakdown:** 0 item rows');
+    expect(preview).not.toContain('Loot Evidence:');
+    expect(preview).toContain('**Notes:** hello');
   });
 
   it('exposes the strategy-name cap constant', () => {

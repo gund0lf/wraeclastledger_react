@@ -72,6 +72,16 @@ const build = () => buildDiscordExport({
 /* ------------------------------------------------------------------ */
 
 describe('buildDiscordExport — corrected money lines (Sad fixture parity)', () => {
+  it('keeps multiline notes on one canonical parser-safe field line', () => {
+    const out = buildDiscordExport({
+      maps, settings: settings(), lootItems, baselineTotal,
+      investmentNeutralization: 0,
+      stratNotes: 'First point\nSecond point\r\nThird point',
+    });
+    expect(out).toContain('**Notes:** First point Second point Third point');
+    expect(parseDiscordExport(out)!.strategyNotes).toBe('First point Second point Third point');
+  });
+
   it('round-trips optional game-data authoring provenance', () => {
     const out = buildDiscordExport({
       maps, settings: settings(), lootItems, baselineTotal,
@@ -79,7 +89,7 @@ describe('buildDiscordExport — corrected money lines (Sad fixture parity)', ()
       gameDataRevision: 2,
       gameDataPatchVersion: '3.29',
     });
-    expect(out).toContain('**Game Data:** r2 · patch 3.29');
+    expect(out).toContain('**Data:** r2/3.29');
     expect(parseDiscordExport(out)).toMatchObject({
       gameDataRevision: 2,
       gameDataPatchVersion: '3.29',
@@ -118,7 +128,7 @@ describe('buildDiscordExport — corrected money lines (Sad fixture parity)', ()
       lootItems: [], baselineTotal: 0, investmentNeutralization: 0,
     });
     expect(out).toContain('**Type:** 6-mod | **Multiplier:** 1.09');
-    expect(out).toContain('**Observed Mods:** 4.5 average (4/4 exact maps)');
+    expect(out).toContain('**Observed Mods:** 4.5 avg');
     expect(parseDiscordExport(out)?.mapType).toBe('6-mod');
   });
 
@@ -158,6 +168,7 @@ describe('buildDiscordExport <-> parseDiscordExport round-trip (wire-format lock
 
   it('recovers chisel, scarabs, deli, astrolabe', () => {
     expect(parsed!.chisel).toBe('Avarice');
+    expect(parsed!.chiselPrice).toBe(150);
     expect(parsed!.scarabs).toEqual([
       'Horned Scarab of Preservation',
       'Horned Scarab of Bloodlines',
@@ -180,7 +191,24 @@ describe('buildDiscordExport <-> parseDiscordExport round-trip (wire-format lock
     expect(parsed!.isGroupPlay).toBe(false);
     expect(parsed!.atlasTreeUrl).toContain('pathofpathing.com');
     expect(parsed!.runRegex.length).toBeGreaterThan(0);
-    expect(parsed!.slamRegex.length).toBeGreaterThan(0);
+    expect(parsed!.slamRegex).toBe('');
+  });
+
+  it('emits compact derived setup and regex presentation without losing parsed values', () => {
+    const exported = build();
+    expect(exported).toContain('**Delirium Orbs:** 4x Fine @ 100c ea');
+    expect(exported).toContain('**Astrolabe:** Grasping · 7x @ 10c ea');
+    expect(exported).toContain('**Regex**');
+    expect(exported).not.toMatch(/^Avg: /m);
+    expect(exported).not.toContain('Slam:');
+    expect(parsed).toMatchObject({
+      deliOrbQty: 4,
+      deliOrbType: 'Fine',
+      deliOrbPrice: 100,
+      astroType: 'Grasping Astrolabe',
+      astroCount: 7,
+      astroPrice: 10,
+    });
   });
 
   it('flags group play when set', () => {

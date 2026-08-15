@@ -10,6 +10,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.78',
+    date: '2026-08-15',
+    changes: [
+      'Strategy sharing now copies a compact machine-readable Discord submission while previewing the readable card the bot will publish. This preserves full strategy notes and 30-row loot evidence within Discord\'s message limit, and legacy human-readable exports remain importable.',
+      'Evidence pools now expose each run\'s own authored cost snapshot and loot breakdown alongside the map-weighted pooled summary. Historical runs recover their recorded scarab prices from the original export instead of leaving those costs hidden inside total investment.',
+      'Discord loot images now use real Path of Exile item artwork with representative category artwork, while Strategy Browser cards retain the same category totals and top-item provenance inside the app.',
+      'Collapsing the Setup sidebar now adds a compact Published / updated activity column to Strategy Browser without rearranging the ordinary docked layout.',
+      'Imported strategy regexes regenerate the neutral Slam suggestion locally when applicable, keeping Discord cards smaller without removing the in-app workflow.',
+    ],
+  },
+  {
     version: '1.0.77',
     date: '2026-08-15',
     changes: [

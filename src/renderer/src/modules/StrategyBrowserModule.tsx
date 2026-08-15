@@ -12,7 +12,10 @@ import { parseDiscordExport } from '../utils/parseDiscordExport';
 import {
   Strategy, ApiResponse, ALL_TYPE_TAGS, BROWSER_COLS, BROWSER_GRID_TEMPLATE, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X,
   BROWSER_MIN_CONTENT_WIDTH, BROWSER_MAXIMIZED_COLS, BROWSER_MAXIMIZED_GRID_TEMPLATE,
-  BROWSER_MAXIMIZED_MIN_CONTENT_WIDTH,
+  BROWSER_MAXIMIZED_MIN_CONTENT_WIDTH, BROWSER_SETUP_COLLAPSED_GRID_TEMPLATE,
+  BROWSER_MAXIMIZED_SETUP_COLLAPSED_GRID_TEMPLATE, BROWSER_SETUP_COLLAPSED_MIN_CONTENT_WIDTH,
+  BROWSER_MAXIMIZED_SETUP_COLLAPSED_MIN_CONTENT_WIDTH, BROWSER_ACTIVITY_WIDTH,
+  BROWSER_MAXIMIZED_ACTIVITY_WIDTH,
   SortKey, SortOrder, SORT_DEFAULT_DIR, SORT_OPTIONS, STRATEGY_API_URL,
 } from '../utils/strategyConstants';
 import { StrategyCard } from '../components/StrategyCard';
@@ -27,7 +30,7 @@ import { WorkingSessionGuardModal } from '../components/WorkingSessionGuardModal
 import { isWorkingSessionMeaningful } from '../utils/workingSession';
 import { deriveAtlasCalcSettings } from '../../../shared/atlasStats';
 import { fingerprintSetupSnapshot, setupSnapshotFromDiscordImport } from '../utils/evidenceIdentity';
-import { usePanelMaximized } from '../layout/panelLayoutContext';
+import { usePanelMaximized, useSetupSidebarCollapsed } from '../layout/panelLayoutContext';
 import { deriveShareTags } from '../utils/shareTags';
 
 // API base (incl. the VITE_STRATEGY_API_URL dev override) moved to
@@ -36,11 +39,25 @@ import { deriveShareTags } from '../utils/shareTags';
 // ─── Main module ───────────────────────────────────────────────────────────────
 export const StrategyBrowserModule = () => {
   const isMaximized = usePanelMaximized('strategy-browser');
+  const isSetupSidebarCollapsed = useSetupSidebarCollapsed();
   const browserCols = isMaximized ? BROWSER_MAXIMIZED_COLS : BROWSER_COLS;
-  const browserGridTemplate = isMaximized ? BROWSER_MAXIMIZED_GRID_TEMPLATE : BROWSER_GRID_TEMPLATE;
-  const browserMinContentWidth = isMaximized
-    ? BROWSER_MAXIMIZED_MIN_CONTENT_WIDTH
-    : BROWSER_MIN_CONTENT_WIDTH;
+  const browserActivityWidth = isMaximized
+    ? BROWSER_MAXIMIZED_ACTIVITY_WIDTH
+    : BROWSER_ACTIVITY_WIDTH;
+  const browserGridTemplate = isSetupSidebarCollapsed
+    ? isMaximized
+      ? BROWSER_MAXIMIZED_SETUP_COLLAPSED_GRID_TEMPLATE
+      : BROWSER_SETUP_COLLAPSED_GRID_TEMPLATE
+    : isMaximized
+      ? BROWSER_MAXIMIZED_GRID_TEMPLATE
+      : BROWSER_GRID_TEMPLATE;
+  const browserMinContentWidth = isSetupSidebarCollapsed
+    ? isMaximized
+      ? BROWSER_MAXIMIZED_SETUP_COLLAPSED_MIN_CONTENT_WIDTH
+      : BROWSER_SETUP_COLLAPSED_MIN_CONTENT_WIDTH
+    : isMaximized
+      ? BROWSER_MAXIMIZED_MIN_CONTENT_WIDTH
+      : BROWSER_MIN_CONTENT_WIDTH;
   const {
     maps, settings, discordTag, leagueOverride,
     updateSetting, updateAdvSetting, updateScarab, newSession, saveAsNewSession, setLoadedStrategyInfo, loadSession,
@@ -584,6 +601,13 @@ export const StrategyBrowserModule = () => {
           <div style={{ width: browserCols.chevron, flexShrink: 0 }} />
           <Text size="xs" c="dimmed" style={{ width: browserCols.author, flexShrink: 0, fontSize: FONT.small }}>Author</Text>
           <Text size="xs" c="dimmed" style={{ flex: 1, minWidth: 0, fontSize: FONT.small }}>Tags</Text>
+          {isSetupSidebarCollapsed && (
+            <Tooltip label="Time since the latest published result, or its latest update when revised. Exact dates remain inside the expanded card." withArrow multiline w={250}>
+              <Text size="xs" c="dimmed" style={{ width: browserActivityWidth, flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>
+                Published / updated
+              </Text>
+            </Tooltip>
+          )}
           <Tooltip label="Observed average when exact map evidence was shared; otherwise the 6-mod/8-mod strategy bucket. Filtering always uses the bucket." withArrow multiline w={250}>
             <Text size="xs" c="dimmed" style={{ width: browserCols.mod,    flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>Mod</Text>
           </Tooltip>
@@ -632,7 +656,8 @@ export const StrategyBrowserModule = () => {
               })
               .map((s) => <StrategyCard key={s.id} strategy={s} onLoadBuild={handleLoadBuild}
                 onContinueStrategy={openContinueCandidate}
-                discordTag={discordTag} maximized={isMaximized} />)}
+                discordTag={discordTag} maximized={isMaximized}
+                showPublishedActivity={isSetupSidebarCollapsed} />)}
           </Stack>
           {hasMore && !loading && (
             <Button variant="subtle" size="xs" fullWidth mt={8} onClick={() => fetchStrategies(offset + LIMIT)}>

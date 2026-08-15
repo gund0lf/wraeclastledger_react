@@ -1,11 +1,20 @@
 import type { PropsWithChildren } from 'react';
-import { MaximizedPanelContext } from './panelLayoutContext';
+import {
+  MaximizedPanelContext,
+  SetupSidebarCollapsedContext,
+} from './panelLayoutContext';
 
 export const MaximizedPanelProvider = ({
   maximizedPanel,
+  setupSidebarCollapsed,
   children,
-}: PropsWithChildren<{ maximizedPanel: string | null }>) => (
+}: PropsWithChildren<{
+  maximizedPanel: string | null;
+  setupSidebarCollapsed: boolean;
+}>) => (
   <MaximizedPanelContext.Provider value={maximizedPanel}>
-    {children}
+    <SetupSidebarCollapsedContext.Provider value={setupSidebarCollapsed}>
+      {children}
+    </SetupSidebarCollapsedContext.Provider>
   </MaximizedPanelContext.Provider>
 );

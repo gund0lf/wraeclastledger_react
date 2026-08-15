@@ -8,6 +8,7 @@
  * each repository pins those shared inputs and their expected hashes locally.
  */
 import type { DiscordImport } from './parseDiscordExport';
+import type { EvidenceCostBreakdown } from './evidenceApi';
 import { normalizeLeagueKey } from './retrospectives';
 
 export const EVIDENCE_IDENTITY_KIND = 'sha256-v1' as const;
@@ -72,6 +73,7 @@ export interface EvidenceAuthoredRollupV1 {
   divPerMap: number;
   divinePrice: number;
   sessionMinutes: number | null;
+  costBreakdown: EvidenceCostBreakdown;
 }
 
 export interface EvidenceRunIdentityV1 {
@@ -242,6 +244,29 @@ export function authoredRollupFromDiscordImport(parsed: DiscordImport): Evidence
     divPerMap: parsed.divPerMap,
     divinePrice: parsed.divPrice,
     sessionMinutes: parsed.sessionMinutes,
+    costBreakdown: {
+      chisel: parsed.chisel && parsed.chisel !== 'None'
+        ? { name: parsed.chisel, priceEach: parsed.chiselPrice ?? 0 }
+        : null,
+      scarabs: parsed.scarabs.map((name, index) => ({
+        name,
+        priceEach: parsed.scarabCosts[index] ?? 0,
+      })),
+      delirium: parsed.deliOrbQty > 0 && parsed.deliOrbType
+        ? {
+            type: parsed.deliOrbType,
+            countPerMap: parsed.deliOrbQty,
+            priceEach: parsed.deliOrbPrice ?? 0,
+          }
+        : null,
+      astrolabe: parsed.astroType
+        ? {
+            type: parsed.astroType,
+            count: parsed.astroCount ?? 0,
+            priceEach: parsed.astroPrice ?? 0,
+          }
+        : null,
+    },
   };
 }
 

@@ -69,8 +69,38 @@
       "netProfit": 200,
       "divPerMap": 0.5,
       "divinePrice": 100,
-      "sessionMinutes": 30
+      "sessionMinutes": 30,
+      "costBreakdown": {
+        "chisel": {
+          "name": "Chisel of Procurement",
+          "priceEach": 150
+        },
+        "scarabs": [
+          {
+            "name": "Trarthan Scarab",
+            "priceEach": 2
+          },
+          {
+            "name": "Scarab of Wisps",
+            "priceEach": 5
+          },
+          {
+            "name": "Trarthan Scarab",
+            "priceEach": 2
+          }
+        ],
+        "delirium": {
+          "type": "Skittering",
+          "countPerMap": 2,
+          "priceEach": 5
+        },
+        "astrolabe": {
+          "type": "Deceptive",
+          "count": 3,
+          "priceEach": 4
+        }
+      }
     }
   },
-  "expectedRunKey": "sha256-v1:0c6a68b79f54d97d447caa54ba03a28a5163c65e90519aa8dfc51586a080f3bf"
+  "expectedRunKey": "sha256-v1:806bcede3ac6a91436bed72756fadd68aa7b36d4118da8c88a6b04f38d95a06c"
 }

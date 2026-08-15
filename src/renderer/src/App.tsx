@@ -13,7 +13,7 @@ import { IconRefresh } from '@tabler/icons-react';
 import { FONT } from './utils/uiTokens';
 import { migrateDefaultSetupSidebarJson, migratePersistedLayout } from './utils/layoutMigration';
 import { MaximizedPanelProvider } from './layout/MaximizedPanelProvider';
-import { maximizedPanelComponent } from './layout/panelLayoutState';
+import { maximizedPanelComponent, setupSidebarCollapsed } from './layout/panelLayoutState';
 
 // APP_VERSION imported from UpdateBanner.tsx — single source of truth
 // window.electron and window.api are declared in src/preload/index.d.ts — no redeclaration needed here.
@@ -70,6 +70,7 @@ function App(): JSX.Element {
   // forces the toolbar and context-derived maximized presentation to re-render.
   const [, setModelVersion] = useState(0);
   const maximizedPanel = maximizedPanelComponent(model);
+  const isSetupSidebarCollapsed = setupSidebarCollapsed(model);
   const [checking, setChecking] = useState(false);
   const [quotaError, setQuotaError] = useState(initialLayout.migrationSaveFailed);
   const [gameDataStatus, setGameDataStatus] = useState(getGameDataStatus);
@@ -222,7 +223,10 @@ function App(): JSX.Element {
 
       {/* Layout */}
       <Box style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        <MaximizedPanelProvider maximizedPanel={maximizedPanel}>
+        <MaximizedPanelProvider
+          maximizedPanel={maximizedPanel}
+          setupSidebarCollapsed={isSetupSidebarCollapsed}
+        >
           <Layout
             model={model}
             factory={factory}

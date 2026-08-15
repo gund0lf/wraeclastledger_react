@@ -15,7 +15,7 @@
  * moving every parser in lockstep.
  */
 import { SessionSettings, LootItem, ManualLootItem } from '../types';
-import { generateRunRegex, generateSlamRegex, trimmedMean } from './priceUtils';
+import { generateRunRegex, trimmedMean } from './priceUtils';
 import { computeProfit, computeMultiplier, resolveFragmentCount } from './profit';
 import { EXPORT_EMOJI as E } from './discordEmoji';
 import { buildLootSummary, lootSummaryWireLine } from './lootSummary';
@@ -72,12 +72,22 @@ export interface DiscordExportInput {
   gameDataPatchVersion?: string | null;
 }
 
+const compactPrice = (value: number, decimals = 1): string =>
+  value.toFixed(decimals).replace(/\.0+$/, '');
+
+const compactAstrolabeType = (value: string): string => {
+  const compact = value.trim().replace(/\s+Astrolabe$/i, '');
+  return compact || value.trim();
+};
+
 export function buildDiscordExport(input: DiscordExportInput): string {
   const { maps, settings, lootItems, baselineTotal, investmentNeutralization } = input;
   const baselineItems = input.baselineItems ?? [];
   const manualLootItems = input.manualLootItems ?? [];
-  const stratName   = input.stratName?.trim()  ?? '';
-  const stratNotes  = input.stratNotes?.trim() ?? '';
+  const inlineText = (value: string | undefined): string =>
+    value?.trim().replace(/\s*[\r\n]+\s*/g, ' ') ?? '';
+  const stratName   = inlineText(input.stratName);
+  const stratNotes  = inlineText(input.stratNotes);
   const shareTags   = input.shareTags ?? [];
   const isGroupPlay = input.isGroupPlay ?? false;
   const groupSize   = input.groupSize ?? null;
@@ -123,29 +133,24 @@ export function buildDiscordExport(input: DiscordExportInput): string {
   const scarabLines = settings.scarabs.filter((s) => s.name).map((s) => `- ${s.name} (${s.cost}c)`).join('\n');
   const deliLine    = settings.advDeliOrbType && settings.advDeliOrbQtyPerMap > 0
     ? E.delirium.uni + ' **Delirium Orbs:** ' + settings.advDeliOrbQtyPerMap + 'x ' + settings.advDeliOrbType +
-      ' (' + (settings.advDeliOrbQtyPerMap * 20) + '% delirious, ' +
-      settings.advDeliOrbPriceEach.toFixed(1) + 'c each = ' +
-      (settings.advDeliOrbQtyPerMap * settings.advDeliOrbPriceEach).toFixed(1) + 'c/map)'
+      ' @ ' + compactPrice(settings.advDeliOrbPriceEach) + 'c ea'
     : null;
   const astroLine = settings.advAstrolabeType
-    ? E.astrolabe.uni + ' **Astrolabe:** ' + settings.advAstrolabeType +
-      ' (' + settings.advAstrolabeCount + 'x, ' + settings.advAstrolabePrice.toFixed(0) + 'c each)'
+    ? E.astrolabe.uni + ' **Astrolabe:** ' + compactAstrolabeType(settings.advAstrolabeType) +
+      ' \u00B7 ' + settings.advAstrolabeCount + 'x @ ' + compactPrice(settings.advAstrolabePrice) + 'c ea'
     : null;
   const atlasUrl = settings.atlasTreeUrl?.includes('#') ? settings.atlasTreeUrl : null;
 
   let regexBlock = '';
   if (n > 0) {
     const avg    = { avgQuant, avgPack, avgCurr, avgRarity, avgScarabs };
-    const is8mod = settings.mapType === '8-mod';
     // Shared regexes are emitted WITHOUT the author's brick exclusions
     // (2026-07-20): exclusions are build-specific noise for everyone else,
     // which also retires the disclaimer line. In-app importers regenerate
     // with their own exclusions anyway; Discord-only readers get the neutral
     // form. Card-budget bonus: shorter regex strings.
-    regexBlock = ['', `${E.search.uni} **Generated Regex (${n} maps, trimmed avg)**`,
-      `Avg: ${avgQuant.toFixed(0)}%Q \u00B7 ${avgRarity.toFixed(0)}%R \u00B7 ${avgPack.toFixed(0)}%P \u00B7 ${avgCurr.toFixed(0)}% Curr`,
+    regexBlock = ['', `${E.search.uni} **Regex**`,
       `${E.run.uni} Run: \`${generateRunRegex(avg, [])}\``,
-      ...(!is8mod ? [`${E.slam.uni} Slam: \`${generateSlamRegex(avg, [])}\` *(open slots only)*`] : []),
     ].join('\n');
   }
 
@@ -183,7 +188,7 @@ export function buildDiscordExport(input: DiscordExportInput): string {
     // parsers key on field labels), and it cost ~33 card-budget units.
     `${E.maps.uni} **Maps:** ${n} | **Type:** ${settings.mapType} | **Multiplier:** ${multiplier.toFixed(2)}\u00D7`,
     ...(usesObservedMods && observedModAverage != null
-      ? [`**Observed Mods:** ${observedModAverage.toFixed(1)} average (${n}/${n} exact maps)`]
+      ? [`**Observed Mods:** ${observedModAverage.toFixed(1)} avg`]
       : []),
     chiselLine,
     `${E.stats.uni} **Avg Quant:** ${avgQuant.toFixed(0)}% | **Avg Rarity:** ${avgRarity.toFixed(0)}% | **Avg Pack:** ${avgPack.toFixed(0)}% | **Avg Currency:** ${avgCurr.toFixed(0)}%`,
@@ -199,7 +204,7 @@ export function buildDiscordExport(input: DiscordExportInput): string {
     ...(hasPoints ? [`${E.points.uni} **Atlas Points:** ${atlasPts}/${atlasPtsMax}`] : []),
     ...(league    ? [`${E.league.uni} **League:** ${league}`] : []),
     ...(hasGameDataProvenance
-      ? [`**Game Data:** r${gameDataRevision} \u00B7 patch ${gameDataPatchVersion}`]
+      ? [`**Data:** r${gameDataRevision}/${gameDataPatchVersion}`]
       : []),
     `**Multiplying Modifiers:** ${multiplyingModifiers.source === 'off'
       ? 'Off'

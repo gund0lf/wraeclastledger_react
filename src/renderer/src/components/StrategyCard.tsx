@@ -11,7 +11,9 @@ import {
 import {
   Strategy, TAG_COLORS, MAP_TYPE_TAGS, MAP_TYPE_LABELS, TAG_SHORT,
   BROWSER_COLS, BROWSER_GRID_TEMPLATE, BROWSER_MAXIMIZED_COLS,
-  BROWSER_MAXIMIZED_GRID_TEMPLATE, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X,
+  BROWSER_MAXIMIZED_GRID_TEMPLATE, BROWSER_SETUP_COLLAPSED_GRID_TEMPLATE,
+  BROWSER_MAXIMIZED_SETUP_COLLAPSED_GRID_TEMPLATE, BROWSER_ACTIVITY_WIDTH,
+  BROWSER_MAXIMIZED_ACTIVITY_WIDTH, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X,
 } from '../utils/strategyConstants';
 import { formatActiveTime } from '../utils/timeEstimate';
 import { computeVisibleTagCount } from '../utils/tagFit';
@@ -26,6 +28,7 @@ import { EvidenceRunsDisclosure } from './EvidenceRunsDisclosure';
 import { LootEvidenceSummary } from './LootEvidenceSummary';
 import { evidencePresentation } from '../utils/evidenceApi';
 import { COLOR, FONT } from '../utils/uiTokens';
+import { formatRelativeAge, latestStrategyActivity } from '../utils/relativeTime';
 
 // ─── CopyRegex ────────────────────────────────────────────────────────────────
 
@@ -138,6 +141,7 @@ export const StrategyCard = ({
   discordTag,
   frozen = false,
   maximized = false,
+  showPublishedActivity = false,
 }: {
   strategy: Strategy; onLoadBuild: (s: Strategy) => void;
   /** Continuing a strategy is author-only. This display heuristic only decides
@@ -149,9 +153,20 @@ export const StrategyCard = ({
   frozen?: boolean;
   /** Uses the roomier Browser grid only while the containing tabset is maximized. */
   maximized?: boolean;
+  /** Adds relative publish/update age only while the Setup sidebar is collapsed. */
+  showPublishedActivity?: boolean;
 }) => {
   const browserCols = maximized ? BROWSER_MAXIMIZED_COLS : BROWSER_COLS;
-  const browserGridTemplate = maximized ? BROWSER_MAXIMIZED_GRID_TEMPLATE : BROWSER_GRID_TEMPLATE;
+  const browserActivityWidth = maximized
+    ? BROWSER_MAXIMIZED_ACTIVITY_WIDTH
+    : BROWSER_ACTIVITY_WIDTH;
+  const browserGridTemplate = showPublishedActivity
+    ? maximized
+      ? BROWSER_MAXIMIZED_SETUP_COLLAPSED_GRID_TEMPLATE
+      : BROWSER_SETUP_COLLAPSED_GRID_TEMPLATE
+    : maximized
+      ? BROWSER_MAXIMIZED_GRID_TEMPLATE
+      : BROWSER_GRID_TEMPLATE;
   const [open, setOpen] = useState(false);
   // Author's atlas multiplier at share time (from the export). Only parsed
   // when the card is expanded at least once — the raw_export parse is cheap
@@ -178,6 +193,13 @@ export const StrategyCard = ({
     if (!strategy.updated_at) return null;
     try { return new Date(strategy.updated_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' }); } catch { return null; }
   })();
+  const activity = latestStrategyActivity(
+    strategy.posted_at,
+    strategy.updated_at,
+    revision,
+  );
+  const activityRelative = formatRelativeAge(activity.timestamp);
+  const activityDate = activity.kind === 'Updated' ? updatedDate : publishedDate;
   const {
     runCount: evidenceRunCount,
     mapCount: displayMapCount,
@@ -269,6 +291,13 @@ export const StrategyCard = ({
         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
           <TagStrip tagStr={strategy.type_tag} layoutKey={open} />
         </div>
+        {showPublishedActivity && (
+          <Tooltip label={`${activity.kind} ${activityDate ?? 'date unavailable'}`} withArrow>
+            <Text size="xs" c="dimmed" lineClamp={1} style={{ width: browserActivityWidth, flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>
+              {activityRelative}
+            </Text>
+          </Tooltip>
+        )}
         {hasObservedMods ? (
           <Tooltip
             label={`Observed explicit-mod average across ${observedModSampleSize} exact maps. Strategy bucket remains ${strategy.map_type ?? 'unclassified'}; Browser 6/8 filtering is unchanged.`}

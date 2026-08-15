@@ -6,13 +6,14 @@
  */
 import { stripExportDecoration } from './discordEmoji';
 import { decodeLootSummary, LOOT_EVIDENCE_LABEL, type LootSummary } from './lootSummary';
+import { decodeDiscordShareWire, DISCORD_SHARE_WIRE_PREFIX } from './discordShareWire';
 
 export interface DiscordImport {
   mapCount: number; mapType: string; multiplier: number;
   avgQuant: number; avgRarity: number; avgPack: number; avgCurr: number;
   perMapCost: number; totalInvest: number; totalReturn: number;
   netProfit: number; divPerMap: number; divPrice: number;
-  chisel: string; runRegex: string; slamRegex: string; scarabs: string[]; scarabCosts: number[];
+  chisel: string; chiselPrice: number; runRegex: string; slamRegex: string; scarabs: string[]; scarabCosts: number[];
   atlasTreeUrl: string;
   strategyName: string; strategyNotes: string;
   typeTags: string[];
@@ -54,6 +55,9 @@ export interface DiscordImport {
 
 export function parseDiscordExport(raw: string): DiscordImport | null {
   try {
+    const compact = decodeDiscordShareWire(raw);
+    if (compact) return compact;
+    if (raw.trim().replace(/^```\s*/m, '').startsWith(DISCORD_SHARE_WIRE_PREFIX)) return null;
     // Strip all decoration (custom/app emoji refs + unicode emoji) up front so
     // every field pattern below keys on the text label, never on a glyph
     // (BACKLOG "Discord export/import" Part 1 - import stays decoration-proof).
@@ -128,9 +132,29 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     };
     const mapCount    = num([/Maps:\s*(\d+)/]);
     const multiplier  = num([/Multiplier:\s*([\d.]+)[x\u00d7]/i]);
-    const observedM = text.match(/Observed Mods:\s*([\d.]+)\s+average\s*\((\d+)\/\d+\s+exact maps\)/i);
-    const observedModAverage = observedM ? parseFloat(observedM[1]) : null;
-    const observedModSampleSize = observedM ? parseInt(observedM[2]) : null;
+    const observedDetailedM = text.match(
+      /Observed Mods:\s*([\d.]+)\s+average\s*\((\d+)\/(\d+)\s+exact maps\)/i,
+    );
+    const observedCompactM = text.match(/Observed Mods:\s*([\d.]+)\s+avg\b/i);
+    const observedCandidate = observedCompactM
+      ? parseFloat(observedCompactM[1])
+      : observedDetailedM ? parseFloat(observedDetailedM[1]) : null;
+    const observedSampleCandidate = observedCompactM
+      ? mapCount
+      : observedDetailedM ? parseInt(observedDetailedM[2]) : null;
+    const observedTotalCandidate = observedCompactM
+      ? mapCount
+      : observedDetailedM ? parseInt(observedDetailedM[3]) : null;
+    const hasCompleteObservedMods = observedCandidate != null
+      && Number.isFinite(observedCandidate)
+      && observedCandidate >= 0
+      && observedCandidate <= 20
+      && observedSampleCandidate != null
+      && observedSampleCandidate > 0
+      && observedSampleCandidate === observedTotalCandidate
+      && observedTotalCandidate === mapCount;
+    const observedModAverage = hasCompleteObservedMods ? observedCandidate : null;
+    const observedModSampleSize = hasCompleteObservedMods ? observedSampleCandidate : null;
     const avgQuant    = num([/Avg Quant:\s*(\d+)%/]);
     const avgRarity   = num([/Avg Rarity:\s*(\d+)%/]);
     const avgPack     = num([/Avg Pack:\s*(\d+)%/]);
@@ -145,6 +169,8 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     const mapType     = str([/Type:\s*([68]-mod)/]);
     const chiselRaw   = str([/Chisel:\s*([^\n]+)/]);
     const chisel      = chiselRaw.replace(/\(.*/, '').replace(/[^\x00-\x7F]/g, '').trim();
+    const chiselPriceMatch = chiselRaw.match(/\(([\d.]+)c(?:\s+each)?\)/i);
+    const chiselPrice = chiselPriceMatch ? parseFloat(chiselPriceMatch[1]) : 0;
     const atlasTreeUrl = str([/Atlas Tree:\s*(https?:\/\/\S+)/]);
     const stripBt     = (s: string) => s.trim().replace(/^`+|`+$/g, '').trim();
     // Decoration already stripped above, so key purely on the label.
@@ -171,12 +197,18 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
       .split(',')
       .map((tag) => tag.trim().toLowerCase())
       .filter(Boolean);
-    const deliOrbMatch    = text.match(/Delirium Orbs:\s*(\d+)x\s+([^\s(]+)[^\n]*?(\d+\.?\d*)c each/i);
-    const deliOrbQty      = deliOrbMatch ? parseInt(deliOrbMatch[1]) : 0;
-    const deliOrbType     = deliOrbMatch ? deliOrbMatch[2].replace(/[^\x00-\x7F]/g, '').trim() : '';
-    const deliOrbPrice    = deliOrbMatch ? parseFloat(deliOrbMatch[3]) : 0;
-    const astroMatch      = text.match(/Astrolabe:\s*([^\n(]+?)\s+\((\d+)x,\s*(\d+\.?\d*)c each\)/i);
-    const astroType       = astroMatch ? astroMatch[1].replace(/[^\x00-\x7F]/g, '').trim() : '';
+    const deliOrbDetailsM = text.match(/Delirium Orbs:\s*(\d+)x\s+([^\n(@]+?)\s*(?:@|\()/i);
+    const deliOrbPriceM   = text.match(/Delirium Orbs:[^\n]*?([\d.]+)c\s*(?:ea|each)\b/i);
+    const deliOrbQty      = deliOrbDetailsM ? parseInt(deliOrbDetailsM[1]) : 0;
+    const deliOrbType     = deliOrbDetailsM ? deliOrbDetailsM[2].replace(/[^\x00-\x7F]/g, '').trim() : '';
+    const deliOrbPrice    = deliOrbPriceM ? parseFloat(deliOrbPriceM[1]) : 0;
+    const astroCompactM   = text.match(/Astrolabe:\s*([^\n\u00B7]+?)\s*\u00B7\s*(\d+)x\s*@\s*([\d.]+)c\s*ea\b/i);
+    const astroLegacyM    = text.match(/Astrolabe:\s*([^\n(]+?)\s+\((\d+)x,\s*([\d.]+)c each\)/i);
+    const astroMatch      = astroCompactM ?? astroLegacyM;
+    const astroTypeRaw    = astroMatch ? astroMatch[1].replace(/[^\x00-\x7F]/g, '').trim() : '';
+    const astroType       = astroCompactM && astroTypeRaw && !/\sAstrolabe$/i.test(astroTypeRaw)
+      ? `${astroTypeRaw} Astrolabe`
+      : astroTypeRaw;
     const astroCount      = astroMatch ? parseInt(astroMatch[2]) : 0;
     const astroPrice      = astroMatch ? parseFloat(astroMatch[3]) : 0;
     const excludedDrops: { name: string; value: number }[] = [];
@@ -203,9 +235,12 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     const atlasPoints    = ptsM ? parseInt(ptsM[1]) : null;
     const atlasPointsMax = ptsM ? parseInt(ptsM[2]) : null;
     const league = str([/League:\s*([^\n]+)/]);
-    const gameDataM = text.match(/Game Data:\s*r(\d+)\s*(?:[·-]\s*)?patch\s+([\w.-]+)/i);
-    const gameDataRevision = gameDataM ? parseInt(gameDataM[1]) : null;
-    const gameDataPatchVersion = gameDataM ? gameDataM[2] : null;
+    const gameDataM = text.match(/Game Data:\s*r(\d+)\s*(?:[\u00B7-]\s*)?patch\s+([\w.-]+)/i);
+    const compactDataM = text.match(/Data:\s*r(\d+)\/([\w.-]+)/i);
+    const gameDataRevision = compactDataM
+      ? parseInt(compactDataM[1])
+      : gameDataM ? parseInt(gameDataM[1]) : null;
+    const gameDataPatchVersion = compactDataM ? compactDataM[2] : gameDataM?.[2] ?? null;
     const multiplyingM = text.match(/Multiplying Modifiers:\s*(Off|(\d+)\s+fragments?)/i);
     const multiplyingModifiersAllocated = multiplyingM
       ? multiplyingM[1].toLowerCase() !== 'off'
@@ -219,7 +254,7 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     if (mapCount === 0) return null;
     return { mapCount, mapType, multiplier, avgQuant, avgRarity, avgPack, avgCurr,
              perMapCost, totalInvest, totalReturn, netProfit, divPerMap, divPrice,
-             chisel, runRegex, slamRegex, scarabs, scarabCosts, atlasTreeUrl, strategyName, strategyNotes, typeTags,
+             chisel, chiselPrice, runRegex, slamRegex, scarabs, scarabCosts, atlasTreeUrl, strategyName, strategyNotes, typeTags,
              deliOrbQty, deliOrbType, deliOrbPrice, astroType, astroCount, astroPrice,
              excludedDrops, gemInfo, isGroupPlay,
              groupSize, sessionMinutes, atlasPoints, atlasPointsMax,

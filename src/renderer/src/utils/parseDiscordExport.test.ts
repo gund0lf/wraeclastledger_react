@@ -142,11 +142,13 @@ describe('parseDiscordExport', () => {
   it('chisel strips parenthetical price suffix', () => {
     const r = parseDiscordExport(EXPORT_WITH_EXTRAS);
     expect(r!.chisel).toBe('Avarice');
+    expect(r!.chiselPrice).toBe(40);
   });
 
   it('returns empty defaults for missing optional fields', () => {
     const r = parseDiscordExport(FULL_EXPORT);
     expect(r!.chisel).toBe('');
+    expect(r!.chiselPrice).toBe(0);
     expect(r!.slamRegex).toBe('');
     expect(r!.scarabs).toEqual([]);
     expect(r!.excludedDrops).toEqual([]);

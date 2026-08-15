@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { IconBrandDiscord, IconCheck } from '@tabler/icons-react';
 import { useSessionKeys } from '../store/useSessionStore';
 import { buildDiscordExport } from '../utils/discordExport';
+import { encodeDiscordShareWire } from '../utils/discordShareWire';
 import { parseTimeInput } from '../utils/sessionTime';
 import { computeTimeEstimate, formatActiveTime } from '../utils/timeEstimate';
 import { ALL_TYPE_TAGS, STRATEGY_API_URL, type Strategy } from '../utils/strategyConstants';
@@ -15,7 +16,12 @@ import { buildUpdateComparison, rowDirection } from '../utils/updateCompare';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { getManifest } from '../utils/gameData';
 import { hasImpossibleAtlasPoints, leagueShareBlock } from '../utils/shareValidation';
-import { DISCORD_MSG_LIMIT, STRAT_NAME_MAX, computeShareBudget } from '../utils/exportBudget';
+import {
+  DISCORD_MSG_LIMIT,
+  STRAT_NAME_MAX,
+  compactPostedCardPreview,
+  computeCompactShareBudget,
+} from '../utils/exportBudget';
 import {
   EvidencePreflightError,
   prepareEvidenceSubmission,
@@ -253,7 +259,26 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
        updateTargetId, evidenceTargetId, evidenceExpectedRevision, evidenceProof,
        activeManifest.revision, activeManifest.patchVersion]);
 
-  const budget = computeShareBudget(discordExport, discordExportNoNotes, stratNotes.length);
+  const parsedDiscordExport = parseDiscordExport(discordExport);
+  const discordWire = useMemo(() => {
+    if (!parsedDiscordExport) return '';
+    try {
+      return encodeDiscordShareWire(parsedDiscordExport);
+    } catch {
+      return '';
+    }
+  }, [parsedDiscordExport]);
+  const budget = computeCompactShareBudget(
+    discordWire,
+    discordExport,
+    discordExportNoNotes,
+    stratNotes.length,
+    parsedDiscordExport?.lootSummary ?? null,
+  );
+  const postedCardPreview = compactPostedCardPreview(
+    discordExport,
+    parsedDiscordExport?.lootSummary ?? null,
+  );
   // Ended/missing league blocks sharing outright (decided 2026-07-19): the
   // server rejects it anyway - stop the wasted export at the source.
   const leagueBlock = leagueShareBlock(settings.leagueName);
@@ -265,7 +290,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   // overflow keeps the preview visible so the author can see what to trim.
   const evidenceBlocked = evidenceTargetId !== null && evidenceProof === null;
   const previewWithheld = impossibleAtlasPoints || leagueBlock !== null || evidenceBlocked || shareIncomplete;
-  const copyDisabled = previewWithheld || !budget.fitsPlain;
+  const copyDisabled = previewWithheld || !discordWire || !budget.fitsWire || !budget.fitsPlain;
 
   // ── Update run: compare the about-to-publish numbers to what's live now ─────
   // Fetch the current published strategy by uuid so the author can eyeball what
@@ -304,7 +329,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     <Modal opened={opened} onClose={onClose} title="Share My Session" size="md">
       <Stack gap="sm">
         <Text size="xs" c="dimmed">
-          Copy this export and paste it into your strategy Discord channel. The bot picks it up automatically.
+          Copy the compact submission into your strategy Discord channel. The preview below is the readable card the bot will post.
         </Text>
         {evidenceTargetId && (
           <Alert color={evidenceFetchError || evidencePreflightError ? 'red' : 'teal'} variant="light" p="xs">
@@ -462,10 +487,12 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
             // (e.g. more scarabs added), the red counter + disabled copy handle it.
             maxLength={Math.max(budget.notesMax, stratNotes.length)}
             autosize minRows={2} maxRows={4} />
-          <Text size="xs" c={budget.notesRemaining < 0 ? 'red' : 'dimmed'} style={{ fontSize: FONT.small }}>
-            {budget.notesRemaining < 0
+          <Text size="xs" c={budget.notesRemaining < 0 || !budget.fitsWire ? 'red' : 'dimmed'} style={{ fontSize: FONT.small }}>
+            {!budget.fitsWire
+              ? `Compact Discord submission exceeds the limit by ${budget.wireLength - DISCORD_MSG_LIMIT} characters — shorten the notes.`
+              : budget.notesRemaining < 0
               ? `Notes exceed the Discord card budget by ${-budget.notesRemaining} characters — trim them to share.`
-              : `${budget.notesRemaining} characters left for notes (Discord card limit).`}
+              : `${budget.notesRemaining} characters left for notes in the posted card.`}
           </Text>
         </Stack>
         <Stack gap={4}>
@@ -507,11 +534,13 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
             {timeCaption}
           </Text>
         </Stack>
-        <Divider label="Preview" labelPosition="left" />
-        <Text size="xs" c={!budget.fitsPlain ? 'red' : budget.fitsDecorated ? 'dimmed' : 'orange'} style={{ fontSize: FONT.small }}>
-          {`Card size: ${budget.plainCardLength}/${DISCORD_MSG_LIMIT} plain | ${budget.decoratedCardLength}/${DISCORD_MSG_LIMIT} with emotes — `}
-          {!budget.fitsPlain
-            ? 'too large to post; trim notes.'
+        <Divider label="Posted card preview" labelPosition="left" />
+        <Text size="xs" c={!budget.fitsWire || !budget.fitsPlain ? 'red' : budget.fitsDecorated ? 'dimmed' : 'orange'} style={{ fontSize: FONT.small }}>
+          {`Submission: ${budget.wireLength}/${DISCORD_MSG_LIMIT} | posted card: ${budget.plainCardLength}/${DISCORD_MSG_LIMIT} plain, ${budget.decoratedCardLength}/${DISCORD_MSG_LIMIT} with emotes — `}
+          {!budget.fitsWire
+            ? 'compact paste is too large; trim notes.'
+            : !budget.fitsPlain
+            ? 'posted card is too large; trim notes.'
             : budget.fitsDecorated
               ? 'fits with app emotes.'
               : 'posts without app emotes (over the emote budget).'}
@@ -533,11 +562,11 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
         ) : (
           <div style={{ background: COLOR.bgDeep, borderRadius: 6, padding: '8px 10px', maxHeight: 200, overflowY: 'auto' }}>
             <Text size="xs" style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', color: COLOR.textSoft, fontSize: FONT.small, lineHeight: 1.5 }}>
-              {discordExport}
+              {postedCardPreview}
             </Text>
           </div>
         )}
-        <CopyButton value={discordExport} timeout={2000}>
+        <CopyButton value={discordWire} timeout={2000}>
           {({ copied, copy }) => (
             <Button leftSection={copied ? <IconCheck size={14} /> : <IconBrandDiscord size={14} />} onClick={copy}
               disabled={copyDisabled}

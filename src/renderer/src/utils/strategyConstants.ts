@@ -248,6 +248,7 @@ export const BROWSER_ROW_PAD_X = 10;
 /** Full collapsed-row grid plus gaps/padding. Below this, preserve the table and
  * expose horizontal scrolling instead of silently clipping metric columns. */
 export const BROWSER_MIN_CONTENT_WIDTH = 860;
+export const BROWSER_SETUP_COLLAPSED_MIN_CONTENT_WIDTH = 962;
 
 export const BROWSER_MAXIMIZED_COLS = {
   chevron: 22,
@@ -264,6 +265,9 @@ export const BROWSER_MAXIMIZED_COLS = {
 } as const;
 
 export const BROWSER_MAXIMIZED_MIN_CONTENT_WIDTH = 1180;
+export const BROWSER_MAXIMIZED_SETUP_COLLAPSED_MIN_CONTENT_WIDTH = 1298;
+export const BROWSER_ACTIVITY_WIDTH = 96;
+export const BROWSER_MAXIMIZED_ACTIVITY_WIDTH = 112;
 
 // Header and collapsed cards share this exact grid. The former paired flex
 // layouts drifted whenever content or border geometry differed between them.
@@ -276,5 +280,17 @@ export const BROWSER_GRID_TEMPLATE =
 export const BROWSER_MAXIMIZED_GRID_TEMPLATE =
   `${BROWSER_MAXIMIZED_COLS.chevron}px ${BROWSER_MAXIMIZED_COLS.author}px minmax(${BROWSER_MAXIMIZED_COLS.tags}px, 1fr) ` +
   `${BROWSER_MAXIMIZED_COLS.mod}px ${BROWSER_MAXIMIZED_COLS.maps}px ${BROWSER_MAXIMIZED_COLS.cost}px ` +
+  `${BROWSER_MAXIMIZED_COLS.invest}px ${BROWSER_MAXIMIZED_COLS.profit}px ${BROWSER_MAXIMIZED_COLS.score}px ` +
+  `${BROWSER_MAXIMIZED_COLS.dph}px ${BROWSER_MAXIMIZED_COLS.dpm}px`;
+
+export const BROWSER_SETUP_COLLAPSED_GRID_TEMPLATE =
+  `${BROWSER_COLS.chevron}px ${BROWSER_COLS.author}px minmax(${BROWSER_COLS.tags}px, 1fr) ` +
+  `${BROWSER_ACTIVITY_WIDTH}px ${BROWSER_COLS.mod}px ${BROWSER_COLS.maps}px ${BROWSER_COLS.cost}px ` +
+  `${BROWSER_COLS.invest}px ${BROWSER_COLS.profit}px ${BROWSER_COLS.score}px ` +
+  `${BROWSER_COLS.dph}px ${BROWSER_COLS.dpm}px`;
+
+export const BROWSER_MAXIMIZED_SETUP_COLLAPSED_GRID_TEMPLATE =
+  `${BROWSER_MAXIMIZED_COLS.chevron}px ${BROWSER_MAXIMIZED_COLS.author}px minmax(${BROWSER_MAXIMIZED_COLS.tags}px, 1fr) ` +
+  `${BROWSER_MAXIMIZED_ACTIVITY_WIDTH}px ${BROWSER_MAXIMIZED_COLS.mod}px ${BROWSER_MAXIMIZED_COLS.maps}px ${BROWSER_MAXIMIZED_COLS.cost}px ` +
   `${BROWSER_MAXIMIZED_COLS.invest}px ${BROWSER_MAXIMIZED_COLS.profit}px ${BROWSER_MAXIMIZED_COLS.score}px ` +
   `${BROWSER_MAXIMIZED_COLS.dph}px ${BROWSER_MAXIMIZED_COLS.dpm}px`;
