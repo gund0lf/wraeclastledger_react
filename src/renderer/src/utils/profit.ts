@@ -19,7 +19,7 @@
  *     count of the last Advanced Costs edit) and must not be read anywhere.
  *     It is removed entirely in store migration v16 (WP2).
  */
-import { SessionSettings, LootItem, ScarabSlot, MapData } from '../types';
+import { SessionSettings, LootItem, ManualLootItem, ScarabSlot, MapData } from '../types';
 import { MAP_DEVICE_SLOT_COUNT, MULTIPLYING_EFFECT_PER_FRAGMENT } from '../../../shared/mapDevice';
 
 /* ------------------------------------------------------------------ */
@@ -105,6 +105,7 @@ export interface ProfitInputs {
   settings: SessionSettings;
   mapCount: number;
   lootItems: LootItem[];
+  manualLootItems?: ManualLootItem[];
   baselineTotal: number;
   investmentNeutralization?: number;
 }
@@ -112,6 +113,8 @@ export interface ProfitInputs {
 export interface ProfitResult extends CostBreakdown {
   /** Sum of non-excluded loot items. */
   rawReturn: number;
+  /** Explicit author-valued loot omitted or unpriced by the CSV. */
+  manualReturn: number;
   /** Gem buy cost added back to the return — ONLY when a baseline exists. */
   gemBuyOffset: number;
   /** rawReturn + gemBuyOffset + neutralization, minus baseline when present. 0 when no return CSV. */
@@ -132,19 +135,24 @@ export function computeProfit(input: ProfitInputs): ProfitResult {
 
   const rawReturn = lootItems.filter((l) => !l.excluded).reduce((a, b) => a + b.total, 0);
   const hasReturn = lootItems.length > 0;
+  // Manual entries supplement an imported return snapshot; they never turn a
+  // baseline-only session into a return on their own.
+  const manualReturn = hasReturn
+    ? (input.manualLootItems ?? []).reduce((sum, item) => sum + Math.max(0, item.total || 0), 0)
+    : 0;
   const hasBl     = baselineTotal > 0 && hasReturn;
   const gemBuyOffset =
     hasBl && settings.advGemName?.trim() && settings.advGemCount > 0 && settings.advGemBuyPrice > 0
       ? settings.advGemCount * settings.advGemBuyPrice
       : 0;
-  const adjReturn = rawReturn + gemBuyOffset + neutralization;
+  const adjReturn = rawReturn + manualReturn + gemBuyOffset + neutralization;
   const lootGain  = hasReturn ? (hasBl ? adjReturn - baselineTotal : adjReturn) : 0;
   const net       = lootGain - costs.totalInvest;
   const div       = settings.divinePrice || 1;
 
   return {
     ...costs,
-    rawReturn, gemBuyOffset, lootGain, net, div, hasReturn, hasBl,
+    rawReturn, manualReturn, gemBuyOffset, lootGain, net, div, hasReturn, hasBl,
     cPerMap:   mapCount > 0 ? net / mapCount : 0,
     divPerMap: mapCount > 0 ? (net / div) / mapCount : 0,
   };

@@ -31,10 +31,10 @@ interface Props {
 
 export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   const {
-    maps, settings, lootItems, baselineTotal,
+    maps, settings, lootItems, baselineItems, baselineTotal, manualLootItems,
     investmentNeutralization, discordTag, setDiscordTag, updateAdvSetting, updateSetting,
   } = useSessionKeys(
-    'maps', 'settings', 'lootItems', 'baselineTotal',
+    'maps', 'settings', 'lootItems', 'baselineItems', 'baselineTotal', 'manualLootItems',
     'investmentNeutralization', 'discordTag', 'setDiscordTag', 'updateAdvSetting', 'updateSetting',
   );
 
@@ -148,14 +148,14 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   // All math lives in utils/profit.ts via buildDiscordExport (WP1) — the export
   // is guaranteed to match the Dashboard.
   const baseDiscordExport = useMemo(() => buildDiscordExport({
-    maps, settings, lootItems, baselineTotal, investmentNeutralization,
+    maps, settings, lootItems, baselineItems, baselineTotal, manualLootItems, investmentNeutralization,
     stratName, stratNotes, shareTags, isGroupPlay,
     groupSize: isGroupPlay ? groupSize : null,
     sessionMinutes,
     updateStrategyId: evidenceTargetId ? null : updateTargetId,
     gameDataRevision: activeManifest.revision,
     gameDataPatchVersion: activeManifest.patchVersion,
-  }), [maps, settings, lootItems, baselineTotal, investmentNeutralization,
+  }), [maps, settings, lootItems, baselineItems, baselineTotal, manualLootItems, investmentNeutralization,
        stratName, stratNotes, shareTags, isGroupPlay, groupSize, sessionMinutes,
        updateTargetId, evidenceTargetId, activeManifest.revision, activeManifest.patchVersion]);
 
@@ -208,7 +208,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
       return baseDiscordExport;
     }
     return buildDiscordExport({
-      maps, settings, lootItems, baselineTotal, investmentNeutralization,
+      maps, settings, lootItems, baselineItems, baselineTotal, manualLootItems, investmentNeutralization,
       stratName, stratNotes, shareTags, isGroupPlay,
       groupSize: isGroupPlay ? groupSize : null,
       sessionMinutes,
@@ -225,7 +225,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
       gameDataPatchVersion: activeManifest.patchVersion,
     });
   }, [baseDiscordExport, evidenceTargetId, evidenceExpectedRevision, evidenceProof,
-      maps, settings, lootItems, baselineTotal, investmentNeutralization,
+      maps, settings, lootItems, baselineItems, baselineTotal, manualLootItems, investmentNeutralization,
       stratName, stratNotes, shareTags, isGroupPlay, groupSize, sessionMinutes,
       activeManifest.revision, activeManifest.patchVersion]);
 
@@ -233,7 +233,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   // cap from everything else in the card (exportBudget.ts). Cheap - the pure
   // builder already runs per keystroke for the preview.
   const discordExportNoNotes = useMemo(() => buildDiscordExport({
-    maps, settings, lootItems, baselineTotal, investmentNeutralization,
+    maps, settings, lootItems, baselineItems, baselineTotal, manualLootItems, investmentNeutralization,
     stratName, stratNotes: '', shareTags, isGroupPlay,
     groupSize: isGroupPlay ? groupSize : null,
     sessionMinutes,
@@ -248,7 +248,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     } : null,
     gameDataRevision: activeManifest.revision,
     gameDataPatchVersion: activeManifest.patchVersion,
-  }), [maps, settings, lootItems, baselineTotal, investmentNeutralization,
+  }), [maps, settings, lootItems, baselineItems, baselineTotal, manualLootItems, investmentNeutralization,
        stratName, shareTags, isGroupPlay, groupSize, sessionMinutes,
        updateTargetId, evidenceTargetId, evidenceExpectedRevision, evidenceProof,
        activeManifest.revision, activeManifest.patchVersion]);

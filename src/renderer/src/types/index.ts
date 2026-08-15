@@ -18,6 +18,24 @@ export interface LootItem {
   quantity: string; price: string; total: number; excluded: boolean;
 }
 
+export type LootCategory =
+  | 'Currency' | 'Fragments' | 'Scarabs' | 'Divination Cards'
+  | 'Essences' | 'Deliriums' | 'Oils' | 'Incubators'
+  | 'Unique Weapons' | 'Unique Armours' | 'Unique Accessories'
+  | 'Unique Flasks' | 'Unique Jewels' | 'Maps' | 'Gems'
+  | 'Beasts' | 'League' | 'Other';
+
+/** Author-supplied correction for valuable loot omitted or left unpriced by
+ * WealthyExile. Public summaries retain its manual provenance and note. */
+export interface ManualLootItem {
+  id: string;
+  name: string;
+  quantity: number;
+  total: number;
+  category: LootCategory;
+  note: string;
+}
+
 export interface MapData {
   id: string; tier: number; name: string;
   quantity: number; rarity: number; packSize: number;
@@ -123,6 +141,7 @@ export interface SavedSession {
   id: string; name: string; createdAt: string;
   maps: MapData[]; lootItems: LootItem[];
   baselineItems: LootItem[]; baselineTotal: number;
+  manualLootItems?: ManualLootItem[];
   settings: SessionSettings;
   notes?: string;
   // Double-count correction the user applied to THIS session (WP11 / C, additive).

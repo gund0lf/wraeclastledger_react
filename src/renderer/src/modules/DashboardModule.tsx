@@ -2,23 +2,26 @@ import {
   Card, Text, Group, Stack, Badge, Divider, ActionIcon,
   Button, SegmentedControl, Table, Checkbox, TextInput,
   Progress, Image, Skeleton, Tooltip, Modal, SimpleGrid, Anchor,
+  NumberInput, Select, Textarea, Alert,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useSessionKeys } from '../store/useSessionStore';
 import { QUALITY_STAT_EFFECTS, CHISEL_TYPES, DELIRIUM_ORB_LIST } from '../utils/constants';
-import { MapData, LootItem } from '../types';
+import { LootCategory, ManualLootItem, MapData, LootItem } from '../types';
 import { parseLootCsv, diffLootItems } from '../utils/lootUtils';
 import {
-  IconBug, IconCards, IconCircleDashed, IconCoins, IconDiamond,
-  IconFileImport, IconMap, IconPackage, IconPuzzle, IconSearch, IconTrash,
+  IconCoins, IconFileImport, IconPencil, IconPlus, IconPackage,
+  IconSearch, IconTrash,
 } from '@tabler/icons-react';
 import { getItemIcons, chiselItemName } from '../utils/itemIcons';
 import { PoeItemIcon } from '../components/ui/PoeItemIcon';
+import { LootCategoryGlyph, LootCategoryIcon } from '../components/ui/LootCategoryIcon';
 import { computeProfit, computeMultiplier } from '../utils/profit';
 import { fcSep } from '../utils/parseDiscordExport';
 import { computeTimeEstimate, formatActiveTime } from '../utils/timeEstimate';
-import { buildCategoryBreakdown, categorise, ItemCategory, CAT_COLORS } from '../utils/lootCategories';
+import { buildCategoryBreakdown, categorise, ITEM_CATEGORIES, ItemCategory, CAT_COLORS } from '../utils/lootCategories';
+import { LOOT_SUMMARY_ROW_LIMIT, MANUAL_LOOT_NAME_MAX, MANUAL_LOOT_NOTE_MAX } from '../utils/lootSummary';
 import { StatTile } from '../components/ui/StatTile';
 import { GettingStartedCard } from '../components/GettingStartedCard';
 import { CollapsibleSection as Section } from '../components/ui/CollapsibleSection';
@@ -46,18 +49,23 @@ interface CsvCandidate {
   total: number;
 }
 
+interface ManualLootDraft {
+  name: string;
+  quantity: number;
+  total: number;
+  category: LootCategory;
+  note: string;
+}
+
+const EMPTY_MANUAL_LOOT: ManualLootDraft = {
+  name: '', quantity: 1, total: 0, category: 'Other', note: '',
+};
+
 type IconResolver = (name: string) => string | undefined;
 
 const LootCategoryFallback = ({ name, tab }: { name: string; tab: string }) => {
   const category = categorise(name, tab);
-  const props = { size: ICON_SIZE, stroke: 1.5, color: COLOR.textMuted };
-  if (category === 'Currency' || category === 'Deliriums') return <IconCircleDashed {...props} />;
-  if (category === 'Fragments') return <IconPuzzle {...props} />;
-  if (category === 'Scarabs') return <IconBug {...props} />;
-  if (category === 'Divination Cards') return <IconCards {...props} />;
-  if (category === 'Maps') return <IconMap {...props} />;
-  if (category === 'Gems') return <IconDiamond {...props} />;
-  return <div style={{ width: ICON_SIZE, height: ICON_SIZE }} />;
+  return <LootCategoryGlyph category={category} size={ICON_SIZE} />;
 };
 
 const ResolvedLootIcon = ({
@@ -82,14 +90,16 @@ const ResolvedLootIcon = ({
 
 export const DashboardModule = () => {
   const {
-    maps, settings, lootItems, baselineItems, baselineTotal,
+    maps, settings, lootItems, baselineItems, baselineTotal, manualLootItems,
     setLootItems, setBaselineItems, toggleLootItemExcluded, clearLoot,
+    addManualLootItem, updateManualLootItem, removeManualLootItem,
     investmentNeutralization, setInvestmentNeutralization,
     investmentDismissed, setInvestmentDismissed,
     onboardingDismissed, dismissOnboarding, activeSessionId, leagueOverride,
   } = useSessionKeys(
-    'maps', 'settings', 'lootItems', 'baselineItems', 'baselineTotal',
+    'maps', 'settings', 'lootItems', 'baselineItems', 'baselineTotal', 'manualLootItems',
     'setLootItems', 'setBaselineItems', 'toggleLootItemExcluded', 'clearLoot',
+    'addManualLootItem', 'updateManualLootItem', 'removeManualLootItem',
     'investmentNeutralization', 'setInvestmentNeutralization',
     'investmentDismissed', 'setInvestmentDismissed',
     'onboardingDismissed', 'dismissOnboarding', 'activeSessionId', 'leagueOverride',
@@ -132,7 +142,8 @@ export const DashboardModule = () => {
   // settings.rollingCostPerMap was stale and is removed in migration v16).
   const profit = useMemo(() => computeProfit({
     settings, mapCount: maps.length, lootItems, baselineTotal, investmentNeutralization,
-  }), [maps.length, settings, lootItems, baselineTotal, investmentNeutralization]);
+    manualLootItems,
+  }), [maps.length, settings, lootItems, baselineTotal, investmentNeutralization, manualLootItems]);
 
   // WP9 Tier 1: local pace estimate from parsedAt gaps. Null until >= 5
   // timestamped maps; never persisted, never shared, never load-bearing.
@@ -146,6 +157,7 @@ export const DashboardModule = () => {
   const [pairOpen,   { open: openPair, close: closePair }] = useDisclosure(false);
   const [pairCandidates, setPairCandidates] = useState<CsvCandidate[]>([]);
   const [clearOpen,  { open: openClear, close: closeClear }] = useDisclosure(false);
+  const [manualOpen, { open: openManual, close: closeManual }] = useDisclosure(false);
   const [lootView,  setLootView]  = useState<'list' | 'diff' | 'breakdown'>('list');
   const [search,    setSearch]    = useState('');
   const [diffTab,   setDiffTab]   = useState<'gains' | 'losses'>('gains');
@@ -155,6 +167,8 @@ export const DashboardModule = () => {
   const [visibleDiffRows, setVisibleDiffRows] = useState(INITIAL_ROWS);
   const [hoveredLootClear, setHoveredLootClear] = useState(false); // loot-clear icon red hover (Sessions pattern)
   const [dragOver, setDragOver] = useState(false); // CSV drag-and-drop highlight
+  const [editingManualId, setEditingManualId] = useState<string | null>(null);
+  const [manualDraft, setManualDraft] = useState<ManualLootDraft>(EMPTY_MANUAL_LOOT);
 
   const hasBaseline = baselineItems.length > 0 || baselineTotal > 0;
   const hasCurrent  = lootItems.length > 0;
@@ -202,8 +216,12 @@ export const DashboardModule = () => {
 
   const categoryBreakdown = useMemo(() => {
     const gi = gains.map((r) => ({ name: r.name, tab: r.tab, total: r.delta, excluded: false }));
-    return buildCategoryBreakdown(hasBoth && gi.length > 0 ? gi : lootItems);
-  }, [gains, lootItems, hasBoth]);
+    const breakdown = buildCategoryBreakdown(hasBoth && gi.length > 0 ? gi : lootItems);
+    for (const item of manualLootItems) {
+      breakdown.set(item.category, (breakdown.get(item.category) ?? 0) + item.total);
+    }
+    return breakdown;
+  }, [gains, lootItems, hasBoth, manualLootItems]);
   const sortedCats = [...categoryBreakdown.entries()].filter(([, v]) => v > 0.1).sort((a, b) => b[1] - a[1]);
   const maxCat     = sortedCats[0]?.[1] ?? 1;
 
@@ -212,6 +230,38 @@ export const DashboardModule = () => {
     return q ? lootItems.filter((i) => i.name.toLowerCase().includes(q)) : lootItems;
   }, [lootItems, search]);
   const inclTotal = useMemo(() => lootItems.filter((i) => !i.excluded).reduce((a, b) => a + b.total, 0), [lootItems]);
+  const manualTotal = useMemo(() => manualLootItems.reduce((sum, item) => sum + item.total, 0), [manualLootItems]);
+
+  const startAddManual = () => {
+    setEditingManualId(null);
+    setManualDraft(EMPTY_MANUAL_LOOT);
+    openManual();
+  };
+  const startEditManual = (item: ManualLootItem) => {
+    setEditingManualId(item.id);
+    setManualDraft({
+      name: item.name,
+      quantity: item.quantity,
+      total: item.total,
+      category: item.category,
+      note: item.note,
+    });
+    openManual();
+  };
+  const saveManual = () => {
+    const item = {
+      name: manualDraft.name.trim().slice(0, MANUAL_LOOT_NAME_MAX),
+      quantity: Math.max(1, Math.round(manualDraft.quantity || 1)),
+      total: Math.max(0, manualDraft.total || 0),
+      category: manualDraft.category,
+      note: manualDraft.note.trim().slice(0, MANUAL_LOOT_NOTE_MAX),
+    };
+    if (!item.name || item.total <= 0) return;
+    if (editingManualId) updateManualLootItem(editingManualId, item);
+    else addManualLootItem(item);
+    setEditingManualId(null);
+    setManualDraft(EMPTY_MANUAL_LOOT);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -326,6 +376,103 @@ export const DashboardModule = () => {
             );
           })}
           <Button variant="subtle" color="gray" onClick={cancelCsvPair}>Cancel</Button>
+        </Stack>
+      </Modal>
+
+      <Modal opened={manualOpen} onClose={() => {
+        closeManual();
+        setEditingManualId(null);
+        setManualDraft(EMPTY_MANUAL_LOOT);
+      }} title="Custom loot additions" size="lg">
+        <Stack gap="sm">
+          <Alert color="yellow" variant="light" title="Supplemental and always disclosed">
+            <Text size="xs">
+              Use this only for valuable drops missing from the Return CSV. Every custom row is marked Manual in shared strategies and included in the manual subtotal.
+            </Text>
+          </Alert>
+
+          {manualLootItems.length > 0 && (
+            <Stack gap={4}>
+              <Group justify="space-between">
+                <Text size="xs" fw={700}>Current additions</Text>
+                <Badge color="yellow" variant="light" size="sm">
+                  {manualLootItems.length} manual / {fcSep(manualTotal, false, 1)}
+                </Badge>
+              </Group>
+              {manualLootItems.map((item) => (
+                <Group key={item.id} justify="space-between" wrap="nowrap" p={6}
+                  style={{ border: `1px solid ${COLOR.border}`, borderRadius: 6 }}>
+                  <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
+                    <LootCategoryIcon category={item.category} size={ICON_SIZE} />
+                    <Stack gap={0} style={{ minWidth: 0 }}>
+                      <Group gap={4} wrap="nowrap">
+                        <Text size="xs" fw={600} lineClamp={1}>{item.name}</Text>
+                        <Badge color="yellow" variant="outline" size="xs">Manual</Badge>
+                      </Group>
+                      <Text size="xs" c="dimmed" lineClamp={1} style={{ fontSize: FONT.small }}>
+                        {item.quantity} item{item.quantity === 1 ? '' : 's'} / {item.category}{item.note ? ` / ${item.note}` : ''}
+                      </Text>
+                    </Stack>
+                  </Group>
+                  <Group gap={4} wrap="nowrap">
+                    <Text size="xs" fw={700} c="teal">{fcSep(item.total, false, 1)}</Text>
+                    <ActionIcon size="md" variant="subtle" aria-label={`Edit ${item.name}`}
+                      onClick={() => startEditManual(item)}>
+                      <IconPencil size={14} />
+                    </ActionIcon>
+                    <ActionIcon size="md" variant="subtle" color="red" aria-label={`Remove ${item.name}`}
+                      onClick={() => {
+                        removeManualLootItem(item.id);
+                        if (editingManualId === item.id) {
+                          setEditingManualId(null);
+                          setManualDraft(EMPTY_MANUAL_LOOT);
+                        }
+                      }}>
+                      <IconTrash size={14} />
+                    </ActionIcon>
+                  </Group>
+                </Group>
+              ))}
+              <Divider my={2} />
+            </Stack>
+          )}
+
+          <Text size="xs" fw={700}>{editingManualId ? 'Edit addition' : 'Add a missing drop'}</Text>
+          <TextInput label="Item name" placeholder="e.g. Unidentified unique ring"
+            value={manualDraft.name} maxLength={MANUAL_LOOT_NAME_MAX}
+            onChange={(event) => setManualDraft((draft) => ({ ...draft, name: event.currentTarget.value }))} />
+          <SimpleGrid cols={2} spacing="sm">
+            <NumberInput label="Quantity" min={1} step={1} allowDecimal={false}
+              value={manualDraft.quantity}
+              onChange={(value) => setManualDraft((draft) => ({ ...draft, quantity: Number(value) || 1 }))} />
+            <NumberInput label="Total value (chaos)" min={0} decimalScale={1}
+              value={manualDraft.total}
+              onChange={(value) => setManualDraft((draft) => ({ ...draft, total: Number(value) || 0 }))} />
+          </SimpleGrid>
+          <Select label="Category" data={ITEM_CATEGORIES} value={manualDraft.category}
+            onChange={(value) => setManualDraft((draft) => ({ ...draft, category: (value as LootCategory | null) ?? 'Other' }))} />
+          <Textarea label="Reason / note (optional)" placeholder="Why WealthyExile missed or underpriced it"
+            value={manualDraft.note} maxLength={MANUAL_LOOT_NOTE_MAX} autosize minRows={2} maxRows={4}
+            onChange={(event) => setManualDraft((draft) => ({ ...draft, note: event.currentTarget.value }))} />
+          <Group justify="space-between">
+            <Text size="xs" c="dimmed">
+              {manualLootItems.length}/{LOOT_SUMMARY_ROW_LIMIT} manual rows / shared evidence shows at most {LOOT_SUMMARY_ROW_LIMIT} total rows.
+            </Text>
+            <Group gap="xs">
+              {editingManualId && (
+                <Button variant="subtle" color="gray" onClick={() => {
+                  setEditingManualId(null);
+                  setManualDraft(EMPTY_MANUAL_LOOT);
+                }}>Cancel edit</Button>
+              )}
+              <Button leftSection={<IconPlus size={14} />} onClick={saveManual}
+                disabled={!manualDraft.name.trim() || manualDraft.total <= 0
+                  || (!editingManualId && manualLootItems.length >= LOOT_SUMMARY_ROW_LIMIT)}>
+                {editingManualId ? 'Save change' : 'Add item'}
+              </Button>
+              <Button variant="default" onClick={closeManual}>Done</Button>
+            </Group>
+          </Group>
         </Stack>
       </Modal>
 
@@ -535,6 +682,14 @@ export const DashboardModule = () => {
                   Return
                 </Button>
               </Tooltip>
+              <Tooltip label={hasCurrent
+                ? 'Add a valuable drop that WealthyExile missed'
+                : 'Import a Return CSV before adding custom loot'}>
+                <Button size="xs" variant={manualLootItems.length > 0 ? 'light' : 'default'} color="yellow"
+                  leftSection={<IconPlus size={12} />} disabled={!hasCurrent} onClick={startAddManual}>
+                  Custom{manualLootItems.length > 0 ? ` (${manualLootItems.length})` : ''}
+                </Button>
+              </Tooltip>
               {(hasCurrent || hasBaseline) && (
                 <Tooltip label="Clear all loot data">
                   <ActionIcon size="md" variant="default" aria-label="Clear all loot data"
@@ -575,6 +730,20 @@ export const DashboardModule = () => {
 
             {(hasCurrent || hasBoth) && (
               <Stack gap={4} style={{ flex: 1, minHeight: 0 }}>
+                {manualLootItems.length > 0 && (
+                  <Group justify="space-between" px={6} py={4}
+                    style={{ border: `1px solid ${COLOR.tintYellowBorder}`, borderRadius: 6, background: COLOR.tintYellowBg, flexShrink: 0 }}>
+                    <Group gap={5} wrap="nowrap">
+                      <Badge color="yellow" variant="outline" size="xs">Manual</Badge>
+                      <Text size="xs" c="dimmed">
+                        {manualLootItems.length} addition{manualLootItems.length === 1 ? '' : 's'} included in return
+                      </Text>
+                    </Group>
+                    <Button size="compact-xs" variant="subtle" color="yellow" onClick={startAddManual}>
+                      {fcSep(manualTotal, true, 1)} / review
+                    </Button>
+                  </Group>
+                )}
                 <SegmentedControl value={lootView} onChange={(v) => setLootView(v as any)}
                   data={[{ value: 'list', label: 'List' }, { value: 'diff', label: 'Diff', disabled: !hasBoth }, { value: 'breakdown', label: 'Breakdown' }]}
                   size="xs" fullWidth style={{ flexShrink: 0 }} />
@@ -672,7 +841,10 @@ export const DashboardModule = () => {
                           <Stack key={cat} gap={3} p={6}
                             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6 }}>
                             <Group justify="space-between">
-                              <Badge color={CAT_COLORS[cat as ItemCategory] ?? 'gray'} size="xs" variant="light">{cat}</Badge>
+                              <Group gap={6} wrap="nowrap">
+                                <LootCategoryIcon category={cat as ItemCategory} size={20} />
+                                <Badge color={CAT_COLORS[cat as ItemCategory] ?? 'gray'} size="xs" variant="light">{cat}</Badge>
+                              </Group>
                               <Group gap={6} align="baseline">
                                 <Text size="xs" c="dimmed" style={{ fontVariantNumeric: 'tabular-nums' }}>{((value / catTotal) * 100).toFixed(0)}%</Text>
                                 <Text size="xs" fw={600} c="teal" style={{ fontVariantNumeric: 'tabular-nums' }}>{fcSep(value, false, 1)}</Text>

@@ -1,4 +1,5 @@
 import { STRATEGY_API_URL, type Strategy } from './strategyConstants';
+import type { LootSummary } from './lootSummary';
 
 export interface EvidenceCostBreakdown {
   chisel: { name: string; priceEach: number } | null;
@@ -29,6 +30,7 @@ export interface PublicEvidenceRun {
   cost_breakdown: EvidenceCostBreakdown;
   game_data_revision: number | null;
   game_data_patch_version: string | null;
+  loot_summary: LootSummary | null;
 }
 
 export interface EvidenceRunsResponse {

@@ -23,6 +23,7 @@ import { SectionLabel } from './ui/SectionLabel';
 import { StatTile } from './ui/StatTile';
 import { RegexLine } from './ui/RegexLine';
 import { EvidenceRunsDisclosure } from './EvidenceRunsDisclosure';
+import { LootEvidenceSummary } from './LootEvidenceSummary';
 import { evidencePresentation } from '../utils/evidenceApi';
 import { COLOR, FONT } from '../utils/uiTokens';
 
@@ -155,11 +156,15 @@ export const StrategyCard = ({
   // Author's atlas multiplier at share time (from the export). Only parsed
   // when the card is expanded at least once — the raw_export parse is cheap
   // but there's no reason to run it for collapsed rows.
-  const authorMult = useMemo(() => {
+  const parsedExport = useMemo(() => {
     if (!open || !strategy.raw_export) return null;
-    const m = parseDiscordExport(strategy.raw_export)?.multiplier;
-    return m && m > 0 ? m : null;
+    return parseDiscordExport(strategy.raw_export);
   }, [open, strategy.raw_export]);
+  const authorMult = useMemo(() => {
+    const m = parsedExport?.multiplier;
+    return m && m > 0 ? m : null;
+  }, [parsedExport]);
+  const lootSummary = strategy.loot_summary ?? parsedExport?.lootSummary ?? null;
   const isOwn = !frozen && !!(
     discordTag?.trim()
     && strategy.discord_username?.toLowerCase() === discordTag.trim().toLowerCase()
@@ -404,6 +409,8 @@ export const StrategyCard = ({
               mapCount={displayMapCount}
             />
           )}
+
+          {lootSummary && <LootEvidenceSummary summary={lootSummary} />}
 
           {(() => {
             // Breakdown of the ALL-IN per-map figure. The remainder after

@@ -4,6 +4,7 @@
  * Shared types and constants for the Strategy Browser.
  * No React dependencies — safe to import from any component or util.
  */
+import type { LootSummary } from './lootSummary';
 
 // ─── Strategy server base URL ─────────────────────────────────────────────────
 // Single home for the API base (Browser fetches + game-data manifest fetch).
@@ -73,6 +74,10 @@ export interface Strategy {
   setup_fingerprint?: string | null;
   game_data_revision?: number | null;
   game_data_patch_version?: string | null;
+  /** Versioned, bounded top-30 loot provenance. New servers return the JSON
+   * column directly; freshly shared raw exports remain a client-side fallback
+   * during coordinated rollout. */
+  loot_summary?: LootSummary | null;
 }
 
 export interface ApiResponse {

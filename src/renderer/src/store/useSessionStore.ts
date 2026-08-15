@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { persist, type PersistStorage } from 'zustand/middleware';
-import { MapData, SessionSettings, LootItem, SavedSession, ScarabSlot, ScarabPreset, RegexSet, ExclusionPreset, LeagueCloseouts } from '../types';
+import { MapData, SessionSettings, LootItem, ManualLootItem, SavedSession, ScarabSlot, ScarabPreset, RegexSet, ExclusionPreset, LeagueCloseouts } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { tryFetchDivinePrice, sanitizeExclusionTerms } from '../utils/priceUtils';
 import { confirmedLeagueSync, getCurrentLeague, normalizeLeagueOverride, setLeagueOverrideValue } from '../utils/league';
@@ -233,6 +233,7 @@ interface SessionState {
   lootItems: LootItem[];
   baselineItems: LootItem[];
   baselineTotal: number;
+  manualLootItems: ManualLootItem[];
   settings: SessionSettings;
   // v16: user-scoped, survive loadSession/newSession untouched
   discordTag: string;   // used to highlight own strategies in the browser
@@ -316,6 +317,9 @@ interface SessionState {
   setBaselineItems: (items: LootItem[]) => void;
   setBaselineTotal: (total: number) => void;
   toggleLootItemExcluded: (id: string) => void;
+  addManualLootItem: (item: Omit<ManualLootItem, 'id'>) => void;
+  updateManualLootItem: (id: string, item: Omit<ManualLootItem, 'id'>) => void;
+  removeManualLootItem: (id: string) => void;
   clearLoot: () => void;
   // initDivinePrice: cooldown-gated by default. Pass { force: true } to bypass
   // the 60s cooldown — used by the manual refresh button in InvestmentModule.
@@ -379,7 +383,7 @@ export function mergePersistedSessionState(
 export const useSessionStore = create<SessionState>()(
   persist(
     (set, get) => ({
-      maps: [], lootItems: [], baselineItems: [], baselineTotal: 0,
+      maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, manualLootItems: [],
       settings: { ...DEFAULT_SETTINGS },
       discordTag: DEFAULT_DISCORD_TAG, regexSets: [...DEFAULT_REGEX_SETS],
       leagueOverride: null,
@@ -398,7 +402,7 @@ export const useSessionStore = create<SessionState>()(
       removeMap: (id) => set((s) => ({ maps: s.maps.filter((m) => m.id !== id) })),
       undoLastMap: () => set((s) => ({ maps: s.maps.slice(0, -1) })),
       clearMaps: () => set({ maps: [] }),
-      clearSession: () => set({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0 }),
+      clearSession: () => set({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, manualLootItems: [] }),
       toggleWatch: () => set((s) => ({ isWatching: !s.isWatching })),
 
       updateSetting: (key, value) =>
@@ -443,7 +447,13 @@ export const useSessionStore = create<SessionState>()(
       setBaselineTotal: (total) => set({ baselineTotal: total }),
       toggleLootItemExcluded: (id) =>
         set((s) => ({ lootItems: s.lootItems.map((i) => i.id === id ? { ...i, excluded: !i.excluded } : i) })),
-      clearLoot: () => set({ lootItems: [], baselineItems: [], baselineTotal: 0 }),
+      addManualLootItem: (item) =>
+        set((s) => ({ manualLootItems: [...s.manualLootItems, { ...item, id: uuidv4() }] })),
+      updateManualLootItem: (id, item) =>
+        set((s) => ({ manualLootItems: s.manualLootItems.map((entry) => entry.id === id ? { ...item, id } : entry) })),
+      removeManualLootItem: (id) =>
+        set((s) => ({ manualLootItems: s.manualLootItems.filter((entry) => entry.id !== id) })),
+      clearLoot: () => set({ lootItems: [], baselineItems: [], baselineTotal: 0, manualLootItems: [] }),
 
       initDivinePrice: async (opts = {}) => {
         // WP4.2: staleness-based refresh. The old guard only fetched when the
@@ -533,18 +543,18 @@ export const useSessionStore = create<SessionState>()(
 
       saveAsNewSession: (name) => {
         flushActiveSessionAutoSave();
-        const { maps, lootItems, baselineItems, baselineTotal, settings, sessionNotes, investmentNeutralization, investmentDismissed } = get();
+        const { maps, lootItems, baselineItems, baselineTotal, manualLootItems, settings, sessionNotes, investmentNeutralization, investmentDismissed } = get();
         const id = new Date().toISOString();
         set((s) => ({
-          savedSessions: { ...s.savedSessions, [id]: { id, name, createdAt: id, maps: maps.map(stripRawText), lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, settings: { ...settings }, notes: sessionNotes, investmentNeutralization, investmentDismissed } },
+          savedSessions: { ...s.savedSessions, [id]: { id, name, createdAt: id, maps: maps.map(stripRawText), lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, manualLootItems: [...manualLootItems], settings: { ...settings }, notes: sessionNotes, investmentNeutralization, investmentDismissed } },
           activeSessionId: id, activeSessionName: name,
         }));
       },
       updateCurrentSession: () => {
-        const { maps, lootItems, baselineItems, baselineTotal, settings, sessionNotes, investmentNeutralization, investmentDismissed, activeSessionId, activeSessionName, savedSessions } = get();
+        const { maps, lootItems, baselineItems, baselineTotal, manualLootItems, settings, sessionNotes, investmentNeutralization, investmentDismissed, activeSessionId, activeSessionName, savedSessions } = get();
         if (!activeSessionId || !savedSessions[activeSessionId]) return;
         set((s) => ({
-          savedSessions: { ...s.savedSessions, [activeSessionId]: { ...s.savedSessions[activeSessionId], name: activeSessionName ?? s.savedSessions[activeSessionId].name, maps: maps.map(stripRawText), lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, settings: { ...settings }, notes: sessionNotes, investmentNeutralization, investmentDismissed } },
+          savedSessions: { ...s.savedSessions, [activeSessionId]: { ...s.savedSessions[activeSessionId], name: activeSessionName ?? s.savedSessions[activeSessionId].name, maps: maps.map(stripRawText), lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, manualLootItems: [...manualLootItems], settings: { ...settings }, notes: sessionNotes, investmentNeutralization, investmentDismissed } },
         }));
       },
       loadSession: (id) => {
@@ -577,7 +587,7 @@ export const useSessionStore = create<SessionState>()(
         });
         // A loaded historical session keeps its OWN atlasBonus snapshot; no
         // per-league seeding applies, so clear any pending seed / held choice.
-        set({ maps, lootItems: [...session.lootItems], baselineItems: [...(session.baselineItems ?? [])], baselineTotal: session.baselineTotal ?? 0, settings: { ...DEFAULT_SETTINGS, ...session.settings }, sessionNotes: session.notes ?? '', investmentNeutralization: session.investmentNeutralization ?? 0, investmentDismissed: session.investmentDismissed ?? false, activeSessionId: id, activeSessionName: session.name, isWatching: false, pendingAtlasBonusSeed: false, pendingAtlasBonusValue: null, loadedStrategyInfo: null });
+        set({ maps, lootItems: [...session.lootItems], baselineItems: [...(session.baselineItems ?? [])], baselineTotal: session.baselineTotal ?? 0, manualLootItems: [...(session.manualLootItems ?? [])], settings: { ...DEFAULT_SETTINGS, ...session.settings }, sessionNotes: session.notes ?? '', investmentNeutralization: session.investmentNeutralization ?? 0, investmentDismissed: session.investmentDismissed ?? false, activeSessionId: id, activeSessionName: session.name, isWatching: false, pendingAtlasBonusSeed: false, pendingAtlasBonusValue: null, loadedStrategyInfo: null });
       },
       deleteSession: (id) =>
         set((s) => { const { [id]: _, ...rest } = s.savedSessions; return { savedSessions: rest, activeSessionId: s.activeSessionId === id ? null : s.activeSessionId, activeSessionName: s.activeSessionId === id ? null : s.activeSessionName }; }),
@@ -599,6 +609,7 @@ export const useSessionStore = create<SessionState>()(
           lootItems: [],
           baselineItems: [],
           baselineTotal: 0,
+          manualLootItems: [],
           sessionNotes: '',
           investmentNeutralization: 0,
           investmentDismissed: false,
@@ -840,6 +851,7 @@ useSessionStore.subscribe((state, prev) => {
     state.lootItems !== prev.lootItems ||
     state.baselineItems !== prev.baselineItems ||
     state.baselineTotal !== prev.baselineTotal ||
+    state.manualLootItems !== prev.manualLootItems ||
     state.settings !== prev.settings ||
     state.sessionNotes !== prev.sessionNotes ||
     state.investmentNeutralization !== prev.investmentNeutralization ||

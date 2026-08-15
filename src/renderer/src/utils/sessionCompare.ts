@@ -50,6 +50,7 @@ export function buildCompareColumn(session: SavedSession): CompareColumn {
     settings: session.settings,
     mapCount: n,
     lootItems: session.lootItems,
+    manualLootItems: session.manualLootItems ?? [],
     baselineTotal: session.baselineTotal,
     investmentNeutralization: neutralization,
   });

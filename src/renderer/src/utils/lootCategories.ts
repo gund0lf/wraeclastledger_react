@@ -1,9 +1,14 @@
-export type ItemCategory =
-  | 'Currency' | 'Fragments' | 'Scarabs' | 'Divination Cards'
-  | 'Essences' | 'Deliriums' | 'Oils' | 'Incubators'
-  | 'Unique Weapons' | 'Unique Armours' | 'Unique Accessories'
-  | 'Unique Flasks' | 'Unique Jewels' | 'Maps' | 'Gems'
-  | 'Beasts' | 'League' | 'Other';
+import type { LootCategory } from '../types';
+
+export type ItemCategory = LootCategory;
+
+export const ITEM_CATEGORIES: ItemCategory[] = [
+  'Currency', 'Fragments', 'Scarabs', 'Divination Cards',
+  'Essences', 'Deliriums', 'Oils', 'Incubators',
+  'Unique Weapons', 'Unique Armours', 'Unique Accessories',
+  'Unique Flasks', 'Unique Jewels', 'Maps', 'Gems',
+  'Beasts', 'League', 'Other',
+];
 
 export const CAT_COLORS: Partial<Record<ItemCategory, string>> = {
   Currency: 'yellow',

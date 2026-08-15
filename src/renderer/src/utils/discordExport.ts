@@ -14,10 +14,11 @@
  * (parsed by the bot + client import paths) - do not change the bytes without
  * moving every parser in lockstep.
  */
-import { SessionSettings, LootItem } from '../types';
+import { SessionSettings, LootItem, ManualLootItem } from '../types';
 import { generateRunRegex, generateSlamRegex, trimmedMean } from './priceUtils';
 import { computeProfit, computeMultiplier, resolveFragmentCount } from './profit';
 import { EXPORT_EMOJI as E } from './discordEmoji';
+import { buildLootSummary, lootSummaryWireLine } from './lootSummary';
 
 /** Minimal structural map shape - keeps tests free of full MapData fixtures. */
 export interface ExportMapStats {
@@ -31,6 +32,12 @@ export interface DiscordExportInput {
   maps: ExportMapStats[];
   settings: SessionSettings;
   lootItems: LootItem[];
+  /** Item-level baseline is optional for legacy/test callers. New shares pass
+   * it so the public loot evidence can show actual gained rows. */
+  baselineItems?: LootItem[];
+  /** Explicitly author-valued drops absent from the Return CSV. These only
+   * count when a Return CSV exists and are always disclosed in loot evidence. */
+  manualLootItems?: ManualLootItem[];
   baselineTotal: number;
   investmentNeutralization: number;
   stratName?: string;
@@ -67,6 +74,8 @@ export interface DiscordExportInput {
 
 export function buildDiscordExport(input: DiscordExportInput): string {
   const { maps, settings, lootItems, baselineTotal, investmentNeutralization } = input;
+  const baselineItems = input.baselineItems ?? [];
+  const manualLootItems = input.manualLootItems ?? [];
   const stratName   = input.stratName?.trim()  ?? '';
   const stratNotes  = input.stratNotes?.trim() ?? '';
   const shareTags   = input.shareTags ?? [];
@@ -81,7 +90,16 @@ export function buildDiscordExport(input: DiscordExportInput): string {
 
   const n = maps.length;
   const profit = computeProfit({
-    settings, mapCount: n, lootItems, baselineTotal, investmentNeutralization,
+    settings, mapCount: n, lootItems, manualLootItems, baselineTotal, investmentNeutralization,
+  });
+  const lootSummary = buildLootSummary({
+    baselineItems,
+    lootItems,
+    baselineTotal,
+    manualLootItems,
+    gemCorrection: profit.gemBuyOffset,
+    investmentCorrection: investmentNeutralization,
+    reportedReturn: profit.lootGain,
   });
   const { multiplier, usesObservedMods, observedModAverage } = computeMultiplier(settings, maps);
   const multiplyingModifiers = resolveFragmentCount(settings);
@@ -201,5 +219,6 @@ export function buildDiscordExport(input: DiscordExportInput): string {
       `${E.gem.uni} **Gem leveling:** ${settings.advGemCount} gems | buy ${(settings.advGemCount * settings.advGemBuyPrice).toFixed(0)}c | sell ${(settings.advGemCount * settings.advGemSellPrice).toFixed(0)}c | net ${gemNetPL >= 0 ? '+' : ''}${gemNetPL.toFixed(0)}c *(excluded from map profit)*`
     ] : []),
     ...(regexBlock ? [regexBlock] : []),
+    ...(lootSummary ? [lootSummaryWireLine(lootSummary)] : []),
   ].join('\n');
 }

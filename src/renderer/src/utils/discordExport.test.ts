@@ -455,3 +455,51 @@ describe('Allflame strategy taxonomy tags', () => {
     expect(parseDiscordExport(exported)?.typeTags).toEqual(['mercenaries', 'trarthus']);
   });
 });
+
+describe('loot evidence wire', () => {
+  it('round-trips item-level CSV gains and visibly sourced manual additions', () => {
+    const baselineItems: LootItem[] = [
+      { id: 'base-div', name: 'Divine Orb', tab: 'curr', quantity: '1', price: '100', total: 100, excluded: false },
+    ];
+    const returnItems: LootItem[] = [
+      { id: 'return-div', name: 'Divine Orb', tab: 'curr', quantity: '3', price: '100', total: 300, excluded: false },
+    ];
+    const exported = buildDiscordExport({
+      maps: [{ quantity: 80, rarity: 60, packSize: 40, moreCurrency: 100, moreScarabs: 0 }],
+      settings: settings({
+        advGemCount: 0, advGemBuyPrice: 0, advGemSellPrice: 0, advGemName: '',
+        baseMapCost: 0, scarabs: [], advChaos: 0, advExalt: 0, advScour: 0, advAlch: 0,
+        advDeliOrbType: '', advDeliOrbQtyPerMap: 0, advAstrolabeType: '',
+      }),
+      lootItems: returnItems,
+      baselineItems,
+      baselineTotal: 100,
+      manualLootItems: [{
+        id: 'manual-blueprint', name: 'Unpriced Blueprint', quantity: 1,
+        total: 75, category: 'League', note: 'Missing from WealthyExile',
+      }],
+      investmentNeutralization: 0,
+    });
+    expect(exported).toContain('**Total Return:** 275.0c');
+    expect(exported).toContain('Loot Evidence: wl1.');
+    const parsed = parseDiscordExport(exported);
+    expect(parsed?.lootSummaryInvalid).toBe(false);
+    expect(parsed?.lootSummary).toMatchObject({
+      csvNet: 200,
+      manualTotal: 75,
+      reportedReturn: 275,
+    });
+    expect(parsed?.lootSummary?.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'Divine Orb', source: 'wealthyexile', value: 200 }),
+      expect.objectContaining({ name: 'Unpriced Blueprint', source: 'manual', value: 75 }),
+    ]));
+  });
+
+  it('keeps the strategy parseable while flagging malformed loot evidence', () => {
+    const malformed = build().replace(/^Loot Evidence:.*$/m, 'Loot Evidence: wl1.not-valid-compressed-data');
+    const parsed = parseDiscordExport(malformed);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.lootSummary).toBeNull();
+    expect(parsed?.lootSummaryInvalid).toBe(true);
+  });
+});

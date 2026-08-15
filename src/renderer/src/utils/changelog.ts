@@ -10,6 +10,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.77',
+    date: '2026-08-15',
+    changes: [
+      'Strategy shares now carry a validated loot breakdown with category totals and up to 30 top item rows, so Strategy Browser cards can show where the return came from instead of only the final profit number.',
+      'Dashboard loot tracking now supports supplemental custom drops after a Return CSV is imported. Author-valued entries are always marked Manual, keep their reason, and remain separate from WealthyExile-derived loot so the provenance is visible.',
+      'Loot breakdowns use representative Path of Exile category art in the app, while Discord strategy cards receive a generated two-column breakdown image with manual additions and omitted-row totals disclosed.',
+    ],
+  },
+  {
     version: '1.0.76',
     date: '2026-08-15',
     changes: [

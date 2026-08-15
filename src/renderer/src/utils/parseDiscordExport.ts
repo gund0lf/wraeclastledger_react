@@ -5,6 +5,7 @@
  * No React or store dependencies — safe to test in isolation.
  */
 import { stripExportDecoration } from './discordEmoji';
+import { decodeLootSummary, LOOT_EVIDENCE_LABEL, type LootSummary } from './lootSummary';
 
 export interface DiscordImport {
   mapCount: number; mapType: string; multiplier: number;
@@ -47,6 +48,8 @@ export interface DiscordImport {
   /** null means the pre-schema-v2 wire did not record Multiplying Modifiers. */
   multiplyingModifiersAllocated: boolean | null;
   multiplyingModifiersFragmentCount: number | null;
+  lootSummary: LootSummary | null;
+  lootSummaryInvalid: boolean;
 }
 
 export function parseDiscordExport(raw: string): DiscordImport | null {
@@ -210,6 +213,9 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     const multiplyingModifiersFragmentCount = multiplyingM
       ? multiplyingModifiersAllocated ? parseInt(multiplyingM[2]) : 0
       : null;
+    const lootLines = [...text.matchAll(new RegExp(`^${LOOT_EVIDENCE_LABEL}:\\s*(\\S+)\\s*$`, 'gim'))];
+    const lootSummary = lootLines.length === 1 ? decodeLootSummary(lootLines[0][1]) : null;
+    const lootSummaryInvalid = lootLines.length > 1 || (lootLines.length === 1 && lootSummary === null);
     if (mapCount === 0) return null;
     return { mapCount, mapType, multiplier, avgQuant, avgRarity, avgPack, avgCurr,
              perMapCost, totalInvest, totalReturn, netProfit, divPerMap, divPrice,
@@ -222,7 +228,8 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
              evidenceTargetStrategyId, evidenceExpectedRevision, evidenceRunKey,
              evidenceRunStartedAt, evidenceRunEndedAt, setupFingerprint,
              gameDataRevision, gameDataPatchVersion,
-             multiplyingModifiersAllocated, multiplyingModifiersFragmentCount };
+             multiplyingModifiersAllocated, multiplyingModifiersFragmentCount,
+             lootSummary, lootSummaryInvalid };
   } catch { return null; }
 }
 

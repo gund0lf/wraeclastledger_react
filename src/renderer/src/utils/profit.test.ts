@@ -214,6 +214,26 @@ describe('computeProfit — gemBuyOffset gating', () => {
     expect(noBl.lootGain).toBeCloseTo(RAW_RETURN, 4);
   });
 
+  it('adds explicitly manual loot only when a return CSV exists', () => {
+    const s = baseSettings();
+    const manualLootItems = [{
+      id: 'manual-1', name: 'Unpriced Blueprint', quantity: 1,
+      total: 500, category: 'Other' as const, note: 'Unpriced by WealthyExile',
+    }];
+    const withReturn = computeProfit({
+      settings: s, mapCount: 1, lootItems: [loot(1000)],
+      manualLootItems, baselineTotal: 100,
+    });
+    expect(withReturn.manualReturn).toBe(500);
+    expect(withReturn.lootGain).toBe(1400);
+
+    const withoutReturn = computeProfit({
+      settings: s, mapCount: 1, lootItems: [], manualLootItems, baselineTotal: 100,
+    });
+    expect(withoutReturn.manualReturn).toBe(0);
+    expect(withoutReturn.lootGain).toBe(0);
+  });
+
   it('requires a configured gem name, count, and buy price', () => {
     const s = SAD_PRESERVATION();
     s.advGemName = '';
