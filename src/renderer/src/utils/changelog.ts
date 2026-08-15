@@ -11,7 +11,7 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '1.0.76',
-    date: 'Unreleased',
+    date: '2026-08-15',
     changes: [
       'Fresh sessions now apply your default Regex exclusion preset before the first map is captured, and Nightmare Trade searches target the exact Nightmare Map item type.',
       'Maximized Map Log and Strategy Browser panels now use the extra workspace for wider results, while their ordinary docked layouts stay unchanged.',
