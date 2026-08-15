@@ -3,7 +3,7 @@ import {
   ActionIcon, Loader, Alert, Tooltip, Modal, UnstyledButton, SegmentedControl,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { IconRefresh, IconBrandDiscord, IconShare2 } from '@tabler/icons-react';
 import { DEFAULT_SETTINGS, useSessionKeys, useSessionStore } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
@@ -11,7 +11,8 @@ import { KNOWN_LEAGUES, activeKnownLeagues, isLeagueEnded } from '../utils/leagu
 import { parseDiscordExport } from '../utils/parseDiscordExport';
 import {
   Strategy, ApiResponse, ALL_TYPE_TAGS, BROWSER_COLS, BROWSER_GRID_TEMPLATE, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X,
-  BROWSER_MIN_CONTENT_WIDTH,
+  BROWSER_MIN_CONTENT_WIDTH, BROWSER_MAXIMIZED_COLS, BROWSER_MAXIMIZED_GRID_TEMPLATE,
+  BROWSER_MAXIMIZED_MIN_CONTENT_WIDTH,
   SortKey, SortOrder, SORT_DEFAULT_DIR, SORT_OPTIONS, STRATEGY_API_URL,
 } from '../utils/strategyConstants';
 import { StrategyCard } from '../components/StrategyCard';
@@ -26,12 +27,20 @@ import { WorkingSessionGuardModal } from '../components/WorkingSessionGuardModal
 import { isWorkingSessionMeaningful } from '../utils/workingSession';
 import { deriveAtlasCalcSettings } from '../../../shared/atlasStats';
 import { fingerprintSetupSnapshot, setupSnapshotFromDiscordImport } from '../utils/evidenceIdentity';
+import { usePanelMaximized } from '../layout/panelLayoutContext';
+import { deriveShareTags } from '../utils/shareTags';
 
 // API base (incl. the VITE_STRATEGY_API_URL dev override) moved to
 // strategyConstants.STRATEGY_API_URL — shared with the game-data loader.
 
 // ─── Main module ───────────────────────────────────────────────────────────────
 export const StrategyBrowserModule = () => {
+  const isMaximized = usePanelMaximized('strategy-browser');
+  const browserCols = isMaximized ? BROWSER_MAXIMIZED_COLS : BROWSER_COLS;
+  const browserGridTemplate = isMaximized ? BROWSER_MAXIMIZED_GRID_TEMPLATE : BROWSER_GRID_TEMPLATE;
+  const browserMinContentWidth = isMaximized
+    ? BROWSER_MAXIMIZED_MIN_CONTENT_WIDTH
+    : BROWSER_MIN_CONTENT_WIDTH;
   const {
     maps, settings, discordTag, leagueOverride,
     updateSetting, updateAdvSetting, updateScarab, newSession, saveAsNewSession, setLoadedStrategyInfo, loadSession,
@@ -119,57 +128,8 @@ export const StrategyBrowserModule = () => {
   const [shareOpen, { open: openShare, close: closeShare }] = useDisclosure(false);
   const [shareTags, setShareTags] = useState<string[]>([]);
 
-  const autoTags = useMemo(() => {
-    const names = settings.scarabs.filter((s) => s.name).map((s) => s.name.toLowerCase()).join(' ');
-    const cats: [string, string][] = [
-      ['delirium','delirium'],['legion','legion'],['breach','breach'],['harvest','harvest'],
-      ['expedition','expedition'],['ritual','ritual'],['abyss','abyss'],['blight','blight'],
-      ['beyond','beyond'],['incursion','incursion'],['betrayal','betrayal'],['essence','essence'],
-      ['divination','divination'],['harbinger','harbinger'],['titanic','titanic'],
-      ['torment','torment'],['ultimatum','ultimatum'],['kalguuran','kalguur'],
-      ['heist','heist'],['metamorph','metamorph'],['ambush','ambush'],['cartography','cartography'],
-      ['mercenar','mercenaries'],['trarth','trarthus'],
-    ];
-    return cats.filter(([kw]) => names.includes(kw)).map(([, tag]) => tag);
-  }, [settings.scarabs]);
-
   const handleOpenShare = () => {
-    if (shareTags.length === 0) {
-      const merged = Array.from(new Set([...autoTags, ...(settings.atlasDetectedTags ?? [])]));
-      if (maps.length > 0) {
-      const isOrig  = (m: any) => m.isOriginator      || (m.rawText?.includes("Originator's Memories") ?? false);
-      const isEmp   = (m: any) => m.isEmpoweredMirage  || (m.rawText?.includes('Empowered Mirage which covers the entire Map') ?? false);
-      const isNight = (m: any) => m.isNightmare         || (m.rawText?.includes('Nightmare Map') ?? false);
-      const hasOrig  = maps.some(isOrig);  const allOrig  = maps.every(isOrig);
-      const hasEmp   = maps.some(isEmp);   const allEmp   = maps.every(isEmp);
-      const hasNight = maps.some(isNight);
-      let subtype = '';
-      if (hasNight && maps.every(isNight))       subtype = 'nightmare';
-      else if (allOrig && allEmp)                subtype = 'empowered-originator';
-      else if (allOrig && !hasEmp)               subtype = 'originator';
-      else if (allEmp  && !hasOrig)              subtype = 'empowered';
-      else if (!hasOrig && !hasEmp && !hasNight) subtype = 'regular';
-      else                                       subtype = 'mixed';
-      if (subtype && !merged.includes(subtype)) merged.unshift(subtype);
-    }
-    if (settings.advAstrolabeType) {
-      const a = settings.advAstrolabeType.toLowerCase();
-      let astroTag = 'astrolabe';
-      if      (a.includes('templar'))         astroTag = 'astrolabe-templar';
-      else if (a.includes('deceptive'))       astroTag = 'astrolabe-deceptive';
-      else if (a.includes('enshrouded'))      astroTag = 'astrolabe-enshrouded';
-      else if (a.includes('timeless'))        astroTag = 'astrolabe-timeless';
-      else if (a.includes('grasping'))        astroTag = 'astrolabe-grasping';
-      else if (a.includes('nameless'))        astroTag = 'astrolabe-nameless';
-      else if (a.includes('runic'))           astroTag = 'astrolabe-runic';
-      else if (a.includes('fruiting'))        astroTag = 'astrolabe-fruiting';
-      else if (a.includes('fungal'))          astroTag = 'astrolabe-fungal';
-      else if (a.includes('chaotic'))         astroTag = 'astrolabe-chaotic';
-      else if (a.includes('lightless'))       astroTag = 'astrolabe-lightless';
-      if (!merged.includes(astroTag)) merged.push(astroTag);
-      }
-      if (merged.length > 0) setShareTags(merged);
-    }
+    setShareTags(deriveShareTags(settings, maps));
     openShare();
   };
 
@@ -550,7 +510,7 @@ export const StrategyBrowserModule = () => {
       </Modal>
 
       <div style={{ height: '100%', overflowX: 'auto', overflowY: 'hidden' }}>
-      <Card shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ display: 'flex', flexDirection: 'column', minWidth: BROWSER_MIN_CONTENT_WIDTH }}>
+      <Card shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ display: 'flex', flexDirection: 'column', minWidth: browserMinContentWidth }}>
         {/* session-16: "Strategy Browser" title dropped (redundant with the
             tab label); the count badge anchors the left. */}
         <ModuleHeader
@@ -616,41 +576,41 @@ export const StrategyBrowserModule = () => {
 
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         <div style={{
-          display: 'grid', gridTemplateColumns: BROWSER_GRID_TEMPLATE,
+          display: 'grid', gridTemplateColumns: browserGridTemplate,
           columnGap: BROWSER_ROW_GAP, alignItems: 'center', marginBottom: 3,
           padding: `2px ${BROWSER_ROW_PAD_X}px`, position: 'sticky', top: 0,
           zIndex: 2, background: COLOR.bgPanel,
         }}>
-          <div style={{ width: BROWSER_COLS.chevron, flexShrink: 0 }} />
-          <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.author, flexShrink: 0, fontSize: FONT.small }}>Author</Text>
+          <div style={{ width: browserCols.chevron, flexShrink: 0 }} />
+          <Text size="xs" c="dimmed" style={{ width: browserCols.author, flexShrink: 0, fontSize: FONT.small }}>Author</Text>
           <Text size="xs" c="dimmed" style={{ flex: 1, minWidth: 0, fontSize: FONT.small }}>Tags</Text>
           <Tooltip label="Observed average when exact map evidence was shared; otherwise the 6-mod/8-mod strategy bucket. Filtering always uses the bucket." withArrow multiline w={250}>
-            <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.mod,    flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>Mod</Text>
+            <Text size="xs" c="dimmed" style={{ width: browserCols.mod,    flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>Mod</Text>
           </Tooltip>
-          <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.maps,   flexShrink: 0, fontSize: FONT.small }}>Maps</Text>
+          <Text size="xs" c="dimmed" style={{ width: browserCols.maps,   flexShrink: 0, fontSize: FONT.small }}>Maps</Text>
           <Tooltip label="All-in: total investment ÷ map count — click to sort" withArrow>
             <UnstyledButton onClick={() => handleHeaderSort('cost_per_map')} aria-pressed={sortBy === 'cost_per_map'}
-              style={{ width: BROWSER_COLS.cost, flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Cost/map{sortArrow('cost_per_map')}</UnstyledButton>
+              style={{ width: browserCols.cost, flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Cost/map{sortArrow('cost_per_map')}</UnstyledButton>
           </Tooltip>
           <Tooltip label="Click to sort by total investment" withArrow>
             <UnstyledButton onClick={() => handleHeaderSort('least_invest')} aria-pressed={sortBy === 'least_invest'}
-              style={{ width: BROWSER_COLS.invest, flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Total Invest{sortArrow('least_invest')}</UnstyledButton>
+              style={{ width: browserCols.invest, flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Total Invest{sortArrow('least_invest')}</UnstyledButton>
           </Tooltip>
           <Tooltip label="Click to sort by net profit" withArrow>
             <UnstyledButton onClick={() => handleHeaderSort('net_profit')} aria-pressed={sortBy === 'net_profit'}
-              style={{ width: BROWSER_COLS.profit, flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Total Profit{sortArrow('net_profit')}</UnstyledButton>
+              style={{ width: browserCols.profit, flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Total Profit{sortArrow('net_profit')}</UnstyledButton>
           </Tooltip>
           <Tooltip label="Community score from thumbs reactions on the Discord post — click to sort" withArrow>
             <UnstyledButton onClick={() => handleHeaderSort('score')} aria-pressed={sortBy === 'score'}
-              style={{ width: BROWSER_COLS.score, flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Score{sortArrow('score')}</UnstyledButton>
+              style={{ width: browserCols.score, flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Score{sortArrow('score')}</UnstyledButton>
           </Tooltip>
           <Tooltip label="Optional author-reported context — click to select it as the sort. It is never the default ranking; div/map stays primary. Strategies without shared time list last." withArrow multiline w={270}>
             <UnstyledButton onClick={() => handleHeaderSort('div_per_hour')} aria-pressed={sortBy === 'div_per_hour'}
-              style={{ width: BROWSER_COLS.dph, textAlign: 'right', flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>div/h{sortArrow('div_per_hour')}</UnstyledButton>
+              style={{ width: browserCols.dph, textAlign: 'right', flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>div/h{sortArrow('div_per_hour')}</UnstyledButton>
           </Tooltip>
           <Tooltip label="Click to sort by divines per map" withArrow>
             <UnstyledButton onClick={() => handleHeaderSort('div_per_map')} aria-pressed={sortBy === 'div_per_map'}
-              style={{ width: BROWSER_COLS.dpm, textAlign: 'right', flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Profit/map{sortArrow('div_per_map')}</UnstyledButton>
+              style={{ width: browserCols.dpm, textAlign: 'right', flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Profit/map{sortArrow('div_per_map')}</UnstyledButton>
           </Tooltip>
         </div>
 
@@ -672,7 +632,7 @@ export const StrategyBrowserModule = () => {
               })
               .map((s) => <StrategyCard key={s.id} strategy={s} onLoadBuild={handleLoadBuild}
                 onContinueStrategy={openContinueCandidate}
-                discordTag={discordTag} />)}
+                discordTag={discordTag} maximized={isMaximized} />)}
           </Stack>
           {hasMore && !loading && (
             <Button variant="subtle" size="xs" fullWidth mt={8} onClick={() => fetchStrategies(offset + LIMIT)}>

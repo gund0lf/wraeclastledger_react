@@ -22,6 +22,7 @@ import { IconTrash, IconDeviceFloppy, IconChevronDown, IconRefresh, IconX, IconS
 import { CollapsibleSection } from '../components/ui/CollapsibleSection';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { MAP_DEVICE_SLOT_COUNT } from '../../../shared/mapDevice';
+import { usePanelMaximized } from '../layout/panelLayoutContext';
 
 const AdvSection = ({ title, filled, children }: {
   title: string; filled: boolean; children: React.ReactNode;
@@ -32,11 +33,11 @@ const AdvSection = ({ title, filled, children }: {
 );
 
 const PriceInput = ({
-  label, description, value, onChange, divinePrice, placeholder = '0', style,
+  label, description, value, onChange, divinePrice, placeholder = '0', style, size = 'xs',
 }: {
   label?: string; description?: string; value: number;
   onChange: (v: number) => void; divinePrice: number;
-  placeholder?: string; style?: React.CSSProperties;
+  placeholder?: string; style?: React.CSSProperties; size?: 'xs' | 'sm';
 }) => {
   const [raw, setRaw]         = useState(value > 0 ? String(value) : '');
   const [editing, setEditing] = useState(false);
@@ -58,11 +59,13 @@ const PriceInput = ({
       onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && commit()}
       rightSection={divPreview ? <Text size="xs" c="dimmed">{divPreview}</Text> : undefined}
       rightSectionWidth={divPreview ? 52 : 0}
-      style={style} size="xs" />
+      style={style} size={size} />
   );
 };
 
-export const InvestmentModule = () => {
+export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = {}) => {
+  const panelIsMaximized = usePanelMaximized('investment');
+  const isMaximized = !embedded && panelIsMaximized;
   const { ref: panelRef, width: panelWidth } = useElementSize();
   const compactPanel = panelWidth > 0 && panelWidth < 310;
   const {
@@ -471,15 +474,23 @@ export const InvestmentModule = () => {
         </Stack>
       </Modal>
 
-      <Card ref={panelRef} shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ overflow: 'auto' }}>
-        <Group justify="space-between" mb={8} wrap="nowrap" gap={compactPanel ? 4 : 'md'}>
+      <Card
+        ref={panelRef}
+        shadow={embedded ? undefined : 'sm'}
+        padding={embedded ? 0 : (isMaximized ? 'md' : 'sm')}
+        radius="md"
+        withBorder={!embedded}
+        h={embedded ? 'auto' : '100%'}
+        style={{ background: embedded ? 'transparent' : undefined, overflow: embedded ? 'visible' : 'auto' }}
+      >
+        <Group justify="space-between" mb={isMaximized ? 12 : 8} wrap="nowrap" gap={compactPanel ? 4 : 'md'}>
           {/* Panel title removed (redundant with the tab label — same call as the
               Sessions panel). The header slot hosts the league override instead
               (rollover D4/D5): '' = auto-detect via poe.ninja probe; anything
               else bypasses the probe entirely — including the D5 case of
               detection sticking on an ended event. */}
           <Select
-            size="xs" searchable
+            size={isMaximized ? 'sm' : 'xs'} searchable
             data={leagueOptions}
             value={leagueSelectValue}
             onChange={handleLeagueChange}
@@ -491,19 +502,19 @@ export const InvestmentModule = () => {
                 ? 'Saved-session league provenance is fixed and cannot be reassigned here'
                 : 'Choose the league once to repair this saved session\'s missing provenance')
               : 'League — leave on Auto unless detection picks the wrong league'}
-            style={{ width: compactPanel ? undefined : 170, minWidth: 0, flex: compactPanel ? 1 : undefined }}
+            style={{ width: compactPanel ? undefined : (isMaximized ? 220 : 170), minWidth: 0, flex: compactPanel ? 1 : undefined }}
           />
           <Group gap={4} style={{ marginLeft: 'auto' }}>
             <Tooltip label="All-in cost per map: total investment (base map + chisel + scarabs incl. one-time + session costs) divided by parsed maps. Equals Dashboard Investment / maps.">
-              <Badge color="gray" variant="outline" style={{ fontVariantNumeric: 'tabular-nums' }}>{totalPerMapFull.toFixed(1)}c/map</Badge>
+              <Badge size={isMaximized ? 'md' : 'sm'} color="gray" variant="outline" style={{ fontVariantNumeric: 'tabular-nums' }}>{totalPerMapFull.toFixed(1)}c/map</Badge>
             </Tooltip>
           </Group>
         </Group>
 
-        <Stack gap={6}>
+        <Stack gap={isMaximized ? 10 : 6}>
           {liveLeagueMismatch && (
             <Alert color="yellow" variant="light" p="xs" title="Previous-league working session">
-              <Text size="xs">
+              <Text size={isMaximized ? 'sm' : 'xs'}>
                 This session belongs to {settings.leagueName}. Automatic league and divine-price updates are paused
                 {confirmedActiveLeague ? ` while ${confirmedActiveLeague} is active` : ''}. Use Sessions to save it or start a new session.
               </Text>
@@ -513,18 +524,18 @@ export const InvestmentModule = () => {
           <div style={{
             background: 'rgba(255,255,255,0.03)',
             border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 6, padding: compactPanel ? '6px 8px' : '10px 12px',
+            borderRadius: 6, padding: compactPanel ? '6px 8px' : (isMaximized ? '14px 16px' : '10px 12px'),
           }}>
             {/* Two equal columns — label on top, control below, all centered */}
-            <Group grow gap={compactPanel ? 6 : 'md'} mb={compactPanel ? 6 : 8} align="flex-start">
+            <Group grow gap={compactPanel ? 6 : 'md'} mb={compactPanel ? 6 : (isMaximized ? 12 : 8)} align="flex-start">
               {/* Divine Price */}
               <Stack gap={4} align="center">
                 {crossLeague ? (
                   <Tooltip label={historicalPriceTooltip} withArrow multiline w={280}>
-                    <Text size="xs" c="yellow" style={{ cursor: 'help' }}>{compactPanel ? compactHistoricalDivinePriceLabel : historicalDivinePriceLabel}</Text>
+                    <Text size={isMaximized ? 'sm' : 'xs'} c="yellow" style={{ cursor: 'help' }}>{compactPanel ? compactHistoricalDivinePriceLabel : historicalDivinePriceLabel}</Text>
                   </Tooltip>
                 ) : (
-                  <Text size="xs" c="dimmed">Divine Price</Text>
+                  <Text size={isMaximized ? 'sm' : 'xs'} c="dimmed">Divine Price</Text>
                 )}
                 {/* Input + icon on same row, input fills available space */}
                 {/* session-16: refresh lives INSIDE the price input (it belongs to
@@ -532,7 +543,7 @@ export const InvestmentModule = () => {
                 <NumberInput
                   value={settings.divinePrice}
                   onChange={(v) => setDivinePriceManual(Number(v))}
-                  suffix="c" size="sm" hideControls style={{ width: '100%' }}
+                  suffix="c" size={isMaximized ? 'md' : 'sm'} hideControls style={{ width: '100%' }}
                   styles={{ input: { textAlign: 'center', fontWeight: 700, fontSize: FONT.stat } }}
                   rightSection={
                     <ActionIcon size="sm" variant="subtle" color="gray" loading={fetchingPrice}
@@ -547,11 +558,11 @@ export const InvestmentModule = () => {
 
               {/* Session costs — live derived total of Advanced Costs (WP1) */}
               <Stack gap={4} align="center">
-                <Text size="xs" c="dimmed">Session costs</Text>
+                <Text size={isMaximized ? 'sm' : 'xs'} c="dimmed">Session costs</Text>
                 {/* session-16: match the Divine Price input's surface (dark-6/dark-4)
                     and drop the orange value — both boxes now read as one family */}
                 <div style={{
-                  height: 34, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  height: isMaximized ? 42 : 34, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: 'var(--mantine-color-dark-6)', borderRadius: 4,
                   border: '1px solid var(--mantine-color-dark-4)',
                 }}>
@@ -573,11 +584,11 @@ export const InvestmentModule = () => {
               {/* session-17 review: variant="default" — the blue light button
                   was the odd one out vs the reference language (neutral
                   surfaces; colour = status/destructive-hover only). */}
-              <Button variant="default" size="xs" leftSection={<IconSettings size={12} />} onClick={openAdv} style={{ flex: 1 }}>
+              <Button variant="default" size={isMaximized ? 'sm' : 'xs'} leftSection={<IconSettings size={12} />} onClick={openAdv} style={{ flex: 1 }}>
                 Advanced Costs
               </Button>
               <Tooltip label="Reset all costs (keeps divine price)">
-                <ActionIcon size="30" variant="default" aria-label="Reset all costs"
+                <ActionIcon size={isMaximized ? 36 : 30} variant="default" aria-label="Reset all costs"
                   onMouseEnter={() => setHoveredReset(true)}
                   onMouseLeave={() => setHoveredReset(false)}
                   style={hoveredReset ? { color: 'var(--mantine-color-red-4)', borderColor: 'var(--mantine-color-red-7)' } : undefined}
@@ -660,7 +671,7 @@ export const InvestmentModule = () => {
             alignItems: 'center',
             display: 'grid',
             gap: 4,
-            gridTemplateColumns: 'minmax(0, 1fr) 100px',
+            gridTemplateColumns: `minmax(0, 1fr) ${isMaximized ? 120 : 100}px`,
           }}>
             <div style={{
               alignItems: 'center',
@@ -670,7 +681,7 @@ export const InvestmentModule = () => {
             }}>
               <div style={{ background: COLOR.borderSoft, height: 1 }} />
               <Group gap={4} wrap="nowrap">
-                <Text size="xs" c="dimmed">Scarabs</Text>
+                <Text size={isMaximized ? 'sm' : 'xs'} c="dimmed">Scarabs</Text>
                 {hasPreservation && (
                   <Tooltip
                     label="Horned Scarab of Preservation detected — only Preservation scarabs are counted per-map. All other scarabs are treated as a one-time cost."
@@ -689,7 +700,7 @@ export const InvestmentModule = () => {
             <div>
               <Menu shadow="md" width={220} position="bottom-end">
                 <Menu.Target>
-                  <Button fullWidth size="xs" variant="default" rightSection={<IconChevronDown size={10} />}>Presets</Button>
+                  <Button fullWidth size={isMaximized ? 'sm' : 'xs'} variant="default" rightSection={<IconChevronDown size={10} />}>Presets</Button>
                 </Menu.Target>
                 <Menu.Dropdown>
                   <Menu.Item leftSection={<IconDeviceFloppy size={13} />}
@@ -726,8 +737,8 @@ export const InvestmentModule = () => {
             <Group key={i} gap={4} wrap="nowrap">
               <Autocomplete placeholder={`Scarab ${i + 1}`} value={scarab.name}
                 onChange={(v) => updateScarab(i, 'name', v)}
-                data={scarabOptions} size="xs" style={{ flex: 1, minWidth: 0 }}
-                leftSection={scarab.name ? <PoeItemIcon name={scarab.name} size={16} category="scarab" /> : undefined}
+                data={scarabOptions} size={isMaximized ? 'sm' : 'xs'} style={{ flex: 1, minWidth: 0 }}
+                leftSection={scarab.name ? <PoeItemIcon name={scarab.name} size={isMaximized ? 18 : 16} category="scarab" /> : undefined}
                 rightSection={scarab.name
                   ? <ActionIcon size="xs" variant="transparent" c="dimmed"
                       onMouseDown={(e) => { e.preventDefault(); clearScarab(i); }}>
@@ -737,7 +748,8 @@ export const InvestmentModule = () => {
                 rightSectionPointerEvents={scarab.name ? 'all' : 'none'}
               />
               <PriceInput value={scarab.cost} onChange={(v) => updateScarab(i, 'cost', v)}
-                divinePrice={divinePrice} placeholder="0c" style={{ width: 100, flexShrink: 0 }} />
+                divinePrice={divinePrice} placeholder="0c" size={isMaximized ? 'sm' : 'xs'}
+                style={{ width: isMaximized ? 120 : 100, flexShrink: 0 }} />
             </Group>
           ))}
         </Stack>

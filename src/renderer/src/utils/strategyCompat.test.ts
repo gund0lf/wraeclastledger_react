@@ -129,6 +129,41 @@ describe('compat against a synthetic 3.29-style manifest', () => {
     expect(r.issues[0].detail).toContain('drops halved');
   });
 
+  it('does not warn about a rework when the strategy was authored on the active patch', async () => {
+    await useManifest(m);
+    const r = checkStrategyCompat(strat({
+      game_data_patch_version: m.patchVersion,
+      scarabs: [{ name: 'Tweaked Scarab', cost: 3 }],
+    }));
+    expect(r.level).toBe('ok');
+    expect(r.issues).toEqual([]);
+  });
+
+  it('retains the rework warning for older or provenance-free strategies', async () => {
+    await useManifest(m);
+    const older = checkStrategyCompat(strat({
+      game_data_patch_version: '3.28',
+      scarabs: [{ name: 'Tweaked Scarab', cost: 3 }],
+    }));
+    const unknown = checkStrategyCompat(strat({
+      scarabs: [{ name: 'Tweaked Scarab', cost: 3 }],
+    }));
+    expect(older.level).toBe('changed');
+    expect(unknown.level).toBe('changed');
+  });
+
+  it('deduplicates one compatibility warning across repeated scarab slots', async () => {
+    await useManifest(m);
+    const r = checkStrategyCompat(strat({
+      game_data_patch_version: '3.28',
+      scarabs: [
+        { name: 'Tweaked Scarab', cost: 3 },
+        { name: 'Tweaked Scarab', cost: 3 },
+      ],
+    }));
+    expect(r.issues).toHaveLength(1);
+  });
+
   it('worst-level wins: removed dominates a mixed strategy', async () => {
     await useManifest(m);
     const r = checkStrategyCompat(strat({

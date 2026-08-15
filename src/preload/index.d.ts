@@ -1,5 +1,6 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type { AtlasStatsReadResult } from '../shared/atlasStats'
+import type { ClipboardBridgeStatus } from '../shared/protonClipboardBridge'
 
 type TradeParams = {
   league: string; minIIQ: number; minPack: number; minIIR: number;
@@ -20,6 +21,9 @@ declare global {
     api: {
       onClipboardCapture:  (callback: (text: string) => void) => void
       removeClipboardListener: () => void
+      onClipboardBridgeStatus: (callback: (status: ClipboardBridgeStatus) => void) => () => void
+      removeClipboardBridgeStatusListener: () => void
+      getClipboardBridgeStatus: () => Promise<ClipboardBridgeStatus>
       setClipboardWatch:   (on: boolean) => void
       searchMapsOnTrade:   (params: TradeParams) => Promise<{ url: string | null; error: string | null }>
       getBrickMods:        () => Promise<BrickModResult>

@@ -70,7 +70,12 @@ export function retargetAtlasUrl(url: string, currentVersion: string): string {
   return `${url.slice(0, match.index)}${match[1]}${encodeURIComponent(currentVersion)}${url.slice(match.index + match[0].length)}`;
 }
 
-function checkName(kind: 'scarab' | 'chisel', list: 'scarabs' | 'chisels', stored: string): CompatIssue | null {
+function checkName(
+  kind: 'scarab' | 'chisel',
+  list: 'scarabs' | 'chisels',
+  stored: string,
+  includeReworked: boolean,
+): CompatIssue | null {
   const trimmed = stored?.trim();
   if (!trimmed || trimmed === 'None') return null;
   const { entity, viaAlias } = resolveEntity(list, trimmed);
@@ -88,7 +93,7 @@ function checkName(kind: 'scarab' | 'chisel', list: 'scarabs' | 'chisels', store
     return { kind, storedName: trimmed, currentName: entity.name, level: 'changed',
       detail: `${trimmed} is now "${entity.name}"` };
   }
-  if (entity.status === 'reworked') {
+  if (entity.status === 'reworked' && includeReworked) {
     return { kind, storedName: trimmed, level: 'changed',
       detail: entity.note ? `${trimmed} was reworked: ${entity.note}` : `${trimmed} was reworked` };
   }
@@ -101,19 +106,25 @@ function checkName(kind: 'scarab' | 'chisel', list: 'scarabs' | 'chisels', store
  * per-card in render.
  */
 export function checkStrategyCompat(strategy: Strategy): CompatResult {
+  const manifest = getManifest();
   const issues: CompatIssue[] = [];
+  // A reworked entity describes the transition INTO the active patch. A card
+  // explicitly authored on that same patch already used the reworked item, so
+  // warning it is backwards. Missing provenance remains conservatively noisy
+  // because it may represent an older pre-metadata card.
+  const includeReworked = strategy.game_data_patch_version !== manifest.patchVersion;
 
   for (const s of strategy.scarabs ?? []) {
-    const issue = checkName('scarab', 'scarabs', s.name);
+    const issue = checkName('scarab', 'scarabs', s.name, includeReworked);
     if (issue) issues.push(issue);
   }
-  const chiselIssue = checkName('chisel', 'chisels', strategy.chisel ?? '');
+  const chiselIssue = checkName('chisel', 'chisels', strategy.chisel ?? '', includeReworked);
   if (chiselIssue) issues.push(chiselIssue);
 
   // Atlas ?v= — best-effort, and ONLY when both sides are known. Manifest '' =
   // we haven't observed this patch's tree version, so we cannot judge; stay
   // silent rather than guess (loud-unknown discipline, not a false alarm).
-  const manifestV = getManifest().atlasTreeVersion;
+  const manifestV = manifest.atlasTreeVersion;
   const stratV = atlasVersionOf(strategy.atlas_tree_url);
   const atlasOutdated = !!manifestV && !!stratV && manifestV !== stratV;
   if (atlasOutdated) {
@@ -121,10 +132,15 @@ export function checkStrategyCompat(strategy: Strategy): CompatResult {
       detail: `Atlas tree is version ${stratV}; current is ${manifestV}` });
   }
 
+  const deduplicatedIssues = Array.from(new Map(issues.map((issue) => [
+    `${issue.kind}\u0000${issue.storedName}\u0000${issue.currentName ?? ''}\u0000${issue.detail}`,
+    issue,
+  ])).values());
+
   const level: CompatLevel =
-    issues.some((i) => i.level === 'removed') ? 'removed'
-    : issues.length > 0 ? 'changed'
+    deduplicatedIssues.some((i) => i.level === 'removed') ? 'removed'
+    : deduplicatedIssues.length > 0 ? 'changed'
     : 'ok';
 
-  return { level, issues, atlasOutdated };
+  return { level, issues: deduplicatedIssues, atlasOutdated };
 }

@@ -1,6 +1,68 @@
-import { Actions, Model, Node } from 'flexlayout-react';
+import { Actions, IJsonModel, Model, Node } from 'flexlayout-react';
 
 type ComponentNode = Node & { getComponent?: () => string | undefined };
+
+type JsonNode = {
+  type?: string;
+  weight?: number;
+  component?: string;
+  children?: JsonNode[];
+};
+
+const ORIGINAL_SETUP_COMPONENTS = ['session-manager', 'atlas-calc', 'investment'];
+const ORIGINAL_SETUP_WEIGHTS = [18, 37, 45];
+
+/**
+ * Replace only the untouched original three-stack settings column with the
+ * accepted native-border Setup surface. Any sign of customization (different
+ * weights/order, extra tabs, or an existing border) makes this a no-op.
+ */
+export function migrateDefaultSetupSidebarJson(json: IJsonModel): boolean {
+  if ((json.borders?.length ?? 0) > 0) return false;
+
+  const root = json.layout as JsonNode;
+  const left = root.children?.[0];
+  if (!left || left.type !== 'col' || left.weight !== 22 || left.children?.length !== 3) {
+    return false;
+  }
+
+  const untouched = left.children.every((tabset, index) => {
+    const onlyTab = tabset.children?.[0];
+    return tabset.type === 'tabset'
+      && tabset.weight === ORIGINAL_SETUP_WEIGHTS[index]
+      && tabset.children?.length === 1
+      && onlyTab?.type === 'tab'
+      && onlyTab.component === ORIGINAL_SETUP_COMPONENTS[index];
+  });
+  if (!untouched || !root.children) return false;
+
+  root.children.splice(0, 1);
+  json.global = {
+    ...json.global,
+    borderEnableAutoHide: true,
+    borderAutoSelectTabWhenClosed: false,
+  };
+  json.borders = [
+    {
+      type: 'border',
+      location: 'left',
+      size: 330,
+      minSize: 300,
+      maxSize: 440,
+      selected: 0,
+      children: [
+        {
+          type: 'tab',
+          name: 'Setup',
+          component: 'setup',
+          enableClose: false,
+          enableDrag: false,
+        },
+      ],
+    },
+  ];
+  return true;
+}
 
 /**
  * Upgrade persisted WP8 layouts without removing the user's only regex surface:

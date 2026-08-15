@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { AtlasStatsReadResult } from '../shared/atlasStats'
+import type { ClipboardBridgeStatus } from '../shared/protonClipboardBridge'
 
 type TradeParams = {
   league: string; minIIQ: number; minPack: number; minIIR: number;
@@ -20,6 +21,18 @@ const api = {
     ipcRenderer.on('on-clipboard-capture', (_event, text) => callback(text))
   },
   removeClipboardListener: (): void => { ipcRenderer.removeAllListeners('on-clipboard-capture') },
+  onClipboardBridgeStatus: (callback: (status: ClipboardBridgeStatus) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, status: ClipboardBridgeStatus): void => {
+      callback(status)
+    }
+    ipcRenderer.on('on-clipboard-bridge-status', listener)
+    return () => ipcRenderer.removeListener('on-clipboard-bridge-status', listener)
+  },
+  removeClipboardBridgeStatusListener: (): void => {
+    ipcRenderer.removeAllListeners('on-clipboard-bridge-status')
+  },
+  getClipboardBridgeStatus: (): Promise<ClipboardBridgeStatus> =>
+    ipcRenderer.invoke('clipboard:get-bridge-status'),
   // WP13: renderer drives the main-process clipboard polling lifecycle.
   setClipboardWatch: (on: boolean): void => { ipcRenderer.send('clipboard:set-watch', on) },
   searchMapsOnTrade: (params: TradeParams): Promise<{ url: string | null; error: string | null }> =>

@@ -9,14 +9,14 @@ import { isCrossLeagueSession } from '../utils/historicalSession';
 import { SectionLabel } from '../components/ui/SectionLabel';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { deriveAtlasCalcSettings, type AtlasStatGroup } from '../../../shared/atlasStats';
+import { deriveAtlasDetectedTags } from '../utils/atlasTags';
+import {
+  isPathofpathingTreeUrl,
+  isPathofpathingUrl,
+  shouldAutoApplyExternalAtlasView,
+} from '../utils/atlasUrl';
 
 const BASE_URL = 'https://pathofpathing.com';
-
-// Safely check that a URL belongs to the pathofpathing.com host
-function isPathofpathingUrl(url: string): boolean {
-  try { return new URL(url).hostname === 'pathofpathing.com'; }
-  catch { return false; }
-}
 
 function atlasViewUrl(authoredUrl: string): string {
   if (!isPathofpathingUrl(authoredUrl)) return BASE_URL;
@@ -50,7 +50,9 @@ export const AtlasTreeModule = () => {
   const visibleRef     = useRef(false);
   const prevSessionRef = useRef<string | null>(activeSessionId);
   const prevNonceRef   = useRef(sessionNonce);
-  const autoApplyRef   = useRef(false); // set true when URL imported — triggers auto readStats+apply
+  // Session-bound instead of boolean: delayed guest work must never apply or
+  // show an error after the user has replaced the session.
+  const autoApplySessionRef = useRef<number | null>(null);
 
   // The initial navigation to this URL is view-only and must not replace the
   // authored URL retained by the session or shared strategy.
@@ -78,6 +80,8 @@ export const AtlasTreeModule = () => {
   const [showImport,  setShowImport]  = useState(false);
   const [calcApplied, setCalcApplied] = useState<string | null>(null);
   const [webviewReady, setWebviewReady] = useState(false);
+  const sessionIdentityChanged = prevSessionRef.current !== activeSessionId
+    || prevNonceRef.current !== sessionNonce;
 
   // A key change alone reloads immediately and can still let Pixi construct
   // while FlexLayout is settling after a session/strategy switch. Deliberate
@@ -150,13 +154,13 @@ export const AtlasTreeModule = () => {
 
   // ── Reload when session changes ────────────────────────────────────────────
   useEffect(() => {
-    if (prevSessionRef.current === activeSessionId && prevNonceRef.current === sessionNonce) return;
+    if (!sessionIdentityChanged) return;
     prevSessionRef.current = activeSessionId;
     prevNonceRef.current   = sessionNonce;
     // A strategy load creates a new session and requests an Atlas Calc apply in
     // adjacent store updates. Tie that request to the resulting session nonce so
     // effect scheduling cannot let this reset erase a legitimate pending apply.
-    autoApplyRef.current = atlasApplySessionNonce === sessionNonce;
+    autoApplySessionRef.current = atlasApplySessionNonce === sessionNonce ? sessionNonce : null;
     const url = useSessionStore.getState().settings.atlasTreeUrl;
     const next = atlasViewUrl(url);
     showOriginalRef.current = false;
@@ -169,7 +173,11 @@ export const AtlasTreeModule = () => {
     remountAfterLayout();
     setStatGroups([]);
     setStatsOpen(false); // close stats panel on session change
-  }, [activeSessionId, sessionNonce, atlasApplySessionNonce, remountAfterLayout, captureUrl]);
+    setStatsError(null);
+    setCalcApplied(null);
+    setShowImport(false);
+    setImportUrl('');
+  }, [activeSessionId, sessionNonce, atlasApplySessionNonce, remountAfterLayout, captureUrl, sessionIdentityChanged]);
 
   // ── Reload when atlasTreeUrl is set externally (Load Build Settings) ───────
   useEffect(() => {
@@ -178,16 +186,16 @@ export const AtlasTreeModule = () => {
     if (!stored) return;
     if (!isPathofpathingUrl(stored)) return;
     const next = atlasViewUrl(stored);
-    if (next === capturedUrl || next === srcUrl) return;
+    if (!shouldAutoApplyExternalAtlasView(sessionIdentityChanged, next, capturedUrl, srcUrl)) return;
     retargetedViewRef.current = next !== stored ? next : '';
     retargetSettledRef.current = retargetedViewRef.current === '';
     setRetargetActive(retargetedViewRef.current !== '');
     setSrcUrl(next);
     captureUrl(next);
-    autoApplyRef.current = true; // auto-apply calc after load
+    autoApplySessionRef.current = sessionNonce; // auto-apply calc after load
     remountAfterLayout();
     setStatGroups([]);
-  }, [atlasTreeUrl, remountAfterLayout, showOriginal]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [atlasTreeUrl, remountAfterLayout, sessionIdentityChanged, sessionNonce, showOriginal]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Force re-apply on Load Build even when the URL is UNCHANGED ────────────
   // Loading the same strategy twice sets atlasTreeUrl to the same value, so the
@@ -213,7 +221,7 @@ export const AtlasTreeModule = () => {
     setRetargetActive(retargetedViewRef.current !== '');
     setSrcUrl(next);
     captureUrl(next);
-    autoApplyRef.current = true;
+    autoApplySessionRef.current = current.sessionNonce;
     remountAfterLayout();
     setStatGroups([]);
   }, [atlasApplyNonce, atlasApplySessionNonce, remountAfterLayout, captureUrl]);
@@ -266,6 +274,7 @@ export const AtlasTreeModule = () => {
     const handleNav = (e: any) => {
       const url: string = e.url ?? '';
       if (!isPathofpathingUrl(url)) return;
+      const storedUrl = useSessionStore.getState().settings.atlasTreeUrl;
       captureUrl(url);
       const retargeted = retargetedViewRef.current;
       const initialDocumentNavigation = e.type === 'did-navigate'
@@ -280,11 +289,13 @@ export const AtlasTreeModule = () => {
         retargetSettledRef.current = true;
         setRetargetActive(false);
         updateSetting('atlasTreeUrl', url);
+        if (url !== storedUrl) updateSetting('atlasDetectedTags', []);
       } else {
         retargetedViewRef.current = '';
         retargetSettledRef.current = true;
         setRetargetActive(false);
         updateSetting('atlasTreeUrl', url);
+        if (url !== storedUrl) updateSetting('atlasDetectedTags', []);
       }
       readPoints(); // node toggles change the hash — capture the new count
     };
@@ -321,15 +332,18 @@ export const AtlasTreeModule = () => {
         retargetSettledRef.current = true;
       }
       readPoints(); // restored sessions: capture points once the page is up
-      if (!autoApplyRef.current) return;
-      autoApplyRef.current = false;
+      const requestedSessionNonce = autoApplySessionRef.current;
+      if (requestedSessionNonce === null) return;
+      autoApplySessionRef.current = null;
+      if (useSessionStore.getState().sessionNonce !== requestedSessionNonce) return;
       // Poll until the stats button exists — more reliable than a fixed timeout
       await pollUntil(() =>
         (wv as any).executeJavaScript(
           `Promise.resolve(!!document.getElementById('skillTreeStats_ShowHide'))`,
         ).catch(() => false),
       );
-      await readStats('apply');
+      if (useSessionStore.getState().sessionNonce !== requestedSessionNonce) return;
+      await readStats('apply', requestedSessionNonce);
     };
     wv.addEventListener('will-navigate', handleWillNavigate);
     wv.addEventListener('did-navigate', handleNav);
@@ -360,7 +374,13 @@ export const AtlasTreeModule = () => {
   };
 
   // ── Read atlas tree stats via JS injection ─────────────────────────────────
-  const readStats = async (mode: 'inspect' | 'apply' = 'inspect') => {
+  const readStats = async (
+    mode: 'inspect' | 'apply' = 'inspect',
+    expectedSessionNonce: number | null = null,
+  ) => {
+    const isCurrentSession = () => expectedSessionNonce === null
+      || useSessionStore.getState().sessionNonce === expectedSessionNonce;
+    if (!isCurrentSession()) return;
     setStatsError(null);
     setCalcApplied(null);
     const wv = webviewRef.current;
@@ -413,6 +433,7 @@ export const AtlasTreeModule = () => {
       `);
 
       await closeUpstreamStatsPanel(wv);
+      if (!isCurrentSession()) return;
 
       if (!result || (result as any).error) {
         setStatsError((result as any)?.error
@@ -431,25 +452,12 @@ export const AtlasTreeModule = () => {
       setStatGroups(groups);
       setStatsOpen(mode === 'inspect');
 
-      const TITLE_TO_TAG: Record<string, string> = {
-        'delirium': 'delirium', 'beyond': 'beyond', 'legion': 'legion',
-        'breach': 'breach', 'harbinger': 'harbinger', 'abyss': 'abyss',
-        'ritual': 'ritual', 'expedition': 'expedition', 'incursion': 'incursion',
-        'betrayal': 'betrayal', 'essence': 'essence', 'harvest': 'harvest',
-        'blight': 'blight', 'heist': 'heist', 'metamorph': 'metamorph',
-        'ultimatum': 'ultimatum', 'torment': 'torment',
-        'cartography': 'cartography', 'titanic': 'titanic',
-        'eater of worlds': 'eater', 'the eater': 'eater',
-        'the searing exarch': 'exarch', 'searing exarch': 'exarch',
-      };
-      const detected = groups
-        .map((g) => TITLE_TO_TAG[g.title.toLowerCase()])
-        .filter(Boolean) as string[];
-      if (detected.length > 0) updateSetting('atlasDetectedTags', detected);
+      updateSetting('atlasDetectedTags', deriveAtlasDetectedTags(groups));
 
       // Auto-apply calc if triggered by an external URL load or toolbar action.
       if (mode === 'apply' && !applyGroupsToCalc(groups)) setStatsOpen(true);
     } catch {
+      if (!isCurrentSession()) return;
       setStatsError('Could not read stats — try navigating the tree first. If this keeps happening, pathofpathing may have changed its layout; please report it.');
       setStatsOpen(true);
     }
@@ -516,7 +524,7 @@ export const AtlasTreeModule = () => {
   // ── Import URL from text input ───────────────────────────────────────
   const loadImportUrl = () => {
     const url = importUrl.trim();
-    if (!isPathofpathingUrl(url)) return;
+    if (!isPathofpathingTreeUrl(url)) return;
     const next = atlasViewUrl(url);
     showOriginalRef.current = false;
     setShowOriginal(false);
@@ -526,7 +534,8 @@ export const AtlasTreeModule = () => {
     setSrcUrl(next);
     captureUrl(next);
     updateSetting('atlasTreeUrl', url);
-    autoApplyRef.current = true; // auto-apply calc after load
+    updateSetting('atlasDetectedTags', []);
+    autoApplySessionRef.current = useSessionStore.getState().sessionNonce;
     remountAfterLayout();
     setStatGroups([]);
     setImportUrl('');
@@ -642,9 +651,12 @@ export const AtlasTreeModule = () => {
             value={importUrl}
             onChange={(e) => setImportUrl(e.currentTarget.value)}
             onKeyDown={(e) => e.key === 'Enter' && loadImportUrl()}
+            error={importUrl.trim() && !isPathofpathingTreeUrl(importUrl.trim())
+              ? 'Use a complete https://pathofpathing.com Atlas tree URL.'
+              : undefined}
           />
           <Button size="xs" variant="light" color="orange"
-            disabled={!isPathofpathingUrl(importUrl.trim())}
+            disabled={!isPathofpathingTreeUrl(importUrl.trim())}
             onClick={loadImportUrl}>
             Load
           </Button>

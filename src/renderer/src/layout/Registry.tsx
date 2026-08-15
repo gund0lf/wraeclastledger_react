@@ -9,8 +9,10 @@ import { SessionManagerModule } from '../modules/SessionManagerModule';
 import { RegexPanel, RegexBuilderPanel } from '../modules/RegexPanelModule';
 import { StrategyBrowserModule } from '../modules/StrategyBrowserModule';
 import { NotesModule }           from '../modules/NotesModule';
+import { SetupModule }           from '../modules/SetupModule';
 
 export const COMPONENT_REGISTRY: Record<string, () => any> = {
+  'setup':           SetupModule,
   'session-manager': SessionManagerModule,
   'session-log':     SessionLogModule,
   'atlas-calc':      AtlasCalcModule,

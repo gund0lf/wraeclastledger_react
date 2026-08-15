@@ -244,6 +244,22 @@ export const BROWSER_ROW_PAD_X = 10;
  * expose horizontal scrolling instead of silently clipping metric columns. */
 export const BROWSER_MIN_CONTENT_WIDTH = 860;
 
+export const BROWSER_MAXIMIZED_COLS = {
+  chevron: 22,
+  author:  140,
+  tags:    260,
+  mod:     52,
+  maps:    54,
+  cost:    88,
+  invest:  138,
+  profit:  144,
+  score:   50,
+  dph:     60,
+  dpm:     92,
+} as const;
+
+export const BROWSER_MAXIMIZED_MIN_CONTENT_WIDTH = 1180;
+
 // Header and collapsed cards share this exact grid. The former paired flex
 // layouts drifted whenever content or border geometry differed between them.
 export const BROWSER_GRID_TEMPLATE =
@@ -251,3 +267,9 @@ export const BROWSER_GRID_TEMPLATE =
   `${BROWSER_COLS.mod}px ${BROWSER_COLS.maps}px ${BROWSER_COLS.cost}px ` +
   `${BROWSER_COLS.invest}px ${BROWSER_COLS.profit}px ${BROWSER_COLS.score}px ` +
   `${BROWSER_COLS.dph}px ${BROWSER_COLS.dpm}px`;
+
+export const BROWSER_MAXIMIZED_GRID_TEMPLATE =
+  `${BROWSER_MAXIMIZED_COLS.chevron}px ${BROWSER_MAXIMIZED_COLS.author}px minmax(${BROWSER_MAXIMIZED_COLS.tags}px, 1fr) ` +
+  `${BROWSER_MAXIMIZED_COLS.mod}px ${BROWSER_MAXIMIZED_COLS.maps}px ${BROWSER_MAXIMIZED_COLS.cost}px ` +
+  `${BROWSER_MAXIMIZED_COLS.invest}px ${BROWSER_MAXIMIZED_COLS.profit}px ${BROWSER_MAXIMIZED_COLS.score}px ` +
+  `${BROWSER_MAXIMIZED_COLS.dph}px ${BROWSER_MAXIMIZED_COLS.dpm}px`;

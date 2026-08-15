@@ -8,7 +8,11 @@ import {
   IconThumbUp, IconThumbDown, IconExternalLink, IconUsers, IconAlertTriangle,
   IconSnowflake,
 } from '@tabler/icons-react';
-import { Strategy, TAG_COLORS, MAP_TYPE_TAGS, MAP_TYPE_LABELS, TAG_SHORT, BROWSER_COLS, BROWSER_GRID_TEMPLATE, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X } from '../utils/strategyConstants';
+import {
+  Strategy, TAG_COLORS, MAP_TYPE_TAGS, MAP_TYPE_LABELS, TAG_SHORT,
+  BROWSER_COLS, BROWSER_GRID_TEMPLATE, BROWSER_MAXIMIZED_COLS,
+  BROWSER_MAXIMIZED_GRID_TEMPLATE, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X,
+} from '../utils/strategyConstants';
 import { formatActiveTime } from '../utils/timeEstimate';
 import { computeVisibleTagCount } from '../utils/tagFit';
 import { checkStrategyCompat } from '../utils/strategyCompat';
@@ -132,6 +136,7 @@ export const StrategyCard = ({
   onContinueStrategy,
   discordTag,
   frozen = false,
+  maximized = false,
 }: {
   strategy: Strategy; onLoadBuild: (s: Strategy) => void;
   /** Continuing a strategy is author-only. This display heuristic only decides
@@ -141,7 +146,11 @@ export const StrategyCard = ({
   discordTag?: string;
   /** Frozen snapshot cards remain loadable but can never enter the update flow. */
   frozen?: boolean;
+  /** Uses the roomier Browser grid only while the containing tabset is maximized. */
+  maximized?: boolean;
 }) => {
+  const browserCols = maximized ? BROWSER_MAXIMIZED_COLS : BROWSER_COLS;
+  const browserGridTemplate = maximized ? BROWSER_MAXIMIZED_GRID_TEMPLATE : BROWSER_GRID_TEMPLATE;
   const [open, setOpen] = useState(false);
   // Author's atlas multiplier at share time (from the export). Only parsed
   // when the card is expanded at least once — the raw_export parse is cheap
@@ -209,14 +218,14 @@ export const StrategyCard = ({
     }}>
       {isOwn && <div aria-hidden style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 3, background: 'rgba(74,158,255,0.55)' }} />}
       <div onClick={() => setOpen((o) => !o)} style={{
-        display: 'grid', gridTemplateColumns: BROWSER_GRID_TEMPLATE,
+        display: 'grid', gridTemplateColumns: browserGridTemplate,
         columnGap: BROWSER_ROW_GAP, alignItems: 'center', cursor: 'pointer',
         padding: `7px ${BROWSER_ROW_PAD_X}px`, userSelect: 'none',
       }}>
-        <ActionIcon size={BROWSER_COLS.chevron} variant="transparent" c="dimmed">
+        <ActionIcon size={browserCols.chevron} variant="transparent" c="dimmed">
           {open ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
         </ActionIcon>
-        <Stack gap={0} style={{ width: BROWSER_COLS.author, minWidth: 0 }}>
+        <Stack gap={0} style={{ width: browserCols.author, minWidth: 0 }}>
           <Group gap={3} wrap="nowrap">
             <Text size="xs" fw={600} lineClamp={1} title={strategy.discord_username}>{strategy.discord_username}</Text>
             {isGroup && (
@@ -259,7 +268,7 @@ export const StrategyCard = ({
           <Tooltip
             label={`Observed explicit-mod average across ${observedModSampleSize} exact maps. Strategy bucket remains ${strategy.map_type ?? 'unclassified'}; Browser 6/8 filtering is unchanged.`}
             withArrow multiline w={250}>
-            <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.mod, flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>
+            <Text size="xs" c="dimmed" style={{ width: browserCols.mod, flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>
               {modDisplay}
             </Text>
           </Tooltip>
@@ -267,14 +276,14 @@ export const StrategyCard = ({
           <Tooltip
             label={`No complete observed-mod sample is available. Showing the published ${strategy.map_type ?? 'unclassified'} setup bucket instead; observed averages require exact advanced-format data for every map in the run.`}
             withArrow multiline w={270}>
-            <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.mod, flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>{modDisplay}</Text>
+            <Text size="xs" c="dimmed" style={{ width: browserCols.mod, flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>{modDisplay}</Text>
           </Tooltip>
         )}
         <Tooltip
           disabled={!isPooled || displayMapCount == null}
           label={`${evidenceRunCount} independently submitted runs, ${displayMapCount} maps total. Aggregate profit uses each run's historical divine-price snapshot.`}
           withArrow multiline w={260}>
-          <Stack gap={0} align="center" style={{ width: BROWSER_COLS.maps, flexShrink: 0, cursor: isPooled ? 'help' : undefined }}>
+          <Stack gap={0} align="center" style={{ width: browserCols.maps, flexShrink: 0, cursor: isPooled ? 'help' : undefined }}>
             <Text size="xs" c="dimmed" style={{ lineHeight: 1 }}>{displayMapCount != null ? displayMapCount : '—'}</Text>
             {isPooled && (
               <Text c="blue" style={{ fontSize: FONT.micro, lineHeight: 1.1, whiteSpace: 'nowrap' }}>
@@ -283,32 +292,32 @@ export const StrategyCard = ({
             )}
           </Stack>
         </Tooltip>
-        <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.cost, flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+        <Text size="xs" c="dimmed" style={{ width: browserCols.cost, flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {costPerMap != null ? fcSep(costPerMap) : '—'}
         </Text>
-        <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.invest, flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+        <Text size="xs" c="dimmed" style={{ width: browserCols.invest, flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {fc(strategy.total_invest)}
           {!isPooled && strategy.total_invest != null && strategy.divine_price != null && strategy.divine_price > 0 && (
             <Text span style={{ color: COLOR.dim, fontSize: FONT.label }}> ({(strategy.total_invest / strategy.divine_price).toFixed(1)}d)</Text>
           )}
         </Text>
-        <Text size="xs" fw={600} style={{ width: BROWSER_COLS.profit, flexShrink: 0, fontVariantNumeric: 'tabular-nums', color: profitColor, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+        <Text size="xs" fw={600} style={{ width: browserCols.profit, flexShrink: 0, fontVariantNumeric: 'tabular-nums', color: profitColor, whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {fc(strategy.net_profit, true)}
           {strategy.net_profit != null && historicalProfitDivines != null && (
             <Text span style={{ color: COLOR.dim, fontSize: FONT.label }}> ({strategy.net_profit >= 0 ? '+' : ''}{historicalProfitDivines.toFixed(1)}d)</Text>
           )}
         </Text>
-        <Group gap={2} style={{ width: BROWSER_COLS.score, flexShrink: 0 }} align="center">
+        <Group gap={2} style={{ width: browserCols.score, flexShrink: 0 }} align="center">
           {score >= 0 ? <IconThumbUp size={10} style={{ color: scoreColor }} /> : <IconThumbDown size={10} style={{ color: scoreColor }} />}
           <Text size="xs" style={{ color: scoreColor, fontVariantNumeric: 'tabular-nums' }}>{score > 0 ? `+${score}` : score}</Text>
         </Group>
         <Tooltip label={divPerHour != null ? (isPooled ? `Historical timed evidence only — ${timedRunCount}/${evidenceRunCount} runs reported active time` : 'Optional author-reported context — selectable as a sort, but never the default ranking; div/map stays primary') : 'No session time shared — div/h unavailable'} withArrow multiline w={250}>
-          <Text size="xs" c="dimmed" style={{ width: BROWSER_COLS.dph, textAlign: 'right', flexShrink: 0, fontVariantNumeric: 'tabular-nums', cursor: 'help' }}>
+          <Text size="xs" c="dimmed" style={{ width: browserCols.dph, textAlign: 'right', flexShrink: 0, fontVariantNumeric: 'tabular-nums', cursor: 'help' }}>
             {divPerHour != null ? `${divPerHour.toFixed(1)}` : '—'}
           </Text>
         </Tooltip>
         <Tooltip disabled={!isPooled} label="Historical d/map — map-weighted across runs using each run's divine-price snapshot" withArrow multiline w={240}>
-          <Stack gap={0} align="flex-end" style={{ width: BROWSER_COLS.dpm, flexShrink: 0 }}>
+          <Stack gap={0} align="flex-end" style={{ width: browserCols.dpm, flexShrink: 0 }}>
             <Text size="sm" fw={800} style={{ color: divColor, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
               {div != null ? `${div.toFixed(3)}d` : '—'}
             </Text>

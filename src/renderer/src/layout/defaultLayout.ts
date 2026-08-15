@@ -8,24 +8,34 @@ export const defaultLayout: IJsonModel = {
     tabEnableFloat:  false,
     tabEnableRename: false,
     borderEnableAutoHide: true,
+    borderAutoSelectTabWhenClosed: false,
   } as any,
-  borders: [],
+  borders: [
+    {
+      type: 'border',
+      location: 'left',
+      size: 330,
+      minSize: 300,
+      maxSize: 440,
+      selected: 0,
+      children: [
+        {
+          type: 'tab',
+          name: 'Setup',
+          component: 'setup',
+          enableClose: false,
+          enableDrag: false,
+        },
+      ],
+    },
+  ],
   layout: {
     type: 'row',
     weight: 100,
     children: [
-      // Left column — settings
+      // Main workspace: map tools on the left, Dashboard on the right.
       {
-        type: 'col', weight: 22,
-        children: [
-          { type: 'tabset', weight: 18, children: [{ type: 'tab', name: 'Sessions',   component: 'session-manager' }] },
-          { type: 'tabset', weight: 37, children: [{ type: 'tab', name: 'Atlas Calc', component: 'atlas-calc' }] },
-          { type: 'tabset', weight: 45, children: [{ type: 'tab', name: 'Investment', component: 'investment' }] },
-        ],
-      },
-      // Centre column — map log + tree/search tabs
-      {
-        type: 'col', weight: 40,
+        type: 'col', weight: 52,
         children: [
           { type: 'tabset', weight: 50, children: [
             { type: 'tab', name: 'Map Log',          component: 'session-log' },
@@ -43,7 +53,7 @@ export const defaultLayout: IJsonModel = {
       },
       // Right column — dashboard (stats + loot merged)
       {
-        type: 'col', weight: 38,
+        type: 'col', weight: 48,
         children: [
           { type: 'tabset', weight: 100, children: [{ type: 'tab', name: 'Dashboard', component: 'dashboard' }] },
         ],

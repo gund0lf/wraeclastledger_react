@@ -11,12 +11,15 @@ import { getGameDataStatus, initGameData } from './utils/gameData';
 import { UpdateBanner, APP_VERSION } from './UpdateBanner';
 import { IconRefresh } from '@tabler/icons-react';
 import { FONT } from './utils/uiTokens';
-import { migratePersistedLayout } from './utils/layoutMigration';
+import { migrateDefaultSetupSidebarJson, migratePersistedLayout } from './utils/layoutMigration';
+import { MaximizedPanelProvider } from './layout/MaximizedPanelProvider';
+import { maximizedPanelComponent } from './layout/panelLayoutState';
 
 // APP_VERSION imported from UpdateBanner.tsx — single source of truth
 // window.electron and window.api are declared in src/preload/index.d.ts — no redeclaration needed here.
 
 const ALL_PANELS = [
+  { component: 'setup',           name: 'Setup' },
   { component: 'session-manager', name: 'Sessions' },
   { component: 'session-log',     name: 'Map Log' },
   { component: 'atlas-calc',      name: 'Atlas Calc' },
@@ -36,13 +39,21 @@ const LAYOUT_STORAGE_KEY = 'wraeclast-layout-v1';
 function App(): JSX.Element {
   const [initialLayout] = useState(() => {
     let m: Model;
+    let setupSidebarMigrated = false;
     try {
       const saved = localStorage.getItem(LAYOUT_STORAGE_KEY);
-      m = saved ? Model.fromJson(JSON.parse(saved)) : Model.fromJson(defaultLayout);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setupSidebarMigrated = migrateDefaultSetupSidebarJson(parsed);
+        m = Model.fromJson(parsed);
+      } else {
+        m = Model.fromJson(defaultLayout);
+      }
     } catch {
       m = Model.fromJson(defaultLayout); // corrupt/old
     }
-    const migrated = migratePersistedLayout(m);
+    const persistedLayoutMigrated = migratePersistedLayout(m);
+    const migrated = setupSidebarMigrated || persistedLayoutMigrated;
     let migrationSaveFailed = false;
     if (migrated) {
       try {
@@ -55,9 +66,10 @@ function App(): JSX.Element {
     return { model: m, migrationSaveFailed };
   });
   const model = initialLayout.model;
-  // modelVersion value is not read directly — the setter is used in onModelChange
-  // to force re-renders of the toolbar's "open panels" menu after layout changes.
+  // FlexLayout mutates its Model in place. Updating this otherwise-unused state
+  // forces the toolbar and context-derived maximized presentation to re-render.
   const [, setModelVersion] = useState(0);
+  const maximizedPanel = maximizedPanelComponent(model);
   const [checking, setChecking] = useState(false);
   const [quotaError, setQuotaError] = useState(initialLayout.migrationSaveFailed);
   const [gameDataStatus, setGameDataStatus] = useState(getGameDataStatus);
@@ -210,19 +222,21 @@ function App(): JSX.Element {
 
       {/* Layout */}
       <Box style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        <Layout
-          model={model}
-          factory={factory}
-          onModelChange={() => {
-            setModelVersion((v) => v + 1);
-            try {
-              localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(model.toJson()));
-            } catch {
-              console.error('[App] localStorage quota exceeded — layout not saved');
-              setQuotaError(true);
-            }
-          }}
-        />
+        <MaximizedPanelProvider maximizedPanel={maximizedPanel}>
+          <Layout
+            model={model}
+            factory={factory}
+            onModelChange={() => {
+              setModelVersion((v) => v + 1);
+              try {
+                localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(model.toJson()));
+              } catch {
+                console.error('[App] localStorage quota exceeded — layout not saved');
+                setQuotaError(true);
+              }
+            }}
+          />
+        </MaximizedPanelProvider>
       </Box>
 
       {/* Quota error banner */}

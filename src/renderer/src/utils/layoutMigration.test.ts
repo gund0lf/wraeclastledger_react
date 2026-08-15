@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { IJsonModel, Model, Node } from 'flexlayout-react';
-import { migratePersistedLayout, migrateRegexBuilderTabs, removeRetiredTabs } from './layoutMigration';
+import {
+  migrateDefaultSetupSidebarJson,
+  migratePersistedLayout,
+  migrateRegexBuilderTabs,
+  removeRetiredTabs,
+} from './layoutMigration';
 
 type ComponentNode = Node & { getComponent?: () => string | undefined };
 
@@ -26,6 +31,64 @@ function components(model: Model): string[] {
   });
   return result;
 }
+
+function originalDefaultJson(): IJsonModel {
+  return {
+    global: { tabEnableClose: true },
+    borders: [],
+    layout: {
+      type: 'row',
+      children: [
+        {
+          type: 'col',
+          weight: 22,
+          children: [
+            { type: 'tabset', weight: 18, children: [tab('Sessions', 'session-manager')] },
+            { type: 'tabset', weight: 37, children: [tab('Atlas Calc', 'atlas-calc')] },
+            { type: 'tabset', weight: 45, children: [tab('Investment', 'investment')] },
+          ],
+        },
+        { type: 'tabset', weight: 40, children: [tab('Map Log', 'session-log')] },
+        { type: 'tabset', weight: 38, children: [tab('Dashboard', 'dashboard')] },
+      ],
+    },
+  } as IJsonModel;
+}
+
+describe('migrateDefaultSetupSidebarJson', () => {
+  it('moves the untouched original settings stack into the native left border', () => {
+    const json = originalDefaultJson();
+
+    expect(migrateDefaultSetupSidebarJson(json)).toBe(true);
+    expect(json.layout.children).toHaveLength(2);
+    expect(json.borders).toEqual([
+      expect.objectContaining({
+        location: 'left',
+        selected: 0,
+        children: [expect.objectContaining({ component: 'setup', name: 'Setup' })],
+      }),
+    ]);
+    expect(() => Model.fromJson(json)).not.toThrow();
+    expect(migrateDefaultSetupSidebarJson(json)).toBe(false);
+  });
+
+  it('leaves resized, regrouped, and already bordered layouts untouched', () => {
+    const resized = originalDefaultJson();
+    resized.layout.children[0].weight = 21;
+    const regrouped = originalDefaultJson();
+    (regrouped.layout.children[0] as { children: Array<{ children: unknown[] }> }).children[0].children.push(
+      tab('Notes', 'notes'),
+    );
+    const bordered = originalDefaultJson();
+    bordered.borders = [{ location: 'right', children: [tab('Notes', 'notes')] }];
+
+    for (const json of [resized, regrouped, bordered]) {
+      const before = structuredClone(json);
+      expect(migrateDefaultSetupSidebarJson(json)).toBe(false);
+      expect(json).toEqual(before);
+    }
+  });
+});
 
 describe('migrateRegexBuilderTabs', () => {
   it('removes a redundant legacy Builder when Regex already exists', () => {

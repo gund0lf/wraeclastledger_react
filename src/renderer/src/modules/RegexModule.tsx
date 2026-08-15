@@ -1,7 +1,7 @@
 import {
   Text, Button, Group, Stack, Badge, ActionIcon,
   TextInput, Select, MultiSelect, Modal, CopyButton, Code, Divider, ScrollArea, Tooltip,
-  NumberInput, Switch, Alert, Menu, SimpleGrid, UnstyledButton, SegmentedControl,
+  NumberInput, Switch, Alert, Menu, SimpleGrid, UnstyledButton, SegmentedControl, Checkbox,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useState, useMemo, useEffect, useRef, type KeyboardEvent } from 'react';
@@ -73,6 +73,83 @@ const brickModFilter = ({ options, search }: { options: any[]; search: string })
   return filterBrickModSelectOptions(options, search ?? '');
 };
 
+const FullscreenBrickModList = ({
+  label,
+  options,
+  selected,
+  search,
+  nightmare = false,
+  onSearchChange,
+  onToggle,
+}: {
+  label: string;
+  options: BrickModSelectOption[];
+  selected: string[];
+  search: string;
+  nightmare?: boolean;
+  onSearchChange: (value: string) => void;
+  onToggle: (id: string) => void;
+}) => {
+  const selectedSet = new Set(selected);
+  const visibleOptions = filterBrickModSelectOptions(options, search);
+
+  return (
+    <Stack gap={5}>
+      <TextInput
+        size="sm"
+        label={`${label} · ${selected.length} selected`}
+        placeholder={`Filter ${nightmare ? 'Nightmare' : 'regular'} mods…`}
+        value={search}
+        onChange={(event) => onSearchChange(event.currentTarget.value)}
+        styles={{ label: { fontSize: FONT.body, color: nightmare ? COLOR.nightmare : COLOR.textDim } }}
+      />
+      <Stack gap={3}>
+        {visibleOptions.map((option) => {
+          const checked = selectedSet.has(option.value);
+          return (
+            <UnstyledButton
+              key={option.value}
+              aria-pressed={checked}
+              aria-label={`${checked ? 'Remove' : 'Add'} ${option.label}`}
+              onClick={() => onToggle(option.value)}
+              style={{
+                width: '100%',
+                padding: '7px 9px',
+                borderRadius: 5,
+                border: `1px solid ${checked ? (nightmare ? COLOR.nightmare : COLOR.info) : COLOR.border}`,
+                background: checked ? COLOR.bgHover : COLOR.bgSunken,
+                textAlign: 'left',
+              }}
+            >
+              <Group gap={8} wrap="nowrap" align="flex-start">
+                <Checkbox
+                  checked={checked}
+                  readOnly
+                  tabIndex={-1}
+                  size="sm"
+                  color={nightmare ? 'grape' : 'blue'}
+                  style={{ pointerEvents: 'none', marginTop: 2, flexShrink: 0 }}
+                />
+                <Stack gap={1} style={{ minWidth: 0 }}>
+                  <Text size="sm" style={{ color: nightmare ? COLOR.nightmare : COLOR.text }}>
+                    {option.tradeLabel}
+                  </Text>
+                  {option.label !== option.tradeLabel && (
+                    <Text size="xs" c="dimmed">{option.label}</Text>
+                  )}
+                </Stack>
+              </Group>
+            </UnstyledButton>
+          );
+        })}
+        {visibleOptions.length === 0 && (
+          <Text size="sm" c="dimmed" py={8} ta="center">No matching mods</Text>
+        )}
+      </Stack>
+    </Stack>
+  );
+};
+
 // ─── From Session tab ─────────────────────────────────────────────────────────
 // WP8: the generate/exclusions/trade content of the merged Regex panel. The
 // internal RegexLine/CopyLine were replaced by the shared components/ui/RegexLine.
@@ -119,6 +196,8 @@ export const FromSessionTab = () => {
   const [brickModsError,    setBrickModsError]    = useState<string | null>(null);
   const [unavailableBricks, setUnavailableBricks] = useState<{ label: string; expectedCount: number; actualCount: number }[]>([]);
   const [tradeBrickExcl,    setTradeBrickExcl]    = useState<string[]>([]);
+  const [regularBrickSearch, setRegularBrickSearch] = useState('');
+  const [nightmareBrickSearch, setNightmareBrickSearch] = useState('');
   const ignoreEmptySearchBackspaceRef = useRef(false);
 
   // Mantine removes the last selected pill on an empty-search Backspace even
@@ -228,6 +307,12 @@ export const FromSessionTab = () => {
   };
   const selectedIdsOf = (cat: 'regular' | 'nightmare') =>
     brickMods.filter((m) => m.category === cat && exclusions.includes(m.regexTerm)).map((m) => m.id);
+  const toggleSelectedMod = (cat: 'regular' | 'nightmare', id: string) => {
+    const selected = selectedIdsOf(cat);
+    handleCategoryChange(cat)(
+      selected.includes(id) ? selected.filter((selectedId) => selectedId !== id) : [...selected, id],
+    );
+  };
   const doPresetSave = () => {
     const name = presetSaveName.trim();
     const literal = presetLiteralRegex.trim();
@@ -799,36 +884,26 @@ export const FromSessionTab = () => {
             )}
 
             {brickMods.length > 0 && (
-              /* Side-by-side category pickers — no scroll-past-Regular to reach
-                 Nightmare, and the headers make the old purple note redundant. */
-              <SimpleGrid cols={2} spacing={6}>
-                <MultiSelect size="xs" label="Regular / shared mods" placeholder="Search…" searchable clearable
-                  data={brickModData.find((group) => group.group === 'Regular / shared')?.items ?? []}
-                  filter={brickModFilter}
-                  value={selectedIdsOf('regular')}
-                  onChange={(selected) => applySelectedModsChange(selected, handleCategoryChange('regular'))}
-                  onKeyDownCapture={(event) => protectSelectedModsOnBackspace(event, selectedIdsOf('regular').length > 0)}
-                  renderOption={renderBrickOption}
-                  maxDropdownHeight={220}
-                  styles={{
-                    label: { fontSize: FONT.label, color: 'var(--mantine-color-dimmed)' },
-                    // Pin clear ×/chevron to the TOP right — the section is
-                    // absolutely positioned full-height and centers its content,
-                    // so it drifted as picked mods grew the field (Sad 2026-07-10).
-                    section: { alignItems: 'flex-start', paddingTop: 5 },
-                  }} />
-                <MultiSelect size="xs" label="Nightmare mods" placeholder="Search…" searchable clearable
-                  data={brickModData.find((group) => group.group === 'Nightmare')?.items ?? []}
-                  filter={brickModFilter}
-                  value={selectedIdsOf('nightmare')}
-                  onChange={(selected) => applySelectedModsChange(selected, handleCategoryChange('nightmare'))}
-                  onKeyDownCapture={(event) => protectSelectedModsOnBackspace(event, selectedIdsOf('nightmare').length > 0)}
-                  renderOption={renderBrickOption}
-                  maxDropdownHeight={220}
-                  styles={{
-                    label: { fontSize: FONT.label, color: COLOR.nightmare },
-                    section: { alignItems: 'flex-start', paddingTop: 5 }, // see Regular picker note
-                  }} />
+              /* Persistent catalogues keep the complete mod pools visible and
+                 searchable without opening a separate scrolling menu. */
+              <SimpleGrid cols={2} spacing="md">
+                <FullscreenBrickModList
+                  label="Regular / shared mods"
+                  options={brickModData.find((group) => group.group === 'Regular / shared')?.items ?? []}
+                  selected={selectedIdsOf('regular')}
+                  search={regularBrickSearch}
+                  onSearchChange={setRegularBrickSearch}
+                  onToggle={(id) => toggleSelectedMod('regular', id)}
+                />
+                <FullscreenBrickModList
+                  label="Nightmare mods"
+                  options={brickModData.find((group) => group.group === 'Nightmare')?.items ?? []}
+                  selected={selectedIdsOf('nightmare')}
+                  search={nightmareBrickSearch}
+                  nightmare
+                  onSearchChange={setNightmareBrickSearch}
+                  onToggle={(id) => toggleSelectedMod('nightmare', id)}
+                />
               </SimpleGrid>
             )}
 

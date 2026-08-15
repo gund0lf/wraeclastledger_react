@@ -1,16 +1,19 @@
 import {
-  Card, ScrollArea, Table, Text, ActionIcon, Group, Button, Switch,
+  Alert, Card, ScrollArea, Table, Text, ActionIcon, Group, Button, Switch,
   Tooltip, TextInput, Modal, Stack, Badge,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import type { ClipboardBridgeStatus } from '../../../shared/protonClipboardBridge';
 import { useSessionKeys } from '../store/useSessionStore';
 import { IconTrash, IconClipboard, IconArrowBackUp, IconSearch, IconX, IconPlayerPlayFilled, IconPlayerPauseFilled } from '@tabler/icons-react';
 import { ModuleHeader } from '../components/ui/ModuleHeader';
 import { parseMapClipboard } from '../utils/mapParser';
 import { markPossibleDuplicates } from '../utils/mapDuplicates';
+import { usePanelMaximized } from '../layout/panelLayoutContext';
 
 export const SessionLogModule = () => {
+  const isMaximized = usePanelMaximized('session-log');
   const {
     maps, removeMap, addMap, undoLastMap, clearMaps,
     isWatching, toggleWatch,
@@ -21,6 +24,13 @@ export const SessionLogModule = () => {
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null); // row hover for delete reveal (Sessions pattern)
   const [hoveredTrashId, setHoveredTrashId] = useState<string | null>(null); // delete icon red hover
   const [hoveredClear, setHoveredClear] = useState(false); // Clear button red hover
+  const [clipboardBridgeStatus, setClipboardBridgeStatus] = useState<ClipboardBridgeStatus>({ state: 'idle' });
+
+  useEffect(() => {
+    void window.api.getClipboardBridgeStatus().then(setClipboardBridgeStatus);
+    const removeListener = window.api.onClipboardBridgeStatus(setClipboardBridgeStatus);
+    return removeListener;
+  }, []);
 
   const handlePaste = async () => {
     try {
@@ -44,7 +54,14 @@ export const SessionLogModule = () => {
       onMouseEnter={() => setHoveredRowId(map.id)}
       onMouseLeave={() => setHoveredRowId(null)}>
       <Table.Td>{index + 1}</Table.Td>
-      <Table.Td style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+      <Table.Td style={{
+        width: isMaximized ? '28%' : undefined,
+        minWidth: isMaximized ? 240 : undefined,
+        maxWidth: isMaximized ? undefined : 140,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      }}
         title={map.name || undefined}>
         {dupIds.has(map.id) && (
           <Tooltip multiline w={240} label="Exactly matches an earlier map in this session — possible accidental repeat. Delete it if so; a genuinely identical map can keep the marker.">
@@ -114,6 +131,12 @@ export const SessionLogModule = () => {
                   : <IconPlayerPauseFilled size={10} />} />
             </Tooltip>
             <Text fw={700} size="sm">{maps.length} map{maps.length !== 1 ? 's' : ''}{search.trim() && filtered.length !== maps.length ? ` · ${filtered.length} shown` : ''}</Text>
+            {clipboardBridgeStatus.state === 'connecting' && (
+              <Badge size="xs" color="yellow" variant="light">Proton connecting</Badge>
+            )}
+            {clipboardBridgeStatus.state === 'ready' && (
+              <Badge size="xs" color="green" variant="light">Proton capture</Badge>
+            )}
           </Group>
         }
         right={
@@ -148,12 +171,18 @@ export const SessionLogModule = () => {
         }
       />
 
+      {clipboardBridgeStatus.state === 'error' && (
+        <Alert color="red" mb="xs" py="xs">
+          {clipboardBridgeStatus.message}
+        </Alert>
+      )}
+
       <ScrollArea style={{ flex: 1 }}>
         <Table stickyHeader striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>#</Table.Th>
-              <Table.Th>Name</Table.Th>
+              <Table.Th style={isMaximized ? { width: '28%', minWidth: 240 } : undefined}>Name</Table.Th>
               <Table.Th>Tier</Table.Th>
               <Table.Th>
                 <Tooltip label="Exact explicit modifiers from advanced copies; dash means a legacy headerless copy">

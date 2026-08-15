@@ -1,0 +1,149 @@
+name: Linux AppImage stable release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Existing stable release version (for example 1.0.76)
+        required: true
+        type: string
+      publish_release_assets:
+        description: Attach the verified AppImage and latest-linux.yml to the existing release
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  appimage:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out the release source
+        uses: actions/checkout@v4
+
+      - name: Resolve and validate the stable version
+        shell: bash
+        env:
+          RAW_VERSION: ${{ inputs.version }}
+        run: |
+          VERSION="${RAW_VERSION#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Expected a stable version such as 1.0.76; got: $RAW_VERSION" >&2
+            exit 1
+          fi
+          echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install the Windows cross-compiler
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Remove stale build output
+        run: rm -rf dist out
+
+      - name: Stamp the stable version without creating a tag
+        run: npm version "$RELEASE_VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Run the release gate
+        run: npm run typecheck && npm test && npm run lint
+
+      - name: Build the AppImage without publishing
+        run: npm run build:linux
+
+      - name: Extract the packaged updater configuration
+        shell: bash
+        run: |
+          APPIMAGE="$(find dist -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          if [[ -z "$APPIMAGE" ]]; then
+            echo "No AppImage was produced" >&2
+            exit 1
+          fi
+          chmod +x "$APPIMAGE"
+          rm -rf dist/squashfs-root
+          (
+            cd dist
+            "./$(basename "$APPIMAGE")" --appimage-extract >/dev/null
+          )
+          PACKAGED_CONFIG="$(find dist/squashfs-root -type f -path '*/resources/app-update.yml' -print -quit)"
+          if [[ -z "$PACKAGED_CONFIG" ]]; then
+            echo "The AppImage does not contain resources/app-update.yml" >&2
+            exit 1
+          fi
+          cp "$PACKAGED_CONFIG" dist/packaged-app-update.yml
+          PACKAGED_HELPER="$(find dist/squashfs-root -type f -path '*/resources/linux/wl-proton-clipboard.exe' -print -quit)"
+          if [[ -z "$PACKAGED_HELPER" ]]; then
+            echo "The AppImage does not contain the Proton clipboard helper" >&2
+            exit 1
+          fi
+          cp "$PACKAGED_HELPER" dist/packaged-wl-proton-clipboard.exe
+          rm -rf dist/squashfs-root
+
+      - name: Verify the stable updater artifacts
+        run: npm run verify:linux:release
+
+      - name: Upload the exact verified build
+        uses: actions/upload-artifact@v4
+        with:
+          name: WraeclastLedger-linux-x64-stable
+          if-no-files-found: error
+          path: |
+            dist/*.AppImage
+            dist/latest-linux.yml
+            dist/packaged-app-update.yml
+            dist/packaged-wl-proton-clipboard.exe
+            dist/linux-release-evidence.json
+            electron-builder.yml
+
+  publish:
+    needs: appimage
+    if: ${{ inputs.publish_release_assets }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_VERSION: ${{ inputs.version }}
+
+    steps:
+      - name: Normalize the stable version
+        shell: bash
+        run: echo "RELEASE_VERSION=${RELEASE_VERSION#v}" >> "$GITHUB_ENV"
+
+      - name: Download the exact verified build
+        uses: actions/download-artifact@v4
+        with:
+          name: WraeclastLedger-linux-x64-stable
+          path: release-artifact
+
+      - name: Confirm the release and source SHA
+        shell: bash
+        run: |
+          RELEASE_JSON="$(gh release view "v${RELEASE_VERSION}" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,tagName)"
+          if [[ "$(jq -r '.isDraft' <<<"$RELEASE_JSON")" != "false" || "$(jq -r '.isPrerelease' <<<"$RELEASE_JSON")" != "false" ]]; then
+            echo "v${RELEASE_VERSION} is not an existing published stable release" >&2
+            exit 1
+          fi
+          SOURCE_SHA="$(jq -r '.sourceSha' release-artifact/dist/linux-release-evidence.json)"
+          TAG_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/v${RELEASE_VERSION}" --jq '.sha')"
+          if [[ "$SOURCE_SHA" != "$TAG_SHA" ]]; then
+            echo "Verified artifact source $SOURCE_SHA does not match release tag source $TAG_SHA" >&2
+            exit 1
+          fi
+
+      - name: Attach the verified Linux updater assets
+        shell: bash
+        run: |
+          gh release upload "v${RELEASE_VERSION}" \
+            "release-artifact/dist/WraeclastLedger-${RELEASE_VERSION}-x86_64.AppImage" \
+            "release-artifact/dist/latest-linux.yml" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber

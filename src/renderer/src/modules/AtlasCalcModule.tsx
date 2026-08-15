@@ -125,7 +125,7 @@ const StepDots = ({ active }: { active: ConfigStep }) => {
   );
 };
 
-export const AtlasCalcModule = () => {
+export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {}) => {
   const { ref: panelRef, width: panelWidth } = useElementSize();
   const compactPanel = panelWidth > 0 && panelWidth < 280;
   const { maps, settings, updateSetting, setAtlasBonus, atlasBonusByLeague, activeSessionId, sessionNonce } =
@@ -368,7 +368,15 @@ export const AtlasCalcModule = () => {
   );
 
   return (
-    <Card ref={panelRef} shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ overflow: 'auto' }}>
+    <Card
+      ref={panelRef}
+      shadow={embedded ? undefined : 'sm'}
+      padding={embedded ? 0 : 'sm'}
+      radius="md"
+      withBorder={!embedded}
+      h={embedded ? 'auto' : '100%'}
+      style={{ background: embedded ? 'transparent' : undefined, overflow: embedded ? 'visible' : 'auto' }}
+    >
       <Stack gap={8}>
         {/* Toned down 2026-07-20 (Sad): the info-blue surface made the hero
             dominate the whole panel; neutral section surface + the softer

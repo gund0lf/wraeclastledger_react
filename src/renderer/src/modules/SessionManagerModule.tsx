@@ -12,10 +12,13 @@ import { SessionCompareModal } from '../components/SessionCompareModal';
 import { CollapsibleSection } from '../components/ui/CollapsibleSection';
 import { WorkingSessionGuardModal } from '../components/WorkingSessionGuardModal';
 import { isWorkingSessionMeaningful } from '../utils/workingSession';
+import { usePanelMaximized } from '../layout/panelLayoutContext';
 
 const TILE_STYLES = { inner: { width: '100%' }, label: { flex: 1, textAlign: 'center' as const } };
 
-export const SessionManagerModule = () => {
+export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean } = {}) => {
+  const panelIsMaximized = usePanelMaximized('session-manager');
+  const isMaximized = !embedded && panelIsMaximized;
   const { ref: panelRef, width: panelWidth } = useElementSize();
   const compactPanel = panelWidth > 0 && panelWidth < 285;
   const {
@@ -321,8 +324,16 @@ export const SessionManagerModule = () => {
         initialSelectedIds={[...selected]}
       />
 
-      <Card ref={panelRef} shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ overflow: 'auto' }}>
-        <Stack gap={6}>
+      <Card
+        ref={panelRef}
+        shadow={embedded ? undefined : 'sm'}
+        padding={embedded ? 0 : (isMaximized ? 'md' : 'sm')}
+        radius="md"
+        withBorder={!embedded}
+        h={embedded ? 'auto' : '100%'}
+        style={{ background: embedded ? 'transparent' : undefined, overflow: embedded ? 'visible' : 'auto' }}
+      >
+        <Stack gap={isMaximized ? 10 : 6}>
           <Group justify="space-between" gap={6} wrap="nowrap">
             {/* Storage indicator lives LEFT (Sad 2026-07-06: balance — right side
                 already carries the save-state badge). An "open save location"
@@ -331,15 +342,15 @@ export const SessionManagerModule = () => {
                 folder contains nothing user-usable — the icon lands when
                 sessions-as-files makes it truthful. */}
             <Tooltip label="Total localStorage used by WraeclastLedger" position="right" withArrow>
-              <Text size="xs" c={parseFloat(storageMB) > 4 ? 'orange' : 'dimmed'} style={{ cursor: 'default' }}>
+              <Text size={isMaximized ? 'sm' : 'xs'} c={parseFloat(storageMB) > 4 ? 'orange' : 'dimmed'} style={{ cursor: 'default' }}>
                 {storageMB} MB
               </Text>
             </Tooltip>
             {isUnsaved
-              ? <Badge color="orange" variant="dot" size="sm">Unsaved</Badge>
+              ? <Badge color="orange" variant="dot" size={isMaximized ? 'md' : 'sm'}>Unsaved</Badge>
               : (
                 <Tooltip label="Changes to this session are saved automatically" position="left" withArrow>
-                  <Badge color="green" variant="dot" size="sm">Auto-saved</Badge>
+                  <Badge color="green" variant="dot" size={isMaximized ? 'md' : 'sm'}>Auto-saved</Badge>
                 </Tooltip>
               )
             }
@@ -359,7 +370,7 @@ export const SessionManagerModule = () => {
               dropdownOpened={sessionSelectOpen}
               onDropdownOpen={() => setSessionSelectOpen(true)}
               onDropdownClose={() => setSessionSelectOpen(false)}
-              searchable size="sm"
+              searchable size={isMaximized ? 'md' : 'sm'}
             />
             {!isUnsaved && (
               <>
@@ -381,8 +392,8 @@ export const SessionManagerModule = () => {
               </>
             )}
           </Group>
-          <SimpleGrid cols={2} spacing={4}>
-            <Button size="xs" variant={savedFlash ? 'light' : 'default'} color={savedFlash ? 'green' : undefined}
+          <SimpleGrid cols={2} spacing={isMaximized ? 8 : 4}>
+            <Button size={isMaximized ? 'sm' : 'xs'} variant={savedFlash ? 'light' : 'default'} color={savedFlash ? 'green' : undefined}
               leftSection={savedFlash ? <IconCheck size={12} /> : <IconDeviceFloppy size={12} />}
               rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
               styles={TILE_STYLES}
@@ -391,7 +402,7 @@ export const SessionManagerModule = () => {
             </Button>
             <Tooltip label={sessionEntries.length < 2 ? 'Save at least 2 sessions to compare' : 'Compare 2-3 saved sessions side by side'} withArrow>
               <span style={{ display: 'flex', flex: 1 }}>
-                <Button size="xs" variant="default"
+                <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
                   leftSection={<IconArrowsLeftRight size={12} />}
                   rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
                   styles={TILE_STYLES}
@@ -402,15 +413,15 @@ export const SessionManagerModule = () => {
               </span>
             </Tooltip>
           </SimpleGrid>
-          <SimpleGrid cols={2} spacing={4}>
-            <Button size="xs" variant="default"
+          <SimpleGrid cols={2} spacing={isMaximized ? 8 : 4}>
+            <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
               leftSection={<IconBrandDiscord size={12} />}
               rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
               styles={TILE_STYLES}
               onClick={() => triggerStrategyAction('import')}>
               {compactPanel ? 'Import' : 'Import Strategy'}
             </Button>
-            <Button size="xs" variant="default"
+            <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
               leftSection={<IconShare2 size={12} />}
               rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
               styles={TILE_STYLES}
@@ -420,7 +431,7 @@ export const SessionManagerModule = () => {
           </SimpleGrid>
           {sessionEntries.length > 0 && (
             <CollapsibleSection variant="group" defaultOpen={false} title="History"
-              right={<Badge size="xs" variant="light" color="gray">{sessionEntries.length}</Badge>}>
+              right={<Badge size={isMaximized ? 'sm' : 'xs'} variant="light" color="gray">{sessionEntries.length}</Badge>}>
 
               {/* Bulk action bar — ALWAYS mounted, revealed via visibility so
                   selecting a row never reflows the list under the cursor
@@ -428,15 +439,15 @@ export const SessionManagerModule = () => {
                   hidden buttons from pointer + accessibility trees. */}
               <Group gap={4} wrap="nowrap"
                 style={{ visibility: selected.size > 0 ? 'visible' : 'hidden' }}>
-                  <Text size="xs" c="dimmed" style={{ flex: 1 }}>{selected.size} selected</Text>
+                  <Text size={isMaximized ? 'sm' : 'xs'} c="dimmed" style={{ flex: 1 }}>{selected.size} selected</Text>
                   <Tooltip label="Export selected as JSON" withArrow>
-                    <Button size="xs" variant="default" leftSection={<IconDownload size={11} />}
+                    <Button size={isMaximized ? 'sm' : 'xs'} variant="default" leftSection={<IconDownload size={11} />}
                       onClick={handleExport}>
                       Export
                     </Button>
                   </Tooltip>
                   <Tooltip label="Delete selected" withArrow>
-                    <Button size="xs" variant="default" leftSection={<IconTrash size={11} />}
+                    <Button size={isMaximized ? 'sm' : 'xs'} variant="default" leftSection={<IconTrash size={11} />}
                       onMouseEnter={() => setHoveredBulkDelete(true)}
                       onMouseLeave={() => setHoveredBulkDelete(false)}
                       style={hoveredBulkDelete ? { borderColor: 'var(--mantine-color-red-7)', color: 'var(--mantine-color-red-4)' } : undefined}
@@ -450,14 +461,14 @@ export const SessionManagerModule = () => {
               {/* Select all header */}
               <Group gap={6} justify="space-between">
                 <Group gap={6}>
-                  <Checkbox size="xs"
+                  <Checkbox size={isMaximized ? 'sm' : 'xs'}
                     checked={selected.size === sessionEntries.length && sessionEntries.length > 0}
                     indeterminate={selected.size > 0 && selected.size < sessionEntries.length}
                     onChange={toggleSelectAll} />
-                  <Text size="xs" c="dimmed">Select all</Text>
+                  <Text size={isMaximized ? 'sm' : 'xs'} c="dimmed">Select all</Text>
                 </Group>
                 <Tooltip label="Import sessions from a JSON backup file" withArrow>
-                  <Button size="xs" variant="subtle" color="gray" leftSection={<IconUpload size={11} />}
+                  <Button size={isMaximized ? 'sm' : 'xs'} variant="subtle" color="gray" leftSection={<IconUpload size={11} />}
                     onClick={() => importFileRef.current?.click()}>
                     Restore from Backup
                   </Button>
@@ -467,7 +478,7 @@ export const SessionManagerModule = () => {
               </Group>
 
               {/* Session rows */}
-              <Stack gap={3}>
+              <Stack gap={isMaximized ? 5 : 3}>
                 {sessionEntries.map((s) => {
                   const isHovered = hoveredRowId === s.id;
                   const isSelected = selected.has(s.id);
@@ -476,25 +487,25 @@ export const SessionManagerModule = () => {
                       onMouseEnter={() => setHoveredRowId(s.id)}
                       onMouseLeave={() => setHoveredRowId(null)}
                       style={{
-                        padding: '3px 4px', borderRadius: 4,
+                        padding: isMaximized ? '7px 8px' : '3px 4px', borderRadius: 4,
                         background: isSelected
                           ? 'rgba(74,158,255,0.07)'
                           : isHovered ? 'rgba(255,255,255,0.04)' : undefined,
                         transition: 'background 120ms ease',
                       }}>
-                      <Checkbox size="xs" checked={isSelected}
+                      <Checkbox size={isMaximized ? 'sm' : 'xs'} checked={isSelected}
                         onChange={() => toggleSelect(s.id)} style={{ flexShrink: 0 }} />
                       <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
-                        <Text size="xs" fw={600} lineClamp={1}>{s.name}</Text>
-                        <Text size="xs" c="dimmed">{s.maps.length} maps · {new Date(s.createdAt).toLocaleDateString()}</Text>
+                        <Text size={isMaximized ? 'sm' : 'xs'} fw={600} lineClamp={1}>{s.name}</Text>
+                        <Text size={isMaximized ? 'sm' : 'xs'} c="dimmed">{s.maps.length} maps · {new Date(s.createdAt).toLocaleDateString()}</Text>
                       </Stack>
                       <Group gap={4} wrap="nowrap">
-                        <Button size="xs" variant="default"
+                        <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
                           styles={{ root: { opacity: isHovered ? 1 : 0, transition: 'opacity 120ms ease' } }}
                           onFocus={() => setHoveredRowId(s.id)}
                           onBlur={() => setHoveredRowId(null)}
                           onClick={() => requestSwitch(s.id)}>Load</Button>
-                        <ActionIcon size="md" variant="default" aria-label={`Delete session ${s.name}`}
+                        <ActionIcon size={isMaximized ? 'lg' : 'md'} variant="default" aria-label={`Delete session ${s.name}`}
                           onMouseEnter={() => setHoveredTrashId(s.id)}
                           onMouseLeave={() => setHoveredTrashId(null)}
                           onFocus={() => { setHoveredRowId(s.id); setHoveredTrashId(s.id); }}
