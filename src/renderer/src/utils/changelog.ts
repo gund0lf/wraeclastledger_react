@@ -10,6 +10,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.76',
+    date: 'Unreleased',
+    changes: [
+      'Fresh sessions now apply your default Regex exclusion preset before the first map is captured, and Nightmare Trade searches target the exact Nightmare Map item type.',
+      'Starting or switching sessions clears stale Atlas Node Stats feedback, ignores late results from the previous session, and keeps a fresh empty tree from showing an automatic no-stats warning.',
+    ],
+  },
+  {
     version: '1.0.75',
     date: '2026-08-10',
     changes: [

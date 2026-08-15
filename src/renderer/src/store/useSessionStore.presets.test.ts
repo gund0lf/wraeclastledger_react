@@ -122,6 +122,20 @@ describe('named exclusion presets', () => {
 describe('default exclusion preset', () => {
   beforeEach(resetStore);
 
+  it('applies the default preset to a new session before any maps exist', () => {
+    setExclusions(['deto', 'burn']);
+    state().setDefaultPreset();
+    setExclusions(['unrelated']);
+
+    state().newSession();
+
+    expect(state().maps).toEqual([]);
+    expect(state().settings.regexExclusions).toEqual(['deto', 'burn']);
+
+    setExclusions([...state().settings.regexExclusions, 'extra']);
+    expect(state().defaultExclusionPreset).toEqual(['deto', 'burn']);
+  });
+
   it('setDefaultPreset copies the current exclusions; clearDefaultPreset empties it', () => {
     setExclusions(['deto', 'burn']);
     state().setDefaultPreset();

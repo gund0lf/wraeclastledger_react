@@ -17,6 +17,7 @@ import {
   SPECIAL_MAP_STAT_TEXT,
   resolveEightModSpecialStatIds,
   resolveSpecialMapTradeStats,
+  tradeItemTypeForMapType,
 } from '../shared/tradeMapFilters'
 
 // The installed build and `npm run dev` used to share one Chromium profile.
@@ -336,7 +337,7 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
   if (pseudoFilters.length > 0) statsArray.push({ type: 'and', filters: pseudoFilters });
 
   const originatorStatId = SPECIAL_MAP_STAT_IDS.get('originator');
-  if ((mapType === 'originator' || mapType === 'nightmare') && !originatorStatId) {
+  if (mapType === 'originator' && !originatorStatId) {
     return {
       url: null,
       error: `Special-map exclusion unavailable: ${SPECIAL_MAP_STAT_TEXT.originator}`,
@@ -348,9 +349,6 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
 
   if (empowered && STATS_CACHE.has('empowered'))
     statsArray.push({ type: 'and', filters: [{ id: STATS_CACHE.get('empowered')! }] });
-
-  if (mapType === 'nightmare')
-    statsArray.push({ type: 'not', filters: [{ id: originatorStatId! }] });
 
   if (mapType === '8mod') {
     const specialMapStats = resolveEightModSpecialStatIds(SPECIAL_MAP_STAT_IDS);
@@ -400,11 +398,13 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
     }
   }
 
+  const itemType = tradeItemTypeForMapType(mapType);
   const query = {
     query: {
       // 'securable' = Instant Buyout only (PoB source: LISTED_STATUS_OPTIONS)
       // 'available' = Instant Buyout & In Person (broader — was incorrectly used before)
       status: { option: 'securable' },
+      ...(itemType ? { type: itemType } : {}),
       filters: {
         type_filters: {
           filters: { category: { option: 'map' }, rarity: { option: 'nonunique' } },
