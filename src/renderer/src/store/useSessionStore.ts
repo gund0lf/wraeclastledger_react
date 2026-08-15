@@ -289,7 +289,7 @@ interface SessionState {
   // WP7: first-run onboarding card dismissed. Top-level + additive - persist's
   // shallow merge defaults it to false for old stores (no migration needed).
   onboardingDismissed: boolean;
-  // Persistent default exclusion preset — survives newSession(), applied on strategy load
+  // Persistent default exclusion preset — applied to fresh sessions and strategy loads
   defaultExclusionPreset: string[];
   // Named exclusion presets for rotation (Sad 2026-07-09). User-scoped,
   // top-level + additive — persist's shallow merge defaults [] (no migration).
@@ -594,7 +594,28 @@ export const useSessionStore = create<SessionState>()(
         // Never seed/prompt under a guessed league (that reintroduces the rollover bug).
         const known = confirmedLeagueSync();
         const seededBonus = known ? (get().atlasBonusByLeague[known] ?? false) : false;
-        set((s) => ({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, settings: { ...DEFAULT_SETTINGS, leagueName: known ?? '', atlasBonus: seededBonus }, pendingAtlasBonusSeed: known === null, pendingAtlasBonusValue: null, activeSessionId: null, activeSessionName: null, isWatching: false, loadedStrategyInfo: null, sessionNonce: s.sessionNonce + 1 }));
+        set((s) => ({
+          maps: [],
+          lootItems: [],
+          baselineItems: [],
+          baselineTotal: 0,
+          sessionNotes: '',
+          investmentNeutralization: 0,
+          investmentDismissed: false,
+          settings: {
+            ...DEFAULT_SETTINGS,
+            leagueName: known ?? '',
+            atlasBonus: seededBonus,
+            regexExclusions: [...s.defaultExclusionPreset],
+          },
+          pendingAtlasBonusSeed: known === null,
+          pendingAtlasBonusValue: null,
+          activeSessionId: null,
+          activeSessionName: null,
+          isWatching: false,
+          loadedStrategyInfo: null,
+          sessionNonce: s.sessionNonce + 1,
+        }));
       },
 
       saveScarabPreset: (name) => {

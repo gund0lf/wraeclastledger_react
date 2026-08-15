@@ -66,6 +66,10 @@ export const AtlasTreeModule = () => {
   });
   const [capturedUrl, setCapturedUrl] = useState(srcUrl);
   const capturedUrlRef = useRef(srcUrl);
+  // Navigation events update React state and the Zustand setting together. The
+  // setting subscriber can render before capturedUrl state catches up, so retain
+  // the guest-originated URL synchronously to avoid treating it as an import.
+  const guestNavigationUrlRef = useRef('');
   const captureUrl = useCallback((url: string) => {
     capturedUrlRef.current = url;
     setCapturedUrl(url);
@@ -165,6 +169,7 @@ export const AtlasTreeModule = () => {
     const next = atlasViewUrl(url);
     showOriginalRef.current = false;
     setShowOriginal(false);
+    guestNavigationUrlRef.current = '';
     retargetedViewRef.current = next !== url && next !== BASE_URL ? next : '';
     retargetSettledRef.current = retargetedViewRef.current === '';
     setRetargetActive(retargetedViewRef.current !== '');
@@ -183,8 +188,14 @@ export const AtlasTreeModule = () => {
   useEffect(() => {
     const stored = atlasTreeUrl;
     if (showOriginal) return;
-    if (!stored) return;
+    // New Session deliberately resets to the empty Path of Pathing landing page.
+    // It is navigation state, not an imported tree to scrape and auto-apply.
+    if (!stored || stored === BASE_URL) return;
     if (!isPathofpathingUrl(stored)) return;
+    if (stored === guestNavigationUrlRef.current) {
+      guestNavigationUrlRef.current = '';
+      return;
+    }
     const next = atlasViewUrl(stored);
     if (!shouldAutoApplyExternalAtlasView(sessionIdentityChanged, next, capturedUrl, srcUrl)) return;
     retargetedViewRef.current = next !== stored ? next : '';
@@ -230,6 +241,17 @@ export const AtlasTreeModule = () => {
   useEffect(() => {
     const wv = webviewRef.current;
     if (!wv) return;
+    // Bind every guest listener to the session that mounted this webview. React
+    // removes the listener on remount, but an already-running async handler can
+    // outlive that cleanup and must not report against the replacement session.
+    const listenerSession = useSessionStore.getState();
+    const listenerSessionNonce = listenerSession.sessionNonce;
+    const listenerActiveSessionId = listenerSession.activeSessionId;
+    const isListenerSessionCurrent = () => {
+      const current = useSessionStore.getState();
+      return current.sessionNonce === listenerSessionNonce
+        && current.activeSessionId === listenerActiveSessionId;
+    };
     // Capture atlas points (allocated/max) from the pathofpathing counter
     // spans (#skillTreeNormalNodeCount / ...Maximum — feasibility confirmed
     // session 13). Fired on every tree edit (nav events change the hash) and
@@ -237,6 +259,7 @@ export const AtlasTreeModule = () => {
     // Author-declared share context ONLY — never load-bearing (batch 2026-07).
     const readPoints = () => {
       setTimeout(async () => {
+        if (!isListenerSessionCurrent()) return;
         try {
           const r = await (wv as any).executeJavaScript(`
             (function() {
@@ -249,6 +272,7 @@ export const AtlasTreeModule = () => {
               return { allocated: av, max: mv };
             })()
           `);
+          if (!isListenerSessionCurrent()) return;
           if (r && typeof r.allocated === 'number' && typeof r.max === 'number') {
             const st = useSessionStore.getState();
             // Phase 1.5 historical guard (rollover plan, 2026-07-11): a
@@ -272,6 +296,7 @@ export const AtlasTreeModule = () => {
       }, 250);
     };
     const handleNav = (e: any) => {
+      if (!isListenerSessionCurrent()) return;
       const url: string = e.url ?? '';
       if (!isPathofpathingUrl(url)) return;
       const storedUrl = useSessionStore.getState().settings.atlasTreeUrl;
@@ -288,12 +313,14 @@ export const AtlasTreeModule = () => {
         retargetedViewRef.current = url;
         retargetSettledRef.current = true;
         setRetargetActive(false);
+        guestNavigationUrlRef.current = url;
         updateSetting('atlasTreeUrl', url);
         if (url !== storedUrl) updateSetting('atlasDetectedTags', []);
       } else {
         retargetedViewRef.current = '';
         retargetSettledRef.current = true;
         setRetargetActive(false);
+        guestNavigationUrlRef.current = url;
         updateSetting('atlasTreeUrl', url);
         if (url !== storedUrl) updateSetting('atlasDetectedTags', []);
       }
@@ -305,6 +332,7 @@ export const AtlasTreeModule = () => {
       if (!isPathofpathingUrl(e.url ?? '')) e.preventDefault();
     };
     const handleFinishLoad = async () => {
+      if (!isListenerSessionCurrent()) return;
       if (retargetedViewRef.current && !retargetSettledRef.current) {
         // Path of Pathing canonicalizes some equivalent allocation hashes while
         // initializing. Wait for its rendered counter and two guest frames,
@@ -315,22 +343,26 @@ export const AtlasTreeModule = () => {
             `Promise.resolve(!!document.getElementById('skillTreeNormalNodeCount'))`,
           ).catch(() => false),
         );
+        if (!isListenerSessionCurrent()) return;
         await (wv as any).executeJavaScript(
           `new Promise(function(resolve) { requestAnimationFrame(function() { requestAnimationFrame(resolve); }); })`,
         ).catch(() => undefined);
+        if (!isListenerSessionCurrent()) return;
         let lastUrl = capturedUrlRef.current;
         let stableSince = Date.now();
         const stableDeadline = Date.now() + 2000;
-        while (Date.now() < stableDeadline && Date.now() - stableSince < 250) {
+        while (isListenerSessionCurrent() && Date.now() < stableDeadline && Date.now() - stableSince < 250) {
           await new Promise<void>((resolve) => setTimeout(resolve, 50));
           if (capturedUrlRef.current !== lastUrl) {
             lastUrl = capturedUrlRef.current;
             stableSince = Date.now();
           }
         }
+        if (!isListenerSessionCurrent()) return;
         retargetedViewRef.current = capturedUrlRef.current;
         retargetSettledRef.current = true;
       }
+      if (!isListenerSessionCurrent()) return;
       readPoints(); // restored sessions: capture points once the page is up
       const requestedSessionNonce = autoApplySessionRef.current;
       if (requestedSessionNonce === null) return;
@@ -342,8 +374,9 @@ export const AtlasTreeModule = () => {
           `Promise.resolve(!!document.getElementById('skillTreeStats_ShowHide'))`,
         ).catch(() => false),
       );
+      if (!isListenerSessionCurrent()) return;
       if (useSessionStore.getState().sessionNonce !== requestedSessionNonce) return;
-      await readStats('apply', requestedSessionNonce);
+      await readStats('apply', requestedSessionNonce, listenerActiveSessionId);
     };
     wv.addEventListener('will-navigate', handleWillNavigate);
     wv.addEventListener('did-navigate', handleNav);
@@ -376,10 +409,14 @@ export const AtlasTreeModule = () => {
   // ── Read atlas tree stats via JS injection ─────────────────────────────────
   const readStats = async (
     mode: 'inspect' | 'apply' = 'inspect',
-    expectedSessionNonce: number | null = null,
+    readSessionNonce = useSessionStore.getState().sessionNonce,
+    readActiveSessionId = useSessionStore.getState().activeSessionId,
   ) => {
-    const isCurrentSession = () => expectedSessionNonce === null
-      || useSessionStore.getState().sessionNonce === expectedSessionNonce;
+    const isCurrentSession = () => {
+      const current = useSessionStore.getState();
+      return current.sessionNonce === readSessionNonce
+        && current.activeSessionId === readActiveSessionId;
+    };
     if (!isCurrentSession()) return;
     setStatsError(null);
     setCalcApplied(null);
@@ -431,6 +468,8 @@ export const AtlasTreeModule = () => {
           } catch(e) { return { error: e.message }; }
         })()
       `);
+
+      if (!isCurrentSession()) return;
 
       await closeUpstreamStatsPanel(wv);
       if (!isCurrentSession()) return;

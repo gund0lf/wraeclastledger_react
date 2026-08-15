@@ -5,6 +5,7 @@ import {
   SPECIAL_MAP_STAT_TEXT,
   resolveEightModSpecialStatIds,
   resolveSpecialMapTradeStats,
+  tradeItemTypeForMapType,
 } from '../../../shared/tradeMapFilters';
 
 describe('8-mod special-map exclusions', () => {
@@ -83,6 +84,19 @@ describe('8-mod special-map exclusions', () => {
       missing: ['shaperInfluence', 'elderInfluence'],
     });
   });
+});
+
+describe('Trade item type filtering', () => {
+  it('uses the exact Nightmare Map item type for Nightmare searches', () => {
+    expect(tradeItemTypeForMapType('nightmare')).toBe('Nightmare Map');
+  });
+
+  it.each(['any', 'regular', '8mod', 'originator'])(
+    'does not force an item type for %s searches',
+    (mapType) => {
+      expect(tradeItemTypeForMapType(mapType)).toBeUndefined();
+    },
+  );
 });
 
 describe('Delirium Trade filtering', () => {

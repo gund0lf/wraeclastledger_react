@@ -95,3 +95,7 @@ export function buildDeliriumTradeStatFilter(
     filters: [{ id: statId, value: { min: deliriousPercent, max: deliriousPercent } }],
   };
 }
+
+export function tradeItemTypeForMapType(mapType: string): string | undefined {
+  return mapType === 'nightmare' ? 'Nightmare Map' : undefined;
+}

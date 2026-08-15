@@ -35,7 +35,7 @@ const MAP_TYPE_OPTIONS: { value: MapType; label: string; description: string }[]
   { value: 'any',        label: 'Any',         description: 'No map type filter applied' },
   { value: 'regular',    label: 'Regular',      description: 'Non-corrupted maps, standard mod pool. Pseudo stats left at 0.' },
   { value: '8mod',       label: '8-mod',        description: 'Corrupted ordinary maps only; excludes Originator and Shaper/Elder influence. High IIQ/pack narrows to quality 8-mod maps.' },
-  { value: 'nightmare',  label: 'Nightmare',    description: 'Has uber pseudo stats (currency/scarabs/maps > 0) and is NOT Originator. Set at least one pseudo min.' },
+  { value: 'nightmare',  label: 'Nightmare',    description: 'Exact Nightmare Map item type. Pseudo filters can narrow the results.' },
   { value: 'originator', label: 'Originator',   description: 'Has Originator\'s Memories implicit. Includes all variants.' },
 ];
 
@@ -525,7 +525,9 @@ export const FromSessionTab = () => {
           <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>
             {tradeMapType === 'regular' || tradeMapType === '8mod'
               ? 'Regular and 8-mod maps have no uber pseudo stats — keep these at 0.'
-              : 'These combine chisel quality + explicit mods. Set >0 on Nightmare to identify uber-mod maps.'}
+              : tradeMapType === 'nightmare'
+                ? 'Optional for Nightmare maps: these combine chisel quality + explicit mods.'
+                : 'These combine chisel quality + explicit mods.'}
           </Text>
           <Group gap="xs" grow>
             <NumberInput size="xs" label="Min Currency" min={0} step={10}
@@ -538,12 +540,6 @@ export const FromSessionTab = () => {
               disabled={tradeMapType === 'regular' || tradeMapType === '8mod'}
               value={tradeMinMaps} onChange={(v) => setTradeMinMaps(Number(v) || 0)} suffix="%" />
           </Group>
-
-          {tradeMapType === 'nightmare' && tradeMinCurrency === 0 && tradeMinScarabs === 0 && tradeMinMaps === 0 && (
-            <Text size="xs" c="orange" style={{ fontSize: FONT.small }}>
-              ⚠ Set at least one pseudo stat minimum to identify nightmare maps
-            </Text>
-          )}
 
           <Divider label="Brick exclusions (NOT filter)" labelPosition="left" />
           <Stack gap={4}>

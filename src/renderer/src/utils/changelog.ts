@@ -13,11 +13,12 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.76',
     date: 'Unreleased',
     changes: [
+      'Fresh sessions now apply your default Regex exclusion preset before the first map is captured, and Nightmare Trade searches target the exact Nightmare Map item type.',
       'Maximized Map Log and Strategy Browser panels now use the extra workspace for wider results, while their ordinary docked layouts stay unchanged.',
       'Maximized Sessions and Investment panels keep their familiar section order with larger controls, while Regex now uses searchable always-visible Regular and Nightmare mod lists instead of small scrolling dropdowns in every layout.',
       'Strategy share tags are rebuilt from the current session every time Share opens, Atlas block nodes no longer auto-tag the mechanics they disable, and changing or clearing a tree cannot leave old Atlas tags behind.',
       'Atlas Tree imports now require a complete HTTPS Path of Pathing tree URL, so malformed schemes are rejected in the panel instead of being handed to Windows as external application links.',
-      'Starting a new session now cancels Atlas Tree reads from the previous session, preventing the misleading empty Atlas Node Stats banner from appearing during the reset.',
+      'Starting or switching sessions now clears stale Atlas Node Stats feedback, cancels late reads from the previous session, and keeps a fresh empty tree from showing an automatic no-stats warning.',
       'Strategy compatibility notices no longer warn that current-patch scarabs were reworked before the strategy was authored, and repeated scarab slots no longer duplicate the same warning.',
       'Fresh and reset layouts now group Sessions, Atlas Calc, and Investment into one collapsible Setup sidebar that can retract to a left-edge tab, leaving more room for the workspace and Dashboard. Untouched saved layouts using the original three-panel left stack migrate automatically, while customized layouts and standalone panels remain unchanged.',
       'The Setup sidebar now reserves its scrollbar width, preventing Atlas Calc from flickering between compact layouts when Configuration is expanded near its width breakpoint.',
