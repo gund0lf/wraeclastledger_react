@@ -403,7 +403,8 @@ export const DashboardModule = () => {
                 <Group key={item.id} justify="space-between" wrap="nowrap" p={6}
                   style={{ border: `1px solid ${COLOR.border}`, borderRadius: 6 }}>
                   <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
-                    <LootCategoryIcon category={item.category} size={ICON_SIZE} />
+                    <PoeItemIcon name={item.name} size={ICON_SIZE}
+                      fallback={<LootCategoryGlyph category={item.category} size={ICON_SIZE} />} />
                     <Stack gap={0} style={{ minWidth: 0 }}>
                       <Group gap={4} wrap="nowrap">
                         <Text size="xs" fw={600} lineClamp={1}>{item.name}</Text>
@@ -450,6 +451,7 @@ export const DashboardModule = () => {
               onChange={(value) => setManualDraft((draft) => ({ ...draft, total: Number(value) || 0 }))} />
           </SimpleGrid>
           <Select label="Category" data={ITEM_CATEGORIES} value={manualDraft.category}
+            description="League is for named league-mechanic items such as Astrolabes, Allflames, Omens, tattoos, fossils and resonators. Other is the honest catch-all when no specific category fits."
             onChange={(value) => setManualDraft((draft) => ({ ...draft, category: (value as LootCategory | null) ?? 'Other' }))} />
           <Textarea label="Reason / note (optional)" placeholder="Why WealthyExile missed or underpriced it"
             value={manualDraft.note} maxLength={MANUAL_LOOT_NOTE_MAX} autosize minRows={2} maxRows={4}

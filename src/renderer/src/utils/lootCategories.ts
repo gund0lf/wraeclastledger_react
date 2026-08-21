@@ -42,7 +42,7 @@ const RULES: [RegExp | ((name: string, tab: string) => boolean), ItemCategory][]
   // (a gem) would otherwise match here before reaching the Gems rule below.
   // "Vaal Orb" matches via the explicit `vaal orb` token instead.
   [/chisel|orb|chaos|divine|exalted|vaal orb|scouring|alch|annulment|regal|alteration|augmentation|transmutation/i, 'Currency'],
-  [/coin|wombgift|runegraft|allflame|omen/i, 'League'],
+  [/\b(?:astrolabe|coin|wombgift|runegraft|allflame|omen|tattoo|artifact)\b/i, 'League'],
   [/fossil|resonator/i,     'League'],
   [/map$/i,                 'Maps'],
   [/support$|^vaal |awakened /i, 'Gems'],

@@ -84,6 +84,11 @@ const STASH_TYPES = [
 // back to its neutral category glyph.
 const GENERIC_DIV_CARD = 'https://web.poecdn.com/image/Art/2DItems/Divination/InventoryIcon.png';
 
+// Official PoE CDN art for an unapproved Heist Blueprint. poe.ninja does not
+// expose Blueprints in its economy catalogues, so a Blueprint-labelled miss
+// uses this one bounded generic identity instead of a Wiki/runtime dependency.
+export const GENERIC_BLUEPRINT = 'https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvSGVpc3QvQmx1ZXByaW50Tm90QXBwcm92ZWQ3IiwidyI6MSwiaCI6MSwic2NhbGUiOjF9XQ/bafd718e24/BlueprintNotApproved7.png';
+
 // ─── Normalisation ────────────────────────────────────────────────────────────
 function norm(s: string): string {
   return s
@@ -117,7 +122,12 @@ function isCleanTierMapIcon(url: string, tier: number): boolean {
   const descriptor = decodeIconDescriptor(url);
   if (descriptor?.f !== `2DItems/Maps/Atlas2Maps/New/MapNumbers${tier}`) return false;
   const baseKeys = new Set(['f', 'w', 'h', 'scale', 'mn', 'mt']);
-  return Object.keys(descriptor).every((key) => baseKeys.has(key));
+  // Allflame's current generic MapNumbers art carries exactly `mm:true`. It is
+  // still the neutral tier identity Sad supplied, unlike mb/mc/me/md variant
+  // overlays. Keep the allowance exact so future flags fail closed.
+  return Object.keys(descriptor).every((key) => (
+    baseKeys.has(key) || (key === 'mm' && descriptor.mm === true)
+  ));
 }
 
 // ─── Category fallbacks seeded after main fetch ───────────────────────────────
@@ -128,6 +138,11 @@ const divCardSet = new Set<string>();
 
 function pickGeneric(name: string): string | undefined {
   const n = norm(name);
+
+  // WealthyExile decorates Blueprints as "Blueprint: Bunker - 1/3". The
+  // explicit whole-word identity is trustworthy even though the numeric
+  // suffix alone is not (it is also used for gems).
+  if (/\bblueprint\b/.test(n)) return GENERIC_BLUEPRINT;
 
   // Divination cards by common naming ("The X", "A X")
   if (GENERIC.div_card) {
@@ -293,8 +308,9 @@ async function buildCache(challenge: string): Promise<void> {
   // currently trade — both used to fall to an ORDER-ARBITRARY generic (the
   // API's first "...Map" line; live-observed as Al-Hezmin Vaal Temple art).
   // Generated icon URLs embed a base64 JSON descriptor. Keep only signed
-  // MapNumbersN images without variant flags for plain tier rows; mb/mc/me/md
-  // entries are Blight/conqueror/event variants. If no clean signed image is
+  // MapNumbersN images without identity-changing variant flags for plain tier
+  // rows; the current Allflame generic `mm:true` composite is explicitly
+  // allowlisted, while mb/mc/me/md entries remain variant overlays. If no signed image is
   // available, the UI's neutral map glyph is more honest than either a false
   // overlay or the raw `f` asset (which is only a naked Roman numeral).
   mapTierIcons = new Map();
@@ -346,7 +362,10 @@ async function buildCache(challenge: string): Promise<void> {
       if (url) { GENERIC[key] = url; return; }
     }
   };
-  seed(['Craicic Chimeral', 'Saqawal, First of the Sky', 'Farrul, First of the Plains'], 'beast');
+  seed([
+    'Craicic Croaker', 'Wild Hellion Alpha', 'Craicic Chimeral',
+    'Saqawal, First of the Sky', 'Farrul, First of the Plains',
+  ], 'beast');
   seed(['Chaos Orb'], 'chaos_orb');
   seed(['Orb of Alchemy', 'Orb of Annulment', 'Orb of Scouring'], 'misc_orb');
 
@@ -392,7 +411,8 @@ export async function getItemIcons(): Promise<{
       const n = norm(name);
 
       // 0. Plain "Map (Tier N)" bypasses exact art because it may carry
-      // mb/mc/me/md overlays. Return only a signed flag-free tier image; a miss
+      // identity-changing overlays. Return only a signed tier image accepted
+      // by the explicit descriptor allowlist; a miss
       // intentionally reaches the Dashboard's neutral map glyph.
       const plainM = /^map tier (\d+)$/.exec(n);
       if (plainM) {

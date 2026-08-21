@@ -63,8 +63,11 @@ describe('categorise — by name regex', () => {
 
   it('catches league-specific items', () => {
     expect(categorise('Sacred Crystallised Lifeforce', '')).toBe('Other');
+    expect(categorise('Templar Astrolabe', '')).toBe('League');
     expect(categorise('Allflame Ember of Rebirth', '')).toBe('League');
     expect(categorise('Omen of Reinforcement', '')).toBe('League');
+    expect(categorise('Journey Tattoo of the Body', '')).toBe('League');
+    expect(categorise('Broken Circle Artifact', '')).toBe('League');
     expect(categorise("Ancient Wombgift", '')).toBe('League');
   });
 

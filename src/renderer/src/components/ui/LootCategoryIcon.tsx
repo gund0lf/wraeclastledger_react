@@ -22,7 +22,7 @@ const REPRESENTATIVE_ITEM: Record<LootCategory, string | null> = {
   'Unique Jewels': null,
   Maps: 'Map (Tier 16)',
   Gems: 'Empower Support',
-  Beasts: null,
+  Beasts: 'Craicic Croaker',
   League: null,
   Other: null,
 };

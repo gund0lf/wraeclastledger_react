@@ -23,6 +23,18 @@ const WINGED_URL = 'https://web.poecdn.com/gen/image/winged-abyss.png';
 const GEM_URL    = 'https://web.poecdn.com/gen/image/empower-support.png';
 const CHISEL_URL = 'https://web.poecdn.com/gen/image/scarab-chisel.png';
 const BLUNDERBORE_URL = 'https://web.poecdn.com/gen/image/blunderbore.png';
+const RALAKESH_URL = 'https://web.poecdn.com/gen/image/ralakesh.png';
+const EPHEMERAL_URL = 'https://web.poecdn.com/gen/image/ephemeral-edge.png';
+const DISSOLUTION_URL = 'https://web.poecdn.com/gen/image/dissolution.png';
+const INVITATION_URL = 'https://web.poecdn.com/gen/image/incandescent-invitation.png';
+const BEAST_URL = 'https://web.poecdn.com/gen/image/bestiary-orb-full.png';
+const ASTROLABE_NAMES = [
+  'Templar Astrolabe', 'Chaotic Astrolabe', 'Deceptive Astrolabe',
+  'Fruiting Astrolabe', 'Fungal Astrolabe', 'Grasping Astrolabe',
+  'Lightless Astrolabe', 'Nameless Astrolabe', 'Runic Astrolabe',
+  'Timeless Astrolabe',
+];
+const ASTROLABE_URL = 'https://web.poecdn.com/gen/image/astrolabe.png';
 const generatedMapUrl = (tier: number, flags: Record<string, unknown> = {}) => {
   const descriptor = [28, 14, {
     f: `2DItems/Maps/Atlas2Maps/New/MapNumbers${tier}`,
@@ -40,6 +52,7 @@ const BLIGHT14_URL   = generatedMapUrl(14, { mb: true });
 const BLIGHT16_URL   = generatedMapUrl(16, { mb: true });
 const PLAIN1_URL     = generatedMapUrl(1);
 const PLAIN16_URL    = generatedMapUrl(16);
+const ALLFLAME16_URL = generatedMapUrl(16, { mm: true });
 const EVENT9_URL     = generatedMapUrl(9, { me: true });
 const EVENT15_URL    = generatedMapUrl(15, { me: true });
 // Standard's legacy line remains deliberately undecodable so it cannot beat
@@ -63,7 +76,6 @@ beforeAll(() => {
           // Standard serves DIFFERENT art for the same key — first-write-wins
           // means the challenge league's CHAOS_URL must survive.
           { name: 'Chaos Orb',      icon: league === 'Standard' ? LEGACY_CHAOS_URL : CHAOS_URL },
-          { name: 'Empower Support', icon: GEM_URL }, // seeds the GENERIC.gem fallback
           { name: "Maven's Chisel of Scarabs", icon: CHISEL_URL },
         ], slugs: [] };
         if (type === 'Scarab')   return { icons: [
@@ -75,8 +87,15 @@ beforeAll(() => {
           slugs: ['the-doctor', 'darker-half', 'time-lost-relic', 'the-reflection-of-the-heart'],
           names: ['The Doctor', 'Darker Half', 'Time-Lost Relic', 'Reflection of the Heart'],
         };
+        if (type === 'Astrolabe') return { icons: ASTROLABE_NAMES.map((name) => ({
+          name, icon: ASTROLABE_URL,
+        })), slugs: [] };
         if (type === 'UniqueArmour') return { icons: [
           { name: 'Blunderbore', icon: BLUNDERBORE_URL },
+          { name: "Ralakesh's Impatience", icon: RALAKESH_URL },
+        ], slugs: [] };
+        if (type === 'UniqueWeapon') return { icons: [
+          { name: 'Ephemeral Edge', icon: EPHEMERAL_URL },
         ], slugs: [] };
         if (type === 'Map') {
           if (league === 'Standard') return { icons: [
@@ -87,7 +106,7 @@ beforeAll(() => {
             { name: 'Baran Map (Tier 16)',       icon: BARAN16_URL },
             { name: 'Map (Tier 1)',              icon: PLAIN1_URL },
             { name: 'Map (Tier 9)',              icon: EVENT9_URL },
-            { name: 'Map (Tier 16)',             icon: PLAIN16_URL },
+            { name: 'Map (Tier 16)',             icon: ALLFLAME16_URL },
             { name: 'Map (Tier 15)',             icon: EVENT15_URL },
             { name: 'Nightmare Map',             icon: NIGHTMARE_URL },
           ], slugs: [] };
@@ -97,6 +116,7 @@ beforeAll(() => {
           { name: 'Blighted Map (Tier 16)', icon: BLIGHT16_URL },
         ], slugs: [] };
         if (type === 'SkillGem') return { icons: [
+          { name: 'Empower Support', icon: GEM_URL },
           { name: 'Precision', icon: PRECISION_URL },
         ], slugs: [] };
         if (type === 'UniqueJewel') return { icons: [
@@ -105,6 +125,14 @@ beforeAll(() => {
           // supposed to not resolve WRONGLY.
           { name: 'Forbidden Flame', icon: FLAME_URL },
           { name: 'Forbidden Flesh', icon: FLESH_URL },
+          { name: 'Dissolution of the Flesh', icon: DISSOLUTION_URL },
+        ], slugs: [] };
+        if (type === 'Invitation') return { icons: [
+          { name: 'Incandescent Invitation', icon: INVITATION_URL },
+        ], slugs: [] };
+        if (type === 'Beast') return { icons: [
+          { name: 'Craicic Croaker', icon: BEAST_URL },
+          { name: 'Wild Hellion Alpha', icon: BEAST_URL },
         ], slugs: [] };
         return { icons: [], slugs: [] };
       },
@@ -114,6 +142,7 @@ beforeAll(() => {
 
 import {
   getItemIcons, clearIconCache, chiselItemName, deliOrbItemName, decodeIconDescriptor,
+  GENERIC_BLUEPRINT,
 } from './itemIcons';
 
 describe('decodeIconDescriptor()', () => {
@@ -123,6 +152,11 @@ describe('decodeIconDescriptor()', () => {
     });
     expect(decodeIconDescriptor(BLIGHT14_URL)).toMatchObject({ mb: true });
     expect(decodeIconDescriptor(BARAN16_URL)).toMatchObject({ mc: 1 });
+    expect(decodeIconDescriptor(ALLFLAME16_URL)).toMatchObject({ mm: true });
+    expect(GENERIC_BLUEPRINT).toBe('https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvSGVpc3QvQmx1ZXByaW50Tm90QXBwcm92ZWQ3IiwidyI6MSwiaCI6MSwic2NhbGUiOjF9XQ/bafd718e24/BlueprintNotApproved7.png');
+    expect(decodeIconDescriptor(GENERIC_BLUEPRINT)).toMatchObject({
+      f: '2DItems/Currency/Heist/BlueprintNotApproved7',
+    });
     expect(decodeIconDescriptor('https://example.com/not-generated.png')).toBeNull();
     expect(decodeIconDescriptor('https://web.poecdn.com/gen/image/not-base64/x/y.png')).toBeNull();
   });
@@ -174,8 +208,27 @@ describe('itemIcons resolve()', () => {
     const { resolve } = await getItemIcons();
     // WealthyExile uses this same numeric shape for Blueprint wings, so the
     // suffix cannot independently authorize a gem fallback.
-    expect(resolve('Blueprint: Underbelly - 1/3')).toBeUndefined();
+    expect(resolve('Blueprint: Underbelly - 1/3')).toBe(GENERIC_BLUEPRINT);
     expect(resolve('Blueprint: Tunnels - 1/3')).not.toBe(GEM_URL);
+  });
+
+  it('uses the bounded official-CDN Blueprint fallback only for Blueprint-labelled names', async () => {
+    const { resolve } = await getItemIcons();
+    expect(resolve('Blueprint: Bunker - 1/3')).toBe(GENERIC_BLUEPRINT);
+    expect(resolve('Unpriced Blueprint')).toBe(GENERIC_BLUEPRINT);
+    expect(resolve('Architects Hand')).toBeUndefined();
+  });
+
+  it('resolves the supplied exact beast, Astrolabe, unique, gem and invitation identities', async () => {
+    const { resolve } = await getItemIcons();
+    expect(resolve('Craicic Croaker')).toBe(BEAST_URL);
+    expect(resolve('Wild Hellion Alpha')).toBe(BEAST_URL);
+    for (const name of ASTROLABE_NAMES) expect(resolve(name)).toBe(ASTROLABE_URL);
+    expect(resolve("Ralakesh's Impatience")).toBe(RALAKESH_URL);
+    expect(resolve('Ephemeral Edge')).toBe(EPHEMERAL_URL);
+    expect(resolve('Dissolution of the Flesh')).toBe(DISSOLUTION_URL);
+    expect(resolve('Empower Support - 1/0')).toBe(GEM_URL);
+    expect(resolve('Incandescent Invitation')).toBe(INVITATION_URL);
   });
 
   it('six-link suffixes resolve unique armour by its base name', async () => {
@@ -266,10 +319,11 @@ describe('itemIcons resolve()', () => {
     expect(resolve('Map (Tier 14)')).not.toBe(LEGACY14_URL);
   });
 
-  it('maps: plain tiers accept signed clean art and reject encoded overlays', async () => {
+  it('maps: plain tiers accept signed clean/Allflame art and reject identity overlays', async () => {
     const { resolve } = await getItemIcons();
     expect(resolve('Map (Tier 1)')).toBe(PLAIN1_URL);
-    expect(resolve('Map (Tier 16)')).toBe(PLAIN16_URL);
+    expect(resolve('Map (Tier 16)')).toBe(ALLFLAME16_URL);
+    expect(resolve('Map (Tier 16)')).not.toBe(PLAIN16_URL);
     expect(resolve('Map (Tier 16)')).not.toBe(BARAN16_URL);
     // Live T15/T9 currently carry `me:true`; both intentionally miss so the
     // Dashboard uses its neutral map glyph.
@@ -291,7 +345,7 @@ describe('itemIcons resolve()', () => {
     // "Shaper Guardian Map" has no tiered key at all -> GENERIC.map, which is
     // now seeded from the highest indexed tier, not the API's first "...Map".
     const url = resolve('Shaper Guardian Map');
-    expect(url).toBe(PLAIN16_URL);
+    expect(url).toBe(ALLFLAME16_URL);
     expect(url).not.toBe(VAALTEMPLE_URL);
     // The Vaal Temple art still serves its own exact name, of course.
     expect(resolve('Al-Hezmin Vaal Temple Map')).toBe(VAALTEMPLE_URL);

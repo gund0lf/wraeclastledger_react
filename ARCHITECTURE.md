@@ -107,7 +107,8 @@ service is for community sharing, not ordinary session storage.
 
 ## External boundaries
 
-- **poe.ninja:** league detection, economy context, divine pricing, and item art.
+- **poe.ninja + official PoE CDN:** league detection, economy context, divine
+  pricing, exact item art, and a bounded generic Blueprint fallback.
 - **Path of Exile trade website:** pre-filled map searches and trade metadata.
 - **Path of Pathing:** embedded Atlas tree planning and allocated-stat reading.
 - **WraeclastLedger strategy service:** public strategy reads and versioned game
