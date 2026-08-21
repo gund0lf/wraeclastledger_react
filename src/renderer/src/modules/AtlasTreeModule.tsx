@@ -16,6 +16,7 @@ import {
 } from '../../../shared/atlasStats';
 import { deriveAtlasDetectedTags } from '../utils/atlasTags';
 import {
+  atlasRemountSource,
   isPathofpathingTreeUrl,
   isPathofpathingUrl,
   shouldAutoApplyExternalAtlasView,
@@ -106,6 +107,7 @@ export const AtlasTreeModule = () => {
         const rect = host.getBoundingClientRect();
         if (rect.width < 80 || rect.height < 80) return;
         visibleRef.current = true;
+        setSrcUrl((source) => atlasRemountSource(source, capturedUrlRef.current));
         setKey((k) => k + 1);
         setWebviewReady(true);
       });
@@ -145,6 +147,7 @@ export const AtlasTreeModule = () => {
         frame2 = requestAnimationFrame(() => {
           const settled = host.getBoundingClientRect();
           if (visibleRef.current && settled.width >= 80 && settled.height >= 80) {
+            setSrcUrl((source) => atlasRemountSource(source, capturedUrlRef.current));
             setWebviewReady(true);
           }
         });
@@ -509,15 +512,11 @@ export const AtlasTreeModule = () => {
     }
   };
 
-  // Recenter must reload the tree AS IT IS NOW. srcUrl is frozen at
-  // mount/import time (in-page allocation navs only advance capturedUrl +
-  // settings.atlasTreeUrl), so a bare remount silently rewound every
-  // allocation made since load - and the post-remount navigation event then
-  // re-captured the STALE url into the session, destroying the newer one
-  // (found 2026-07-20). Re-source from the live captured state instead.
+  // srcUrl stays frozen while the guest is mounted so in-page allocation
+  // changes cannot trigger a navigation loop. Every remount advances it from
+  // capturedUrlRef first, preserving the current allocation for both Recenter
+  // and automatic hidden-tab activation.
   const reload = () => {
-    const url = capturedUrl;
-    if (isPathofpathingUrl(url)) { setSrcUrl(url); captureUrl(url); }
     remountAfterLayout();
     setStatGroups([]);
   };

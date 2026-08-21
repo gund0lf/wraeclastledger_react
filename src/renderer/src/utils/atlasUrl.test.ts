@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  atlasRemountSource,
   isPathofpathingTreeUrl,
   isPathofpathingUrl,
   shouldAutoApplyExternalAtlasView,
@@ -42,5 +43,17 @@ describe('Atlas panel external apply guard', () => {
   it('applies a genuine external tree change only once', () => {
     expect(shouldAutoApplyExternalAtlasView(false, TREE_URL, 'https://pathofpathing.com', 'https://pathofpathing.com')).toBe(true);
     expect(shouldAutoApplyExternalAtlasView(false, TREE_URL, TREE_URL, TREE_URL)).toBe(false);
+  });
+});
+
+describe('Atlas panel remount source', () => {
+  it('reopens from the latest captured allocation instead of the original import', () => {
+    const original = 'https://pathofpathing.com/?v=3.29.0-atlas#AAAABgAAAgEAcXVxdQAA';
+    const edited = 'https://pathofpathing.com/?v=3.29.0-atlas#BBBABgAAAgEAcXVxdQAA';
+    expect(atlasRemountSource(original, edited)).toBe(edited);
+  });
+
+  it('retains the known-safe source when the captured value is invalid', () => {
+    expect(atlasRemountSource(TREE_URL, 'not a URL')).toBe(TREE_URL);
   });
 });

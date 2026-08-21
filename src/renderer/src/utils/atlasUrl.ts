@@ -42,3 +42,11 @@ export function shouldAutoApplyExternalAtlasView(
     && nextViewUrl !== capturedUrl
     && nextViewUrl !== sourceUrl;
 }
+
+/** The guest source is deliberately frozen while mounted so an in-page hash
+ * edit cannot be fed back into the live webview. Before a remount, however,
+ * the latest captured guest URL must become the new source or reopening a
+ * hidden Atlas tab will restore the originally loaded allocation. */
+export function atlasRemountSource(sourceUrl: string, capturedUrl: string): string {
+  return isPathofpathingUrl(capturedUrl) ? capturedUrl : sourceUrl;
+}

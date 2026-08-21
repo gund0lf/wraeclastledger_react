@@ -13,6 +13,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.79',
     date: '2026-08-21',
     changes: [
+      'Atlas Tree now reopens on the latest edited allocation after its panel is hidden or remounted, instead of reverting to the originally loaded tree and overwriting the newer URL.',
       'Strategy Browser now sorts by the latest published or updated activity through both the dropdown and the Published / updated column header. Re-clicking the header reverses direction, while expanded cards keep the exact dates.',
       'Map Log now records each map\'s Delirious percentage and ordered Delirium reward tracks, including repeated rewards. Compact panels show the metadata beneath the map name, while sufficiently wide panels use a dedicated Delirium column based on the panel\'s measured width.',
       'Shared strategies now distinguish observed Delirium map metadata from configured Delirium Orb costs. This lets bought pre-delirious maps show their sampled Delirium levels and reward tracks while their purchase price remains the normal base map cost.',
