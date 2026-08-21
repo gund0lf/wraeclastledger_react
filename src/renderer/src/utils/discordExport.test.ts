@@ -255,6 +255,42 @@ describe('buildDiscordExport <-> parseDiscordExport round-trip (wire-format lock
     expect(p!.groupSize).toBeNull();
   });
 
+  it('shares bought pre-delirious maps as observations without claiming Orb costs', () => {
+    const observedMaps: ExportMapStats[] = Array.from({ length: 3 }, () => ({
+      quantity: 83,
+      rarity: 63,
+      packSize: 45,
+      moreCurrency: 117,
+      moreScarabs: 5,
+      deliriousPct: 100,
+      deliriumRewardTypes: ['Jewellery', 'Jewellery', 'Armour'],
+    }));
+    const out = buildDiscordExport({
+      maps: observedMaps,
+      settings: settings({
+        baseMapCost: 250,
+        advDeliOrbType: '',
+        advDeliOrbQtyPerMap: 0,
+        advDeliOrbPriceEach: 0,
+      }),
+      lootItems,
+      baselineTotal,
+      investmentNeutralization: 0,
+    });
+    expect(out).not.toContain('Delirium Orbs:');
+    expect(out).toContain(
+      '**Observed Delirium:** 3/3 maps | Levels: 100%x3 | Rewards: Jewellery x6, Armour x3',
+    );
+    expect(parseDiscordExport(out)?.observedDelirium).toEqual({
+      sampleSize: 3,
+      levelCounts: [{ percentage: 100, count: 3 }],
+      rewardCounts: [
+        { name: 'Jewellery', count: 6 },
+        { name: 'Armour', count: 3 },
+      ],
+    });
+  });
+
   it('no claim = no line: time <= 0 and half-missing points are suppressed', () => {
     const out = buildDiscordExport({
       maps, settings: settings({ atlasPoints: 112, atlasPointsMax: null }),

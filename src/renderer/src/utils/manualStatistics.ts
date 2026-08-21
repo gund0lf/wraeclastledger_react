@@ -173,6 +173,16 @@ export function sanitizeManualStatistics(value: unknown): ManualSessionStatistic
   const input = value as Record<string, unknown>;
   const result: ManualSessionStatistics = {};
 
+  if (own(input, 'infoDismissed')) {
+    if (typeof input.infoDismissed !== 'boolean') return null;
+    if (input.infoDismissed) result.infoDismissed = true;
+  }
+
+  if (own(input, 'beastInfoDismissed')) {
+    if (typeof input.beastInfoDismissed !== 'boolean') return null;
+    if (input.beastInfoDismissed) result.beastInfoDismissed = true;
+  }
+
   for (const field of MANUAL_STATISTIC_FIELDS) {
     if (!own(input, field)) continue;
     if (!validCount(input[field])) return null;
@@ -222,7 +232,9 @@ export function sanitizeManualStatistics(value: unknown): ManualSessionStatistic
     if (mercenaries.length > 0) result.mercenaries = mercenaries;
   }
 
-  return hasManualStatistics(result) ? result : null;
+  return hasManualStatistics(result) || result.infoDismissed || result.beastInfoDismissed
+    ? result
+    : null;
 }
 
 /** Lenient local-state adapter: malformed legacy values become an empty
@@ -240,6 +252,8 @@ export function hasManualStatistics(value: ManualSessionStatistics | null | unde
 
 export function cloneManualStatistics(value: ManualSessionStatistics): ManualSessionStatistics {
   const result: ManualSessionStatistics = {};
+  if (value.infoDismissed) result.infoDismissed = true;
+  if (value.beastInfoDismissed) result.beastInfoDismissed = true;
   for (const field of MANUAL_STATISTIC_FIELDS) {
     if (own(value, field)) result[field] = value[field];
   }
@@ -250,6 +264,26 @@ export function cloneManualStatistics(value: ManualSessionStatistics): ManualSes
     result.mercenaries = value.mercenaries.map((row) => ({ ...row }));
   }
   return result;
+}
+
+export function setManualStatisticsInfoDismissed(
+  current: ManualSessionStatistics,
+  dismissed: boolean,
+): ManualSessionStatistics {
+  const next = { ...current };
+  if (dismissed) next.infoDismissed = true;
+  else delete next.infoDismissed;
+  return next;
+}
+
+export function setBeastStatisticsInfoDismissed(
+  current: ManualSessionStatistics,
+  dismissed: boolean,
+): ManualSessionStatistics {
+  const next = { ...current };
+  if (dismissed) next.beastInfoDismissed = true;
+  else delete next.beastInfoDismissed;
+  return next;
 }
 
 export function setManualStatistic(

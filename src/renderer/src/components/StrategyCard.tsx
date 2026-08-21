@@ -468,22 +468,52 @@ export const StrategyCard = ({
             if (!strategy.raw_export) return null;
             const deliM = strategy.raw_export.match(/Delirium Orbs:\s*(\d+)x\s+([^\s(]+)/i);
             const astM  = strategy.raw_export.match(/Astrolabe:\s*([^\n(]+?)\s+\(\d+x/i);
-            if (!deliM && !astM) return null;
+            const observedDelirium = parsedExport?.observedDelirium ?? null;
+            if (!deliM && !astM && !observedDelirium) return null;
+            const observedLevel = observedDelirium?.levelCounts.length === 1
+              ? observedDelirium.levelCounts[0].percentage
+              : null;
+            const observedTotal = parsedExport?.mapCount ?? observedDelirium?.sampleSize ?? 0;
+            const observedTooltip = observedDelirium
+              ? [
+                  `Levels: ${observedDelirium.levelCounts.map((level) => `${level.percentage}% ×${level.count}`).join(' · ')}`,
+                  `Reward tracks: ${observedDelirium.rewardCounts.length > 0
+                    ? observedDelirium.rewardCounts.map((reward) => `${reward.name} ×${reward.count}`).join(' · ')
+                    : 'not recorded'}`,
+                ].join('\n')
+              : '';
             return (
-              <Group gap={4} mb={6} wrap="wrap">
-                {deliM && (
-                  <Badge size="sm" color="grape" variant="light"
-                    leftSection={<PoeItemIcon name={deliOrbItemName(deliM[2].replace(/[^\x00-\x7F]/g, '').replace(/'s$/i, ''))} size={16} category="orb" />}>
-                    {deliM[1]}x {deliM[2].replace(/[^\x00-\x7F]/g, '')} ({parseInt(deliM[1]) * 20}% delirious)
-                  </Badge>
+              <Stack gap={3} mb={6}>
+                <Group gap={4} wrap="wrap">
+                  {deliM && (
+                    <Badge size="sm" color="grape" variant="light"
+                      leftSection={<PoeItemIcon name={deliOrbItemName(deliM[2].replace(/[^\x00-\x7F]/g, '').replace(/'s$/i, ''))} size={16} category="orb" />}>
+                      {deliM[1]}x {deliM[2].replace(/[^\x00-\x7F]/g, '')} ({parseInt(deliM[1]) * 20}% delirious)
+                    </Badge>
+                  )}
+                  {observedDelirium && (
+                    <Tooltip label={observedTooltip} multiline withArrow style={{ whiteSpace: 'pre-line' }}>
+                      <Badge size="sm" color="grape" variant="outline" style={{ cursor: 'help' }}>
+                        Observed {observedLevel != null ? `${observedLevel}% deli` : 'mixed deli'}
+                        {' · '}{observedDelirium.sampleSize}/{observedTotal} maps
+                      </Badge>
+                    </Tooltip>
+                  )}
+                  {astM && (
+                    <Badge size="sm" color="teal" variant="light"
+                      leftSection={<PoeItemIcon name={astM[1].replace(/[^\x00-\x7F]/g, '').trim()} size={16} category="astrolabe" />}>
+                      {astM[1].replace(/[^\x00-\x7F]/g, '').trim()}
+                    </Badge>
+                  )}
+                </Group>
+                {observedDelirium && observedDelirium.rewardCounts.length > 0 && (
+                  <Text size="xs" c="dimmed" lineClamp={1}>
+                    Observed tracks: {observedDelirium.rewardCounts
+                      .map((reward) => `${reward.name} ×${reward.count}`)
+                      .join(' · ')}
+                  </Text>
                 )}
-                {astM && (
-                  <Badge size="sm" color="teal" variant="light"
-                    leftSection={<PoeItemIcon name={astM[1].replace(/[^\x00-\x7F]/g, '').trim()} size={16} category="astrolabe" />}>
-                    {astM[1].replace(/[^\x00-\x7F]/g, '').trim()}
-                  </Badge>
-                )}
-              </Group>
+              </Stack>
             );
           })()}
 

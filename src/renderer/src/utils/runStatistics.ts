@@ -1,6 +1,18 @@
 import type { BestiaryAtlasSetup, MercenaryAtlasSetup } from '../../../shared/atlasStats';
-import type { LootItem, ScarabSlot } from '../types';
-import { mercenaryProfile, type MercenaryAttribute } from './manualStatistics';
+import type {
+  LootItem,
+  ManualSessionStatistics,
+  SavedSession,
+  ScarabSlot,
+} from '../types';
+import {
+  MANUAL_STATISTIC_FIELDS,
+  hasManualStatistics,
+  mercenaryProfile,
+  normalizeLocalManualStatistics,
+  type ManualStatisticField,
+  type MercenaryAttribute,
+} from './manualStatistics';
 
 /** Current Allflame valuable-beast shortlist from Sad's poe.re Bestiary export
  * at a 20-chaos floor (2026-08-21). Prices are deliberately not persisted;
@@ -83,6 +95,208 @@ export function deriveValuableBeastGains(
 
 export function totalValuableBeastGains(gains: ValuableBeastGain[]): number {
   return gains.reduce((sum, gain) => sum + gain.gainedQuantity, 0);
+}
+
+export interface RunStatisticsSessionSnapshot {
+  id: string;
+  mapCount: number;
+  manualStatistics: ManualSessionStatistics;
+  baselineItems: LootItem[];
+  lootItems: LootItem[];
+}
+
+export interface AggregatedRunStatistic {
+  count: number;
+  mapCount: number;
+  sessionCount: number;
+}
+
+export interface AggregatedAtlasAnomaly extends AggregatedRunStatistic {
+  name: string;
+}
+
+export interface AggregatedMercenary extends AggregatedRunStatistic {
+  archetype: string;
+}
+
+export interface GlobalRunStatistics {
+  sessionCount: number;
+  mapCount: number;
+  counters: Record<ManualStatisticField, AggregatedRunStatistic>;
+  svalinnCraterCount: number;
+  svalinnDenominatorComplete: boolean;
+  atlasAnomalies: AggregatedAtlasAnomaly[];
+  anomalyTotal: number;
+  mercenaries: AggregatedMercenary[];
+  mercenaryTotal: number;
+  mercenaryMapCount: number;
+  mercenarySessionCount: number;
+  untrackedMercenaryMaps: number;
+  beastGains: ValuableBeastGain[];
+  beastMapCount: number;
+  beastSessionCount: number;
+}
+
+interface CurrentRunStatisticsSnapshot {
+  mapCount: number;
+  manualStatistics: ManualSessionStatistics;
+  baselineItems: LootItem[];
+  lootItems: LootItem[];
+}
+
+const ownsStatistic = (
+  value: ManualSessionStatistics,
+  field: ManualStatisticField,
+): boolean => Object.prototype.hasOwnProperty.call(value, field);
+
+const savedRunStatisticsSnapshot = (session: SavedSession): RunStatisticsSessionSnapshot => ({
+  id: session.id,
+  mapCount: session.maps.length,
+  manualStatistics: normalizeLocalManualStatistics(session.manualStatistics),
+  baselineItems: session.baselineItems ?? [],
+  lootItems: session.lootItems ?? [],
+});
+
+/** Builds the global source set without counting the active saved session
+ * twice. An unsaved working session participates once it contains any work. */
+export function collectRunStatisticsSessions(
+  current: CurrentRunStatisticsSnapshot,
+  activeSessionId: string | null,
+  savedSessions: Record<string, SavedSession>,
+): RunStatisticsSessionSnapshot[] {
+  const snapshots = Object.entries(savedSessions).map(([id, session]) => (
+    id === activeSessionId
+      ? { id, ...current }
+      : savedRunStatisticsSnapshot(session)
+  ));
+  const activeWasReplaced = activeSessionId !== null
+    && Object.prototype.hasOwnProperty.call(savedSessions, activeSessionId);
+  const currentHasWork = current.mapCount > 0
+    || hasManualStatistics(current.manualStatistics)
+    || current.baselineItems.length > 0
+    || current.lootItems.length > 0;
+  if (!activeWasReplaced && currentHasWork) {
+    snapshots.push({ id: activeSessionId ?? 'current-working-session', ...current });
+  }
+  return snapshots;
+}
+
+/** Combines explicit per-session observations. Missing counters stay
+ * unreported: each rate denominator contains only sessions that authored the
+ * corresponding metric. Beast gains are derived per run before they are
+ * summed, so inventory carried between independent snapshots is never diffed. */
+export function aggregateRunStatisticsSessions(
+  sessions: readonly RunStatisticsSessionSnapshot[],
+): GlobalRunStatistics {
+  const counters = Object.fromEntries(MANUAL_STATISTIC_FIELDS.map((field) => [field, {
+    count: 0,
+    mapCount: 0,
+    sessionCount: 0,
+  }])) as Record<ManualStatisticField, AggregatedRunStatistic>;
+  const anomalyRows = new Map<string, AggregatedRunStatistic>();
+  const mercenaryRows = new Map<string, AggregatedRunStatistic>();
+  const beastRows = new Map<string, ValuableBeastGain>();
+  let mapCount = 0;
+  let svalinnCraterCount = 0;
+  let svalinnDenominatorComplete = true;
+  let mercenaryTotal = 0;
+  let mercenaryMapCount = 0;
+  let mercenarySessionCount = 0;
+  let untrackedMercenaryMaps = 0;
+  let beastMapCount = 0;
+  let beastSessionCount = 0;
+
+  for (const session of sessions) {
+    mapCount += session.mapCount;
+    for (const field of MANUAL_STATISTIC_FIELDS) {
+      if (!ownsStatistic(session.manualStatistics, field)) continue;
+      const metric = counters[field];
+      metric.count += session.manualStatistics[field] ?? 0;
+      metric.mapCount += session.mapCount;
+      metric.sessionCount += 1;
+    }
+
+    if (ownsStatistic(session.manualStatistics, 'svalinnDrops')) {
+      if (ownsStatistic(session.manualStatistics, 'starfallCraters')) {
+        svalinnCraterCount += session.manualStatistics.starfallCraters ?? 0;
+      } else {
+        svalinnDenominatorComplete = false;
+      }
+    }
+
+    for (const row of session.manualStatistics.atlasAnomalies ?? []) {
+      const aggregate = anomalyRows.get(row.name) ?? { count: 0, mapCount: 0, sessionCount: 0 };
+      aggregate.count += row.count;
+      aggregate.mapCount += session.mapCount;
+      aggregate.sessionCount += 1;
+      anomalyRows.set(row.name, aggregate);
+    }
+
+    const mercenaries = session.manualStatistics.mercenaries ?? [];
+    if (mercenaries.length > 0) {
+      const sessionMercenaryTotal = mercenaries.reduce((sum, row) => sum + row.count, 0);
+      mercenaryTotal += sessionMercenaryTotal;
+      mercenaryMapCount += session.mapCount;
+      mercenarySessionCount += 1;
+      untrackedMercenaryMaps += remainingUntrackedMaps(sessionMercenaryTotal, session.mapCount);
+      for (const row of mercenaries) {
+        const aggregate = mercenaryRows.get(row.archetype)
+          ?? { count: 0, mapCount: 0, sessionCount: 0 };
+        aggregate.count += row.count;
+        aggregate.mapCount += session.mapCount;
+        aggregate.sessionCount += 1;
+        mercenaryRows.set(row.archetype, aggregate);
+      }
+    }
+
+    if (session.baselineItems.length > 0 && session.lootItems.length > 0) {
+      beastMapCount += session.mapCount;
+      beastSessionCount += 1;
+      for (const gain of deriveValuableBeastGains(session.baselineItems, session.lootItems)) {
+        const aggregate = beastRows.get(gain.name) ?? {
+          name: gain.name,
+          baselineQuantity: 0,
+          returnQuantity: 0,
+          gainedQuantity: 0,
+        };
+        aggregate.baselineQuantity += gain.baselineQuantity;
+        aggregate.returnQuantity += gain.returnQuantity;
+        aggregate.gainedQuantity += gain.gainedQuantity;
+        beastRows.set(gain.name, aggregate);
+      }
+    }
+  }
+
+  const atlasAnomalies = [...anomalyRows.entries()].map(([name, metric]) => ({
+    name,
+    ...metric,
+  })).sort((left, right) => left.name.localeCompare(right.name));
+  const mercenaries = [...mercenaryRows.entries()].map(([archetype, metric]) => ({
+    archetype,
+    ...metric,
+  })).sort((left, right) => left.archetype.localeCompare(right.archetype));
+  const beastGains = [...beastRows.values()].sort((left, right) => (
+    right.gainedQuantity - left.gainedQuantity
+    || left.name.localeCompare(right.name)
+  ));
+
+  return {
+    sessionCount: sessions.length,
+    mapCount,
+    counters,
+    svalinnCraterCount,
+    svalinnDenominatorComplete,
+    atlasAnomalies,
+    anomalyTotal: atlasAnomalies.reduce((sum, row) => sum + row.count, 0),
+    mercenaries,
+    mercenaryTotal,
+    mercenaryMapCount,
+    mercenarySessionCount,
+    untrackedMercenaryMaps,
+    beastGains,
+    beastMapCount,
+    beastSessionCount,
+  };
 }
 
 export function observedRatePercent(count: number, denominator: number): number | null {

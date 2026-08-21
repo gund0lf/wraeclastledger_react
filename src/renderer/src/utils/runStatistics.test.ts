@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { LootItem } from '../types';
+import type { LootItem, SavedSession } from '../types';
 import {
   VALUABLE_BEAST_NAMES,
+  aggregateRunStatisticsSessions,
   buildBestiaryRateModel,
+  collectRunStatisticsSessions,
   deriveMercenaryScarabSetup,
   deriveMercenaryTargetingImpact,
   deriveValuableBeastGains,
@@ -69,6 +71,109 @@ describe('derived run statistics', () => {
     expect(observedRatePercent(1, 0)).toBeNull();
     expect(remainingUntrackedMaps(2, 9)).toBe(7);
     expect(remainingUntrackedMaps(12, 9)).toBe(0);
+  });
+
+  it('aggregates explicit observations with per-metric denominators', () => {
+    const aggregate = aggregateRunStatisticsSessions([
+      {
+        id: 'a',
+        mapCount: 10,
+        manualStatistics: {
+          starfallCraters: 2,
+          svalinnDrops: 1,
+          wildwoodEncounters: 0,
+          atlasAnomalies: [{ name: 'The Manor Foyer', count: 2 }],
+          mercenaries: [{ archetype: 'Kineticist', count: 2 }],
+        },
+        baselineItems: [item('Black Mórrigan', 1)],
+        lootItems: [item('Black Mórrigan', 3)],
+      },
+      {
+        id: 'b',
+        mapCount: 20,
+        manualStatistics: {
+          starfallCraters: 4,
+          wildwoodEncounters: 2,
+          atlasAnomalies: [
+            { name: 'The Manor Foyer', count: 1 },
+            { name: 'The Court of Chaos', count: 3 },
+          ],
+          mercenaries: [
+            { archetype: 'Kineticist', count: 1 },
+            { archetype: 'Sniper', count: 2 },
+          ],
+        },
+        baselineItems: [item('Chaos Orb', 1)],
+        lootItems: [item('Black Mórrigan', 1)],
+      },
+      {
+        id: 'c',
+        mapCount: 30,
+        manualStatistics: { svalinnDrops: 1 },
+        baselineItems: [],
+        lootItems: [],
+      },
+    ]);
+
+    expect(aggregate.sessionCount).toBe(3);
+    expect(aggregate.mapCount).toBe(60);
+    expect(aggregate.counters.starfallCraters).toEqual({
+      count: 6, mapCount: 30, sessionCount: 2,
+    });
+    expect(aggregate.counters.wildwoodEncounters).toEqual({
+      count: 2, mapCount: 30, sessionCount: 2,
+    });
+    expect(aggregate.counters.svalinnDrops).toEqual({
+      count: 2, mapCount: 40, sessionCount: 2,
+    });
+    expect(aggregate.svalinnCraterCount).toBe(2);
+    expect(aggregate.svalinnDenominatorComplete).toBe(false);
+    expect(aggregate.atlasAnomalies).toEqual([
+      { name: 'The Court of Chaos', count: 3, mapCount: 20, sessionCount: 1 },
+      { name: 'The Manor Foyer', count: 3, mapCount: 30, sessionCount: 2 },
+    ]);
+    expect(aggregate.mercenaryTotal).toBe(5);
+    expect(aggregate.mercenaryMapCount).toBe(30);
+    expect(aggregate.untrackedMercenaryMaps).toBe(25);
+    expect(aggregate.mercenaries).toEqual([
+      { archetype: 'Kineticist', count: 3, mapCount: 30, sessionCount: 2 },
+      { archetype: 'Sniper', count: 2, mapCount: 20, sessionCount: 1 },
+    ]);
+    expect(aggregate.beastGains).toEqual([{
+      name: 'Black Mórrigan', baselineQuantity: 1, returnQuantity: 4, gainedQuantity: 3,
+    }]);
+    expect(aggregate.beastMapCount).toBe(30);
+    expect(aggregate.beastSessionCount).toBe(2);
+  });
+
+  it('replaces the active saved snapshot with live state exactly once', () => {
+    const saved = (id: string, mapCount: number): SavedSession => ({
+      id,
+      name: id,
+      createdAt: id,
+      maps: Array.from({ length: mapCount }, () => ({})),
+      lootItems: [],
+      baselineItems: [],
+      baselineTotal: 0,
+      manualStatistics: { starfallCraters: 1 },
+      settings: {},
+    } as unknown as SavedSession);
+    const savedSessions = { a: saved('a', 3), b: saved('b', 7) };
+    const current = {
+      mapCount: 5,
+      manualStatistics: { starfallCraters: 2 },
+      baselineItems: [],
+      lootItems: [],
+    };
+
+    const active = collectRunStatisticsSessions(current, 'a', savedSessions);
+    expect(active).toHaveLength(2);
+    expect(active.find((session) => session.id === 'a')?.mapCount).toBe(5);
+    expect(active.find((session) => session.id === 'a')?.manualStatistics.starfallCraters).toBe(2);
+
+    const unsaved = collectRunStatisticsSessions(current, null, savedSessions);
+    expect(unsaved).toHaveLength(3);
+    expect(unsaved.filter((session) => session.id === 'current-working-session')).toHaveLength(1);
   });
 
   it('normalizes captured beasts using the supplied Atlas and scarab setup', () => {

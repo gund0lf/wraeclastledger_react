@@ -45,4 +45,12 @@ describe('deriveShareTags', () => {
       advAstrolabeType: '',
     }, [normalMap, { ...normalMap, isNightmare: true }])).toEqual(['mixed']);
   });
+
+  it('tags bought pre-delirious maps from observed map metadata without orb setup', () => {
+    expect(deriveShareTags({
+      scarabs: [],
+      atlasDetectedTags: [],
+      advAstrolabeType: '',
+    }, [{ ...normalMap, deliriousPct: 100 }])).toEqual(['regular', 'delirium']);
+  });
 });

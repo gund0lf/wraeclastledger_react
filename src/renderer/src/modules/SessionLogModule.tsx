@@ -2,7 +2,7 @@ import {
   Alert, Card, ScrollArea, Table, Text, ActionIcon, Group, Button, Switch,
   Tooltip, TextInput, Modal, Stack, Badge,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
+import { useDisclosure, useElementSize } from '@mantine/hooks';
 import { useEffect, useState, useMemo } from 'react';
 import type { ClipboardBridgeStatus } from '../../../shared/protonClipboardBridge';
 import { useSessionKeys } from '../store/useSessionStore';
@@ -11,9 +11,41 @@ import { ModuleHeader } from '../components/ui/ModuleHeader';
 import { parseMapClipboard } from '../utils/mapParser';
 import { markPossibleDuplicates } from '../utils/mapDuplicates';
 import { usePanelMaximized } from '../layout/panelLayoutContext';
+import { formatDeliriumRewards, useDedicatedDeliriumColumn } from '../utils/deliriumMetadata';
+import type { MapData } from '../types';
+
+const DeliriumMetadata = ({ map }: { map: MapData }) => {
+  const rewards = map.deliriumRewardTypes ?? [];
+  const rewardSummary = formatDeliriumRewards(rewards);
+  if (map.deliriousPct === undefined && rewardSummary === '') return null;
+
+  const orderedRewards = rewards.join(' · ');
+  const rewardText = (
+    <Text component="span" size="xs" c="dimmed" truncate="end" style={{ minWidth: 0 }}>
+      {rewardSummary}
+    </Text>
+  );
+
+  return (
+    <Group gap={4} wrap="nowrap" style={{ minWidth: 0 }}>
+      {map.deliriousPct !== undefined && (
+        <Badge size="xs" color="grape" variant="light" style={{ flexShrink: 0 }}>
+          {map.deliriousPct}% deli
+        </Badge>
+      )}
+      {rewardSummary && (
+        <Tooltip multiline w={260} label={`Reward tracks in map order: ${orderedRewards}`}>
+          {rewardText}
+        </Tooltip>
+      )}
+    </Group>
+  );
+};
 
 export const SessionLogModule = () => {
   const isMaximized = usePanelMaximized('session-log');
+  const { ref: panelRef, width: panelWidth } = useElementSize();
+  const showDeliriumColumn = useDedicatedDeliriumColumn(panelWidth);
   const {
     maps, removeMap, addMap, undoLastMap, clearMaps,
     isWatching, toggleWatch,
@@ -59,18 +91,30 @@ export const SessionLogModule = () => {
         minWidth: isMaximized ? 240 : undefined,
         maxWidth: isMaximized ? undefined : 140,
         overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
       }}
         title={map.name || undefined}>
-        {dupIds.has(map.id) && (
-          <Tooltip multiline w={240} label="Exactly matches an earlier map in this session — possible accidental repeat. Delete it if so; a genuinely identical map can keep the marker.">
-            <Badge size="xs" variant="light" color="yellow" mr={4} style={{ verticalAlign: 'middle', cursor: 'help' }}>dup?</Badge>
-          </Tooltip>
-        )}
-        {map.name || '-'}
+        <Stack gap={2} style={{ minWidth: 0 }}>
+          <Group gap={4} wrap="nowrap" style={{ minWidth: 0 }}>
+            {dupIds.has(map.id) && (
+              <Tooltip multiline w={240} label="Exactly matches an earlier map in this session — possible accidental repeat. Delete it if so; a genuinely identical map can keep the marker.">
+                <Badge size="xs" variant="light" color="yellow" style={{ flexShrink: 0, cursor: 'help' }}>dup?</Badge>
+              </Tooltip>
+            )}
+            <Text component="span" inherit truncate="end" style={{ minWidth: 0 }}>
+              {map.name || '-'}
+            </Text>
+          </Group>
+          {!showDeliriumColumn && <DeliriumMetadata map={map} />}
+        </Stack>
       </Table.Td>
       <Table.Td>{map.tier ? `T${map.tier}` : '-'}</Table.Td>
+      {showDeliriumColumn && (
+        <Table.Td style={{ minWidth: 230 }}>
+          {map.deliriousPct !== undefined || (map.deliriumRewardTypes?.length ?? 0) > 0
+            ? <DeliriumMetadata map={map} />
+            : '-'}
+        </Table.Td>
+      )}
       <Table.Td>{map.explicitModCount ?? '-'}</Table.Td>
       <Table.Td>{map.quantity}%</Table.Td>
       <Table.Td>{map.rarity > 0 ? `${map.rarity}%` : '-'}</Table.Td>
@@ -99,7 +143,7 @@ export const SessionLogModule = () => {
   ));
 
   return (
-    <Card shadow="sm" padding="sm" radius="md" withBorder h="100%"
+    <Card ref={panelRef} shadow="sm" padding="sm" radius="md" withBorder h="100%"
       style={{ display: 'flex', flexDirection: 'column' }}>
       {/* Clear-all confirmation (session-15 decision; WP5 modal pattern) */}
       <Modal opened={clearOpen} onClose={closeClear} title="Clear Map Log" size="sm">
@@ -184,6 +228,7 @@ export const SessionLogModule = () => {
               <Table.Th>#</Table.Th>
               <Table.Th style={isMaximized ? { width: '28%', minWidth: 240 } : undefined}>Name</Table.Th>
               <Table.Th>Tier</Table.Th>
+              {showDeliriumColumn && <Table.Th>Delirium</Table.Th>}
               <Table.Th>
                 <Tooltip label="Exact explicit modifiers from advanced copies; dash means a legacy headerless copy">
                   <span style={{ cursor: 'help' }}>Mods</span>
@@ -202,7 +247,7 @@ export const SessionLogModule = () => {
           <Table.Tbody>
             {rows.length > 0 ? rows : (
               <Table.Tr>
-                <Table.Td colSpan={12}>
+                <Table.Td colSpan={showDeliriumColumn ? 13 : 12}>
                   {maps.length === 0 ? (
                     <Stack gap={3} align="center" py="md">
                       <Text size="xs" c="dimmed" ta="center">

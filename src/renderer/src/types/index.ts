@@ -53,6 +53,11 @@ export interface ManualAtlasAnomalyCount {
 /** Optional, explicitly author-entered session outcomes. Missing scalar keys
  * mean "not reported"; an explicit zero is a real authored report. */
 export interface ManualSessionStatistics {
+  /** Per-session UI preference. It is deliberately ignored when deciding
+   * whether the session contains authored statistics. */
+  infoDismissed?: boolean;
+  /** Per-session dismissal for the Bestiary-model prerequisite notice. */
+  beastInfoDismissed?: boolean;
   starfallCraters?: number;
   svalinnDrops?: number;
   wildwoodEncounters?: number;
@@ -81,6 +86,11 @@ export interface MapData {
   /** Map was captured unidentified (mods unrevealed — modCount is 0, not "no mods").
    *  Additive post-1.0.62; old persisted maps lack it, consumers must treat as optional. */
   isUnidentified?: boolean;
+  /** Delirium Orb metadata read from map enchant lines. Optional/additive so
+   * old persisted maps remain valid. Reward order and repeats are meaningful
+   * (for example two Jewellery rewards) and must not be deduplicated. */
+  deliriousPct?: number;
+  deliriumRewardTypes?: string[];
   rawText?: string;
 }
 

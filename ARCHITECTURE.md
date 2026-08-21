@@ -57,12 +57,15 @@ protocol parsing live outside React components so they can be tested and reused.
 
 1. The user enables Capture.
 2. The main process watches for clipboard changes and sends text through IPC.
-3. The renderer parses valid Path of Exile map text into structured map data.
+3. The renderer parses valid Path of Exile map text into structured map data,
+   including optional Delirious percentage and ordered/repeated reward tracks.
 4. The session store appends the map.
 5. Map Log, Atlas Calc, Regex, Dashboard, and session metrics derive their views
    from the same stored data.
 
 Manual paste uses the same parser but bypasses background clipboard polling.
+Map Log keeps Delirium metadata inline beneath the map name in compact panels
+and moves it to a dedicated column when the measured panel width permits.
 
 ### Investment and profit
 
@@ -78,6 +81,10 @@ Baseline-to-Return market revaluation are distinct accounting components, and
 manual supplemental rows remain disclosed. Historical runs retain their
 authored prices and divine snapshot; pooled views aggregate those snapshots
 without substituting current market prices.
+
+For purchased pre-delirious maps, the purchase price remains the ordinary base
+map cost. Captured Delirium level/reward metadata is observation, not evidence
+that the author applied or paid for Delirium Orbs.
 
 ### Game data
 
@@ -109,11 +116,25 @@ service is for community sharing, not ordinary session storage.
 Explicit Run Statistics counters are stored with the local session. Starfall,
 Svalinn, Wildwood, named Atlas anomalies, and selected Mercenary archetypes are
 shown against the session's Map Log denominator; Mercenary attributes and Great
-House are reference data rather than user-entered labels. Named valuable-beast
-gains are derived from Baseline-to-Return item quantities, with Atlas and scarab
-effects used only in a separately labelled estimate when the setup guarantees
-the underlying encounter. Neither source is inferred from clipboard text or
-enters the community strategy wire.
+House are reference data rather than user-entered labels. The read-only All
+sessions view replaces the active saved snapshot with its live state, then sums
+each outcome only across sessions that explicitly reported it, so missing values
+are not treated as zero and the active run is not counted twice. Named valuable-
+beast gains are derived per run from Baseline-to-Return item quantities before
+being combined. Atlas/scarab estimates remain per-session because setups can
+differ between runs. The optional panel starts with independently collapsed
+Kalguuran, Wildwood, Anomalies, Beasts, and Mercenaries sections; Svalinn is
+nested as a Starfall Crater outcome. Its panel-level and Bestiary-prerequisite
+notices can be dismissed per saved session without becoming authored statistic
+data. Neither source is inferred from clipboard text or enters the community
+strategy wire.
+
+Delirium map enchants are additive `MapData` fields. Their reward array preserves
+clipboard order and duplicates and survives saved-session round trips. Shares
+carry only a bounded aggregate: sampled-map count, Delirium-level distribution,
+and reward-track totals. This remains separate from configured Orb type/count/
+price, is visible on Strategy Browser cards, and is not part of setup identity.
+Compact submission schema v3 appends that aggregate; v2 remains readable.
 
 ## External boundaries
 

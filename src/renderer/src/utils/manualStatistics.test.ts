@@ -8,9 +8,11 @@ import {
   mercenaryProfile,
   normalizeLocalManualStatistics,
   sanitizeManualStatistics,
+  setBeastStatisticsInfoDismissed,
   setManualAtlasAnomalyCount,
   setManualMercenaryCount,
   setManualStatistic,
+  setManualStatisticsInfoDismissed,
   totalMercenaryEncounters,
 } from './manualStatistics';
 
@@ -28,6 +30,24 @@ describe('manual session statistics', () => {
       starfallCraters: 25,
       svalinnDrops: 1,
     });
+  });
+
+  it('keeps the info dismissal per session without treating it as authored statistics', () => {
+    const dismissed = setManualStatisticsInfoDismissed({}, true);
+    expect(dismissed).toEqual({ infoDismissed: true });
+    expect(hasManualStatistics(dismissed)).toBe(false);
+    expect(sanitizeManualStatistics(dismissed)).toEqual(dismissed);
+    expect(setManualStatisticsInfoDismissed(dismissed, false)).toEqual({});
+    expect(sanitizeManualStatistics({ infoDismissed: 'yes' })).toBeNull();
+  });
+
+  it('keeps the beast-model dismissal per session without treating it as authored statistics', () => {
+    const dismissed = setBeastStatisticsInfoDismissed({}, true);
+    expect(dismissed).toEqual({ beastInfoDismissed: true });
+    expect(hasManualStatistics(dismissed)).toBe(false);
+    expect(sanitizeManualStatistics(dismissed)).toEqual(dismissed);
+    expect(setBeastStatisticsInfoDismissed(dismissed, false)).toEqual({});
+    expect(sanitizeManualStatistics({ beastInfoDismissed: 'yes' })).toBeNull();
   });
 
   it('collapses regular and Infamous catalogue duplicates into 36 real archetypes', () => {

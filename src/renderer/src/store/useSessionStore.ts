@@ -16,6 +16,8 @@ import {
   setManualMercenaryCount as setManualMercenaryCountValue,
   setManualAtlasAnomalyCount as setManualAtlasAnomalyCountValue,
   setManualStatistic as setManualStatisticValue,
+  setBeastStatisticsInfoDismissed as setBeastStatisticsInfoDismissedValue,
+  setManualStatisticsInfoDismissed as setManualStatisticsInfoDismissedValue,
   type ManualStatisticField,
 } from '../utils/manualStatistics';
 
@@ -333,6 +335,8 @@ interface SessionState {
   removeManualLootItem: (id: string) => void;
   clearLoot: () => void;
   setManualStatistic: (field: ManualStatisticField, value: number | null) => void;
+  setRunStatisticsInfoDismissed: (dismissed: boolean) => void;
+  setBeastStatisticsInfoDismissed: (dismissed: boolean) => void;
   addManualAtlasAnomalyCount: (name: string, amount: number) => void;
   setManualAtlasAnomalyCount: (name: string, count: number | null) => void;
   addManualMercenaryCount: (archetype: string, amount: number) => void;
@@ -486,6 +490,14 @@ export const useSessionStore = create<SessionState>()(
       clearLoot: () => set({ lootItems: [], baselineItems: [], baselineTotal: 0, manualLootItems: [] }),
       setManualStatistic: (field, value) =>
         set((s) => ({ manualStatistics: setManualStatisticValue(s.manualStatistics, field, value) })),
+      setRunStatisticsInfoDismissed: (dismissed) =>
+        set((s) => ({
+          manualStatistics: setManualStatisticsInfoDismissedValue(s.manualStatistics, dismissed),
+        })),
+      setBeastStatisticsInfoDismissed: (dismissed) =>
+        set((s) => ({
+          manualStatistics: setBeastStatisticsInfoDismissedValue(s.manualStatistics, dismissed),
+        })),
       addManualAtlasAnomalyCount: (name, amount) =>
         set((s) => ({
           manualStatistics: addManualAtlasAnomalyCountValue(s.manualStatistics, name, amount),
@@ -510,7 +522,12 @@ export const useSessionStore = create<SessionState>()(
             count,
           ),
         })),
-      clearManualStatistics: () => set({ manualStatistics: {} }),
+      clearManualStatistics: () => set((s) => ({
+        manualStatistics: {
+          ...(s.manualStatistics.infoDismissed ? { infoDismissed: true } : {}),
+          ...(s.manualStatistics.beastInfoDismissed ? { beastInfoDismissed: true } : {}),
+        },
+      })),
 
       initDivinePrice: async (opts = {}) => {
         // WP4.2: staleness-based refresh. The old guard only fetched when the

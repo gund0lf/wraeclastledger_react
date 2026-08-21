@@ -19,6 +19,10 @@ import { generateRunRegex, trimmedMean } from './priceUtils';
 import { computeProfit, computeMultiplier, resolveFragmentCount } from './profit';
 import { EXPORT_EMOJI as E } from './discordEmoji';
 import { buildLootSummary, lootSummaryWireLine } from './lootSummary';
+import {
+  formatObservedDeliriumLine,
+  summarizeObservedDelirium,
+} from './deliriumMetadata';
 
 /** Minimal structural map shape - keeps tests free of full MapData fixtures. */
 export interface ExportMapStats {
@@ -26,6 +30,8 @@ export interface ExportMapStats {
   moreCurrency: number; moreScarabs: number;
   explicitModCount?: number;
   isUnidentified?: boolean;
+  deliriousPct?: number;
+  deliriumRewardTypes?: readonly string[];
 }
 
 export interface DiscordExportInput {
@@ -113,6 +119,7 @@ export function buildDiscordExport(input: DiscordExportInput): string {
   });
   const { multiplier, usesObservedMods, observedModAverage } = computeMultiplier(settings, maps);
   const multiplyingModifiers = resolveFragmentCount(settings);
+  const observedDelirium = summarizeObservedDelirium(maps);
 
   const excludedItems = lootItems.filter((l) => l.excluded);
   const gemNetPL = (settings.advGemCount * settings.advGemSellPrice) - (settings.advGemCount * settings.advGemBuyPrice);
@@ -199,6 +206,12 @@ export function buildDiscordExport(input: DiscordExportInput): string {
       ? [`${E.time.uni} **Session Time:** ${Math.round(sessionMinutes)} min`] : []),
     ...(scarabLines ? [E.scarabs.uni + ' **Scarabs:**\n' + scarabLines] : []),
     ...(deliLine  ? [deliLine]  : []),
+    ...(observedDelirium
+      ? [formatObservedDeliriumLine(observedDelirium, n).replace(
+          'Observed Delirium:',
+          '**Observed Delirium:**',
+        )]
+      : []),
     ...(astroLine ? [astroLine] : []),
     ...(atlasUrl  ? [`${E.atlas.uni} **Atlas Tree:** ${atlasUrl}`] : []),
     ...(hasPoints ? [`${E.points.uni} **Atlas Points:** ${atlasPts}/${atlasPtsMax}`] : []),

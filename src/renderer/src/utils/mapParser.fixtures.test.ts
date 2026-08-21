@@ -59,6 +59,8 @@ describe('real fixtures — regular maps', () => {
     expect(m.packSize).toBe(25);
     expect(m.modCount).toBe(6); // the six explicit mods, NOT the two enchant lines
     expect(m.isCorrupted).toBe(false);
+    expect(m.deliriousPct).toBe(20);
+    expect(m.deliriumRewardTypes).toEqual(['Map Items']);
   });
 
   it('blighted T14 (Anguish Artifice): implicit block is not counted as mods', () => {
@@ -131,6 +133,8 @@ describe('real fixtures — subtypes', () => {
     expect(m.qualityType).toBe('Currency');
     expect(QUALITY_STAT_EFFECTS[m.qualityType]).toBeDefined();
     expect(m.modCount).toBe(8); // implicit + enchant sections correctly excluded
+    expect(m.deliriousPct).toBe(80);
+    expect(m.deliriumRewardTypes).toEqual(['Currency', 'Currency', 'Currency', 'Currency']);
   });
 });
 

@@ -74,6 +74,21 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
   // the mod section would be and must NOT count as a mod.
   const isUnidentified  = lines.includes('Unidentified');
 
+  // Delirium Orb enchants are map metadata, not explicit modifiers. Keep the
+  // reward lines in clipboard order and retain duplicates: repeated reward
+  // types represent separate reward tracks rather than redundant text.
+  const deliriousMatch = clean.match(/Players in Area are (\d+)% Delirious(?: \(enchant\))?/);
+  const parsedDeliriousPct = deliriousMatch ? parseInt(deliriousMatch[1]) : undefined;
+  const deliriousPct = parsedDeliriousPct !== undefined
+    && parsedDeliriousPct >= 0
+    && parsedDeliriousPct <= 100
+    ? parsedDeliriousPct
+    : undefined;
+  const deliriumRewardTypes = lines.flatMap((line) => {
+    const match = line.match(/^Delirium Reward Type:\s*(.+?)(?:\s+\(enchant\))?$/);
+    return match ? [match[1].trim()] : [];
+  });
+
   // Since 3.29, regular Ctrl+C uses the advanced format and includes exactly
   // one header per real affix, even when that affix has several description
   // lines. Legacy headerless copies leave the exact count unknown.
@@ -115,6 +130,8 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
     tier, name, quantity, rarity, packSize, quality, qualityType,
     moreCurrency, moreMaps, moreScarabs, moreDivCards, modCount, explicitModCount,
     isOriginator, isEmpoweredMirage, isNightmare, isCorrupted, isUnidentified,
+    ...(deliriousPct !== undefined ? { deliriousPct } : {}),
+    ...(deliriumRewardTypes.length > 0 ? { deliriumRewardTypes } : {}),
     rawText: text,
   };
 };

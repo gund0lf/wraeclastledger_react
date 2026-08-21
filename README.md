@@ -21,7 +21,7 @@ Free for personal use — see LICENSE
 
 ## What's in it
 
-- **Map Log** — captures map tooltips from the clipboard. Filterable table with per-map detail (IIQ/IIR/pack, currency mods, scarabs, delirium orbs, div cards).
+- **Map Log** — captures map tooltips from the clipboard. Filterable table with per-map detail (IIQ/IIR/pack, currency mods, scarabs, Delirious level/reward tracks, div cards).
 - **Dashboard** — session profit overview. Imports loot CSVs (currently WealthyExile exports) and shows a categorized breakdown against your baseline, plus per-map averages.
 - **Investment Module** — per-map cost setup (scarabs, delirium orbs, astrolabe, chisels), divine price via poe.ninja, cost-per-map and net profit.
 - **Atlas Calc** — effective IIQ/IIR from scarabs, atlas nodes and map tier.
@@ -29,6 +29,7 @@ Free for personal use — see LICENSE
 - **Strategy Browser** — community-shared farming strategies with cost/profit breakdowns, sortable by cost/map, div/map, profit, community score and more. Sharing copies a compact submission for Discord; the channel bot validates it, posts a readable card with bounded loot evidence, and adds the strategy to the Browser. Discord reactions become its community score. Optional party size, session time, and atlas-point context can be included, and readable card exports can be pasted back into the app to compare or import a build.
 - **Atlas Tree** — embedded [pathofpathing.com](https://pathofpathing.com) planner; applied passives (and point counts, when sharing) feed the calculations.
 - **Sessions** — save/load with auto-save, side-by-side comparison of 2-3 saved sessions, JSON export/import. Panels are draggable and the layout persists.
+- **Run Statistics (optional)** — an Add Panel-only local tracker for selected Kalguuran, Wildwood, Atlas anomaly, valuable-beast, and Mercenary outcomes. Its sections start collapsed, Session stays editable, and All sessions combines explicitly reported outcomes across saved runs without double-counting the active session. It is not included in shared strategies.
 
 The app auto-updates from GitHub releases.
 

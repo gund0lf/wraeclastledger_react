@@ -30,12 +30,38 @@ describe('isParseIdentical', () => {
   });
 
   it('normalizes optional additive fields (old persisted map vs fresh re-parse)', () => {
-    // old maps lack moreDivCards / isUnidentified entirely
+    // old maps lack moreDivCards / isUnidentified / Delirium metadata entirely
     const old = base();
     delete (old as any).moreDivCards;
     delete (old as any).isUnidentified;
-    expect(isParseIdentical(old, base({ moreDivCards: 0, isUnidentified: false }))).toBe(true);
+    delete old.deliriousPct;
+    delete old.deliriumRewardTypes;
+    expect(isParseIdentical(old, base({
+      moreDivCards: 0,
+      isUnidentified: false,
+      deliriumRewardTypes: [],
+    }))).toBe(true);
     expect(isParseIdentical(old, base({ moreDivCards: 5 }))).toBe(false);
+  });
+
+  it('includes ordered and repeated Delirium metadata in identity', () => {
+    const a = base({ deliriousPct: 100, deliriumRewardTypes: ['Jewellery', 'Jewellery', 'Currency'] });
+    expect(isParseIdentical(a, base({
+      deliriousPct: 100,
+      deliriumRewardTypes: ['Jewellery', 'Jewellery', 'Currency'],
+    }))).toBe(true);
+    expect(isParseIdentical(a, base({
+      deliriousPct: 80,
+      deliriumRewardTypes: ['Jewellery', 'Jewellery', 'Currency'],
+    }))).toBe(false);
+    expect(isParseIdentical(a, base({
+      deliriousPct: 100,
+      deliriumRewardTypes: ['Jewellery', 'Currency', 'Jewellery'],
+    }))).toBe(false);
+    expect(isParseIdentical(a, base({
+      deliriousPct: 100,
+      deliriumRewardTypes: ['Jewellery', 'Currency'],
+    }))).toBe(false);
   });
 });
 

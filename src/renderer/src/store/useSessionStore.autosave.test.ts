@@ -20,10 +20,11 @@ import type { MapData } from '../types';
 
 const DEBOUNCE = 800;
 
-const mapFixture = (): Omit<MapData, 'id'> => ({
+const mapFixture = (over: Partial<Omit<MapData, 'id'>> = {}): Omit<MapData, 'id'> => ({
   name: 'Crimson Temple Map', tier: 16, quantity: 92, rarity: 55, packSize: 31,
   moreCurrency: 0, moreMaps: 0, moreScarabs: 0, modCount: 6,
   isCorrupted: false, isNightmare: false, isOriginator: false, isEmpoweredMirage: false,
+  ...over,
 } as unknown as Omit<MapData, 'id'>);
 
 /** Reset store to a clean baseline between tests. */
@@ -61,6 +62,29 @@ describe('WP10 auto-save', () => {
     expect(useSessionStore.getState().savedSessions[id].maps).toHaveLength(1);
   });
 
+  it('keeps ordered Delirium metadata while stripping raw clipboard text', () => {
+    const id = saveActive('Deli');
+    useSessionStore.getState().addMap(mapFixture({
+      deliriousPct: 100,
+      deliriumRewardTypes: ['Jewellery', 'Jewellery', 'Armour', 'Armour', 'Currency'],
+      rawText: 'Players in Area are 100% Delirious (enchant)',
+    }));
+    vi.advanceTimersByTime(DEBOUNCE);
+
+    const savedMap = useSessionStore.getState().savedSessions[id].maps[0];
+    expect(savedMap.rawText).toBeUndefined();
+    expect(savedMap.deliriousPct).toBe(100);
+    expect(savedMap.deliriumRewardTypes).toEqual([
+      'Jewellery', 'Jewellery', 'Armour', 'Armour', 'Currency',
+    ]);
+
+    useSessionStore.getState().newSession();
+    useSessionStore.getState().loadSession(id);
+    expect(useSessionStore.getState().maps[0].deliriumRewardTypes).toEqual([
+      'Jewellery', 'Jewellery', 'Armour', 'Armour', 'Currency',
+    ]);
+  });
+
   it('persists settings and notes edits', () => {
     const id = saveActive('A');
     useSessionStore.getState().updateSetting('baseMapCost', 12);
@@ -75,11 +99,15 @@ describe('WP10 auto-save', () => {
     const id = saveActive('A');
     useSessionStore.getState().setManualStatistic('starfallCraters', 0);
     useSessionStore.getState().setManualStatistic('svalinnDrops', 1);
+    useSessionStore.getState().setRunStatisticsInfoDismissed(true);
+    useSessionStore.getState().setBeastStatisticsInfoDismissed(true);
     useSessionStore.getState().addManualAtlasAnomalyCount('The Manor Foyer', 3);
     useSessionStore.getState().addManualMercenaryCount('Kineticist', 2);
     vi.advanceTimersByTime(DEBOUNCE);
 
     expect(useSessionStore.getState().savedSessions[id].manualStatistics).toEqual({
+      infoDismissed: true,
+      beastInfoDismissed: true,
       starfallCraters: 0,
       svalinnDrops: 1,
       atlasAnomalies: [{ name: 'The Manor Foyer', count: 3 }],
@@ -90,10 +118,23 @@ describe('WP10 auto-save', () => {
     expect(useSessionStore.getState().manualStatistics).toEqual({});
     useSessionStore.getState().loadSession(id);
     expect(useSessionStore.getState().manualStatistics).toEqual({
+      infoDismissed: true,
+      beastInfoDismissed: true,
       starfallCraters: 0,
       svalinnDrops: 1,
       atlasAnomalies: [{ name: 'The Manor Foyer', count: 3 }],
       mercenaries: [{ archetype: 'Kineticist', count: 2 }],
+    });
+
+    useSessionStore.getState().clearManualStatistics();
+    expect(useSessionStore.getState().manualStatistics).toEqual({
+      infoDismissed: true,
+      beastInfoDismissed: true,
+    });
+    vi.advanceTimersByTime(DEBOUNCE);
+    expect(useSessionStore.getState().savedSessions[id].manualStatistics).toEqual({
+      infoDismissed: true,
+      beastInfoDismissed: true,
     });
   });
 

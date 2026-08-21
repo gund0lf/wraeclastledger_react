@@ -7,7 +7,7 @@ type ShareTagSettings = Pick<
 
 type ShareTagMap = Pick<
   MapData,
-  'isOriginator' | 'isEmpoweredMirage' | 'isNightmare' | 'rawText'
+  'isOriginator' | 'isEmpoweredMirage' | 'isNightmare' | 'rawText' | 'deliriousPct'
 >;
 
 const SCARAB_TAG_KEYWORDS: ReadonlyArray<readonly [string, string]> = [
@@ -75,6 +75,10 @@ export function deriveShareTags(
 
   const subtype = mapSubtypeTag(maps);
   if (subtype && !tags.includes(subtype)) tags.unshift(subtype);
+
+  if (maps.some((map) => Number.isInteger(map.deliriousPct)) && !tags.includes('delirium')) {
+    tags.push('delirium');
+  }
 
   const astro = astrolabeTag(settings.advAstrolabeType);
   if (astro && !tags.includes(astro)) tags.push(astro);

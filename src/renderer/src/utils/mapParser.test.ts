@@ -531,6 +531,11 @@ describe('parseMapClipboard — stacked Originator with delirium and atlas passi
     // section are all separate. travelIdx − 1 picks up the explicit mods only.
     expect(map!.modCount).toBe(4);
   });
+
+  it('preserves Delirium percentage and ordered rewards', () => {
+    expect(map!.deliriousPct).toBe(60);
+    expect(map!.deliriumRewardTypes).toEqual(['Jewellery', 'Currency', 'Map Items']);
+  });
 });
 
 describe('parseMapClipboard — white corrupted delirious (no explicit mods)', () => {
@@ -556,6 +561,11 @@ describe('parseMapClipboard — white corrupted delirious (no explicit mods)', (
     // For now, accept whatever the current parser does and pin it.
     expect(map!.modCount).toBeGreaterThanOrEqual(0);
     expect(map!.modCount).toBeLessThanOrEqual(1);
+  });
+
+  it('still records Delirium metadata without explicit modifiers', () => {
+    expect(map!.deliriousPct).toBe(60);
+    expect(map!.deliriumRewardTypes).toEqual(['Jewellery', 'Weapons', 'Currency']);
   });
 });
 

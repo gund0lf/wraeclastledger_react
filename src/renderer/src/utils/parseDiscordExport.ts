@@ -7,6 +7,10 @@
 import { stripExportDecoration } from './discordEmoji';
 import { decodeLootSummary, LOOT_EVIDENCE_LABEL, type LootSummary } from './lootSummary';
 import { decodeDiscordShareWire, DISCORD_SHARE_WIRE_PREFIX } from './discordShareWire';
+import {
+  parseObservedDeliriumLine,
+  type ObservedDeliriumSummary,
+} from './deliriumMetadata';
 
 export interface DiscordImport {
   mapCount: number; mapType: string; multiplier: number;
@@ -31,6 +35,7 @@ export interface DiscordImport {
   league: string;
   observedModAverage: number | null;
   observedModSampleSize: number | null;
+  observedDelirium: ObservedDeliriumSummary | null;
   /** Strategy-versioning marker (`Update strategy: <uuid>`): exposed for
    *  PROVENANCE only. Import Strategy must NEVER adopt it as the viewer's
    *  own update target (design v3.1 round-2 point 3d). null = no marker or
@@ -155,6 +160,9 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
       && observedTotalCandidate === mapCount;
     const observedModAverage = hasCompleteObservedMods ? observedCandidate : null;
     const observedModSampleSize = hasCompleteObservedMods ? observedSampleCandidate : null;
+    const hasObservedDeliriumLine = /^\s*Observed Delirium:/im.test(text);
+    const observedDelirium = parseObservedDeliriumLine(text, mapCount);
+    if (hasObservedDeliriumLine && !observedDelirium) return null;
     const avgQuant    = num([/Avg Quant:\s*(\d+)%/]);
     const avgRarity   = num([/Avg Rarity:\s*(\d+)%/]);
     const avgPack     = num([/Avg Pack:\s*(\d+)%/]);
@@ -258,7 +266,7 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
              deliOrbQty, deliOrbType, deliOrbPrice, astroType, astroCount, astroPrice,
              excludedDrops, gemInfo, isGroupPlay,
              groupSize, sessionMinutes, atlasPoints, atlasPointsMax,
-             league, observedModAverage, observedModSampleSize,
+             league, observedModAverage, observedModSampleSize, observedDelirium,
              operation, operationError, updateStrategyId,
              evidenceTargetStrategyId, evidenceExpectedRevision, evidenceRunKey,
              evidenceRunStartedAt, evidenceRunEndedAt, setupFingerprint,

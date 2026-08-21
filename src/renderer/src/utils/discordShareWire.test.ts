@@ -8,6 +8,7 @@ import {
   encodeDiscordShareWire,
 } from './discordShareWire';
 import type { LootSummary } from './lootSummary';
+import { strToU8, zlibSync } from 'fflate';
 
 const lootSummary = (): LootSummary => {
   const rows = Array.from({ length: 30 }, (_, index) => ({
@@ -49,6 +50,14 @@ const parsed = (over: Partial<DiscordImport> = {}): DiscordImport => ({
   multiplier: 1.63,
   observedModAverage: 5.8,
   observedModSampleSize: 37,
+  observedDelirium: {
+    sampleSize: 37,
+    levelCounts: [{ percentage: 100, count: 37 }],
+    rewardCounts: [
+      { name: 'Jewellery', count: 74 },
+      { name: 'Armour', count: 37 },
+    ],
+  },
   avgQuant: 81,
   avgRarity: 62,
   avgPack: 44,
@@ -129,6 +138,60 @@ describe('compact Discord share wire', () => {
       mapCount: 500,
       observedModSampleSize: 500,
       sessionMinutes: 900,
+      observedDelirium: {
+        sampleSize: 37,
+        levelCounts: [{ percentage: 100, count: 37 }],
+      },
+    });
+  });
+
+  it('keeps observed Delirium separate from configured Orb setup', () => {
+    const decoded = decodeDiscordShareWire(encodeDiscordShareWire(parsed({
+      deliOrbQty: 0,
+      deliOrbType: '',
+      deliOrbPrice: 0,
+      observedDelirium: {
+        sampleSize: 37,
+        levelCounts: [{ percentage: 100, count: 37 }],
+        rewardCounts: [{ name: 'Jewellery', count: 74 }],
+      },
+    })));
+    expect(decoded).toMatchObject({
+      deliOrbQty: 0,
+      deliOrbType: '',
+      deliOrbPrice: 0,
+      observedDelirium: {
+        sampleSize: 37,
+        levelCounts: [{ percentage: 100, count: 37 }],
+        rewardCounts: [{ name: 'Jewellery', count: 74 }],
+      },
+    });
+  });
+
+  it('keeps legacy schema-v2 compact submissions readable', () => {
+    const legacyPayload = [
+      2,
+      0,
+      [10, 6, 1, null, 80, 60, 40, 0],
+      [10, 100, 200, 100, 0.1, 200],
+      ['None', 0, [], 0, '', 0, '', 0, 0],
+      ['', null, null],
+      ['Allflame', null, '', null, null],
+      ['Legacy compact strategy', '', []],
+      [0, null, [], null],
+      [''],
+      null,
+      null,
+    ];
+    const encoded = zlibSync(strToU8(JSON.stringify(legacyPayload)), { level: 9 });
+    let binary = '';
+    for (const byte of encoded) binary += String.fromCharCode(byte);
+    const wire = `${DISCORD_SHARE_WIRE_PREFIX}${btoa(binary)
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')}`;
+    expect(decodeDiscordShareWire(wire)).toMatchObject({
+      mapCount: 10,
+      strategyName: 'Legacy compact strategy',
+      observedDelirium: null,
     });
   });
 

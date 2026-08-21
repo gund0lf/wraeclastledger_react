@@ -24,6 +24,13 @@ Reference list of what each clipboard covers (keys in wp1Fixtures.ts):
                                       4x deli reward enchants + 80% Delirious, Originator implicit,
                                       trailing "Split" section, isOriginator
 
+## Delirium map metadata (deliriumMapFixtures.ts, provided by Sad, 2026-08-21)
+
+Five real Allflame T16 texts cover 20/40/60/80/100% Delirious maps. The first
+is an ordinary advanced clipboard and the remaining four came from Trade, with
+their price-note trailers retained. Expected reward tracks are stored in exact
+clipboard order, including the repeated Jewellery and Armour tracks at 100%.
+
 ## WealthyExile CSVs (wexile_base.csv / wexile_return.csv - lootUtils.fixtures.test.ts)
 
 Real exports (611 / 606 data rows, UTF-8 BOM at start, no trailing newline -

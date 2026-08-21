@@ -337,7 +337,43 @@ describe('Trade modal regex', () => {
   it('uses the Item Quantity anchor for the modal IIQ floor', () => {
     const regex = generateTradeRegex(['reg'], 100, 40, 0, 0);
     expect(regex).toBe(
-      '"!reg" "ack.*([4-9].|\\d..)%" "m q.*([6-9].|\\d..)%"',
+      '"!reg" "ack.*([4-9].|\\d..)%" "m q.*(\\d..)%"',
+    );
+  });
+
+  it('uses literal Trade minimums instead of applying session-average heuristics', () => {
+    expect(generateTradeRegex([], 110, 45, 0, 5)).toBe(
+      '"ack.*(4[5-9]|[5-9].|\\d..)%" "m q.*(1[1-9].|[2-9]..)%" "m rar.*([5-9]|[1-9].|\\d..)%"',
+    );
+    expect(generateTradeRegex([], 110, 0, 0, 0)).not.toContain('ack.*');
+  });
+
+  it('matches a real 110 IIQ map without needing an IIR clause', () => {
+    const regex = generateTradeRegex([], 110, 45, 0, 0, 20);
+    const mapText = [
+      'Item Quantity: +110%',
+      'Item Rarity: +0%',
+      'Monster Pack Size: +45%',
+      'Players in Area are 20% Delirious',
+    ].join('\n');
+    const clauses = [...regex.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    expect(clauses).toHaveLength(3);
+    expect(clauses.every((clause) => new RegExp(clause, 'is').test(mapText))).toBe(true);
+    expect(regex).not.toContain('m rar.*');
+  });
+
+  it('keeps positive currency and pack minimums as separate AND clauses', () => {
+    expect(generateTradeRegex([], 0, 40, 60, 0)).toBe(
+      '"urr.*([6-9].|\\d..)%" "ack.*([4-9].|\\d..)%"',
+    );
+  });
+
+  it('keeps exact unit floors across two- and three-digit boundaries', () => {
+    expect(generateTradeRegex([], 115, 0, 0, 0)).toBe(
+      '"m q.*(11[5-9]|1[2-9].|[2-9]..)%"',
+    );
+    expect(generateTradeRegex([], 0, 0, 145, 0)).toBe(
+      '"urr.*(14[5-9]|1[5-9].|[2-9]..)%"',
     );
   });
 

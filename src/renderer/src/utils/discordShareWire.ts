@@ -8,6 +8,7 @@
  */
 import { strFromU8, strToU8, unzlibSync, zlibSync } from 'fflate';
 import type { DiscordImport } from './parseDiscordExport';
+import type { ObservedDeliriumSummary } from './deliriumMetadata';
 import {
   compactLootSummary,
   expandCompactLootSummary,
@@ -15,7 +16,8 @@ import {
 } from './lootSummary';
 
 export const DISCORD_SHARE_WIRE_PREFIX = 'wl2.';
-export const DISCORD_SHARE_WIRE_VERSION = 2 as const;
+export const DISCORD_SHARE_WIRE_VERSION = 3 as const;
+const LEGACY_DISCORD_SHARE_WIRE_VERSION = 2 as const;
 export const DISCORD_SHARE_WIRE_MAX = 2000;
 const DISCORD_SHARE_OUTPUT_MAX = 128 * 1024;
 
@@ -24,7 +26,13 @@ type OperationWire =
   | [1, string]
   | [2, string, number, string, string, string, string];
 
-type DiscordShareWireV2 = [
+type ObservedDeliriumWire = [
+  number,
+  [number, number][],
+  [string, number][],
+];
+
+type DiscordShareWireV3 = [
   typeof DISCORD_SHARE_WIRE_VERSION,
   OperationWire,
   [number, 6 | 8, number, number | null, number, number, number, number],
@@ -37,6 +45,7 @@ type DiscordShareWireV2 = [
   [string],
   CompactLootSummary | null,
   string | null,
+  ObservedDeliriumWire | null,
 ];
 
 const bytesToBase64Url = (bytes: Uint8Array): string => {
@@ -95,12 +104,12 @@ function encodeOperation(parsed: DiscordImport): OperationWire {
   return 0;
 }
 
-/** Encode an already-validated canonical export parse. The reserved final slot
- * is intentionally null until the notes-continuation extension is activated. */
+/** Encode an already-validated canonical export parse. Schema v3 appends
+ * observed map Delirium independently from configured Orb setup/cost. */
 export function encodeDiscordShareWire(parsed: DiscordImport): string {
   if (parsed.lootSummaryInvalid) throw new TypeError('Cannot encode invalid loot evidence');
   const partyCode = parsed.isGroupPlay ? (parsed.groupSize ?? 1) : 0;
-  const payload: DiscordShareWireV2 = [
+  const payload: DiscordShareWireV3 = [
     DISCORD_SHARE_WIRE_VERSION,
     encodeOperation(parsed),
     [
@@ -154,9 +163,54 @@ export function encodeDiscordShareWire(parsed: DiscordImport): string {
     [parsed.runRegex],
     parsed.lootSummary ? compactLootSummary(parsed.lootSummary) : null,
     null,
+    parsed.observedDelirium
+      ? [
+          parsed.observedDelirium.sampleSize,
+          parsed.observedDelirium.levelCounts.map((level) => [level.percentage, level.count]),
+          parsed.observedDelirium.rewardCounts.map((reward) => [reward.name, reward.count]),
+        ]
+      : null,
   ];
   const compressed = zlibSync(strToU8(JSON.stringify(payload)), { level: 9 });
   return `${DISCORD_SHARE_WIRE_PREFIX}${bytesToBase64Url(compressed)}`;
+}
+
+function decodeObservedDelirium(
+  value: unknown,
+  mapCount: number,
+): ObservedDeliriumSummary | null | false {
+  if (value === null) return null;
+  if (!tuple(value, 3)) return false;
+  const [sampleValue, levelValue, rewardValue] = value;
+  if (!Number.isInteger(sampleValue) || Number(sampleValue) < 1 || Number(sampleValue) > mapCount
+    || !Array.isArray(levelValue) || levelValue.length < 1 || levelValue.length > 11
+    || !Array.isArray(rewardValue) || rewardValue.length > 16) return false;
+
+  const sampleSize = Number(sampleValue);
+  const seenLevels = new Set<number>();
+  const levelCounts: ObservedDeliriumSummary['levelCounts'] = [];
+  for (const entry of levelValue) {
+    if (!tuple(entry, 2) || !Number.isInteger(entry[0]) || Number(entry[0]) < 0 || Number(entry[0]) > 100
+      || !Number.isInteger(entry[1]) || Number(entry[1]) < 1 || Number(entry[1]) > sampleSize
+      || seenLevels.has(Number(entry[0]))) return false;
+    seenLevels.add(Number(entry[0]));
+    levelCounts.push({ percentage: Number(entry[0]), count: Number(entry[1]) });
+  }
+  if (levelCounts.reduce((sum, level) => sum + level.count, 0) !== sampleSize) return false;
+  levelCounts.sort((left, right) => left.percentage - right.percentage);
+
+  const seenRewards = new Set<string>();
+  const rewardCounts: ObservedDeliriumSummary['rewardCounts'] = [];
+  for (const entry of rewardValue) {
+    if (!tuple(entry, 2) || !text(entry[0], 64) || String(entry[0]).trim().length === 0
+      || !Number.isInteger(entry[1]) || Number(entry[1]) < 1 || Number(entry[1]) > sampleSize * 10) return false;
+    const name = String(entry[0]).trim();
+    const key = name.toLowerCase();
+    if (seenRewards.has(key)) return false;
+    seenRewards.add(key);
+    rewardCounts.push({ name, count: Number(entry[1]) });
+  }
+  return { sampleSize, levelCounts, rewardCounts };
 }
 
 function decodeOperation(value: unknown): Pick<DiscordImport,
@@ -211,7 +265,9 @@ export function decodeDiscordShareWire(raw: string): DiscordImport | null {
     });
     if (inflated.length >= DISCORD_SHARE_OUTPUT_MAX) return null;
     const payload = JSON.parse(strFromU8(inflated)) as unknown;
-    if (!tuple(payload, 12) || payload[0] !== DISCORD_SHARE_WIRE_VERSION) return null;
+    const isLegacyV2 = tuple(payload, 12) && payload[0] === LEGACY_DISCORD_SHARE_WIRE_VERSION;
+    const isV3 = tuple(payload, 13) && payload[0] === DISCORD_SHARE_WIRE_VERSION;
+    if (!isLegacyV2 && !isV3) return null;
 
     const operation = decodeOperation(payload[1]);
     const maps = payload[2];
@@ -224,6 +280,7 @@ export function decodeDiscordShareWire(raw: string): DiscordImport | null {
     const regex = payload[9];
     const compactLoot = payload[10];
     const submissionId = payload[11];
+    const compactObservedDelirium = isV3 ? payload[12] : null;
     if (!operation
       || !tuple(maps, 8) || !tuple(money, 6) || !tuple(setup, 9)
       || !tuple(atlas, 3) || !tuple(provenance, 5) || !tuple(strategy, 3)
@@ -263,6 +320,8 @@ export function decodeDiscordShareWire(raw: string): DiscordImport | null {
 
     const lootSummary = compactLoot == null ? null : expandCompactLootSummary(compactLoot);
     if (compactLoot != null && !lootSummary) return null;
+    const observedDelirium = decodeObservedDelirium(compactObservedDelirium, Number(maps[0]));
+    if (observedDelirium === false) return null;
     const partyCode = Number(extras[0]);
     return {
       mapCount: Number(maps[0]),
@@ -270,6 +329,7 @@ export function decodeDiscordShareWire(raw: string): DiscordImport | null {
       multiplier: Number(maps[2]),
       observedModAverage: maps[3] == null ? null : Number(maps[3]),
       observedModSampleSize: maps[3] == null ? null : Number(maps[0]),
+      observedDelirium,
       avgQuant: Number(maps[4]), avgRarity: Number(maps[5]),
       avgPack: Number(maps[6]), avgCurr: Number(maps[7]),
       perMapCost: Number(money[0]), totalInvest: Number(money[1]),
