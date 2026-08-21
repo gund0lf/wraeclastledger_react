@@ -23,9 +23,11 @@ its separate explicit attachment to a release.
 
 `Linux AppImage stable release` is manually dispatched for an existing stable
 GitHub release. It checks out the selected release source, runs
-typecheck/tests/lint, builds but does not directly publish, extracts the packaged
-updater configuration and Proton helper, and verifies their hashes and stable
-`latest-linux.yml` metadata. Its default is artifact-only;
+typecheck/tests/lint, asserts the expected Electron 43/Node 24 toolchain, runs a
+high-severity dependency audit, builds but does not directly publish, extracts
+the packaged updater configuration and Proton helper, and verifies their hashes
+and stable `latest-linux.yml` metadata. The workflows' JavaScript actions also
+run on Node 24. Its default is artifact-only;
 `publish_release_assets` must be explicitly enabled before the second job can
 attach the exact verified AppImage and update metadata. That job also confirms
 the release is regular and its tag resolves to the same source SHA. The workflow
@@ -39,6 +41,10 @@ channel; stable Windows and Linux builds remain on `latest`.
 
 The AppImage metadata describes its embedded block map. There is no separate
 `.AppImage.blockmap` sidecar to publish.
+
+For an Electron-major change, also complete the broader application/runtime
+matrix in `ELECTRON_RUNTIME_UPGRADE.md`; this checklist is the Linux-specific
+subset.
 
 ## Linux smoke checklist
 

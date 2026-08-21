@@ -25,12 +25,12 @@ jobs:
 
     steps:
       - name: Check out the requested commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
 
       - name: Install the Windows cross-compiler
         run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
@@ -45,6 +45,16 @@ jobs:
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+
+      - name: Verify the Electron and Node runtime toolchain
+        shell: bash
+        run: |
+          node -e "const v=require('./node_modules/electron/package.json').version; if (!v.startsWith('43.')) throw new Error('Expected Electron 43.x, got '+v); console.log('Electron '+v)"
+          node -e "const major=Number(process.versions.node.split('.')[0]); if (major !== 24) throw new Error('Expected Node 24.x, got '+process.versions.node); console.log('Node '+process.versions.node)"
+          npm ls electron @types/node --depth=0
+
+      - name: Audit the installed dependency graph
+        run: npm audit --audit-level=high
 
       - name: Remove stale build output
         run: rm -rf dist out
@@ -97,7 +107,7 @@ jobs:
         run: npm run verify:linux:canary
 
       - name: Upload the verified build evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: WraeclastLedger-${{ env.CANARY_VERSION }}-linux-x64
           if-no-files-found: error
@@ -121,7 +131,7 @@ jobs:
 
     steps:
       - name: Download the exact verified build
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: WraeclastLedger-${{ env.CANARY_VERSION }}-linux-x64
           path: canary-artifact
