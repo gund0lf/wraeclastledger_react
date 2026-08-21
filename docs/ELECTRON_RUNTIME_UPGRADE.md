@@ -177,7 +177,9 @@ use a release asset with the same filename from another commit.
 ## Merge boundary
 
 Automation and both native platform matrices are green. Sad explicitly
-authorized merging the accepted branch on 2026-08-21 while holding publication
-until the remaining branches and new bug notes are reconciled. Merge the branch
-without a version/changelog release bump; publish only through a later explicitly
-authorized normal stable release. Never publish directly from this test branch.
+authorized merging the accepted branch on 2026-08-21 while holding v1.0.79 until
+all new bug notes and every held branch except the final WP14 sessions-as-files
+package are reconciled. The branch was then fast-forwarded into `main` without a
+version/changelog release bump. Publish only through a later explicitly
+authorized normal stable release; v1.0.78 and its updater assets remain the
+Electron 38 release.
