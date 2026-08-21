@@ -74,6 +74,13 @@ describe('categorise — by name regex', () => {
     expect(categorise('Imperial Enshrouding Crystal', '')).toBe('League');
   });
 
+  it('catches only the current exact valuable-beast shortlist', () => {
+    expect(categorise('Black Mórrigan', '9')).toBe('Beasts');
+    expect(categorise('Craicic Croaker', '9')).toBe('Beasts');
+    expect(categorise('Craicic Croaker Replica', '9')).toBe('Other');
+    expect(categorise('Craicic Maw', '9')).toBe('Other');
+  });
+
   it('catches fossils and resonators as League', () => {
     expect(categorise('Pristine Fossil', '')).toBe('League');
     expect(categorise('Powerful Chaotic Resonator', '')).toBe('League');

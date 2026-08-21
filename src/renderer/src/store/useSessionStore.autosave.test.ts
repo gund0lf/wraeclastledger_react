@@ -31,7 +31,7 @@ const resetStore = (): void => {
   // Clear any timer left over from a previous test before wiping state.
   flushActiveSessionAutoSave();
   useSessionStore.setState({
-    maps: [], lootItems: [], baselineItems: [], baselineTotal: 0,
+    maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, manualStatistics: {},
     settings: { ...DEFAULT_SETTINGS },
     savedSessions: {}, activeSessionId: null, activeSessionName: null,
     sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false,
@@ -69,6 +69,82 @@ describe('WP10 auto-save', () => {
     const saved = useSessionStore.getState().savedSessions[id];
     expect(saved.settings.baseMapCost).toBe(12);
     expect(saved.notes).toBe('juiced deli');
+  });
+
+  it('auto-saves and restores manual statistics without bleeding into a new session', () => {
+    const id = saveActive('A');
+    useSessionStore.getState().setManualStatistic('starfallCraters', 0);
+    useSessionStore.getState().setManualStatistic('svalinnDrops', 1);
+    useSessionStore.getState().addManualAtlasAnomalyCount('The Manor Foyer', 3);
+    useSessionStore.getState().addManualMercenaryCount('Kineticist', 2);
+    vi.advanceTimersByTime(DEBOUNCE);
+
+    expect(useSessionStore.getState().savedSessions[id].manualStatistics).toEqual({
+      starfallCraters: 0,
+      svalinnDrops: 1,
+      atlasAnomalies: [{ name: 'The Manor Foyer', count: 3 }],
+      mercenaries: [{ archetype: 'Kineticist', count: 2 }],
+    });
+
+    useSessionStore.getState().newSession();
+    expect(useSessionStore.getState().manualStatistics).toEqual({});
+    useSessionStore.getState().loadSession(id);
+    expect(useSessionStore.getState().manualStatistics).toEqual({
+      starfallCraters: 0,
+      svalinnDrops: 1,
+      atlasAnomalies: [{ name: 'The Manor Foyer', count: 3 }],
+      mercenaries: [{ archetype: 'Kineticist', count: 2 }],
+    });
+  });
+
+  it('snapshots Atlas-derived rate inputs and invalidates them when the tree URL changes', () => {
+    useSessionStore.getState().updateSetting('bestiaryAtlasSetup', {
+      additionalEinharChancePct: 104,
+      additionalRedChancePct: 30,
+      additionalYellowBeasts: 2,
+      yellowToRedChancePct: 15,
+      pairChancePct: 8,
+      capturedBeastCopyChancePct: 0,
+    });
+    useSessionStore.getState().updateSetting('mercenaryAtlasSetup', {
+      additionalEncounterChancePct: 50,
+      lessStrengthAlignedChancePct: 75,
+      lessDexterityAlignedChancePct: 75,
+      lessIntelligenceAlignedChancePct: 75,
+      increasedAzadiChancePct: 100,
+      increasedKeitaChancePct: 100,
+      increasedCyaxanChancePct: 100,
+      increasedInfamousChancePct: 50,
+    });
+    const id = saveActive('Atlas setup');
+    expect(useSessionStore.getState().savedSessions[id].settings.bestiaryAtlasSetup?.pairChancePct).toBe(8);
+
+    useSessionStore.getState().newSession();
+    useSessionStore.getState().updateSetting('bestiaryAtlasSetup', {
+      additionalEinharChancePct: 104,
+      additionalRedChancePct: 30,
+      additionalYellowBeasts: 2,
+      yellowToRedChancePct: 15,
+      pairChancePct: 8,
+      capturedBeastCopyChancePct: 0,
+    });
+    useSessionStore.getState().updateSetting('mercenaryAtlasSetup', {
+      additionalEncounterChancePct: 50,
+      lessStrengthAlignedChancePct: 75,
+      lessDexterityAlignedChancePct: 75,
+      lessIntelligenceAlignedChancePct: 75,
+      increasedAzadiChancePct: 100,
+      increasedKeitaChancePct: 100,
+      increasedCyaxanChancePct: 100,
+      increasedInfamousChancePct: 50,
+    });
+    useSessionStore.getState().updateSetting('atlasTreeUrl', 'https://pathofpathing.com/?v=changed');
+    expect(useSessionStore.getState().settings.bestiaryAtlasSetup).toBeUndefined();
+    expect(useSessionStore.getState().settings.mercenaryAtlasSetup).toBeUndefined();
+
+    useSessionStore.getState().loadSession(id);
+    expect(useSessionStore.getState().settings.bestiaryAtlasSetup?.pairChancePct).toBe(8);
+    expect(useSessionStore.getState().settings.mercenaryAtlasSetup?.increasedInfamousChancePct).toBe(50);
   });
 
   it('a burst of edits inside the window ends with everything persisted', () => {

@@ -25,6 +25,7 @@ const ALL_PANELS = [
   { component: 'atlas-calc',      name: 'Atlas Calc' },
   { component: 'investment',      name: 'Investment' },
   { component: 'dashboard',       name: 'Dashboard' },
+  { component: 'run-statistics',  name: 'Run Statistics' },
   // 'statistics' and 'loot' are legacy panels superseded by Dashboard — their
   // registry entries remain as tombstones for old saved layouts, but they are
   // no longer offered in "+ Add Panel" (WP5).

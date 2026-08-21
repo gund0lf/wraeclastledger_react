@@ -8,7 +8,12 @@ import { atlasVersionOf, retargetAtlasUrl } from '../utils/strategyCompat';
 import { isCrossLeagueSession } from '../utils/historicalSession';
 import { SectionLabel } from '../components/ui/SectionLabel';
 import { COLOR, FONT } from '../utils/uiTokens'
-import { deriveAtlasCalcSettings, type AtlasStatGroup } from '../../../shared/atlasStats';
+import {
+  deriveAtlasCalcSettings,
+  deriveBestiaryAtlasSetup,
+  deriveMercenaryAtlasSetup,
+  type AtlasStatGroup,
+} from '../../../shared/atlasStats';
 import { deriveAtlasDetectedTags } from '../utils/atlasTags';
 import {
   isPathofpathingTreeUrl,
@@ -492,6 +497,8 @@ export const AtlasTreeModule = () => {
       setStatsOpen(mode === 'inspect');
 
       updateSetting('atlasDetectedTags', deriveAtlasDetectedTags(groups));
+      updateSetting('bestiaryAtlasSetup', deriveBestiaryAtlasSetup(groups));
+      updateSetting('mercenaryAtlasSetup', deriveMercenaryAtlasSetup(groups));
 
       // Auto-apply calc if triggered by an external URL load or toolbar action.
       if (mode === 'apply' && !applyGroupsToCalc(groups)) setStatsOpen(true);

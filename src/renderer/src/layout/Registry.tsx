@@ -10,6 +10,7 @@ import { RegexPanel, RegexBuilderPanel } from '../modules/RegexPanelModule';
 import { StrategyBrowserModule } from '../modules/StrategyBrowserModule';
 import { NotesModule }           from '../modules/NotesModule';
 import { SetupModule }           from '../modules/SetupModule';
+import { RunStatisticsModule }   from '../modules/RunStatisticsModule';
 
 export const COMPONENT_REGISTRY: Record<string, () => any> = {
   'setup':           SetupModule,
@@ -21,6 +22,7 @@ export const COMPONENT_REGISTRY: Record<string, () => any> = {
   'investment':      InvestmentModule,
   'loot':            LootModule,         // kept for existing saved layouts
   'dashboard':       DashboardModule,    // new merged stats+loot panel
+  'run-statistics':  RunStatisticsModule,
   'regex':           RegexPanel,
   'regex-builder':   RegexBuilderPanel,
   'strategy-browser': StrategyBrowserModule,

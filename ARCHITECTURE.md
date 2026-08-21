@@ -39,7 +39,8 @@ flowchart LR
 - `layout/` maps persisted panel identifiers to React modules and defines the
   default dock arrangement.
 - `modules/` contains the major panels: Sessions, Map Log, Investment, Atlas
-  Calc, Atlas Tree, Regex, Strategy Browser, Dashboard, and Notes.
+  Calc, Atlas Tree, Regex, Strategy Browser, Dashboard, Notes, and the optional
+  local Run Statistics panel.
 - `components/` contains reusable dialogs, strategy presentation, onboarding,
   and shared controls.
 - `store/` contains the Zustand session and UI stores.
@@ -104,6 +105,15 @@ The current client persists session state and the dock layout locally. Store
 migrations preserve compatible older state, and layout migrations repair known
 legacy panel identifiers. Auto-save is local-first; the optional strategy
 service is for community sharing, not ordinary session storage.
+
+Explicit Run Statistics counters are stored with the local session. Starfall,
+Svalinn, Wildwood, named Atlas anomalies, and selected Mercenary archetypes are
+shown against the session's Map Log denominator; Mercenary attributes and Great
+House are reference data rather than user-entered labels. Named valuable-beast
+gains are derived from Baseline-to-Return item quantities, with Atlas and scarab
+effects used only in a separately labelled estimate when the setup guarantees
+the underlying encounter. Neither source is inferred from clipboard text or
+enters the community strategy wire.
 
 ## External boundaries
 

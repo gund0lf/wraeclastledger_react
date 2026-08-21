@@ -8,6 +8,7 @@ const candidate = (patch: Partial<WorkingSessionCandidate> = {}): WorkingSession
   lootItems: [],
   baselineItems: [],
   baselineTotal: 0,
+  manualStatistics: {},
   sessionNotes: '',
   investmentNeutralization: 0,
   investmentDismissed: false,
@@ -55,6 +56,7 @@ describe('isWorkingSessionMeaningful', () => {
     ['notes', { sessionNotes: 'keep this' }],
     ['strategy preview', { loadedStrategyInfo: { authorName: 'Sad' } }],
     ['investment correction', { investmentNeutralization: 10 }],
+    ['manual statistics', { manualStatistics: { starfallCraters: 0 } }],
   ])('guards meaningful %s work', (_label, patch) => {
     expect(isWorkingSessionMeaningful(candidate(patch as Partial<WorkingSessionCandidate>), DEFAULT_SETTINGS)).toBe(true);
   });

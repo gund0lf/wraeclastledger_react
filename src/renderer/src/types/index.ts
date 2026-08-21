@@ -1,3 +1,5 @@
+import type { BestiaryAtlasSetup, MercenaryAtlasSetup } from '../../../shared/atlasStats';
+
 export interface ScarabSlot { name: string; cost: number; }
 export interface ScarabPreset { id: string; name: string; scarabs: ScarabSlot[]; }
 /** Named brick-exclusion term list (Regex panel). User-scoped, top-level +
@@ -34,6 +36,28 @@ export interface ManualLootItem {
   total: number;
   category: LootCategory;
   note: string;
+}
+
+/** A counted Mercenary archetype authored by the user. Attribute alignment and
+ * Great House are reference data derived from the current game catalogue. */
+export interface ManualMercenaryCount {
+  archetype: string;
+  count: number;
+}
+
+export interface ManualAtlasAnomalyCount {
+  name: string;
+  count: number;
+}
+
+/** Optional, explicitly author-entered session outcomes. Missing scalar keys
+ * mean "not reported"; an explicit zero is a real authored report. */
+export interface ManualSessionStatistics {
+  starfallCraters?: number;
+  svalinnDrops?: number;
+  wildwoodEncounters?: number;
+  atlasAnomalies?: ManualAtlasAnomalyCount[];
+  mercenaries?: ManualMercenaryCount[];
 }
 
 export interface MapData {
@@ -135,6 +159,11 @@ export interface SessionSettings {
   evidenceTargetSetupFingerprint: string | null;
   leagueName: string;          // Current league, auto-detected from poe.ninja
   atlasDetectedTags: string[]; // Tags inferred from atlas tree node group titles
+  /** Local Run Statistics inputs captured from a successful Atlas stats read.
+   * Optional/additive: undefined means no authoritative scrape exists for the
+   * current tree, so modelled rates must remain unavailable. */
+  bestiaryAtlasSetup?: BestiaryAtlasSetup;
+  mercenaryAtlasSetup?: MercenaryAtlasSetup;
 }
 
 export interface SavedSession {
@@ -142,6 +171,7 @@ export interface SavedSession {
   maps: MapData[]; lootItems: LootItem[];
   baselineItems: LootItem[]; baselineTotal: number;
   manualLootItems?: ManualLootItem[];
+  manualStatistics?: ManualSessionStatistics;
   settings: SessionSettings;
   notes?: string;
   // Double-count correction the user applied to THIS session (WP11 / C, additive).

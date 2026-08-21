@@ -1,4 +1,5 @@
 import type { LootCategory } from '../types';
+import { valuableBeastName } from './runStatistics';
 
 export type ItemCategory = LootCategory;
 
@@ -37,6 +38,7 @@ const RULES: [RegExp | ((name: string, tab: string) => boolean), ItemCategory][]
   [/\boil\b/i,              'Oils'],
   [/essence/i,              'Essences'],
   [/incubator/i,            'Incubators'],
+  [(name) => valuableBeastName(name) !== null, 'Beasts'],
   [/splinter|emblem|fragment|relic|vessel|vial/i, 'Fragments'],
   // NOTE: vaal is intentionally NOT in this regex — "Vaal Burning Arrow"
   // (a gem) would otherwise match here before reaching the Gems rule below.

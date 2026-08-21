@@ -13,6 +13,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.79',
     date: '2026-08-21',
     changes: [
+      'An optional Run Statistics panel records local Starfall, Svalinn, Wildwood, named Atlas-anomaly, and Mercenary archetype counts as percentages of the current Map Log. Mercenary attributes and Great House are inferred from the catalogue, while valuable-beast gains come from Baseline and Return loot with separately labelled Atlas/scarab estimates. The panel stays out of the default layout and Discord shares.',
       'Loot evidence now records WealthyExile price changes between Baseline and Return separately from inventory movement. Same-quantity gains remain part of the authored return, carry their before/after snapshot proof, and are disclosed as market revaluation in Strategy Browser and Discord loot breakdowns.',
       'If a compact Discord share cannot be generated, Share now explains the validation or size failure instead of silently leaving Copy to Discord disabled.',
       'Loot artwork now recognizes exact and decorated identities consistently in imported and manual rows, including current Astrolabes, beasts, Talismans and flasks, Ducats and Enshrouding Crystals, Vials, unique relics and tinctures, special maps, uniques, gems, invitations, and a neutral official-CDN Blueprint. Missing artwork still falls back to an honest category symbol, and the custom-loot form explains League versus Other.',
