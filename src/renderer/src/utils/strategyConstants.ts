@@ -192,19 +192,20 @@ export const TAG_SHORT: Record<string, string> = {
 };
 
 // ─── Strategy Browser sorting ─────────────────────────────────────────────────
-// Mirrors the server's SORT_EXPR allow-list (api/server.js). Each key's default
-// direction matches the server default so the header arrow is truthful before
-// the user ever sends an explicit ?order=. div_per_hour is NEVER the default
-// sort (locked decision — self-reported time must not outrank div/map) and is
+// Mirrors the desktop-facing part of the server's SORT_EXPR allow-list
+// (api/server.js). The server also retains posted_at for older clients, but the
+// current UI exposes one time-based choice: latest publish/update activity.
+// Each key's default direction matches the server default so the header arrow
+// is truthful before the user ever sends an explicit ?order=. div_per_hour is
 // computed server-side from author-declared timed evidence only, NULLS LAST.
 
 export type SortKey =
-  | 'posted_at' | 'div_per_map' | 'net_profit' | 'score'
+  | 'activity' | 'div_per_map' | 'net_profit' | 'score'
   | 'least_invest' | 'cost_per_map' | 'div_per_hour';
 export type SortOrder = 'asc' | 'desc';
 
 export const SORT_DEFAULT_DIR: Record<SortKey, SortOrder> = {
-  posted_at:    'desc',
+  activity:     'desc',
   div_per_map:  'desc',
   net_profit:   'desc',
   score:        'desc',
@@ -213,8 +214,10 @@ export const SORT_DEFAULT_DIR: Record<SortKey, SortOrder> = {
   div_per_hour: 'desc',
 };
 
+export const DEFAULT_STRATEGY_SORT: SortKey = 'activity';
+
 export const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: 'posted_at',    label: 'Newest' },
+  { value: 'activity',     label: 'Latest activity' },
   { value: 'div_per_map',  label: 'Best d/map' },
   { value: 'div_per_hour', label: 'Best d/hour' },
   { value: 'net_profit',   label: 'Most profit' },

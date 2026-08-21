@@ -16,7 +16,7 @@ import {
   BROWSER_MAXIMIZED_SETUP_COLLAPSED_GRID_TEMPLATE, BROWSER_SETUP_COLLAPSED_MIN_CONTENT_WIDTH,
   BROWSER_MAXIMIZED_SETUP_COLLAPSED_MIN_CONTENT_WIDTH, BROWSER_ACTIVITY_WIDTH,
   BROWSER_MAXIMIZED_ACTIVITY_WIDTH,
-  SortKey, SortOrder, SORT_DEFAULT_DIR, SORT_OPTIONS, STRATEGY_API_URL,
+  SortKey, SortOrder, DEFAULT_STRATEGY_SORT, SORT_DEFAULT_DIR, SORT_OPTIONS, STRATEGY_API_URL,
 } from '../utils/strategyConstants';
 import { StrategyCard } from '../components/StrategyCard';
 import { ModuleHeader } from '../components/ui/ModuleHeader';
@@ -83,7 +83,7 @@ export const StrategyBrowserModule = () => {
   // selectable in the dropdown but stops being the default.
   const [leagueFilter, setLeagueFilter] = useState<string>(leagueOverride ?? activeKnownLeagues()[0]);
   const [minDiv,     setMinDiv]     = useState('');
-  const [sortBy,     setSortBy]     = useState<SortKey>('posted_at');
+  const [sortBy,     setSortBy]     = useState<SortKey>(DEFAULT_STRATEGY_SORT);
   // null = server default direction for the active sort; only an explicit
   // header re-click sends ?order=. Changing the sort key always resets this.
   const [sortOrder,  setSortOrder]  = useState<SortOrder | null>(null);
@@ -582,7 +582,7 @@ export const StrategyBrowserModule = () => {
             value={period} onChange={(v) => setPeriod(v ?? 'all')} />
           <Select size="xs" style={{ flex: 1 }}
             data={SORT_OPTIONS}
-            value={sortBy} onChange={(v) => setSort((v as SortKey) ?? 'posted_at')} />
+            value={sortBy} onChange={(v) => setSort((v as SortKey) ?? DEFAULT_STRATEGY_SORT)} />
           <Tooltip label={hideGroup ? 'Group/party strategies hidden — click to show them' : 'Click to hide group/party strategies'} withArrow>
             <Button size="xs" variant={hideGroup ? 'light' : 'default'} color={hideGroup ? 'cyan' : undefined}
               onClick={() => setHideGroup((v) => !v)}>
@@ -602,10 +602,11 @@ export const StrategyBrowserModule = () => {
           <Text size="xs" c="dimmed" style={{ width: browserCols.author, flexShrink: 0, fontSize: FONT.small }}>Author</Text>
           <Text size="xs" c="dimmed" style={{ flex: 1, minWidth: 0, fontSize: FONT.small }}>Tags</Text>
           {isSetupSidebarCollapsed && (
-            <Tooltip label="Time since the latest published result, or its latest update when revised. Exact dates remain inside the expanded card." withArrow multiline w={250}>
-              <Text size="xs" c="dimmed" style={{ width: browserActivityWidth, flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>
-                Published / updated
-              </Text>
+            <Tooltip label="Time since the latest published result, or its latest update when revised — click to sort. Exact dates remain inside the expanded card." withArrow multiline w={270}>
+              <UnstyledButton onClick={() => handleHeaderSort('activity')} aria-pressed={sortBy === 'activity'}
+                style={{ width: browserActivityWidth, flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>
+                Published / updated{sortArrow('activity')}
+              </UnstyledButton>
             </Tooltip>
           )}
           <Tooltip label="Observed average when exact map evidence was shared; otherwise the 6-mod/8-mod strategy bucket. Filtering always uses the bucket." withArrow multiline w={250}>

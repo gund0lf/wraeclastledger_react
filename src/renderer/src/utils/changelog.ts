@@ -13,6 +13,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.79',
     date: '2026-08-21',
     changes: [
+      'Strategy Browser now sorts by the latest published or updated activity through both the dropdown and the Published / updated column header. Re-clicking the header reverses direction, while expanded cards keep the exact dates.',
       'Map Log now records each map\'s Delirious percentage and ordered Delirium reward tracks, including repeated rewards. Compact panels show the metadata beneath the map name, while sufficiently wide panels use a dedicated Delirium column based on the panel\'s measured width.',
       'Shared strategies now distinguish observed Delirium map metadata from configured Delirium Orb costs. This lets bought pre-delirious maps show their sampled Delirium levels and reward tracks while their purchase price remains the normal base map cost.',
       'Trade modal Copy Regex now treats IIQ, IIR, Pack Size, and pseudo-stat values as the literal minimums shown in the controls. It no longer applies session-average reductions or inserts an unrequested Pack Size gate, and non-round floors such as 45% remain exact.',
