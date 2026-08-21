@@ -75,6 +75,7 @@ const STASH_TYPES = [
   'Beast',
   'ClusterJewel',
   'Invitation',
+  'BaseType',
   'IncursionTemple',
   'Wombgift',
 ];

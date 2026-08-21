@@ -28,6 +28,8 @@ const EPHEMERAL_URL = 'https://web.poecdn.com/gen/image/ephemeral-edge.png';
 const DISSOLUTION_URL = 'https://web.poecdn.com/gen/image/dissolution.png';
 const INVITATION_URL = 'https://web.poecdn.com/gen/image/incandescent-invitation.png';
 const BEAST_URL = 'https://web.poecdn.com/gen/image/bestiary-orb-full.png';
+const CROAKER_TALISMAN_URL = 'https://web.poecdn.com/gen/image/croaker-talisman.png';
+const GREAT_MAW_TALISMAN_URL = 'https://web.poecdn.com/gen/image/great-maw-talisman.png';
 const ASTROLABE_NAMES = [
   'Templar Astrolabe', 'Chaotic Astrolabe', 'Deceptive Astrolabe',
   'Fruiting Astrolabe', 'Fungal Astrolabe', 'Grasping Astrolabe',
@@ -134,6 +136,10 @@ beforeAll(() => {
           { name: 'Craicic Croaker', icon: BEAST_URL },
           { name: 'Wild Hellion Alpha', icon: BEAST_URL },
         ], slugs: [] };
+        if (type === 'BaseType') return { icons: [
+          { name: 'Croaker Talisman', icon: CROAKER_TALISMAN_URL },
+          { name: 'Great Maw Talisman', icon: GREAT_MAW_TALISMAN_URL },
+        ], slugs: [] };
         return { icons: [], slugs: [] };
       },
     },
@@ -229,6 +235,12 @@ describe('itemIcons resolve()', () => {
     expect(resolve('Dissolution of the Flesh')).toBe(DISSOLUTION_URL);
     expect(resolve('Empower Support - 1/0')).toBe(GEM_URL);
     expect(resolve('Incandescent Invitation')).toBe(INVITATION_URL);
+  });
+
+  it('resolves exact base-item identities from the stash BaseType feed', async () => {
+    const { resolve } = await getItemIcons();
+    expect(resolve('Croaker Talisman')).toBe(CROAKER_TALISMAN_URL);
+    expect(resolve('Great Maw Talisman')).toBe(GREAT_MAW_TALISMAN_URL);
   });
 
   it('six-link suffixes resolve unique armour by its base name', async () => {
