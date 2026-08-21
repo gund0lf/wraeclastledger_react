@@ -91,10 +91,20 @@ Both Node 24 Linux paths passed from source SHA
   built and verified the `latest` channel without altering the existing
   v1.0.78 release.
 
-Interactive behavior remains the manual Windows matrix below and Traceur's
-host smoke test using the exact canary artifact.
+Interactive behavior is also accepted. Sad completed the full Windows matrix in
+development and packaged builds on Windows 10 `10.0.19045.7663`; Traceur reported
+the full Linux matrix green using the Electron 43 canary artifact. The repeated
+Windows verification independently resolved Electron `43.4.1` and Node
+declarations `24.13.3`, reported zero audit findings, passed 60 files / 695
+Vitest tests plus 5/5 Cargo-query tests, completed lint with zero errors / 52
+accepted warnings, and rebuilt the production, unpacked, and NSIS targets.
 
 ## Windows manual regression matrix
+
+**Status: GREEN on 2026-08-21 (Sad).** All ten areas below were exercised. The
+single mistyped shell attempt to launch `npunpacked\\WraeclastLedger.exe` was
+non-operative and irrelevant; the correctly built unpacked application and NSIS
+package were subsequently tested.
 
 Use `npm run dev` first. Keep the currently installed stable app closed while
 testing the packaged executable so Windows does not redirect the second launch
@@ -136,6 +146,9 @@ to the existing instance.
 
 ## Linux manual regression matrix
 
+**Status: GREEN on 2026-08-21 (Traceur).** The exact Electron 43 canary artifact
+from run `32481978202` passed the host matrix below.
+
 Download the artifact-only AppImage produced from this exact branch SHA. Do not
 use a release asset with the same filename from another commit.
 
@@ -163,9 +176,8 @@ use a release asset with the same filename from another commit.
 
 ## Merge boundary
 
-Passing automation proves compilation, dependency security, Windows packaging,
-AppImage construction, bundled-helper integrity, and updater metadata. It does
-not prove native UI/clipboard behavior on both operating systems. Keep the branch
-separate until the Windows matrix and Traceur's Linux matrix are recorded green.
-Only then merge it into `main`, add the release changelog/version entry, and run
-the normal stable release process. Never publish directly from this test branch.
+Automation and both native platform matrices are green. Sad explicitly
+authorized merging the accepted branch on 2026-08-21 while holding publication
+until the remaining branches and new bug notes are reconciled. Merge the branch
+without a version/changelog release bump; publish only through a later explicitly
+authorized normal stable release. Never publish directly from this test branch.
