@@ -441,7 +441,10 @@ export const DashboardModule = () => {
           <Text size="xs" fw={700}>{editingManualId ? 'Edit addition' : 'Add a missing drop'}</Text>
           <TextInput label="Item name" placeholder="e.g. Unidentified unique ring"
             value={manualDraft.name} maxLength={MANUAL_LOOT_NAME_MAX}
-            onChange={(event) => setManualDraft((draft) => ({ ...draft, name: event.currentTarget.value }))} />
+            onChange={(event) => {
+              const name = event.currentTarget.value;
+              setManualDraft((draft) => ({ ...draft, name }));
+            }} />
           <SimpleGrid cols={2} spacing="sm">
             <NumberInput label="Quantity" min={1} step={1} allowDecimal={false}
               value={manualDraft.quantity}
@@ -455,7 +458,10 @@ export const DashboardModule = () => {
             onChange={(value) => setManualDraft((draft) => ({ ...draft, category: (value as LootCategory | null) ?? 'Other' }))} />
           <Textarea label="Reason / note (optional)" placeholder="Why WealthyExile missed or underpriced it"
             value={manualDraft.note} maxLength={MANUAL_LOOT_NOTE_MAX} autosize minRows={2} maxRows={4}
-            onChange={(event) => setManualDraft((draft) => ({ ...draft, note: event.currentTarget.value }))} />
+            onChange={(event) => {
+              const note = event.currentTarget.value;
+              setManualDraft((draft) => ({ ...draft, note }));
+            }} />
           <Group justify="space-between">
             <Text size="xs" c="dimmed">
               {manualLootItems.length}/{LOOT_SUMMARY_ROW_LIMIT} manual rows / shared evidence shows at most {LOOT_SUMMARY_ROW_LIMIT} total rows.
