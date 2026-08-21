@@ -30,6 +30,14 @@ const INVITATION_URL = 'https://web.poecdn.com/gen/image/incandescent-invitation
 const BEAST_URL = 'https://web.poecdn.com/gen/image/bestiary-orb-full.png';
 const CROAKER_TALISMAN_URL = 'https://web.poecdn.com/gen/image/croaker-talisman.png';
 const GREAT_MAW_TALISMAN_URL = 'https://web.poecdn.com/gen/image/great-maw-talisman.png';
+const DUCAT_URL = 'https://web.poecdn.com/gen/image/ducat.png';
+const ENSHROUDING_CRYSTAL_URL = 'https://web.poecdn.com/gen/image/enshrouding-crystal.png';
+const BLIGHT_RAVAGED_URL = 'https://web.poecdn.com/gen/image/blight-ravaged-map.png';
+const VALDO_MAP_URL = 'https://web.poecdn.com/gen/image/valdo-map.png';
+const VIAL_URL = 'https://web.poecdn.com/gen/image/vial.png';
+const UNIQUE_RELIC_URL = 'https://web.poecdn.com/gen/image/unique-relic.png';
+const UNIQUE_TINCTURE_URL = 'https://web.poecdn.com/gen/image/unique-tincture.png';
+const FLASK_URL = 'https://web.poecdn.com/gen/image/iron-flask.png';
 const ASTROLABE_NAMES = [
   'Templar Astrolabe', 'Chaotic Astrolabe', 'Deceptive Astrolabe',
   'Fruiting Astrolabe', 'Fungal Astrolabe', 'Grasping Astrolabe',
@@ -92,6 +100,12 @@ beforeAll(() => {
         if (type === 'Astrolabe') return { icons: ASTROLABE_NAMES.map((name) => ({
           name, icon: ASTROLABE_URL,
         })), slugs: [] };
+        if (type === 'Ducat') return { icons: [
+          { name: "Brinehook's Ducat", icon: DUCAT_URL },
+        ], slugs: [] };
+        if (type === 'EnshroudingCrystal') return { icons: [
+          { name: 'Imperial Enshrouding Crystal', icon: ENSHROUDING_CRYSTAL_URL },
+        ], slugs: [] };
         if (type === 'UniqueArmour') return { icons: [
           { name: 'Blunderbore', icon: BLUNDERBORE_URL },
           { name: "Ralakesh's Impatience", icon: RALAKESH_URL },
@@ -117,6 +131,12 @@ beforeAll(() => {
           { name: 'Blighted Map (Tier 14)', icon: BLIGHT14_URL },
           { name: 'Blighted Map (Tier 16)', icon: BLIGHT16_URL },
         ], slugs: [] };
+        if (type === 'BlightRavagedMap') return { icons: [
+          { name: 'Blight-ravaged Map (Tier 16)', icon: BLIGHT_RAVAGED_URL },
+        ], slugs: [] };
+        if (type === 'ValdoMap') return { icons: [
+          { name: 'Rune Monolith', icon: VALDO_MAP_URL },
+        ], slugs: [] };
         if (type === 'SkillGem') return { icons: [
           { name: 'Empower Support', icon: GEM_URL },
           { name: 'Precision', icon: PRECISION_URL },
@@ -139,6 +159,18 @@ beforeAll(() => {
         if (type === 'BaseType') return { icons: [
           { name: 'Croaker Talisman', icon: CROAKER_TALISMAN_URL },
           { name: 'Great Maw Talisman', icon: GREAT_MAW_TALISMAN_URL },
+        ], slugs: [] };
+        if (type === 'Flask') return { icons: [
+          { name: 'Iron Flask', icon: FLASK_URL },
+        ], slugs: [] };
+        if (type === 'Vial') return { icons: [
+          { name: 'Vial of Sacrifice', icon: VIAL_URL },
+        ], slugs: [] };
+        if (type === 'UniqueRelic') return { icons: [
+          { name: 'The Original Scripture', icon: UNIQUE_RELIC_URL },
+        ], slugs: [] };
+        if (type === 'UniqueTincture') return { icons: [
+          { name: 'Mightblood Ire', icon: UNIQUE_TINCTURE_URL },
         ], slugs: [] };
         return { icons: [], slugs: [] };
       },
@@ -241,6 +273,18 @@ describe('itemIcons resolve()', () => {
     const { resolve } = await getItemIcons();
     expect(resolve('Croaker Talisman')).toBe(CROAKER_TALISMAN_URL);
     expect(resolve('Great Maw Talisman')).toBe(GREAT_MAW_TALISMAN_URL);
+  });
+
+  it('resolves the bounded current poe.ninja identity feeds used by loot rows', async () => {
+    const { resolve } = await getItemIcons();
+    expect(resolve("Brinehook's Ducat")).toBe(DUCAT_URL);
+    expect(resolve('Imperial Enshrouding Crystal')).toBe(ENSHROUDING_CRYSTAL_URL);
+    expect(resolve('Blight-ravaged Map (Tier 16)')).toBe(BLIGHT_RAVAGED_URL);
+    expect(resolve('Rune Monolith')).toBe(VALDO_MAP_URL);
+    expect(resolve('Vial of Sacrifice')).toBe(VIAL_URL);
+    expect(resolve('The Original Scripture')).toBe(UNIQUE_RELIC_URL);
+    expect(resolve('Mightblood Ire')).toBe(UNIQUE_TINCTURE_URL);
+    expect(resolve('Iron Flask')).toBe(FLASK_URL);
   });
 
   it('six-link suffixes resolve unique armour by its base name', async () => {

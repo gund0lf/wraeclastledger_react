@@ -51,6 +51,7 @@ describe('categorise — by name regex', () => {
     expect(categorise('Fragment of Knowledge', '')).toBe('Fragments');
     expect(categorise('Timeless Templar Emblem', '')).toBe('Fragments');
     expect(categorise('Sacred Vessel', '')).toBe('Fragments');
+    expect(categorise('Vial of Sacrifice', '')).toBe('Fragments');
   });
 
   it('catches common currency by name', () => {
@@ -69,6 +70,8 @@ describe('categorise — by name regex', () => {
     expect(categorise('Journey Tattoo of the Body', '')).toBe('League');
     expect(categorise('Broken Circle Artifact', '')).toBe('League');
     expect(categorise("Ancient Wombgift", '')).toBe('League');
+    expect(categorise("Brinehook's Ducat", '')).toBe('League');
+    expect(categorise('Imperial Enshrouding Crystal', '')).toBe('League');
   });
 
   it('catches fossils and resonators as League', () => {
@@ -93,6 +96,10 @@ describe('categorise — by name regex', () => {
   it('falls back to Other when nothing matches', () => {
     expect(categorise('Astral Plate', '')).toBe('Other');
     expect(categorise("Inpulsa's Broken Heart", '')).toBe('Other');
+    // poe.ninja's UniqueTincture names omit the type (for example Mightblood
+    // Ire), so no name-only rule can prove a narrower category. Artwork still
+    // resolves exactly from the bounded identity feed.
+    expect(categorise('Mightblood Ire', '')).toBe('Other');
   });
 });
 

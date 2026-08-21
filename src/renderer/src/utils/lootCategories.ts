@@ -37,12 +37,12 @@ const RULES: [RegExp | ((name: string, tab: string) => boolean), ItemCategory][]
   [/\boil\b/i,              'Oils'],
   [/essence/i,              'Essences'],
   [/incubator/i,            'Incubators'],
-  [/splinter|emblem|fragment|relic|vessel/i, 'Fragments'],
+  [/splinter|emblem|fragment|relic|vessel|vial/i, 'Fragments'],
   // NOTE: vaal is intentionally NOT in this regex — "Vaal Burning Arrow"
   // (a gem) would otherwise match here before reaching the Gems rule below.
   // "Vaal Orb" matches via the explicit `vaal orb` token instead.
   [/chisel|orb|chaos|divine|exalted|vaal orb|scouring|alch|annulment|regal|alteration|augmentation|transmutation/i, 'Currency'],
-  [/\b(?:astrolabe|coin|wombgift|runegraft|allflame|omen|tattoo|artifact)\b/i, 'League'],
+  [/\b(?:astrolabe|coin|ducat|wombgift|runegraft|allflame|omen|tattoo|artifact|tincture)\b|enshrouding crystal/i, 'League'],
   [/fossil|resonator/i,     'League'],
   [/map$/i,                 'Maps'],
   [/support$|^vaal |awakened /i, 'Gems'],

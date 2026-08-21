@@ -15,7 +15,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     changes: [
       'Loot evidence now records WealthyExile price changes between Baseline and Return separately from inventory movement. Same-quantity gains remain part of the authored return, carry their before/after snapshot proof, and are disclosed as market revaluation in Strategy Browser and Discord loot breakdowns.',
       'If a compact Discord share cannot be generated, Share now explains the validation or size failure instead of silently leaving Copy to Discord disabled.',
-      'Loot artwork now recognizes exact and decorated identities consistently in imported and manual rows, including current Astrolabes, beasts, base items such as Talismans, uniques, gems, invitations, the Allflame tier-16 map, and a neutral official-CDN Blueprint. Missing artwork still falls back to an honest category symbol, and the custom-loot form explains League versus Other.',
+      'Loot artwork now recognizes exact and decorated identities consistently in imported and manual rows, including current Astrolabes, beasts, Talismans and flasks, Ducats and Enshrouding Crystals, Vials, unique relics and tinctures, special maps, uniques, gems, invitations, and a neutral official-CDN Blueprint. Missing artwork still falls back to an honest category symbol, and the custom-loot form explains League versus Other.',
       'Typing an item name or note in Custom loot additions no longer crashes the Dashboard.',
     ],
   },
