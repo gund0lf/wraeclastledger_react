@@ -77,9 +77,22 @@ vulnerabilities. Typecheck completed with zero errors; Vitest passed 60 files /
 695 tests and the Cargo query suite passed 5/5; lint completed with zero errors
 and the accepted 52-warning baseline; the production build, unpacked Windows
 package, and NSIS installer all completed. The unpacked executable stayed alive
-for a bounded isolated-profile startup smoke test. Interactive behavior remains
-the manual Windows matrix below, and Linux remains pending the exact-SHA
-artifact-only workflow plus Traceur's host smoke test.
+for a bounded isolated-profile startup smoke test.
+
+Both Node 24 Linux paths passed from source SHA
+`07aeb9f7a11151163448913ee6734c01d117e691` with their publish jobs skipped:
+
+- artifact-only canary run
+  [32481978202](https://github.com/gund0lf/wraeclastledger_react/actions/runs/32481978202)
+  built `1.0.79-beta.1`; its AppImage is 138,739,245 bytes with SHA-256
+  `fdcaf865d7a7242bf48d59e431b008cd9da9b382818e8c665f9d4a78637ab532`;
+- artifact-only stable-path run
+  [32482365480](https://github.com/gund0lf/wraeclastledger_react/actions/runs/32482365480)
+  built and verified the `latest` channel without altering the existing
+  v1.0.78 release.
+
+Interactive behavior remains the manual Windows matrix below and Traceur's
+host smoke test using the exact canary artifact.
 
 ## Windows manual regression matrix
 
