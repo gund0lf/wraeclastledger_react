@@ -10,6 +10,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.79',
+    date: '2026-08-21',
+    changes: [
+      'Loot evidence now records WealthyExile price changes between Baseline and Return separately from inventory movement. Same-quantity gains remain part of the authored return, carry their before/after snapshot proof, and are disclosed as market revaluation in Strategy Browser and Discord loot breakdowns.',
+      'If a compact Discord share cannot be generated, Share now explains the validation or size failure instead of silently leaving Copy to Discord disabled.',
+    ],
+  },
+  {
     version: '1.0.78',
     date: '2026-08-15',
     changes: [

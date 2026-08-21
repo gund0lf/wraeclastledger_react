@@ -260,14 +260,25 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
        activeManifest.revision, activeManifest.patchVersion]);
 
   const parsedDiscordExport = parseDiscordExport(discordExport);
-  const discordWire = useMemo(() => {
-    if (!parsedDiscordExport) return '';
+  const discordWireResult = useMemo(() => {
+    if (!parsedDiscordExport) {
+      return {
+        wire: '',
+        error: 'The readable share could not be parsed. Review the required fields above.',
+      };
+    }
     try {
-      return encodeDiscordShareWire(parsedDiscordExport);
-    } catch {
-      return '';
+      return { wire: encodeDiscordShareWire(parsedDiscordExport), error: null };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'unknown encoding error';
+      return {
+        wire: '',
+        error: `The compact Discord share could not be generated: ${detail}`,
+      };
     }
   }, [parsedDiscordExport]);
+  const discordWire = discordWireResult.wire;
+  const discordWireError = discordWireResult.error;
   const budget = computeCompactShareBudget(
     discordWire,
     discordExport,
@@ -535,9 +546,11 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
           </Text>
         </Stack>
         <Divider label="Posted card preview" labelPosition="left" />
-        <Text size="xs" c={!budget.fitsWire || !budget.fitsPlain ? 'red' : budget.fitsDecorated ? 'dimmed' : 'orange'} style={{ fontSize: FONT.small }}>
+        <Text size="xs" c={discordWireError || !budget.fitsWire || !budget.fitsPlain ? 'red' : budget.fitsDecorated ? 'dimmed' : 'orange'} style={{ fontSize: FONT.small }}>
           {`Submission: ${budget.wireLength}/${DISCORD_MSG_LIMIT} | posted card: ${budget.plainCardLength}/${DISCORD_MSG_LIMIT} plain, ${budget.decoratedCardLength}/${DISCORD_MSG_LIMIT} with emotes — `}
-          {!budget.fitsWire
+          {discordWireError
+            ? 'compact submission unavailable.'
+            : !budget.fitsWire
             ? 'compact paste is too large; trim notes.'
             : !budget.fitsPlain
             ? 'posted card is too large; trim notes.'
@@ -545,6 +558,11 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
               ? 'fits with app emotes.'
               : 'posts without app emotes (over the emote budget).'}
         </Text>
+        {discordWireError && !previewWithheld && (
+          <Alert color="red" variant="light" p="xs">
+            <Text size="xs">{discordWireError}</Text>
+          </Alert>
+        )}
         {previewWithheld ? (
           <Alert color="red" variant="light" p="xs">
             <Text size="xs">

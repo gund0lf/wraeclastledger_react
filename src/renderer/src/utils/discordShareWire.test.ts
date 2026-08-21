@@ -30,6 +30,8 @@ const lootSummary = (): LootSummary => {
     csvNegative: 0,
     csvNet: reportedReturn,
     csvAdjustment: reportedReturn - total,
+    inventoryFlow: total,
+    marketRevaluation: 0,
     manualTotal: 0,
     gemCorrection: 0,
     investmentCorrection: 0,
@@ -114,6 +116,20 @@ describe('compact Discord share wire', () => {
     expect(wire.length).toBeLessThanOrEqual(DISCORD_SHARE_WIRE_MAX);
     expect(decodeDiscordShareWire(wire)).toEqual(expected);
     expect(parseDiscordExport(wire)).toEqual(expected);
+  });
+
+  it('keeps a 500-map strategy with bounded top-30 evidence inside one message', () => {
+    const wire = encodeDiscordShareWire(parsed({
+      mapCount: 500,
+      observedModSampleSize: 500,
+      sessionMinutes: 900,
+    }));
+    expect(wire.length).toBeLessThanOrEqual(DISCORD_SHARE_WIRE_MAX);
+    expect(decodeDiscordShareWire(wire)).toMatchObject({
+      mapCount: 500,
+      observedModSampleSize: 500,
+      sessionMinutes: 900,
+    });
   });
 
   it('infers the exact observed sample and omits derived Slam data', () => {

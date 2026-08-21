@@ -78,6 +78,7 @@ describe('exportBudget', () => {
       rowLimit: 30 as const,
       rows: [], categories: [], hasBaseline: true,
       csvPositive: 0, csvNegative: 0, csvNet: 0, csvAdjustment: 0,
+      inventoryFlow: 0, marketRevaluation: 0,
       manualTotal: 0, gemCorrection: 0, investmentCorrection: 0,
       reportedReturn: 0, omittedCsvRows: 0, omittedCsvValue: 0,
       omittedManualRows: 0, omittedManualValue: 0,

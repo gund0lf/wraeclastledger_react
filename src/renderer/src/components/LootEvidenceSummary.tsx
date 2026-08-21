@@ -15,6 +15,7 @@ export const LootEvidenceSummary = ({ summary }: { summary: LootSummary }) => {
   const [rowsOpen, setRowsOpen] = useState(false);
   const categoryTotal = summary.categories.reduce((sum, entry) => sum + entry.value, 0) || 1;
   const manualRows = summary.rows.filter((row) => row.source === 'manual');
+  const valuationRows = summary.rows.filter((row) => row.valuation !== undefined);
   const omittedRows = summary.omittedCsvRows + summary.omittedManualRows;
   const omittedValue = summary.omittedCsvValue + summary.omittedManualValue;
 
@@ -29,6 +30,13 @@ export const LootEvidenceSummary = ({ summary }: { summary: LootSummary }) => {
             <Tooltip label="Author-valued drops that were not present or correctly priced in the Return CSV" withArrow>
               <Badge size="xs" color="yellow" variant="outline" style={{ cursor: 'help' }}>
                 {manualRows.length} manual / {fcSep(summary.manualTotal)}
+              </Badge>
+            </Tooltip>
+          )}
+          {valuationRows.length > 0 && (
+            <Tooltip label="Value gains from items already held at the baseline; quantity and before/after values are verified in the evidence payload" withArrow>
+              <Badge size="xs" color="blue" variant="outline" style={{ cursor: 'help' }}>
+                {valuationRows.length} market
               </Badge>
             </Tooltip>
           )}
@@ -89,12 +97,25 @@ export const LootEvidenceSummary = ({ summary }: { summary: LootSummary }) => {
                               <Badge size="xs" color="yellow" variant="outline" style={{ cursor: 'help' }}>Manual</Badge>
                             </Tooltip>
                           )}
+                          {row.valuation && (
+                            <Tooltip
+                              label={`${row.valuation.baselineQuantity} -> ${row.valuation.currentQuantity} held; ${fcSep(row.valuation.baselineValue)} -> ${fcSep(row.valuation.currentValue)}`}
+                              withArrow>
+                              <Badge size="xs" color="blue" variant="outline" style={{ cursor: 'help' }}>Market</Badge>
+                            </Tooltip>
+                          )}
                         </Group>
                         <Text size="xs" c="dimmed" style={{ fontSize: FONT.label }}>{row.category}</Text>
                       </Stack>
                     </Group>
                   </Table.Td>
-                  <Table.Td><Text size="xs" c="dimmed">{row.quantity}</Text></Table.Td>
+                  <Table.Td>
+                    <Text size="xs" c="dimmed">
+                      {row.valuation
+                        ? `${row.valuation.baselineQuantity} -> ${row.valuation.currentQuantity}`
+                        : row.quantity}
+                    </Text>
+                  </Table.Td>
                   <Table.Td ta="right"><Text size="xs" fw={700} c="teal">{fcSep(row.value)}</Text></Table.Td>
                 </Table.Tr>
               ))}
@@ -107,6 +128,12 @@ export const LootEvidenceSummary = ({ summary }: { summary: LootSummary }) => {
           )}
           <Group gap="md" wrap="wrap">
             <Text size="xs" c="dimmed">CSV net: {fcSep(summary.csvNet, true)}</Text>
+            <Text size="xs" c="dimmed">
+              Inventory movement: {fcSep(summary.inventoryFlow ?? summary.csvNet - summary.csvAdjustment, true)}
+            </Text>
+            <Text size="xs" c={summary.marketRevaluation ? 'blue' : 'dimmed'}>
+              Market revaluation: {fcSep(summary.marketRevaluation ?? 0, true)}
+            </Text>
             {summary.csvAdjustment !== 0 && <Text size="xs" c="dimmed">CSV adjustment: {fcSep(summary.csvAdjustment, true)}</Text>}
             {summary.gemCorrection !== 0 && <Text size="xs" c="dimmed">Gem correction: {fcSep(summary.gemCorrection, true)}</Text>}
             {summary.investmentCorrection !== 0 && <Text size="xs" c="dimmed">Investment correction: {fcSep(summary.investmentCorrection, true)}</Text>}

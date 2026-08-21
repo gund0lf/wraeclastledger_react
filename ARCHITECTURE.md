@@ -72,6 +72,12 @@ and the session's divine price into the values shown by Dashboard, comparisons,
 and strategy exports. Profit and Atlas-multiplier formulas have one shared
 implementation rather than component-local copies.
 
+Shared loot evidence is immutable per authored run. Inventory movement and
+Baseline-to-Return market revaluation are distinct accounting components, and
+manual supplemental rows remain disclosed. Historical runs retain their
+authored prices and divine snapshot; pooled views aggregate those snapshots
+without substituting current market prices.
+
 ### Game data
 
 The client ships with a validated bundled manifest as its always-available
@@ -82,13 +88,15 @@ old identities for historical sessions.
 
 ### Community strategies
 
-The desktop client creates a text export of a session and can parse the same
-format back into an import preview. Discord is the write path for community
-strategies: the bot validates exports, persists them in the service database,
-and posts the community card. The desktop Strategy Browser reads the public API;
-it is not a direct database writer. End-of-league public boards read immutable
-server snapshots while Personal retrospectives remain local. Client, bot, and
-server changes to this wire format are coordinated.
+The desktop client creates a bounded, versioned compact submission and can parse
+the bot's canonical readable card back into an import preview. Discord is the
+write path for community strategies: the bot validates either the compact or
+legacy form, persists it in the service database, and posts the readable
+community card plus bounded loot evidence. The desktop Strategy Browser reads
+the public API; it is not a direct database writer. End-of-league public boards
+read immutable server snapshots while Personal retrospectives remain local.
+Client, bot, API, fixtures, and compatibility tests move together when the
+compact tuple or canonical text wire changes.
 
 ## Persistence
 

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { strToU8, zlibSync } from 'fflate';
 import type { LootItem, ManualLootItem } from '../types';
 import {
-  buildLootSummary, decodeLootSummary, encodeLootSummary,
+  buildLootSummary, compactLootSummary, decodeLootSummary, encodeLootSummary,
+  expandCompactLootSummary,
   LOOT_SUMMARY_ROW_LIMIT, LOOT_SUMMARY_TOKEN_MAX,
 } from './lootSummary';
 
@@ -30,6 +31,8 @@ describe('buildLootSummary', () => {
       csvPositive: 200,
       csvNegative: -10,
       csvNet: 190,
+      inventoryFlow: 190,
+      marketRevaluation: 0,
       manualTotal: 75,
       gemCorrection: 10,
       investmentCorrection: 25,
@@ -37,6 +40,63 @@ describe('buildLootSummary', () => {
     });
     expect(summary?.rows[0]).toMatchObject({ name: 'Divine Orb', source: 'wealthyexile', value: 200 });
     expect(summary?.rows[1]).toMatchObject({ name: 'Unpriced Blueprint', source: 'manual', value: 75 });
+  });
+
+  it('preserves same-quantity market gains with verified before and after values', () => {
+    const summary = buildLootSummary({
+      baselineItems: [item("The Maven's Writ", 776.1, '199', 'frag')],
+      lootItems: [item("The Maven's Writ", 1134.3, '199', 'frag')],
+      baselineTotal: 776.1,
+      manualLootItems: [], gemCorrection: 0, investmentCorrection: 0,
+      reportedReturn: 358.2,
+    });
+
+    expect(summary).toMatchObject({
+      csvNet: 358.2,
+      inventoryFlow: 0,
+      marketRevaluation: 358.2,
+      reportedReturn: 358.2,
+    });
+    expect(summary?.rows[0]).toMatchObject({
+      name: "The Maven's Writ",
+      quantity: 199,
+      value: 358.2,
+      valuation: {
+        baselineQuantity: 199,
+        currentQuantity: 199,
+        baselineValue: 776.1,
+        currentValue: 1134.3,
+      },
+    });
+    expect(decodeLootSummary(encodeLootSummary(summary!))).toEqual(summary);
+  });
+
+  it('rejects forged valuation proof but still accepts legacy compact totals', () => {
+    const summary = buildLootSummary({
+      baselineItems: [item('Held item', 100, '5')],
+      lootItems: [item('Held item', 125, '5')],
+      baselineTotal: 100,
+      manualLootItems: [], gemCorrection: 0, investmentCorrection: 0,
+      reportedReturn: 25,
+    })!;
+    const forged = compactLootSummary(summary);
+    forged.r[0][11] = 999;
+    expect(expandCompactLootSummary(forged)).toBeNull();
+
+    const legacy = compactLootSummary({
+      ...summary,
+      rows: [{
+        name: 'New item', category: 'Other', source: 'wealthyexile',
+        quantity: 1, value: 25,
+      }],
+      inventoryFlow: 25,
+      marketRevaluation: 0,
+    });
+    legacy.t = legacy.t.slice(0, 13) as typeof legacy.t;
+    expect(expandCompactLootSummary(legacy)).toMatchObject({
+      inventoryFlow: 25,
+      marketRevaluation: 0,
+    });
   });
 
   it('always reserves the bounded row set for manual provenance', () => {

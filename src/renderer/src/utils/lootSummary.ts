@@ -13,6 +13,17 @@ export const LOOT_EVIDENCE_LABEL = 'Loot Evidence';
 
 export type LootSummarySource = 'wealthyexile' | 'manual';
 
+/** Snapshot proof for a positive-value row that did not gain inventory.
+ * The server independently checks currentValue - baselineValue === row.value.
+ * Keeping this bounded proof on only valuation-led rows avoids bloating normal
+ * shares while making price-only wealth changes explicit instead of invalid. */
+export interface LootValuationProof {
+  baselineQuantity: number;
+  currentQuantity: number;
+  baselineValue: number;
+  currentValue: number;
+}
+
 export interface LootSummaryRow {
   name: string;
   category: LootCategory;
@@ -21,6 +32,7 @@ export interface LootSummaryRow {
   value: number;
   tab?: string;
   note?: string;
+  valuation?: LootValuationProof;
 }
 
 export interface LootSummaryCategory {
@@ -38,6 +50,10 @@ export interface LootSummary {
   csvNegative: number;
   csvNet: number;
   csvAdjustment: number;
+  /** Quantity movement valued at the Return snapshot's unit prices. */
+  inventoryFlow: number;
+  /** Value change of the baseline-held quantities at Return prices. */
+  marketRevaluation: number;
   manualTotal: number;
   gemCorrection: number;
   investmentCorrection: number;
@@ -65,11 +81,24 @@ const cleanText = (value: string, max: number): string =>
 const isLootCategory = (value: unknown): value is LootCategory =>
   typeof value === 'string' && ITEM_CATEGORIES.includes(value as LootCategory);
 
+type CompactLootTotalsLegacy = [
+  number, number, number, number, number, number, number,
+  number, number, number, number, number, number,
+];
+
+type CompactLootTotals = [
+  ...CompactLootTotalsLegacy,
+  number,
+  number,
+];
+
 export type CompactLootSummary = {
   v: number;
-  r: [string, LootCategory, 0 | 1, number, number, string?, string?][];
+  r: ([string, LootCategory, 0 | 1, number, number, string?, string?]
+    | [string, LootCategory, 0, number, number, string | undefined, string | undefined,
+      1, number, number, number, number])[];
   c: [LootCategory, number][];
-  t: [number, number, number, number, number, number, number, number, number, number, number, number, number];
+  t: CompactLootTotalsLegacy | CompactLootTotals;
 };
 
 const bytesToBase64Url = (bytes: Uint8Array): string => {
@@ -84,12 +113,47 @@ const base64UrlToBytes = (encoded: string): Uint8Array => {
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 };
 
-export const compactLootSummary = (summary: LootSummary): CompactLootSummary => ({
-  v: summary.version,
-  r: summary.rows.map((row) => [
+const approximately = (left: number, right: number, strict = false): boolean => (
+  Math.abs(left - right) <= (strict ? 0.11 : Math.max(0.5, Math.abs(right) * 0.001))
+);
+
+const isValidCompactLootRow = (row: unknown): row is CompactLootSummary['r'][number] => {
+  if (!Array.isArray(row) || row.length < 5
+    || typeof row[0] !== 'string' || !isLootCategory(row[1])
+    || (row[2] !== 0 && row[2] !== 1)
+    || !Number.isFinite(Number(row[3])) || Number(row[3]) <= 0
+    || !Number.isFinite(Number(row[4])) || Number(row[4]) <= 0) return false;
+  if (row[7] == null) return true;
+  if (row[7] !== 1 || row[2] !== 0 || row.length < 12) return false;
+  const baselineQuantity = Number(row[8]);
+  const currentQuantity = Number(row[9]);
+  const baselineValue = Number(row[10]);
+  const currentValue = Number(row[11]);
+  return Number.isInteger(baselineQuantity) && baselineQuantity >= 0
+    && Number.isInteger(currentQuantity) && currentQuantity >= 0
+    && currentQuantity === Number(row[3])
+    && currentQuantity <= baselineQuantity
+    && Number.isFinite(baselineValue) && baselineValue >= 0
+    && Number.isFinite(currentValue) && currentValue >= 0
+    && approximately(Number(row[4]), currentValue - baselineValue, true);
+};
+
+const compactLootRow = (row: LootSummaryRow): CompactLootSummary['r'][number] => {
+  const base: [string, LootCategory, 0 | 1, number, number, string?, string?] = [
     row.name, row.category, row.source === 'manual' ? 1 : 0,
     row.quantity, row.value, row.tab, row.note,
-  ]),
+  ];
+  if (!row.valuation) return base;
+  return [
+    row.name, row.category, 0, row.quantity, row.value, row.tab, row.note, 1,
+    row.valuation.baselineQuantity, row.valuation.currentQuantity,
+    row.valuation.baselineValue, row.valuation.currentValue,
+  ];
+};
+
+export const compactLootSummary = (summary: LootSummary): CompactLootSummary => ({
+  v: summary.version,
+  r: summary.rows.map(compactLootRow),
   c: summary.categories.map((entry) => [entry.category, entry.value]),
   t: [
     summary.hasBaseline ? 1 : 0,
@@ -97,6 +161,7 @@ export const compactLootSummary = (summary: LootSummary): CompactLootSummary => 
     summary.manualTotal, summary.gemCorrection, summary.investmentCorrection,
     summary.reportedReturn, summary.omittedCsvRows, summary.omittedCsvValue,
     summary.omittedManualRows, summary.omittedManualValue,
+    summary.inventoryFlow, summary.marketRevaluation,
   ],
 });
 
@@ -117,26 +182,42 @@ export function expandCompactLootSummary(value: unknown): LootSummary | null {
   try {
     const compact = value as CompactLootSummary;
     if (compact.v !== LOOT_SUMMARY_VERSION || !Array.isArray(compact.r) || !Array.isArray(compact.c) || !Array.isArray(compact.t)) return null;
-    if (compact.r.length > LOOT_SUMMARY_ROW_LIMIT || compact.c.length > ITEM_CATEGORIES.length || compact.t.length !== 13) return null;
-    if (!compact.r.every((row) => Array.isArray(row) && row.length >= 5
-      && typeof row[0] === 'string' && isLootCategory(row[1]) && (row[2] === 0 || row[2] === 1)
-      && Number.isFinite(Number(row[3])) && Number(row[3]) > 0
-      && Number.isFinite(Number(row[4])) && Number(row[4]) > 0)) return null;
+    if (compact.r.length > LOOT_SUMMARY_ROW_LIMIT || compact.c.length > ITEM_CATEGORIES.length
+      || (compact.t.length !== 13 && compact.t.length !== 15)) return null;
+    if (!compact.r.every(isValidCompactLootRow)) return null;
     if (!compact.c.every((entry) => Array.isArray(entry) && entry.length === 2
       && isLootCategory(entry[0]) && Number.isFinite(Number(entry[1])) && Number(entry[1]) >= 0)) return null;
     if (!compact.t.every((entry) => Number.isFinite(Number(entry)))) return null;
     const [hasBaseline, csvPositive, csvNegative, csvNet, csvAdjustment,
       manualTotal, gemCorrection, investmentCorrection, reportedReturn,
       omittedCsvRows, omittedCsvValue, omittedManualRows, omittedManualValue] = compact.t;
-    const rows: LootSummaryRow[] = compact.r.map((row) => ({
-      name: cleanText(String(row[0] ?? ''), MANUAL_LOOT_NAME_MAX),
-      category: row[1],
-      source: row[2] === 1 ? 'manual' as const : 'wealthyexile' as const,
-      quantity: finite(Number(row[3])),
-      value: rounded(Number(row[4])),
-      tab: row[5] ? cleanText(String(row[5]), 40) : undefined,
-      note: row[6] ? cleanText(String(row[6]), MANUAL_LOOT_NOTE_MAX) : undefined,
-    })).filter((row) => row.name.length > 0 && row.value > 0);
+    const inventoryFlow = compact.t.length === 15 ? compact.t[13] : csvNet - csvAdjustment;
+    const marketRevaluation = compact.t.length === 15 ? compact.t[14] : 0;
+    if (!approximately(csvNet, csvPositive + csvNegative + csvAdjustment)
+      || !approximately(csvNet, inventoryFlow + marketRevaluation + csvAdjustment)
+      || !approximately(
+        reportedReturn,
+        csvNet + manualTotal + gemCorrection + investmentCorrection,
+      )) return null;
+    const rows: LootSummaryRow[] = compact.r.map((row) => {
+      const valuation = row[7] === 1 ? {
+        baselineQuantity: finite(Number(row[8])),
+        currentQuantity: finite(Number(row[9])),
+        baselineValue: rounded(Number(row[10])),
+        currentValue: rounded(Number(row[11])),
+      } : undefined;
+      return {
+        name: cleanText(String(row[0] ?? ''), MANUAL_LOOT_NAME_MAX),
+        category: row[1],
+        source: row[2] === 1 ? 'manual' as const : 'wealthyexile' as const,
+        quantity: finite(Number(row[3])),
+        value: rounded(Number(row[4])),
+        tab: row[5] ? cleanText(String(row[5]), 40) : undefined,
+        note: row[6] ? cleanText(String(row[6]), MANUAL_LOOT_NOTE_MAX) : undefined,
+        valuation,
+      };
+    }).filter((row) => row.name.length > 0 && row.value > 0
+      && (row.quantity > 0 || row.valuation !== undefined));
     const categories = compact.c.map(([category, amount]) => ({ category, value: rounded(Number(amount)) }));
     return {
       version: LOOT_SUMMARY_VERSION,
@@ -145,6 +226,7 @@ export function expandCompactLootSummary(value: unknown): LootSummary | null {
       hasBaseline: hasBaseline === 1,
       csvPositive: rounded(csvPositive), csvNegative: rounded(csvNegative),
       csvNet: rounded(csvNet), csvAdjustment: rounded(csvAdjustment),
+      inventoryFlow: rounded(inventoryFlow), marketRevaluation: rounded(marketRevaluation),
       manualTotal: rounded(manualTotal), gemCorrection: rounded(gemCorrection),
       investmentCorrection: rounded(investmentCorrection), reportedReturn: rounded(reportedReturn),
       omittedCsvRows: Math.max(0, Math.round(finite(omittedCsvRows))),
@@ -194,6 +276,17 @@ export function buildLootSummary(input: BuildLootSummaryInput): LootSummary | nu
   // differs from the item rows. Keep the residual explicit so reconciliation
   // remains truthful instead of silently forcing the table to add up.
   const csvAdjustment = csvNet - csvPositive - csvNegative;
+  const decomposition = diff.reduce((totals, row) => {
+    const baselineUnitValue = row.baseQty > 0 ? row.baseTotal / row.baseQty : 0;
+    // If an item was fully spent, the Return snapshot has no price. Value the
+    // quantity movement at its baseline unit value instead of inventing a
+    // market crash to zero.
+    const currentUnitValue = row.currQty > 0 ? row.currTotal / row.currQty : baselineUnitValue;
+    const inventoryFlow = (row.currQty - row.baseQty) * currentUnitValue;
+    totals.inventoryFlow += inventoryFlow;
+    totals.marketRevaluation += row.delta - inventoryFlow;
+    return totals;
+  }, { inventoryFlow: 0, marketRevaluation: 0 });
 
   const manualRows: LootSummaryRow[] = input.manualLootItems
     .filter((item) => item.total > 0 && item.name.trim().length > 0)
@@ -207,14 +300,25 @@ export function buildLootSummary(input: BuildLootSummaryInput): LootSummary | nu
     }))
     .sort((a, b) => b.value - a.value);
 
-  const csvRows: LootSummaryRow[] = gains.map((row) => ({
-    name: cleanText(row.name, MANUAL_LOOT_NAME_MAX),
-    category: categorise(row.name, row.tab),
-    source: 'wealthyexile' as const,
-    quantity: row.currQty - row.baseQty,
-    value: rounded(row.delta),
-    tab: cleanText(row.tab, 40) || undefined,
-  }));
+  const csvRows: LootSummaryRow[] = gains.map((row) => {
+    const quantityDelta = row.currQty - row.baseQty;
+    return {
+      name: cleanText(row.name, MANUAL_LOOT_NAME_MAX),
+      category: categorise(row.name, row.tab),
+      source: 'wealthyexile' as const,
+      quantity: quantityDelta > 0 ? quantityDelta : row.currQty,
+      value: rounded(row.delta),
+      tab: cleanText(row.tab, 40) || undefined,
+      ...(quantityDelta <= 0 ? {
+        valuation: {
+          baselineQuantity: row.baseQty,
+          currentQuantity: row.currQty,
+          baselineValue: rounded(row.baseTotal),
+          currentValue: rounded(row.currTotal),
+        },
+      } : {}),
+    };
+  });
 
   const selectedManual = manualRows.slice(0, LOOT_SUMMARY_ROW_LIMIT);
   const csvAllowance = LOOT_SUMMARY_ROW_LIMIT - selectedManual.length;
@@ -241,6 +345,8 @@ export function buildLootSummary(input: BuildLootSummaryInput): LootSummary | nu
     csvNegative: rounded(csvNegative),
     csvNet: rounded(csvNet),
     csvAdjustment: rounded(csvAdjustment),
+    inventoryFlow: rounded(decomposition.inventoryFlow),
+    marketRevaluation: rounded(decomposition.marketRevaluation),
     manualTotal: rounded(manualRows.reduce((sum, row) => sum + row.value, 0)),
     gemCorrection: rounded(input.gemCorrection),
     investmentCorrection: rounded(input.investmentCorrection),

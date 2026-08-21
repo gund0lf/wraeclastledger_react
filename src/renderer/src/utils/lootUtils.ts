@@ -14,6 +14,8 @@ export interface DiffRow {
   delta: number;
   baseQty: number;
   currQty: number;
+  baseTotal: number;
+  currTotal: number;
 }
 
 /**
@@ -61,6 +63,8 @@ export function diffLootItems(baseline: LootItem[], current: LootItem[]): DiffRo
       name, tab: c?.tab ?? b?.tab ?? '', delta,
       baseQty: parseInt(b?.quantity ?? '0') || 0,
       currQty: parseInt(c?.quantity ?? '0') || 0,
+      baseTotal: b?.total ?? 0,
+      currTotal: c?.total ?? 0,
     });
   }
   return rows.sort((a, b) => b.delta - a.delta);

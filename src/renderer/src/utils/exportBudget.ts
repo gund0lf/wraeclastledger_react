@@ -100,8 +100,10 @@ const visibleCardExport = (exportText: string): string => exportText
 const lootCaption = (summary: LootSummary | null): string => {
   if (!summary) return '';
   const manualCount = summary.rows.filter((row) => row.source === 'manual').length;
+  const marketCount = summary.rows.filter((row) => row.valuation != null).length;
   return `**Loot breakdown:** ${summary.rows.length} item rows`
-    + `${manualCount > 0 ? ` \u00B7 ${manualCount} manual (${summary.manualTotal.toFixed(1)}c)` : ''}\n`;
+    + `${manualCount > 0 ? ` \u00B7 ${manualCount} manual (${summary.manualTotal.toFixed(1)}c)` : ''}\n`
+    + `${marketCount > 0 ? `**Market revaluation:** ${marketCount} rows (${summary.marketRevaluation.toFixed(1)}c)\n` : ''}`;
 };
 
 /** Readable body the bot will post, excluding its Discord-author attribution
