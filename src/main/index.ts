@@ -1,6 +1,6 @@
-import { app, shell, BrowserWindow, ipcMain, clipboard } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, clipboard, dialog } from 'electron'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { copyFile, mkdir } from 'node:fs/promises'
+import { copyFile, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -27,6 +27,14 @@ import {
   tradeItemTypeForMapType,
 } from '../shared/tradeMapFilters'
 import { runWp14Benchmark } from './wp14Benchmark'
+import { FileSessionRepository } from './sessionRepository'
+import { createSessionRepositoryAdapter } from './sessionRepositoryAdapter'
+import { registerSessionRepositoryIpc } from './sessionRepositoryIpc'
+import { WP14_RECOMMENDED_MAX_EXPORT_DOCUMENT_BYTES } from '../shared/wp14Benchmark'
+import {
+  decideRepositoryClose,
+  type RendererFlushResult,
+} from './sessionRepositoryClose'
 
 // The installed build and `npm run dev` used to share one Chromium profile.
 // Their file:// and localhost origins could then touch the same LevelDB while
@@ -48,6 +56,134 @@ if (wp14BenchmarkMode) {
 const hasSingleInstanceLock = app.requestSingleInstanceLock({
   profile: wp14BenchmarkMode ? 'wp14-benchmark' : is.dev ? 'development' : 'installed',
 })
+
+const sessionRepository = new FileSessionRepository({
+  userDataPath: app.getPath('userData'),
+  openPath: (path) => shell.openPath(path),
+})
+const unregisterSessionRepositoryIpc = registerSessionRepositoryIpc(
+  ipcMain,
+  createSessionRepositoryAdapter(sessionRepository, {
+    maxExportDocumentBytes: WP14_RECOMMENDED_MAX_EXPORT_DOCUMENT_BYTES,
+  }),
+)
+
+type RepositoryQuitReason = 'window-close' | 'app-quit' | 'updater'
+
+const rendererFlushWaiters = new Map<string, (result: RendererFlushResult) => void>()
+let quitBypass = false
+let quitInProgress = false
+let rendererFlushUnavailable = false
+
+ipcMain.on('session-repository:flush-result', (_event, result: RendererFlushResult) => {
+  if (!result || typeof result.requestId !== 'string' || typeof result.ok !== 'boolean') return
+  if (result.error !== undefined && typeof result.error !== 'string') return
+  if (result.recoveryDocument !== undefined && typeof result.recoveryDocument !== 'string') return
+  const resolve = rendererFlushWaiters.get(result.requestId)
+  if (!resolve) return
+  rendererFlushWaiters.delete(result.requestId)
+  resolve(result)
+})
+
+function requestRendererFlush(
+  mainWindow: BrowserWindow,
+  mode: 'flush' | 'export-recovery',
+): Promise<RendererFlushResult> {
+  const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return new Promise((resolve) => {
+    rendererFlushWaiters.set(requestId, resolve)
+    mainWindow.webContents.send('session-repository:flush-request', { requestId, mode })
+  })
+}
+
+async function waitFiveSeconds<T>(promise: Promise<T>): Promise<{ timedOut: false; value: T } | { timedOut: true }> {
+  let timeout: NodeJS.Timeout | null = null
+  const result = await Promise.race([
+    promise.then((value) => ({ timedOut: false as const, value })),
+    new Promise<{ timedOut: true }>((resolve) => {
+      timeout = setTimeout(() => resolve({ timedOut: true }), 5000)
+    }),
+  ])
+  if (timeout) clearTimeout(timeout)
+  return result
+}
+
+async function exportPendingRecovery(
+  mainWindow: BrowserWindow,
+  knownDocument?: string,
+): Promise<void> {
+  let document = knownDocument
+  if (!document) {
+    const exported = await waitFiveSeconds(requestRendererFlush(mainWindow, 'export-recovery'))
+    if (!exported.timedOut && exported.value.ok) document = exported.value.recoveryDocument
+  }
+  if (!document) {
+    await dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title: 'Recovery export failed',
+      message: 'The renderer did not provide a pending-state recovery document.',
+    })
+    return
+  }
+  const selected = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export pending WraeclastLedger state',
+    defaultPath: `wraeclast-recovery-${new Date().toISOString().slice(0, 10)}.json`,
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  })
+  if (!selected.canceled && selected.filePath) await writeFile(selected.filePath, document, 'utf8')
+}
+
+async function awaitFlushDecision(
+  mainWindow: BrowserWindow,
+  initial: Promise<RendererFlushResult>,
+): Promise<'saved' | 'force'> {
+  return decideRepositoryClose(initial, {
+    wait: waitFiveSeconds,
+    requestFlush: () => requestRendererFlush(mainWindow, 'flush'),
+    exportPending: (document) => exportPendingRecovery(mainWindow, document),
+    prompt: async (knownFailure) => {
+      const answer = await dialog.showMessageBox(mainWindow, {
+        type: knownFailure ? 'error' : 'warning',
+        title: knownFailure ? 'Save failed' : 'Still saving',
+        message: knownFailure
+          ? (knownFailure.error ?? 'The latest repository save failed.')
+          : 'WraeclastLedger is still committing the latest changes to disk.',
+        detail: 'Keep waiting is safest. You can retry, export the pending in-memory state, or explicitly exit without the latest changes.',
+        buttons: ['Keep waiting', 'Retry', 'Export pending state', 'Exit without latest changes'],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      })
+      return answer.response as 0 | 1 | 2 | 3
+    },
+  })
+}
+
+async function continueQuit(reason: RepositoryQuitReason, mainWindow: BrowserWindow): Promise<void> {
+  if (quitInProgress || quitBypass) return
+  quitInProgress = true
+  try {
+    if (!rendererFlushUnavailable) {
+      await awaitFlushDecision(mainWindow, requestRendererFlush(mainWindow, 'flush'))
+    }
+    try {
+      await sessionRepository.releaseLock()
+    } catch (error) {
+      // A stale lock is recoverable on the next launch and must not trap the
+      // user after their data is saved (or after explicit force-exit consent).
+      console.error('[Session repository] Could not release close lock:', error)
+    }
+    unregisterSessionRepositoryIpc()
+    quitBypass = true
+    if (reason === 'updater') autoUpdater.quitAndInstall(false, true)
+    else if (reason === 'app-quit') app.quit()
+    else mainWindow.close()
+  } catch (error) {
+    console.error('[Session repository] Close protocol failed:', error)
+  } finally {
+    quitInProgress = false
+  }
+}
 
 let clipboardInterval: NodeJS.Timeout | null = null;
 let lastClipboardText = '';
@@ -217,7 +353,10 @@ function setupAutoUpdater(mainWindow: BrowserWindow): void {
   setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 2 * 60 * 60 * 1000);
 }
 
-ipcMain.on('install-update', () => autoUpdater.quitAndInstall(false, true));
+ipcMain.on('install-update', () => {
+  const mainWindow = watchWindow
+  if (mainWindow && !mainWindow.isDestroyed()) void continueQuit('updater', mainWindow)
+});
 ipcMain.on('check-for-updates', () => {
   const policy = resolveAutoUpdatePolicy({
     isDevelopment: is.dev,
@@ -639,7 +778,8 @@ ipcMain.handle('poeninja:league-index', async () => {
 
 // Game-data manifest disk cache (rollover Phase 1 step 2, decision D1):
 // server-fetched manifest revisions persist as a JSON file in userData —
-// NOT localStorage (its budget is already strained by saved sessions).
+// This signed, re-fetchable cache stays outside the complete user-authored
+// ledger-data backup unit.
 // read returns { manifest: null, error: null } for a fresh install (no file
 // yet — normal, not an error); real IO/parse failures populate error.
 ipcMain.handle('gamedata:read-cache', async () => {
@@ -751,6 +891,7 @@ ipcMain.handle('poeninja:economy-icons', async (_event, family: 'exchange' | 'st
 });
 
 function createWindow(): void {
+  rendererFlushUnavailable = false
   const mainWindow = new BrowserWindow({
     width: 1280, height: 800,
     title: 'WraeclastLedger',
@@ -761,6 +902,21 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => mainWindow.show());
   mainWindow.on('page-title-updated', (e) => e.preventDefault());
+  mainWindow.on('close', (event) => {
+    if (quitBypass) return
+    event.preventDefault()
+    void continueQuit('window-close', mainWindow)
+  });
+  mainWindow.on('session-end', () => { quitBypass = true });
+  mainWindow.webContents.on('render-process-gone', () => {
+    rendererFlushUnavailable = true
+    for (const [requestId, resolve] of rendererFlushWaiters) {
+      rendererFlushWaiters.delete(requestId)
+      // Renderer crashes follow forced-loss semantics: the repository's last
+      // acknowledged current/bak pair remains authoritative.
+      resolve({ requestId, ok: true })
+    }
+  });
   mainWindow.webContents.setWindowOpenHandler((details) => { shell.openExternal(details.url); return { action: 'deny' }; });
 
   // Clipboard polling no longer auto-starts — the renderer drives it via
@@ -804,5 +960,12 @@ if (!hasSingleInstanceLock) {
   });
 
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-  app.on('before-quit', stopProtonClipboardBridge);
+  app.on('before-quit', (event) => {
+    stopProtonClipboardBridge()
+    if (quitBypass) return
+    const mainWindow = watchWindow
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    event.preventDefault()
+    void continueQuit('app-quit', mainWindow)
+  });
 }

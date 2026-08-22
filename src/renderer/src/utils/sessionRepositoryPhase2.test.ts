@@ -4,6 +4,8 @@ import {
   SessionRepositoryRequestError,
   parseSessionRepositoryRequest,
   type RepositorySessionSummary,
+  type RepositoryWorkflow,
+  type SessionRepositoryDataMap,
   type SessionRepositoryResponse,
 } from '../../../shared/sessionRepositoryIpc';
 import { registerSessionRepositoryIpc } from '../../../main/sessionRepositoryIpc';
@@ -37,12 +39,31 @@ const summary = (generation = 3): RepositorySessionSummary => ({
   updatedAt: `2026-08-22T10:0${generation}:00.000Z`,
   generation,
   summary: { mapCount: generation },
+  status: 'ready',
 });
 
-const bootstrapData = {
+const workflow = (
+  target: RepositoryWorkflow['activeTarget'] = { kind: 'session', sessionId: 'session-1' },
+): RepositoryWorkflow => ({
+  activeTarget: target,
+  viewedTarget: target,
+  lifecycle: 'live',
+  suspended: false,
+  activationId: 'activation-1',
+  pendingAtlasBonusSeed: false,
+  pendingAtlasBonusValue: null,
+});
+
+const bootstrapData: SessionRepositoryDataMap['bootstrap'] = {
   sessions: [summary()],
-  activeTarget: { kind: 'session', sessionId: 'session-1' } as const,
-  viewedTarget: { kind: 'session', sessionId: 'session-1' } as const,
+  workflow: workflow(),
+  workflowGeneration: 1,
+  preferences: {},
+  preferencesGeneration: 1,
+  layout: { rawValue: null },
+  layoutGeneration: 1,
+  repositorySizeBytes: 0,
+  migrationCleanup: null,
 };
 
 describe('WP14 Phase 2 IPC plumbing', () => {
@@ -89,7 +110,7 @@ describe('WP14 Phase 2 IPC plumbing', () => {
     const invoke = vi.fn().mockResolvedValue({
       ok: true,
       operation: 'list',
-      data: { sessions: [] },
+      data: { sessions: [], repositorySizeBytes: 0 },
     });
     const bridge = createSessionRepositoryBridge(invoke);
 
@@ -107,7 +128,7 @@ describe('WP14 Phase 2 IPC plumbing', () => {
     };
     const client = createSessionRepositoryClient(vi.fn().mockResolvedValue(response));
 
-    await expect(client.request({ operation: 'load', target: { kind: 'working' } }))
+    await expect(client.request({ operation: 'load', target: { kind: 'working' }, mode: 'inspect' }))
       .rejects.toMatchObject({
         name: 'SessionRepositoryClientError',
         operation: 'load',
@@ -134,8 +155,8 @@ describe('WP14 Phase 2 renderer repository state', () => {
   });
 
   it('ignores a late lazy-load response after newer navigation', async () => {
-    const first = deferred<{ target: { kind: 'session'; sessionId: string }; generation: number; payload: { marker: string } }>();
-    const second = deferred<{ target: { kind: 'session'; sessionId: string }; generation: number; payload: { marker: string } }>();
+    const first = deferred<SessionRepositoryDataMap['load']>();
+    const second = deferred<SessionRepositoryDataMap['load']>();
     const request = vi.fn()
       .mockResolvedValueOnce(bootstrapData)
       .mockReturnValueOnce(first.promise)
@@ -149,12 +170,16 @@ describe('WP14 Phase 2 renderer repository state', () => {
       target: { kind: 'session', sessionId: 'session-2' },
       generation: 7,
       payload: { marker: 'newer' },
+      workflow: workflow({ kind: 'session', sessionId: 'session-2' }),
+      workflowGeneration: 1,
     });
     await loadSecond;
     first.resolve({
       target: { kind: 'session', sessionId: 'session-1' },
       generation: 3,
       payload: { marker: 'older' },
+      workflow: workflow(),
+      workflowGeneration: 1,
     });
     await loadFirst;
 
@@ -167,14 +192,16 @@ describe('WP14 Phase 2 renderer repository state', () => {
   });
 
   it('serializes full snapshots, coalesces queued edits, and advances generations', async () => {
-    const firstSave = deferred<{ target: { kind: 'session'; sessionId: string }; generation: number; summary: RepositorySessionSummary }>();
-    const secondSave = deferred<{ target: { kind: 'session'; sessionId: string }; generation: number; summary: RepositorySessionSummary }>();
+    const firstSave = deferred<SessionRepositoryDataMap['save']>();
+    const secondSave = deferred<SessionRepositoryDataMap['save']>();
     const request = vi.fn()
       .mockResolvedValueOnce(bootstrapData)
       .mockResolvedValueOnce({
         target: { kind: 'session', sessionId: 'session-1' },
         generation: 3,
         payload: { revision: 0 },
+        workflow: workflow(),
+        workflowGeneration: 1,
       })
       .mockReturnValueOnce(firstSave.promise)
       .mockReturnValueOnce(secondSave.promise);
@@ -200,6 +227,8 @@ describe('WP14 Phase 2 renderer repository state', () => {
       target: { kind: 'session', sessionId: 'session-1' },
       generation: 4,
       summary: summary(4),
+      workflow: workflow(),
+      workflowGeneration: 1,
     });
     await saveOne;
     await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(4));
@@ -215,6 +244,8 @@ describe('WP14 Phase 2 renderer repository state', () => {
       target: { kind: 'session', sessionId: 'session-1' },
       generation: 5,
       summary: summary(5),
+      workflow: workflow(),
+      workflowGeneration: 1,
     });
     await Promise.all([saveTwo, saveThree]);
     expect(store.getState()).toMatchObject({
@@ -226,13 +257,13 @@ describe('WP14 Phase 2 renderer repository state', () => {
   });
 
   it('retargets queued edits after the main process creates a named session', async () => {
-    const firstSave = deferred<{ target: { kind: 'session'; sessionId: string }; generation: number; summary: RepositorySessionSummary }>();
-    const secondSave = deferred<{ target: { kind: 'session'; sessionId: string }; generation: number; summary: RepositorySessionSummary }>();
+    const firstSave = deferred<SessionRepositoryDataMap['save']>();
+    const secondSave = deferred<SessionRepositoryDataMap['save']>();
     const request = vi.fn()
       .mockResolvedValueOnce({
+        ...bootstrapData,
         sessions: [],
-        activeTarget: { kind: 'working' },
-        viewedTarget: { kind: 'working' },
+        workflow: workflow({ kind: 'working' }),
       })
       .mockReturnValueOnce(firstSave.promise)
       .mockReturnValueOnce(secondSave.promise);
@@ -245,6 +276,8 @@ describe('WP14 Phase 2 renderer repository state', () => {
       target: { kind: 'session', sessionId: 'generated-id' },
       generation: 1,
       summary: { ...summary(1), id: 'generated-id', name: 'Fresh run' },
+      workflow: workflow({ kind: 'session', sessionId: 'generated-id' }),
+      workflowGeneration: 2,
     });
     await first;
     await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(3));
@@ -259,6 +292,8 @@ describe('WP14 Phase 2 renderer repository state', () => {
       target: { kind: 'session', sessionId: 'generated-id' },
       generation: 2,
       summary: { ...summary(2), id: 'generated-id', name: 'Fresh run' },
+      workflow: workflow({ kind: 'session', sessionId: 'generated-id' }),
+      workflowGeneration: 2,
     });
     await queued;
     expect(store.getState()).toMatchObject({
@@ -277,6 +312,8 @@ describe('WP14 Phase 2 renderer repository state', () => {
         target: { kind: 'session', sessionId: 'session-1' },
         generation: 3,
         payload: { revision: 0 },
+        workflow: workflow(),
+        workflowGeneration: 1,
       })
       .mockRejectedValueOnce(new Error('disk full'));
     const store = createSessionRepositoryStore({ request } as unknown as SessionRepositoryClient);

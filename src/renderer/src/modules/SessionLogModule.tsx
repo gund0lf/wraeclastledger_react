@@ -48,8 +48,11 @@ export const SessionLogModule = () => {
   const showDeliriumColumn = useDedicatedDeliriumColumn(panelWidth);
   const {
     maps, removeMap, addMap, undoLastMap, clearMaps,
-    isWatching, toggleWatch,
-  } = useSessionKeys('maps', 'removeMap', 'addMap', 'undoLastMap', 'clearMaps', 'isWatching', 'toggleWatch');
+    isWatching, toggleWatch, sessionLifecycle,
+  } = useSessionKeys(
+    'maps', 'removeMap', 'addMap', 'undoLastMap', 'clearMaps',
+    'isWatching', 'toggleWatch', 'sessionLifecycle',
+  );
 
   const [search, setSearch] = useState('');
   const [clearOpen, { open: openClear, close: closeClear }] = useDisclosure(false);
@@ -164,10 +167,13 @@ export const SessionLogModule = () => {
           /* session-16: "Map Log" title dropped (redundant with the tab label);
              the capture switch leads, the count keeps its place. */
           <Group gap="xs">
-            <Tooltip multiline w={260} label={isWatching
-              ? 'Capturing — copy a map with Ctrl+C; 3.29 records exact modifier counts automatically.'
-              : 'Paused — turn on Capture, then copy a map with Ctrl+C.'}>
+            <Tooltip multiline w={260} label={sessionLifecycle === 'historical'
+              ? 'Capture is paused while viewing a historical session. Resume its live context or start a new session first.'
+              : isWatching
+                ? 'Capturing — copy a map with Ctrl+C; 3.29 records exact modifier counts automatically.'
+                : 'Paused — turn on Capture, then copy a map with Ctrl+C.'}>
               <Switch checked={isWatching} onChange={toggleWatch}
+                disabled={sessionLifecycle === 'historical'}
                 color="green" size="sm" labelPosition="left"
                 label={isWatching ? 'Capture: Active' : 'Capture: Paused'}
                 thumbIcon={isWatching

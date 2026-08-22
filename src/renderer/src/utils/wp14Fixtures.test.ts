@@ -16,6 +16,15 @@ import {
 
 const parse = <T>(content: string): T => JSON.parse(content) as T;
 
+const POST_CUTOVER_ONLY_KEYS = new Set([
+  'repositoryStatus', 'repositoryError', 'repositorySessions', 'repositorySizeBytes',
+  'currentGeneration', 'preferencesGeneration', 'layoutGeneration', 'saveStatus',
+  'saveError', 'sessionLifecycle', 'liveSessionId',
+]);
+const LEGACY_V18_DATA_KEYS = Object.keys(FIELD_OWNERSHIP)
+  .filter((key) => !POST_CUTOVER_ONLY_KEYS.has(key))
+  .sort();
+
 const sampleExport = (): SessionExportEnvelope => ({
   version: '1.0',
   exportedAt: '2026-07-06T00:00:00.000Z',
@@ -78,7 +87,7 @@ describe('WP14 Phase 0 deterministic fixture generation', () => {
         fixtures.find((fixture) => fixture.fileName === name)!.content,
       );
       expect(envelope.version).toBe(WP14_STORE_VERSION);
-      expect(Object.keys(envelope.state).sort()).toEqual(Object.keys(FIELD_OWNERSHIP).sort());
+      expect(Object.keys(envelope.state).sort()).toEqual(LEGACY_V18_DATA_KEYS);
     }
   });
 
@@ -191,7 +200,7 @@ describe('WP14 Phase 0 deterministic fixture generation', () => {
         first.find((fixture) => fixture.fileName === fileName)!.content,
       );
       expect(generated.version).toBe(WP14_STORE_VERSION);
-      expect(Object.keys(generated.state).sort()).toEqual(Object.keys(FIELD_OWNERSHIP).sort());
+      expect(Object.keys(generated.state).sort()).toEqual(LEGACY_V18_DATA_KEYS);
     }
 
     const rawTextFixture = first.find(

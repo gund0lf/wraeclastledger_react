@@ -1,6 +1,8 @@
 import { assertJsonValue, type JsonObject } from './sessionRecord';
+import type { LegacyMigrationPlanV1 } from './sessionMigration';
 
 export const SESSION_REPOSITORY_CHANNEL = 'session-repository:request';
+export const SESSION_REPOSITORY_MAX_IMPORT_BYTES = 32 * 1024 * 1024;
 
 export const SESSION_REPOSITORY_OPERATIONS = [
   'bootstrap',
@@ -25,7 +27,37 @@ export type SessionTarget =
 
 export type SessionSaveTarget =
   | SessionTarget
-  | { kind: 'new'; name: string };
+  | { kind: 'new'; name: string }
+  | { kind: 'preferences' }
+  | { kind: 'layout' }
+  | { kind: 'bootstrap' };
+
+export type SessionEntitySaveTarget = Exclude<
+  SessionSaveTarget,
+  { kind: 'preferences' | 'layout' | 'bootstrap' }
+>;
+
+export type SessionLoadMode = 'inspect' | 'view' | 'resume';
+export type SessionLifecycle = 'live' | 'historical';
+
+export interface RepositoryWorkflow extends JsonObject {
+  activeTarget: SessionTarget;
+  viewedTarget: SessionTarget;
+  lifecycle: SessionLifecycle;
+  suspended: boolean;
+  activationId: string;
+  pendingAtlasBonusSeed: boolean;
+  pendingAtlasBonusValue: boolean | null;
+}
+
+export interface RepositoryMigrationCleanup extends JsonObject {
+  sourceHash: string;
+  keys: string[];
+  repositoryId: string;
+  operationId: string;
+  createdAt: string;
+  sourceStoreVersion: number;
+}
 
 export interface RepositorySessionSummary {
   id: string;
@@ -34,6 +66,7 @@ export interface RepositorySessionSummary {
   updatedAt: string;
   generation: number;
   summary: JsonObject;
+  status: 'ready' | 'damaged' | 'unsupported';
 }
 
 export interface RepositoryCheckpointSummary {
@@ -44,15 +77,21 @@ export interface RepositoryCheckpointSummary {
 }
 
 export type SessionRepositoryRequest =
-  | { operation: 'bootstrap' }
+  | { operation: 'bootstrap'; migrationPlan?: LegacyMigrationPlanV1 }
   | { operation: 'list' }
-  | { operation: 'load'; target: SessionTarget }
-  | { operation: 'save'; target: SessionSaveTarget; expectedGeneration: number | null; payload: JsonObject }
+  | { operation: 'load'; target: SessionTarget; mode: SessionLoadMode }
+  | {
+      operation: 'save';
+      target: SessionSaveTarget;
+      expectedGeneration: number | null;
+      payload: JsonObject;
+      replacement?: true;
+    }
   | { operation: 'rename'; sessionId: string; name: string; expectedGeneration: number }
   | { operation: 'delete'; sessionId: string; expectedGeneration: number }
   | { operation: 'history-list'; target: SessionTarget }
   | { operation: 'history-restore'; target: SessionTarget; checkpointId: string; expectedGeneration: number }
-  | { operation: 'import'; document: string }
+  | { operation: 'import'; document: string; conflictMode: 'skip' | 'overwrite' }
   | { operation: 'export'; sessionIds: string[] }
   | { operation: 'retry'; operationId: string }
   | { operation: 'open-data-folder' };
@@ -60,23 +99,49 @@ export type SessionRepositoryRequest =
 export interface SessionRepositoryDataMap {
   bootstrap: {
     sessions: RepositorySessionSummary[];
-    activeTarget: SessionTarget;
-    viewedTarget: SessionTarget;
+    workflow: RepositoryWorkflow;
+    workflowGeneration: number;
+    preferences: JsonObject;
+    preferencesGeneration: number;
+    layout: JsonObject;
+    layoutGeneration: number;
+    repositorySizeBytes: number;
+    migrationCleanup: RepositoryMigrationCleanup | null;
   };
-  list: { sessions: RepositorySessionSummary[] };
-  load: { target: SessionTarget; generation: number; payload: JsonObject };
-  save: { target: SessionTarget; generation: number; summary: RepositorySessionSummary | null };
-  rename: { sessionId: string; generation: number; name: string };
-  delete: { sessionId: string; recoveryId: string };
+  list: { sessions: RepositorySessionSummary[]; repositorySizeBytes: number };
+  load: {
+    target: SessionTarget;
+    generation: number;
+    payload: JsonObject;
+    workflow: RepositoryWorkflow;
+    workflowGeneration: number;
+  };
+  save: {
+    target: SessionTarget | { kind: 'preferences' | 'layout' | 'bootstrap' };
+    generation: number;
+    summary: RepositorySessionSummary | null;
+    workflow: RepositoryWorkflow;
+    workflowGeneration: number;
+  };
+  rename: { sessionId: string; generation: number; name: string; sessions: RepositorySessionSummary[] };
+  delete: {
+    sessionId: string;
+    recoveryId: string;
+    sessions: RepositorySessionSummary[];
+    workflow: RepositoryWorkflow;
+    workflowGeneration: number;
+  };
   'history-list': { target: SessionTarget; checkpoints: RepositoryCheckpointSummary[] };
   'history-restore': { target: SessionTarget; generation: number; checkpointId: string };
-  import: { importedSessionIds: string[] };
+  import: { importedSessionIds: string[]; sessions: RepositorySessionSummary[] };
   export: { document: string };
   retry: { operationId: string; status: 'pending' | 'completed' };
   'open-data-folder': { opened: true };
 }
 
 export type SessionRepositoryErrorCode =
+  | 'migration-required'
+  | 'repository-locked'
   | 'generation-conflict'
   | 'recovery-required'
   | 'unsupported-version'
@@ -119,6 +184,7 @@ export class SessionRepositoryRequestError extends Error {
 
 const operationSet = new Set<string>(SESSION_REPOSITORY_OPERATIONS);
 const errorCodeSet = new Set<SessionRepositoryErrorCode>([
+  'migration-required', 'repository-locked',
   'generation-conflict', 'recovery-required', 'unsupported-version', 'size-limit',
   'validation', 'invalid-request', 'not-found', 'io-failure', 'unknown',
 ]);
@@ -189,9 +255,26 @@ function assertTarget(value: unknown): asserts value is SessionTarget {
 }
 
 function assertSaveTarget(value: unknown): asserts value is SessionSaveTarget {
-  if (isPlainObject(value) && value.kind === 'new') {
-    assertExactKeys(value, ['kind', 'name'], 'new session target');
-    assertString(value.name, 'session name');
+  if (isPlainObject(value)) {
+    if (value.kind === 'new') {
+      assertExactKeys(value, ['kind', 'name'], 'new session target');
+      assertString(value.name, 'session name');
+      return;
+    }
+    if (value.kind === 'preferences' || value.kind === 'layout' || value.kind === 'bootstrap') {
+      assertExactKeys(value, ['kind'], `${value.kind} target`);
+      return;
+    }
+  }
+  assertTarget(value);
+}
+
+function assertResponseTarget(
+  value: unknown,
+): asserts value is SessionTarget | { kind: 'preferences' | 'layout' | 'bootstrap' } {
+  if (isPlainObject(value) &&
+      (value.kind === 'preferences' || value.kind === 'layout' || value.kind === 'bootstrap')) {
+    assertExactKeys(value, ['kind'], `${value.kind} target`);
     return;
   }
   assertTarget(value);
@@ -205,13 +288,16 @@ function assertInteger(value: unknown, label: string): asserts value is number {
 
 function assertSummary(value: unknown): asserts value is RepositorySessionSummary {
   if (!isPlainObject(value)) throw new SessionRepositoryRequestError('session summary must be an object');
-  assertExactKeys(value, ['id', 'name', 'createdAt', 'updatedAt', 'generation', 'summary'], 'session summary');
+  assertExactKeys(value, ['id', 'name', 'createdAt', 'updatedAt', 'generation', 'summary', 'status'], 'session summary');
   assertString(value.id, 'summary id');
   assertString(value.name, 'summary name');
   assertTimestamp(value.createdAt, 'summary createdAt');
   assertTimestamp(value.updatedAt, 'summary updatedAt');
   assertInteger(value.generation, 'summary generation');
   if (!isPlainObject(value.summary)) throw new SessionRepositoryRequestError('summary payload must be an object');
+  if (value.status !== 'ready' && value.status !== 'damaged' && value.status !== 'unsupported') {
+    throw new SessionRepositoryRequestError('summary status is invalid');
+  }
 }
 
 function assertStringArray(value: unknown, label: string): asserts value is string[] {
@@ -219,37 +305,92 @@ function assertStringArray(value: unknown, label: string): asserts value is stri
   value.forEach((item) => assertString(item, `${label} item`));
 }
 
+function assertWorkflow(value: unknown): asserts value is RepositoryWorkflow {
+  if (!isPlainObject(value)) throw new SessionRepositoryRequestError('workflow must be an object');
+  assertExactKeys(value, [
+    'activeTarget', 'viewedTarget', 'lifecycle', 'suspended', 'activationId',
+    'pendingAtlasBonusSeed', 'pendingAtlasBonusValue',
+  ], 'workflow');
+  assertTarget(value.activeTarget);
+  assertTarget(value.viewedTarget);
+  if (value.lifecycle !== 'live' && value.lifecycle !== 'historical') {
+    throw new SessionRepositoryRequestError('workflow lifecycle is invalid');
+  }
+  if (typeof value.suspended !== 'boolean' || typeof value.pendingAtlasBonusSeed !== 'boolean') {
+    throw new SessionRepositoryRequestError('workflow booleans are invalid');
+  }
+  assertString(value.activationId, 'activationId');
+  if (value.pendingAtlasBonusValue !== null && typeof value.pendingAtlasBonusValue !== 'boolean') {
+    throw new SessionRepositoryRequestError('pendingAtlasBonusValue must be boolean or null');
+  }
+}
+
+function assertSummaries(value: unknown): asserts value is RepositorySessionSummary[] {
+  if (!Array.isArray(value)) throw new SessionRepositoryRequestError('sessions must be an array');
+  value.forEach(assertSummary);
+}
+
 function assertSuccessData(operation: SessionRepositoryOperation, value: unknown): void {
   if (!isPlainObject(value)) throw new SessionRepositoryRequestError('response data must be an object');
   if (operation === 'bootstrap') {
-    assertExactKeys(value, ['sessions', 'activeTarget', 'viewedTarget'], 'bootstrap data');
-    if (!Array.isArray(value.sessions)) throw new SessionRepositoryRequestError('sessions must be an array');
-    value.sessions.forEach(assertSummary);
-    assertTarget(value.activeTarget);
-    assertTarget(value.viewedTarget);
+    assertExactKeys(value, [
+      'sessions', 'workflow', 'workflowGeneration', 'preferences', 'preferencesGeneration', 'layout',
+      'layoutGeneration', 'repositorySizeBytes', 'migrationCleanup',
+    ], 'bootstrap data');
+    assertSummaries(value.sessions);
+    assertWorkflow(value.workflow);
+    assertInteger(value.workflowGeneration, 'workflowGeneration');
+    if (!isPlainObject(value.preferences) || !isPlainObject(value.layout)) {
+      throw new SessionRepositoryRequestError('bootstrap preferences and layout must be objects');
+    }
+    assertInteger(value.preferencesGeneration, 'preferencesGeneration');
+    assertInteger(value.layoutGeneration, 'layoutGeneration');
+    assertInteger(value.repositorySizeBytes, 'repositorySizeBytes');
+    if (value.migrationCleanup !== null) {
+      if (!isPlainObject(value.migrationCleanup)) {
+        throw new SessionRepositoryRequestError('migrationCleanup must be an object or null');
+      }
+      assertExactKeys(value.migrationCleanup, [
+        'sourceHash', 'keys', 'repositoryId', 'operationId', 'createdAt', 'sourceStoreVersion',
+      ], 'migrationCleanup');
+      assertString(value.migrationCleanup.sourceHash, 'migrationCleanup sourceHash');
+      assertStringArray(value.migrationCleanup.keys, 'migrationCleanup keys');
+      assertString(value.migrationCleanup.repositoryId, 'migrationCleanup repositoryId');
+      assertString(value.migrationCleanup.operationId, 'migrationCleanup operationId');
+      assertTimestamp(value.migrationCleanup.createdAt, 'migrationCleanup createdAt');
+      assertInteger(value.migrationCleanup.sourceStoreVersion, 'migrationCleanup sourceStoreVersion');
+    }
   } else if (operation === 'list') {
-    assertExactKeys(value, ['sessions'], 'list data');
-    if (!Array.isArray(value.sessions)) throw new SessionRepositoryRequestError('sessions must be an array');
-    value.sessions.forEach(assertSummary);
+    assertExactKeys(value, ['sessions', 'repositorySizeBytes'], 'list data');
+    assertSummaries(value.sessions);
+    assertInteger(value.repositorySizeBytes, 'repositorySizeBytes');
   } else if (operation === 'load') {
-    assertExactKeys(value, ['target', 'generation', 'payload'], 'load data');
+    assertExactKeys(value, ['target', 'generation', 'payload', 'workflow', 'workflowGeneration'], 'load data');
     assertTarget(value.target);
     assertInteger(value.generation, 'generation');
     if (!isPlainObject(value.payload)) throw new SessionRepositoryRequestError('payload must be an object');
+    assertWorkflow(value.workflow);
+    assertInteger(value.workflowGeneration, 'workflowGeneration');
   } else if (operation === 'save') {
-    assertExactKeys(value, ['target', 'generation', 'summary'], 'save data');
-    assertTarget(value.target);
+    assertExactKeys(value, ['target', 'generation', 'summary', 'workflow', 'workflowGeneration'], 'save data');
+    assertResponseTarget(value.target);
     assertInteger(value.generation, 'generation');
     if (value.summary !== null) assertSummary(value.summary);
+    assertWorkflow(value.workflow);
+    assertInteger(value.workflowGeneration, 'workflowGeneration');
   } else if (operation === 'rename') {
-    assertExactKeys(value, ['sessionId', 'generation', 'name'], 'rename data');
+    assertExactKeys(value, ['sessionId', 'generation', 'name', 'sessions'], 'rename data');
     assertString(value.sessionId, 'sessionId');
     assertInteger(value.generation, 'generation');
     assertString(value.name, 'name');
+    assertSummaries(value.sessions);
   } else if (operation === 'delete') {
-    assertExactKeys(value, ['sessionId', 'recoveryId'], 'delete data');
+    assertExactKeys(value, ['sessionId', 'recoveryId', 'sessions', 'workflow', 'workflowGeneration'], 'delete data');
     assertString(value.sessionId, 'sessionId');
     assertString(value.recoveryId, 'recoveryId');
+    assertSummaries(value.sessions);
+    assertWorkflow(value.workflow);
+    assertInteger(value.workflowGeneration, 'workflowGeneration');
   } else if (operation === 'history-list') {
     assertExactKeys(value, ['target', 'checkpoints'], 'history-list data');
     assertTarget(value.target);
@@ -270,8 +411,9 @@ function assertSuccessData(operation: SessionRepositoryOperation, value: unknown
     assertInteger(value.generation, 'generation');
     assertString(value.checkpointId, 'checkpointId');
   } else if (operation === 'import') {
-    assertExactKeys(value, ['importedSessionIds'], 'import data');
+    assertExactKeys(value, ['importedSessionIds', 'sessions'], 'import data');
     assertStringArray(value.importedSessionIds, 'importedSessionIds');
+    assertSummaries(value.sessions);
   } else if (operation === 'export') {
     assertExactKeys(value, ['document'], 'export data');
     assertString(value.document, 'document');
@@ -294,13 +436,31 @@ export function parseSessionRepositoryRequest(value: unknown): SessionRepository
     throw new SessionRepositoryRequestError('operation is invalid');
   }
   const operation = value.operation as SessionRepositoryOperation;
-  if (operation === 'bootstrap' || operation === 'list' || operation === 'open-data-folder') {
+  if (operation === 'bootstrap') {
+    const keys = value.migrationPlan === undefined ? ['operation'] : ['operation', 'migrationPlan'];
+    assertExactKeys(value, keys, 'bootstrap request');
+    if (value.migrationPlan !== undefined) {
+      assertJsonValue(value.migrationPlan, '$.migrationPlan');
+      if (!isPlainObject(value.migrationPlan)) {
+        throw new SessionRepositoryRequestError('migrationPlan must be an object');
+      }
+    }
+  } else if (operation === 'list' || operation === 'open-data-folder') {
     assertExactKeys(value, ['operation'], `${operation} request`);
-  } else if (operation === 'load' || operation === 'history-list') {
+  } else if (operation === 'load') {
+    assertExactKeys(value, ['operation', 'target', 'mode'], 'load request');
+    assertTarget(value.target);
+    if (value.mode !== 'inspect' && value.mode !== 'view' && value.mode !== 'resume') {
+      throw new SessionRepositoryRequestError('load mode is invalid');
+    }
+  } else if (operation === 'history-list') {
     assertExactKeys(value, ['operation', 'target'], `${operation} request`);
     assertTarget(value.target);
   } else if (operation === 'save') {
-    assertExactKeys(value, ['operation', 'target', 'expectedGeneration', 'payload'], 'save request');
+    const keys = value.replacement === undefined
+      ? ['operation', 'target', 'expectedGeneration', 'payload']
+      : ['operation', 'target', 'expectedGeneration', 'payload', 'replacement'];
+    assertExactKeys(value, keys, 'save request');
     assertSaveTarget(value.target);
     assertGeneration(value.expectedGeneration, true);
     if (value.target.kind === 'new' && value.expectedGeneration !== null) {
@@ -308,6 +468,9 @@ export function parseSessionRepositoryRequest(value: unknown): SessionRepository
     }
     assertJsonValue(value.payload, '$.payload');
     if (!isPlainObject(value.payload)) throw new SessionRepositoryRequestError('payload must be an object');
+    if (value.replacement !== undefined && (value.replacement !== true || value.target.kind !== 'working')) {
+      throw new SessionRepositoryRequestError('replacement is valid only for a working-session save');
+    }
   } else if (operation === 'rename') {
     assertExactKeys(value, ['operation', 'sessionId', 'name', 'expectedGeneration'], 'rename request');
     assertString(value.sessionId, 'sessionId');
@@ -323,8 +486,11 @@ export function parseSessionRepositoryRequest(value: unknown): SessionRepository
     assertString(value.checkpointId, 'checkpointId');
     assertGeneration(value.expectedGeneration, false);
   } else if (operation === 'import') {
-    assertExactKeys(value, ['operation', 'document'], 'import request');
+    assertExactKeys(value, ['operation', 'document', 'conflictMode'], 'import request');
     assertString(value.document, 'document');
+    if (value.conflictMode !== 'skip' && value.conflictMode !== 'overwrite') {
+      throw new SessionRepositoryRequestError('import conflictMode is invalid');
+    }
   } else if (operation === 'export') {
     assertExactKeys(value, ['operation', 'sessionIds'], 'export request');
     if (!Array.isArray(value.sessionIds)) throw new SessionRepositoryRequestError('sessionIds must be an array');

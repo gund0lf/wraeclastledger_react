@@ -1,6 +1,7 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type { AtlasStatsReadResult } from '../shared/atlasStats'
 import type { ClipboardBridgeStatus } from '../shared/protonClipboardBridge'
+import type { SessionRepositoryBridge } from './sessionRepositoryBridge'
 
 type TradeParams = {
   league: string; minIIQ: number; minPack: number; minIIR: number;
@@ -14,11 +15,16 @@ type TradeParams = {
 type BrickMod = { id: string; label: string; regexTerm: string; category: 'regular' | 'nightmare'; tradeTexts: string[] };
 type UnavailableBrickMod = { id: string; label: string; expectedCount: number; actualCount: number };
 type BrickModResult = { mods: BrickMod[]; unavailable: UnavailableBrickMod[]; error: string | null };
+type RepositoryFlushRequest = { requestId: string; mode: 'flush' | 'export-recovery' };
+type RepositoryFlushResult = { requestId: string; ok: boolean; error?: string; recoveryDocument?: string };
 
 declare global {
   interface Window {
     electron: ElectronAPI
     api: {
+      sessionRepository: SessionRepositoryBridge
+      onSessionRepositoryFlushRequest: (callback: (request: RepositoryFlushRequest) => void) => () => void
+      completeSessionRepositoryFlush: (result: RepositoryFlushResult) => void
       onClipboardCapture:  (callback: (text: string) => void) => void
       removeClipboardListener: () => void
       onClipboardBridgeStatus: (callback: (status: ClipboardBridgeStatus) => void) => () => void

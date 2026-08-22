@@ -34,8 +34,8 @@ export interface SessionRepositoryClient {
 }
 
 /**
- * Renderer-side typed client. It has no window.api dependency, which keeps the
- * Phase 2 implementation dormant and independently testable until cutover.
+ * Renderer-side typed client. It has no direct window.api dependency, so the
+ * production transport and the independently tested transport share one path.
  */
 export function createSessionRepositoryClient(
   transport: SessionRepositoryTransport,

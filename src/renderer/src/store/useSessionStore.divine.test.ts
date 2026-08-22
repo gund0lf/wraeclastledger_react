@@ -42,6 +42,7 @@ const resetStore = (divinePrice: number, fetchedAt: number): void => {
     settings: { ...DEFAULT_SETTINGS, divinePrice },
     divinePriceFetchedAt: fetchedAt,
     activeSessionId: null, activeSessionName: null, savedSessions: {},
+    sessionLifecycle: 'live',
   });
 };
 
@@ -133,10 +134,16 @@ describe('WP4.2 divine price staleness', () => {
     expect(useSessionStore.getState().settings.leagueName).toBe('Allflame');
 
     useSessionStore.setState((state) => ({
-      settings: { ...state.settings, leagueName: 'Mirage' },
+      settings: { ...state.settings, leagueName: 'Mirage', atlasBonus: true },
+      atlasBonusByLeague: { Ancestors: false },
+      isWatching: true,
+      sessionLifecycle: 'live',
     }));
     useSessionStore.getState().setLeagueOverride('Ancestors');
     expect(useSessionStore.getState().settings.leagueName).toBe('Mirage');
+    expect(useSessionStore.getState().settings.atlasBonus).toBe(true);
+    expect(useSessionStore.getState().isWatching).toBe(false);
+    expect(useSessionStore.getState().sessionLifecycle).toBe('historical');
     await Promise.resolve();
   });
 
@@ -170,6 +177,7 @@ describe('historical-session protection', () => {
       settings: { ...DEFAULT_SETTINGS, divinePrice, leagueName },
       divinePriceFetchedAt: fetchedAt,
       activeSessionId: 'sess-1', activeSessionName: 'Old run', savedSessions: {},
+      sessionLifecycle: 'historical',
     });
   };
 
@@ -216,6 +224,7 @@ describe('historical-session protection', () => {
       settings: { ...DEFAULT_SETTINGS, divinePrice: 0, leagueName: '' },
       divinePriceFetchedAt: 0,
       activeSessionId: null, activeSessionName: null, savedSessions: {},
+      sessionLifecycle: 'live',
     });
     await useSessionStore.getState().initDivinePrice();
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -228,12 +237,14 @@ describe('historical-session protection', () => {
       settings: { ...DEFAULT_SETTINGS, divinePrice: 180, leagueName: 'Mirage' },
       divinePriceFetchedAt: 0,
       activeSessionId: null, activeSessionName: null, savedSessions: {},
+      sessionLifecycle: 'live',
     });
     await useSessionStore.getState().initDivinePrice({ force: true });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(useSessionStore.getState().settings.divinePrice).toBe(180);
     expect(useSessionStore.getState().settings.leagueName).toBe('Mirage');
     expect(useSessionStore.getState().divinePriceFetchedAt).toBe(0);
+    expect(useSessionStore.getState().sessionLifecycle).toBe('historical');
   });
 
   it('unconfirmed fallback leaves a fresh live session pending', async () => {
@@ -242,6 +253,7 @@ describe('historical-session protection', () => {
       settings: { ...DEFAULT_SETTINGS, divinePrice: 0, leagueName: '' },
       divinePriceFetchedAt: 0,
       activeSessionId: null, activeSessionName: null, savedSessions: {},
+      sessionLifecycle: 'live',
     });
     await useSessionStore.getState().initDivinePrice({ force: true });
     expect(fetchMock).toHaveBeenCalledTimes(1);

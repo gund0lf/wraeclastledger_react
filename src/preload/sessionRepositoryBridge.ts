@@ -17,7 +17,7 @@ export type SessionRepositoryBridge = (
 ) => Promise<SessionRepositoryResponse>;
 
 /**
- * Construct the narrow preload bridge without exposing it on window.api yet.
+ * Construct the narrow preload bridge exposed as window.api.sessionRepository.
  * Both directions are validated because IPC data is an untrusted boundary even
  * when TypeScript says the renderer and main process agree.
  */

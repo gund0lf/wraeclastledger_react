@@ -28,7 +28,8 @@ export function WorkingSessionGuardModal({
         <Text size="sm">
           Your unnamed current session contains work
           {mapCount > 0 ? ` (${mapCount} map${mapCount !== 1 ? 's' : ''})` : ''}.
-          {' '}{actionDescription} will replace it. Save it first or explicitly discard it.
+          {' '}{actionDescription} will replace its working slot. WraeclastLedger will move it to Recently Deleted,
+          or you can name it now to keep it in Sessions.
         </Text>
         <TextInput
           label="Save as"
@@ -39,10 +40,10 @@ export function WorkingSessionGuardModal({
           autoFocus
         />
         <Group justify="space-between">
-          <Button variant="subtle" color="red" onClick={onDiscard}>Discard &amp; continue</Button>
+          <Button variant="subtle" color="red" onClick={onDiscard}>Move &amp; continue</Button>
           <Group gap="xs">
             <Button variant="default" onClick={onCancel}>Cancel</Button>
-            <Button color="blue" onClick={onSave} disabled={!trimmedName}>Save &amp; continue</Button>
+            <Button color="blue" onClick={onSave} disabled={!trimmedName}>Name &amp; continue</Button>
           </Group>
         </Group>
       </Stack>

@@ -104,6 +104,8 @@ export interface RegexSet {
 
 export interface SessionSettings {
   divinePrice: number;
+  /** Durable provenance for the session's stored divine quote. */
+  divinePriceQuotedAt?: string | null;
   // chiselType: '' = no chisel; any value = that chisel is used
   chiselUsed: boolean; chiselType: string; chiselPrice: number;
   mapType: '6-mod' | '8-mod';

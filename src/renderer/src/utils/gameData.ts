@@ -10,7 +10,7 @@
  *
  * SOURCE ORDER (plan §2.2 "loader prefers server, falls back to bundled"):
  *   bundled (always available) -> disk cache (userData, via main IPC — D1
- *   decision: NOT localStorage, its budget is already strained) -> server
+ *   decision: outside the user-authored ledger-data backup) -> server
  *   GET /game-data/latest (NOT LIVE yet — §6, rides Traceur's consolidated
  *   change; hook below stays dormant until then).
  */

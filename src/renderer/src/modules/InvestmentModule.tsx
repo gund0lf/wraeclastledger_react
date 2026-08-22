@@ -71,11 +71,11 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
   const {
     maps, settings, updateSetting, updateAdvSetting, updateScarab, clearScarab, initDivinePrice,
     setDivinePriceManual, leagueOverride, setLeagueOverride, assignMissingSessionLeague,
-    scarabPresets, saveScarabPreset, loadScarabPreset, deleteScarabPreset, activeSessionId, sessionNonce,
+    scarabPresets, saveScarabPreset, loadScarabPreset, deleteScarabPreset, sessionLifecycle, sessionNonce,
   } = useSessionKeys(
     'maps', 'settings', 'updateSetting', 'updateAdvSetting', 'updateScarab', 'clearScarab', 'initDivinePrice',
     'setDivinePriceManual', 'leagueOverride', 'setLeagueOverride', 'assignMissingSessionLeague',
-    'scarabPresets', 'saveScarabPreset', 'loadScarabPreset', 'deleteScarabPreset', 'activeSessionId', 'sessionNonce',
+    'scarabPresets', 'saveScarabPreset', 'loadScarabPreset', 'deleteScarabPreset', 'sessionLifecycle', 'sessionNonce',
   );
   const [advOpen, { open: openAdv, close: closeAdv }] = useDisclosure(false);
   const [presetSaveOpen, setPresetSaveOpen] = useState(false); // scarab preset "Save current as…" dialog
@@ -96,29 +96,29 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
     setLeagueListRequested(true);
     setLeagueList(await fetchSelectableLeagues());
   };
+  const historical = sessionLifecycle === 'historical';
   const leagueOptions = useMemo(() => {
     const names = [...leagueList];
     // The persisted override must always be selectable, even if the index
     // no longer lists it (e.g. an ended event league).
     if (leagueOverride && !names.includes(leagueOverride)) names.unshift(leagueOverride);
     if (settings.leagueName && !names.includes(settings.leagueName)) names.unshift(settings.leagueName);
-    const loaded = activeSessionId !== null;
     return [
       {
         value: '',
-        label: loaded
+        label: historical
           ? 'Unassigned session'
           : (!leagueOverride && settings.leagueName ? `Auto: ${settings.leagueName}` : 'Auto-detect'),
       },
       ...names.map((n) => ({ value: n, label: n })),
     ];
-  }, [activeSessionId, leagueList, leagueOverride, settings.leagueName]);
-  const leagueSelectValue = activeSessionId !== null
+  }, [historical, leagueList, leagueOverride, settings.leagueName]);
+  const leagueSelectValue = historical
     ? settings.leagueName
     : (leagueOverride ?? '');
   const handleLeagueChange = (value: string | null): void => {
     const next = value || null;
-    if (activeSessionId === null) {
+    if (!historical) {
       setLeagueOverride(next);
       return;
     }
@@ -173,13 +173,13 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
   // Re-fetch when a new session is started (activeSessionId transitions to null)
   // so the price stays fresh without requiring a manual refresh.
   useEffect(() => {
-    if (activeSessionId !== null) return;
+    if (sessionLifecycle !== 'live') return;
     let active = true;
     void initDivinePrice().finally(() => {
       if (active) setConfirmedActiveLeague(confirmedLeagueSync());
     });
     return () => { active = false; };
-  }, [activeSessionId, leagueOverride, sessionNonce, initDivinePrice]);
+  }, [sessionLifecycle, leagueOverride, sessionNonce, initDivinePrice]);
 
   // Manual refresh button: bypasses the cooldown via { force: true }, since
   // an explicit user action shouldn't be silently skipped.
@@ -189,7 +189,7 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
   // failed fetch must never destroy a valid price.
   const [repriceConfirmOpen, setRepriceConfirmOpen] = useState(false);
   const handleFetchPrice = async () => {
-    if (activeSessionId !== null) { setRepriceConfirmOpen(true); return; }
+    if (historical) { setRepriceConfirmOpen(true); return; }
     setFetchingPrice(true);
     await initDivinePrice({ force: true });
     setConfirmedActiveLeague(confirmedLeagueSync());
@@ -204,8 +204,8 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
   // Cross-league loaded session (e.g. an Ancestors session opened under
   // 3.29): show the historical banner. The price guard above is stricter
   // (any loaded session); this banner only flags the league mismatch case.
-  const crossLeague = isCrossLeagueSession(activeSessionId, settings.leagueName);
-  const liveLeagueMismatch = isLiveSessionLeagueMismatch(activeSessionId, settings.leagueName);
+  const crossLeague = isCrossLeagueSession(sessionLifecycle, settings.leagueName);
+  const liveLeagueMismatch = isLiveSessionLeagueMismatch(sessionLifecycle, settings.leagueName);
   // Keep the historical-session status inside the existing price label. A
   // standalone badge costs a whole row in short stacked FlexLayout panels.
   const historicalDivinePriceLabel = settings.leagueName
@@ -496,8 +496,8 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
             onChange={handleLeagueChange}
             onDropdownOpen={loadLeagueOptions}
             comboboxProps={{ withinPortal: true }}
-            disabled={activeSessionId !== null && !!settings.leagueName.trim()}
-            title={activeSessionId !== null
+            disabled={historical && !!settings.leagueName.trim()}
+            title={historical
               ? (settings.leagueName.trim()
                 ? 'Saved-session league provenance is fixed and cannot be reassigned here'
                 : 'Choose the league once to repair this saved session\'s missing provenance')

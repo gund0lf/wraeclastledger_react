@@ -44,8 +44,15 @@ const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const serialize = (value: unknown): string => `${JSON.stringify(value)}\n`;
 const utf8Bytes = (value: string): number => new TextEncoder().encode(value).length;
 
-const stateDefaults = (): Record<string, unknown> =>
-  JSON.parse(JSON.stringify(useSessionStore.getState())) as Record<string, unknown>;
+const stateDefaults = (): Record<string, unknown> => {
+  const state = JSON.parse(JSON.stringify(useSessionStore.getState())) as Record<string, unknown>;
+  for (const key of [
+    'repositoryStatus', 'repositoryError', 'repositorySessions', 'repositorySizeBytes',
+    'currentGeneration', 'preferencesGeneration', 'layoutGeneration', 'saveStatus',
+    'saveError', 'sessionLifecycle', 'liveSessionId',
+  ]) delete state[key];
+  return state;
+};
 
 const deterministicId = (seed: number, kind: string, index: number): string =>
   `wp14-${seed.toString(16)}-${kind}-${index.toString().padStart(5, '0')}`;

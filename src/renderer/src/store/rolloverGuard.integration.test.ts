@@ -38,6 +38,8 @@ describe('rollover cache expiry and mutation guard integration', () => {
       activeSessionId: null,
       activeSessionName: null,
       savedSessions: {},
+      isWatching: true,
+      sessionLifecycle: 'live',
     });
 
     vi.setSystemTime(new Date('2026-07-17T00:01:00Z'));
@@ -47,6 +49,8 @@ describe('rollover cache expiry and mutation guard integration', () => {
     expect(useSessionStore.getState().settings.divinePrice).toBe(180);
     expect(useSessionStore.getState().settings.leagueName).toBe('Ancestors');
     expect(useSessionStore.getState().divinePriceFetchedAt).toBe(0);
+    expect(useSessionStore.getState().isWatching).toBe(false);
+    expect(useSessionStore.getState().sessionLifecycle).toBe('historical');
     expect(probe).toHaveBeenCalledWith('Mirage');
   });
 

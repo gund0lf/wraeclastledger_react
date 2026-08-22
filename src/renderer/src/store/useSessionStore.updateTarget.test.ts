@@ -169,7 +169,7 @@ describe('Atlas Bonus per-league model', () => {
 
   it('a LOADED historical session never defines the current league’s progress', () => {
     setLeagueOverrideValue('LeagueA');
-    useSessionStore.setState({ activeSessionId: 'saved-id' }); // simulate a loaded session
+    useSessionStore.setState({ activeSessionId: 'saved-id', sessionLifecycle: 'historical' });
     st().setAtlasBonus(true);
     expect(st().settings.atlasBonus).toBe(true);              // its own snapshot may change
     expect(st().atlasBonusByLeague['LeagueA']).toBeUndefined(); // map untouched

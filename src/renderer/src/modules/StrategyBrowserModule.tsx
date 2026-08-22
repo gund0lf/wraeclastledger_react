@@ -32,6 +32,11 @@ import { deriveAtlasCalcSettings } from '../../../shared/atlasStats';
 import { fingerprintSetupSnapshot, setupSnapshotFromDiscordImport } from '../utils/evidenceIdentity';
 import { usePanelMaximized, useSetupSidebarCollapsed } from '../layout/panelLayoutContext';
 import { deriveShareTags } from '../utils/shareTags';
+import {
+  loadNamed,
+  nameCurrent,
+  startWorking,
+} from '../repository/sessionRepositoryRuntime';
 
 // API base (incl. the VITE_STRATEGY_API_URL dev override) moved to
 // strategyConstants.STRATEGY_API_URL — shared with the game-data loader.
@@ -60,10 +65,10 @@ export const StrategyBrowserModule = () => {
       : BROWSER_MIN_CONTENT_WIDTH;
   const {
     maps, settings, discordTag, leagueOverride,
-    updateSetting, updateAdvSetting, updateScarab, newSession, saveAsNewSession, setLoadedStrategyInfo, loadSession,
+    updateSetting, updateAdvSetting, updateScarab, setLoadedStrategyInfo,
   } = useSessionKeys(
     'maps', 'settings', 'discordTag', 'leagueOverride',
-    'updateSetting', 'updateAdvSetting', 'updateScarab', 'newSession', 'saveAsNewSession', 'setLoadedStrategyInfo', 'loadSession',
+    'updateSetting', 'updateAdvSetting', 'updateScarab', 'setLoadedStrategyInfo',
   );
   // Pulled up here (before handleLoadBuild uses it) via a stable-action selector.
   const requestAtlasApply = useUIStore((s) => s.requestAtlasApply);
@@ -154,11 +159,18 @@ export const StrategyBrowserModule = () => {
   const [importOpen, { open: openImport, close: closeImport }] = useDisclosure(false);
   const [replacementGuardOpen, { open: openReplacementGuard, close: closeReplacementGuard }] = useDisclosure(false);
   const [replacementName, setReplacementName] = useState('');
-  const [pendingReplacement, setPendingReplacement] = useState<(() => void) | null>(null);
+  const [pendingReplacement, setPendingReplacement] = useState<(() => Promise<void>) | null>(null);
 
-  const requestReplacement = (action: () => void) => {
-    if (!isWorkingSessionMeaningful(useSessionStore.getState(), DEFAULT_SETTINGS)) {
-      action();
+  const runReplacement = (action: () => Promise<void>): void => {
+    void action().catch((error: unknown) => {
+      setLoadedMsg(error instanceof Error ? error.message : 'Could not switch sessions.');
+    });
+  };
+
+  const requestReplacement = (action: () => Promise<void>) => {
+    const current = useSessionStore.getState();
+    if (current.activeSessionId !== null || !isWorkingSessionMeaningful(current, DEFAULT_SETTINGS)) {
+      runReplacement(action);
       return;
     }
     setPendingReplacement(() => action);
@@ -172,21 +184,25 @@ export const StrategyBrowserModule = () => {
     closeReplacementGuard();
   };
 
-  const continueReplacement = (saveFirst: boolean) => {
+  const continueReplacement = async (saveFirst: boolean): Promise<void> => {
     const action = pendingReplacement;
     if (!action) return;
-    if (saveFirst) {
-      const name = replacementName.trim();
-      if (!name) return;
-      saveAsNewSession(name);
+    try {
+      if (saveFirst) {
+        const name = replacementName.trim();
+        if (!name) return;
+        await nameCurrent(name);
+      }
+      cancelReplacement();
+      await action();
+    } catch (error: unknown) {
+      setLoadedMsg(error instanceof Error ? error.message : 'Could not switch sessions.');
     }
-    cancelReplacement();
-    action();
   };
 
   // ── Load build (called by both StrategyCard and ImportModal) ─────────────────
-  const applyStrategyBuild = (s: Strategy) => {
-    newSession();
+  const applyStrategyBuild = async (s: Strategy): Promise<void> => {
+    await startWorking(true);
     const parsed = s.raw_export ? parseDiscordExport(s.raw_export) : null;
     if (s.map_type === '6-mod' || s.map_type === '8-mod') {
       updateSetting('mapType', s.map_type);
@@ -260,7 +276,9 @@ export const StrategyBrowserModule = () => {
   };
 
   const handleLoadPersonalSession = (sessionId: string) => {
-    requestReplacement(() => loadSession(sessionId));
+    // Viewing a named session preserves the distinct live working target, so
+    // this path does not invoke the replacement guard.
+    runReplacement(() => loadNamed(sessionId));
   };
 
   // ── Continue strategy (replacement or evidence, fresh or current) ──────────
@@ -281,8 +299,8 @@ export const StrategyBrowserModule = () => {
   };
 
   const armReplacementTarget = (candidate: Strategy, cloneSetup: boolean) => {
-    const apply = () => {
-      if (cloneSetup) applyStrategyBuild(candidate);
+    const apply = async () => {
+      if (cloneSetup) await applyStrategyBuild(candidate);
       updateSetting('evidenceTargetStrategyId', null);
       updateSetting('evidenceTargetStrategyName', null);
       updateSetting('evidenceTargetExpectedRevision', null);
@@ -320,9 +338,9 @@ export const StrategyBrowserModule = () => {
         setupSnapshotFromDiscordImport(parsed),
       );
 
-      const apply = () => {
+      const apply = async () => {
         if (cloneSetup) {
-          applyStrategyBuild(current);
+          await applyStrategyBuild(current);
           updateSetting('leagueName', targetLeague);
         }
         updateSetting('updateTargetStrategyId', null);
@@ -335,7 +353,7 @@ export const StrategyBrowserModule = () => {
       };
       setContinueCandidate(null);
       if (cloneSetup) requestReplacement(apply);
-      else apply();
+      else await apply();
     } catch (error: unknown) {
       setContinueError(error instanceof Error ? error.message : 'Could not continue the strategy.');
     } finally {
@@ -349,9 +367,9 @@ export const StrategyBrowserModule = () => {
     else void armEvidenceTarget(candidate, cloneSetup);
   };
 
-  const applyImportedBuild = (parsed: DiscordImport) => {
+  const applyImportedBuild = async (parsed: DiscordImport): Promise<void> => {
     // Apply what we can from a parsed import (no Strategy object — use parsed fields)
-    newSession();
+    await startWorking(true);
     if (parsed.chisel && parsed.chisel !== 'None') {
       updateSetting('chiselType', parsed.chisel.split(' ')[0]);
       updateSetting('chiselUsed', true);

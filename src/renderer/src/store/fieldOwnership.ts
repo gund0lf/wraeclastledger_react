@@ -1,4 +1,4 @@
-import type { SessionState } from './useSessionStore';
+import type { SessionStoreState } from './useSessionStore';
 
 export type FieldOwnershipBucket =
   | 'session-payload'
@@ -11,7 +11,7 @@ type FunctionKey<T> = {
   [K in keyof T]-?: T[K] extends (...args: infer _Args) => infer _Return ? K : never;
 }[keyof T];
 
-export type SessionStateDataKey = Exclude<keyof SessionState, FunctionKey<SessionState>>;
+export type SessionStateDataKey = Exclude<keyof SessionStoreState, FunctionKey<SessionStoreState>>;
 
 /**
  * Phase 0 characterization gate. Every current non-function SessionState key
@@ -29,6 +29,18 @@ export const FIELD_OWNERSHIP = {
   investmentNeutralization: 'session-payload',
   investmentDismissed: 'session-payload',
   loadedStrategyInfo: 'session-payload',
+
+  repositoryStatus: 'runtime-derived',
+  repositoryError: 'runtime-derived',
+  repositorySessions: 'runtime-derived',
+  repositorySizeBytes: 'runtime-derived',
+  currentGeneration: 'runtime-derived',
+  preferencesGeneration: 'runtime-derived',
+  layoutGeneration: 'runtime-derived',
+  saveStatus: 'runtime-derived',
+  saveError: 'runtime-derived',
+  sessionLifecycle: 'bootstrap-workflow',
+  liveSessionId: 'bootstrap-workflow',
 
   discordTag: 'user-preference-cache',
   regexSets: 'user-preference-cache',

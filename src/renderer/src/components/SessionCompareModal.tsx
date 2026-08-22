@@ -3,6 +3,7 @@ import { useMemo, useState, useEffect, CSSProperties, ReactNode } from 'react';
 import { useSessionStore } from '../store/useSessionStore';
 import { buildCompareColumn, bestIndices, CompareColumn } from '../utils/sessionCompare';
 import { COLOR, FONT } from '../utils/uiTokens';
+import { useRepositorySessions } from '../repository/useRepositorySessions';
 
 /**
  * WP11 — side-by-side comparison of 2-3 saved sessions.
@@ -95,13 +96,13 @@ const SectionRow = ({ label, span }: { label: string; span: number }) => (
 );
 
 export const SessionCompareModal = ({ opened, onClose, initialSelectedIds }: Props) => {
-  const savedSessions = useSessionStore((s) => s.savedSessions);
+  const repositorySessions = useSessionStore((s) => s.repositorySessions);
 
   const allSessions = useMemo(
-    () => Object.values(savedSessions).sort(
+    () => repositorySessions.filter(({ status }) => status === 'ready').sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     ),
-    [savedSessions]
+    [repositorySessions]
   );
 
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -111,7 +112,9 @@ export const SessionCompareModal = ({ opened, onClose, initialSelectedIds }: Pro
   // keyed on `opened` only — re-seeding mid-interaction would fight the user.
   useEffect(() => {
     if (!opened) return;
-    const seed = (initialSelectedIds ?? []).filter((id) => savedSessions[id]).slice(0, MAX_COMPARE);
+    const seed = (initialSelectedIds ?? []).filter((id) => (
+      repositorySessions.some((session) => session.id === id && session.status === 'ready')
+    )).slice(0, MAX_COMPARE);
     setPicked(new Set(seed));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened]);
@@ -124,9 +127,11 @@ export const SessionCompareModal = ({ opened, onClose, initialSelectedIds }: Pro
       return next;
     });
 
+  const pickedIds = useMemo(() => [...picked], [picked]);
+  const { sessions: loadedSessions, loading, error } = useRepositorySessions(pickedIds, opened);
   const cols = useMemo<CompareColumn[]>(
-    () => allSessions.filter((s) => picked.has(s.id)).map(buildCompareColumn),
-    [allSessions, picked]
+    () => pickedIds.flatMap((id) => loadedSessions[id] ? [buildCompareColumn(loadedSessions[id])] : []),
+    [loadedSessions, pickedIds]
   );
   const anyReturn = cols.some((c) => c.hasReturn);
   const anyNeutralization = cols.some((c) => c.neutralization > 0);
@@ -161,7 +166,7 @@ export const SessionCompareModal = ({ opened, onClose, initialSelectedIds }: Pro
                         label={
                           <Text size="xs" lineClamp={1}>
                             {s.name}
-                            <Text span c="dimmed"> · {s.maps.length} maps · {new Date(s.createdAt).toLocaleDateString()}</Text>
+                            <Text span c="dimmed"> · {typeof s.summary.mapCount === 'number' ? s.summary.mapCount : 0} maps · {new Date(s.createdAt).toLocaleDateString()}</Text>
                           </Text>
                         }
                       />
@@ -173,7 +178,11 @@ export const SessionCompareModal = ({ opened, onClose, initialSelectedIds }: Pro
 
             <Divider />
 
-            {cols.length < 2 ? (
+            {error ? (
+              <Text size="sm" c="red" ta="center" py="md">{error}</Text>
+            ) : loading ? (
+              <Text size="sm" c="dimmed" ta="center" py="md">Loading selected sessions...</Text>
+            ) : cols.length < 2 ? (
               <Text size="sm" c="dimmed" ta="center" py="md">
                 Select {2 - cols.length} more session{2 - cols.length !== 1 ? 's' : ''} above to see the comparison.
               </Text>

@@ -4,7 +4,8 @@ import type {
   RepositorySessionSummary,
   SessionRepositoryDataMap,
   SessionRepositoryRequest,
-  SessionSaveTarget,
+  SessionEntitySaveTarget,
+  SessionLoadMode,
   SessionTarget,
 } from '../../../shared/sessionRepositoryIpc';
 import type { SessionRepositoryClient } from './sessionRepositoryClient';
@@ -21,7 +22,7 @@ interface SaveWaiter {
 }
 
 interface PendingSave {
-  target: SessionSaveTarget;
+  target: SessionEntitySaveTarget;
   payload: JsonObject;
   waiters: SaveWaiter[];
 }
@@ -40,8 +41,8 @@ export interface SessionRepositoryRuntimeState {
   payloadError: string | null;
   saveError: string | null;
   bootstrap: () => Promise<void>;
-  load: (target: SessionTarget) => Promise<void>;
-  save: (target: SessionSaveTarget, payload: JsonObject) => Promise<SessionRepositoryDataMap['save']>;
+  load: (target: SessionTarget, mode?: SessionLoadMode) => Promise<void>;
+  save: (target: SessionEntitySaveTarget, payload: JsonObject) => Promise<SessionRepositoryDataMap['save']>;
   reset: () => void;
 }
 
@@ -50,11 +51,11 @@ const sameTarget = (left: SessionTarget | null, right: SessionTarget | null): bo
   return left.kind === 'working' || left.sessionId === (right as Extract<SessionTarget, { kind: 'session' }>).sessionId;
 };
 
-const sameSaveTarget = (left: SessionSaveTarget, right: SessionSaveTarget): boolean => {
+const sameSaveTarget = (left: SessionEntitySaveTarget, right: SessionEntitySaveTarget): boolean => {
   if (left.kind !== right.kind) return false;
   if (left.kind === 'working') return true;
-  if (left.kind === 'new') return left.name === (right as Extract<SessionSaveTarget, { kind: 'new' }>).name;
-  return left.sessionId === (right as Extract<SessionSaveTarget, { kind: 'session' }>).sessionId;
+  if (left.kind === 'new') return left.name === (right as Extract<SessionEntitySaveTarget, { kind: 'new' }>).name;
+  return left.sessionId === (right as Extract<SessionEntitySaveTarget, { kind: 'session' }>).sessionId;
 };
 
 function message(error: unknown): string {
@@ -71,9 +72,11 @@ function replaceSummary(
 }
 
 /**
- * Dormant Phase 2 repository state. Bootstrap returns summaries only; payloads
- * are loaded explicitly and lazily. Request epochs prevent late responses from
- * replacing newer navigation, and "saved" is set only after a repository ack.
+ * Lower-level repository state retained for protocol and save-coalescing tests.
+ * Production Phase 4 orchestration lives in sessionRepositoryRuntime.ts.
+ * Bootstrap returns summaries only; payloads are loaded explicitly and lazily.
+ * Request epochs prevent late responses from replacing newer navigation, and
+ * "saved" is set only after a repository acknowledgement.
  */
 export function createSessionRepositoryStore(
   client: SessionRepositoryClient,
@@ -82,7 +85,7 @@ export function createSessionRepositoryStore(
   let loadEpoch = 0;
   let saveEpoch = 0;
   let pendingSave: PendingSave | null = null;
-  let currentSaveTarget: SessionSaveTarget | null = null;
+  let currentSaveTarget: SessionEntitySaveTarget | null = null;
   let saveDrain: Promise<void> | null = null;
 
   const initial = {
@@ -128,8 +131,8 @@ export function createSessionRepositoryStore(
         set({
           bootstrapStatus: 'ready',
           sessions: data.sessions,
-          activeTarget: data.activeTarget,
-          viewedTarget: data.viewedTarget,
+          activeTarget: data.workflow.activeTarget,
+          viewedTarget: data.workflow.viewedTarget,
           bootstrapError: null,
         });
       } catch (error) {
@@ -137,14 +140,14 @@ export function createSessionRepositoryStore(
         set({ bootstrapStatus: 'failed', bootstrapError: message(error) });
       }
     },
-    load: async (target) => {
+    load: async (target, mode = 'view') => {
       if (get().bootstrapStatus !== 'ready') {
         throw new Error('Session repository must finish bootstrap before loading a payload');
       }
       const epoch = ++loadEpoch;
       set({ payloadStatus: 'loading', payloadError: null, viewedTarget: target });
       try {
-        const data = await client.request({ operation: 'load', target });
+        const data = await client.request({ operation: 'load', target, mode });
         if (epoch !== loadEpoch) return;
         if (!sameTarget(data.target, target)) {
           throw new Error('Session repository loaded a different target than requested');
@@ -226,6 +229,9 @@ export function createSessionRepositoryStore(
           current.waiters.forEach(({ reject }) => reject(resetError));
           currentSaveTarget = null;
           return;
+        }
+        if (data.target.kind !== 'working' && data.target.kind !== 'session') {
+          throw new Error('Session save returned a non-session target');
         }
         const loadedTarget = store.getState().loadedTarget;
         store.setState({

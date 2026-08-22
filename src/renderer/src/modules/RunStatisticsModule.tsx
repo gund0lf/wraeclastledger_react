@@ -24,6 +24,7 @@ import { IconChevronDown, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { ModuleHeader } from '../components/ui/ModuleHeader';
 import { useSessionKeys } from '../store/useSessionStore';
+import { useRepositorySessions } from '../repository/useRepositorySessions';
 import {
   ATLAS_ANOMALIES,
   MERCENARY_ARCHETYPES,
@@ -127,7 +128,7 @@ export const RunStatisticsModule = () => {
     baselineItems,
     lootItems,
     manualStatistics,
-    savedSessions,
+    repositorySessions,
     activeSessionId,
     setManualStatistic,
     setRunStatisticsInfoDismissed,
@@ -143,7 +144,7 @@ export const RunStatisticsModule = () => {
     'baselineItems',
     'lootItems',
     'manualStatistics',
-    'savedSessions',
+    'repositorySessions',
     'activeSessionId',
     'setManualStatistic',
     'setRunStatisticsInfoDismissed',
@@ -173,6 +174,15 @@ export const RunStatisticsModule = () => {
   };
 
   const isGlobal = statisticsView === 'all';
+  const repositorySessionIds = useMemo(
+    () => repositorySessions.filter(({ status }) => status === 'ready').map(({ id }) => id),
+    [repositorySessions],
+  );
+  const {
+    sessions: savedSessions,
+    loading: globalLoading,
+    error: globalLoadError,
+  } = useRepositorySessions(repositorySessionIds, isGlobal);
   const globalStatistics = useMemo(() => aggregateRunStatisticsSessions(
     collectRunStatisticsSessions({
       mapCount: maps.length,
@@ -360,6 +370,13 @@ export const RunStatisticsModule = () => {
                 : `${maps.length.toLocaleString()} maps in this session`}
             </Text>
           </Group>
+
+          {isGlobal && globalLoading && (
+            <Text size="xs" c="dimmed">Loading saved-session statistics...</Text>
+          )}
+          {isGlobal && globalLoadError && (
+            <Alert color="red" variant="light"><Text size="xs">{globalLoadError}</Text></Alert>
+          )}
 
           <StatisticsSection
             id="kalguuran"

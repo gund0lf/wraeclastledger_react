@@ -18,6 +18,7 @@ import {
 } from '../utils/retrospectives';
 import { CollapsibleSection } from './ui/CollapsibleSection';
 import { SessionCompareModal } from './SessionCompareModal';
+import { useRepositorySessions } from '../repository/useRepositorySessions';
 
 interface Props {
   onLoadSession: (id: string) => void;
@@ -32,12 +33,12 @@ function displayUtc(iso: string): string {
 
 export const PersonalRetrospectives = ({ onLoadSession }: Props) => {
   const {
-    savedSessions,
+    repositorySessions,
     retrospectiveCloseouts,
     setPersonalLeagueCloseout,
     removePersonalLeagueCloseout,
   } = useSessionKeys(
-    'savedSessions',
+    'repositorySessions',
     'retrospectiveCloseouts',
     'setPersonalLeagueCloseout',
     'removePersonalLeagueCloseout',
@@ -49,6 +50,11 @@ export const PersonalRetrospectives = ({ onLoadSession }: Props) => {
   const [selectedLeague, setSelectedLeague] = useState('');
   const [cutoffLocal, setCutoffLocal] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
+  const repositorySessionIds = useMemo(
+    () => repositorySessions.filter(({ status }) => status === 'ready').map(({ id }) => id),
+    [repositorySessions],
+  );
+  const { sessions: savedSessions, loading, error } = useRepositorySessions(repositorySessionIds);
 
   const candidates = useMemo(
     () => collectPersonalLeagueCandidates(savedSessions),
@@ -161,6 +167,8 @@ export const PersonalRetrospectives = ({ onLoadSession }: Props) => {
       />
 
       <Stack gap="sm">
+        {loading && <Text size="xs" c="dimmed">Loading saved sessions...</Text>}
+        {error && <Alert color="red" variant="light">{error}</Alert>}
         <Group justify="space-between" align="flex-start">
           <div>
             <Text size="sm" fw={700}>End-of-league retrospectives</Text>

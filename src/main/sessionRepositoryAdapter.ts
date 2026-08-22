@@ -6,6 +6,10 @@ import {
 } from './sessionRepositoryCore';
 import { RecordValidationError } from '../shared/sessionRecord';
 import {
+  SessionRepositoryLockedError,
+  SessionRepositoryMigrationRequiredError,
+} from './sessionRepository';
+import {
   SessionRepositoryRequestError,
   parseSessionRepositoryRequest,
   type SessionRepositoryDataMap,
@@ -42,6 +46,22 @@ export interface SessionRepositoryAdapterPolicy {
 }
 
 export function mapSessionRepositoryError(error: unknown): SessionRepositoryError {
+  if (error instanceof SessionRepositoryMigrationRequiredError) {
+    return {
+      code: 'migration-required',
+      message: error.message,
+      retryable: true,
+      ...(error.identity ? { details: error.identity } : {}),
+    };
+  }
+  if (error instanceof SessionRepositoryLockedError) {
+    return {
+      code: 'repository-locked',
+      message: error.message,
+      retryable: false,
+      details: error.owner,
+    };
+  }
   if (error instanceof GenerationConflictError) {
     return {
       code: 'generation-conflict',
@@ -141,7 +161,5 @@ export function createSessionRepositoryAdapter(
   };
 }
 
-// This adapter is intentionally not registered with ipcMain in Phase 2.
-// Phase 2B supplies a tested binding factory only; production registration and
-// the complete concrete repository wait for the Phase 4 cutover.
+// The adapter is transport-independent; Phase 4 registers it once in main.
 export type SessionRepositoryAdapter = ReturnType<typeof createSessionRepositoryAdapter>;

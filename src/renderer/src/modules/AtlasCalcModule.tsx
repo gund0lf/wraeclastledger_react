@@ -128,8 +128,8 @@ const StepDots = ({ active }: { active: ConfigStep }) => {
 export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {}) => {
   const { ref: panelRef, width: panelWidth } = useElementSize();
   const compactPanel = panelWidth > 0 && panelWidth < 280;
-  const { maps, settings, updateSetting, setAtlasBonus, atlasBonusByLeague, activeSessionId, sessionNonce } =
-    useSessionKeys('maps', 'settings', 'updateSetting', 'setAtlasBonus', 'atlasBonusByLeague', 'activeSessionId', 'sessionNonce');
+  const { maps, settings, updateSetting, setAtlasBonus, atlasBonusByLeague, activeSessionId, sessionNonce, sessionLifecycle } =
+    useSessionKeys('maps', 'settings', 'updateSetting', 'setAtlasBonus', 'atlasBonusByLeague', 'activeSessionId', 'sessionNonce', 'sessionLifecycle');
 
   // ── Derived: always fresh from real settings ──────────────────────────────
   const isConfigured = settings.mountingModifiers || settings.multiplyingModifiersAllocated || settings.smallNodesAllocated > 0;
@@ -272,7 +272,7 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
   // never under an unknown/guessed league.
   const activeLeague = confirmedLeagueSync();
   const showBonusHint =
-    showPills && activeSessionId === null && !!activeLeague &&
+    showPills && sessionLifecycle === 'live' && !!activeLeague &&
     !settings.atlasBonus && atlasBonusByLeague[activeLeague] === undefined;
 
   const editPill = (which: 'mounting' | 'fragments' | 'nodes') => {

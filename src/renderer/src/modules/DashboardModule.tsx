@@ -95,20 +95,20 @@ export const DashboardModule = () => {
     addManualLootItem, updateManualLootItem, removeManualLootItem,
     investmentNeutralization, setInvestmentNeutralization,
     investmentDismissed, setInvestmentDismissed,
-    onboardingDismissed, dismissOnboarding, activeSessionId, leagueOverride,
+    onboardingDismissed, dismissOnboarding, sessionLifecycle, leagueOverride,
   } = useSessionKeys(
     'maps', 'settings', 'lootItems', 'baselineItems', 'baselineTotal', 'manualLootItems',
     'setLootItems', 'setBaselineItems', 'toggleLootItemExcluded', 'clearLoot',
     'addManualLootItem', 'updateManualLootItem', 'removeManualLootItem',
     'investmentNeutralization', 'setInvestmentNeutralization',
     'investmentDismissed', 'setInvestmentDismissed',
-    'onboardingDismissed', 'dismissOnboarding', 'activeSessionId', 'leagueOverride',
+    'onboardingDismissed', 'dismissOnboarding', 'sessionLifecycle', 'leagueOverride',
   );
 
   // Phase 1.5 (rollover plan): cross-league loaded session banner. The
   // store-level guards already freeze prices/league/points; this is the
   // visible explanation.
-  const crossLeague = isCrossLeagueSession(activeSessionId, settings.leagueName);
+  const crossLeague = isCrossLeagueSession(sessionLifecycle, settings.leagueName);
 
   const stats = useMemo(() => {
     const count = maps.length;

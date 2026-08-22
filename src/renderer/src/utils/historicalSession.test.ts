@@ -17,42 +17,42 @@ afterEach(() => setLeagueOverrideValue(null));
 describe('isCrossLeagueSession', () => {
   it('flags a loaded session from another league', () => {
     setLeagueOverrideValue('NewLeague329');
-    expect(isCrossLeagueSession('sess-1', 'Mirage')).toBe(true);
+    expect(isCrossLeagueSession('historical', 'Mirage')).toBe(true);
   });
 
   it('does not flag a loaded session from the current league', () => {
     setLeagueOverrideValue('Mirage');
-    expect(isCrossLeagueSession('sess-1', 'Mirage')).toBe(false);
+    expect(isCrossLeagueSession('historical', 'Mirage')).toBe(false);
   });
 
   it('never flags a live (unsaved) session', () => {
     setLeagueOverrideValue('NewLeague329');
-    expect(isCrossLeagueSession(null, 'Mirage')).toBe(false);
+    expect(isCrossLeagueSession('live', 'Mirage')).toBe(false);
   });
 
   it('fail-open: unknown current league (no override, no detection) => false', () => {
     setLeagueOverrideValue(null);
-    expect(isCrossLeagueSession('sess-1', 'Mirage')).toBe(false);
+    expect(isCrossLeagueSession('historical', 'Mirage')).toBe(false);
   });
 
   it('fail-open: session without a league is never flagged', () => {
     setLeagueOverrideValue('NewLeague329');
-    expect(isCrossLeagueSession('sess-1', '')).toBe(false);
-    expect(isCrossLeagueSession('sess-1', undefined)).toBe(false);
+    expect(isCrossLeagueSession('historical', '')).toBe(false);
+    expect(isCrossLeagueSession('historical', undefined)).toBe(false);
   });
 });
 
 describe('isLiveSessionLeagueMismatch', () => {
   it('flags an unnamed live session carried from a different confirmed league', () => {
     setLeagueOverrideValue('NewLeague329');
-    expect(isLiveSessionLeagueMismatch(null, 'Mirage')).toBe(true);
+    expect(isLiveSessionLeagueMismatch('live', 'Mirage')).toBe(true);
   });
 
   it('does not flag a loaded session, matching league, or unknown league', () => {
     setLeagueOverrideValue('Mirage');
-    expect(isLiveSessionLeagueMismatch('saved-1', 'Ancestors')).toBe(false);
-    expect(isLiveSessionLeagueMismatch(null, 'Mirage')).toBe(false);
+    expect(isLiveSessionLeagueMismatch('historical', 'Ancestors')).toBe(false);
+    expect(isLiveSessionLeagueMismatch('live', 'Mirage')).toBe(false);
     setLeagueOverrideValue(null);
-    expect(isLiveSessionLeagueMismatch(null, 'Mirage')).toBe(false);
+    expect(isLiveSessionLeagueMismatch('live', 'Mirage')).toBe(false);
   });
 });

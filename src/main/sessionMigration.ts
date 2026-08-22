@@ -464,7 +464,17 @@ async function writeRepositoryRecords(
     .sort();
   await writeExclusiveSynced(paths.index, Buffer.from(`${indexLines.join('\n')}\n`, 'utf8'));
   await writeExclusiveSynced(paths.readme, Buffer.from(
-    'WraeclastLedger repository\n\nCopy this complete folder for backup. Recover through the app; do not hand-edit authoritative .wlrec files.\n',
+    [
+      'WraeclastLedger data repository',
+      '',
+      'Copy this complete ledger-data folder to back up all user-authored app state.',
+      'Recover through WraeclastLedger; do not hand-edit authoritative .wlrec files.',
+      '',
+      '.wlrec files are framed text: line 1 is a JSON integrity header and every remaining UTF-8 byte is the exact JSON body.',
+      'INDEX.txt maps readable session IDs and names to their hashed directories.',
+      'current.bak files are internal crash-recovery candidates, not user-managed version history.',
+      '',
+    ].join('\n'),
     'utf8',
   ));
 }
@@ -683,8 +693,9 @@ function result(root: string, resumed: boolean): LegacyMigrationResult {
     status: 'complete',
     root,
     resumed,
-    // Phase 3 never removes these keys. Phase 4 may do so only after a second
-    // semantic bootstrap verification against a complete repository marker.
+    // The migrator never removes browser keys. Phase 4's renderer does so only
+    // after a second semantic bootstrap verification against this complete
+    // repository marker.
     legacyCleanupKeys: [
       LEGACY_STORE_STORAGE_KEY,
       LEGACY_LAYOUT_STORAGE_KEY,
@@ -694,9 +705,9 @@ function result(root: string, resumed: boolean): LegacyMigrationResult {
 }
 
 /**
- * Build and fully verify a repository inside a cloned profile. This module is
- * intentionally unregistered in Phase 3: no production main/preload/renderer
- * entry point calls it, and it never mutates browser storage.
+ * Build and fully verify a repository inside the caller-supplied profile. The
+ * Phase 4 production repository invokes this only with a renderer-authored
+ * migration plan; it never mutates browser storage itself.
  */
 export async function migrateLegacyProfileClone(
   options: LegacyMigrationOptions,

@@ -6,13 +6,28 @@ import { useDisclosure, useElementSize } from '@mantine/hooks';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { DEFAULT_SETTINGS, useSessionKeys, useSessionStore } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
-import { IconTrash, IconPencil, IconDeviceFloppy, IconShare2, IconBrandDiscord, IconDownload, IconUpload, IconX, IconArrowsLeftRight, IconCheck } from '@tabler/icons-react';
+import { IconTrash, IconPencil, IconDeviceFloppy, IconShare2, IconBrandDiscord, IconDownload, IconUpload, IconX, IconArrowsLeftRight, IconCheck, IconFolderOpen, IconRefresh } from '@tabler/icons-react';
 import type { SavedSession } from '../types';
 import { SessionCompareModal } from '../components/SessionCompareModal';
 import { CollapsibleSection } from '../components/ui/CollapsibleSection';
 import { WorkingSessionGuardModal } from '../components/WorkingSessionGuardModal';
 import { isWorkingSessionMeaningful } from '../utils/workingSession';
 import { usePanelMaximized } from '../layout/panelLayoutContext';
+import {
+  deleteNamed,
+  exportRepositorySessions,
+  forkCurrentToConfirmedLeague,
+  importRepositoryDocument,
+  loadNamed,
+  nameCurrent,
+  openRepositoryFolder,
+  renameNamed,
+  resumeCurrent,
+  retryRepositorySave,
+  startWorking,
+} from '../repository/sessionRepositoryRuntime';
+import { SESSION_REPOSITORY_MAX_IMPORT_BYTES } from '../../../shared/sessionRepositoryIpc';
+import { confirmedLeagueSync } from '../utils/league';
 
 const TILE_STYLES = { inner: { width: '100%' }, label: { flex: 1, textAlign: 'center' as const } };
 
@@ -22,16 +37,15 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
   const { ref: panelRef, width: panelWidth } = useElementSize();
   const compactPanel = panelWidth > 0 && panelWidth < 285;
   const {
-    maps, savedSessions, activeSessionId, activeSessionName,
-    saveAsNewSession, loadSession, deleteSession, renameSession, newSession,
-    importSessions,
+    maps, settings, repositorySessions, activeSessionId, activeSessionName,
+    repositorySizeBytes, saveStatus, saveError, sessionLifecycle, liveSessionId,
   } = useSessionKeys(
-    'maps', 'savedSessions', 'activeSessionId', 'activeSessionName',
-    'saveAsNewSession', 'loadSession', 'deleteSession', 'renameSession', 'newSession',
-    'importSessions',
+    'maps', 'settings', 'repositorySessions', 'activeSessionId', 'activeSessionName',
+    'repositorySizeBytes', 'saveStatus', 'saveError', 'sessionLifecycle', 'liveSessionId',
   );
 
   const [saveOpen,   { open: openSave,   close: closeSave   }] = useDisclosure(false);
+  const [forkOpen,   { open: openFork,   close: closeFork   }] = useDisclosure(false);
   const [renameOpen, { open: openRename, close: closeRename }] = useDisclosure(false);
   const [bulkDeleteOpen, { open: openBulkDelete, close: closeBulkDelete }] = useDisclosure(false);
   const [importOpen, { open: openImport, close: closeImport }] = useDisclosure(false);
@@ -51,37 +65,56 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
   const [importData, setImportData] = useState<SavedSession[] | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [conflictMode, setConflictMode] = useState<'skip' | 'overwrite'>('skip');
+  const [operationError, setOperationError] = useState<string | null>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (flashTimer.current) clearTimeout(flashTimer.current); }, []); // clear pending flash on unmount
 
   const sessionEntries = useMemo(() =>
-    Object.values(savedSessions).sort(
+    [...repositorySessions].sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     ),
-  [savedSessions]);
+  [repositorySessions]);
+  const selectableSessionEntries = useMemo(
+    () => sessionEntries.filter(({ status }) => status === 'ready'),
+    [sessionEntries],
+  );
 
-  const storageMB = useMemo(() => {
+  const storageMB = (repositorySizeBytes / 1024 / 1024).toFixed(2);
+  const sessionMapCount = (session: typeof sessionEntries[number]): number =>
+    typeof session.summary.mapCount === 'number' ? session.summary.mapCount : 0;
+
+  const runOperation = async (action: () => Promise<void>, onSuccess?: () => void): Promise<void> => {
+    setOperationError(null);
     try {
-      const raw = localStorage.getItem('map-tracker-storage') ?? '';
-      return (new Blob([raw]).size / 1024 / 1024).toFixed(2);
-    } catch { return '?'; }
-  }, [savedSessions]);
-
-  const performSwitch = (target: string) => {
-    if (target === '__new__') newSession();
-    else loadSession(target);
+      await action();
+      onSuccess?.();
+    } catch (error: unknown) {
+      setOperationError(error instanceof Error ? error.message : 'The repository operation failed.');
+    }
   };
 
-  // Named sessions auto-save. Unnamed working state must be explicitly saved
-  // or discarded before every replacement path.
+  const performSwitch = async (target: string): Promise<void> => {
+    if (target === '__new__') await startWorking(true);
+    else await loadNamed(target);
+  };
+
+  const returnToLive = async (): Promise<void> => {
+    if (liveSessionId) await loadNamed(liveSessionId);
+    else await startWorking();
+  };
+
+  // Peeking at a named session preserves the live working target. Only a
+  // deliberate new-live-session transition can replace the working slot.
   const requestSwitch = (target: string) => {
-    if (isWorkingSessionMeaningful(useSessionStore.getState(), DEFAULT_SETTINGS)) {
+    const current = useSessionStore.getState();
+    if (target === '__new__' && current.activeSessionId === null &&
+        isWorkingSessionMeaningful(current, DEFAULT_SETTINGS)) {
       setPendingSwitch(target);
       setNameInput('');
       openSwitchGuard();
     } else {
-      performSwitch(target);
+      void runOperation(() => performSwitch(target));
     }
   };
 
@@ -90,19 +123,22 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
     requestSwitch(val && val !== '__new__' ? val : '__new__');
   };
 
-  const doSaveAndSwitch = () => {
+  const doSaveAndSwitch = async () => {
     const name = nameInput.trim();
     if (!name || pendingSwitch === null) return;
-    saveAsNewSession(name);       // persist the current work under a name
-    performSwitch(pendingSwitch); // then navigate to the requested session
-    setNameInput('');
-    setPendingSwitch(null);
-    closeSwitchGuard();
+    await runOperation(async () => {
+      await nameCurrent(name);
+      await performSwitch(pendingSwitch);
+    }, () => {
+      setNameInput('');
+      setPendingSwitch(null);
+      closeSwitchGuard();
+    });
   };
 
   const doDiscardAndSwitch = () => {
     if (pendingSwitch === null) return;
-    performSwitch(pendingSwitch);
+    void runOperation(() => performSwitch(pendingSwitch));
     setPendingSwitch(null);
     closeSwitchGuard();
   };
@@ -121,20 +157,15 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
   };
 
   const toggleSelectAll = () => {
-    if (selected.size === sessionEntries.length) setSelected(new Set());
-    else setSelected(new Set(sessionEntries.map((s) => s.id)));
+    if (selected.size === selectableSessionEntries.length) setSelected(new Set());
+    else setSelected(new Set(selectableSessionEntries.map((s) => s.id)));
   };
 
   const clearSelection = () => setSelected(new Set());
 
   // ── Export selected ────────────────────────────────────────────────────────
-  const handleExport = () => {
-    const toExport = sessionEntries.filter((s) => selected.has(s.id));
-    const payload = JSON.stringify({
-      version: '1.0',
-      exportedAt: new Date().toISOString(),
-      sessions: toExport,
-    }, null, 2);
+  const handleExport = async () => {
+    const payload = await exportRepositorySessions(sessionEntries.filter((s) => selected.has(s.id)).map(({ id }) => id));
     const blob = new Blob([payload], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -148,16 +179,25 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > SESSION_REPOSITORY_MAX_IMPORT_BYTES) {
+      setImportError('This backup is larger than the supported 32 MB import limit.');
+      setImportData(null);
+      openImport();
+      e.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
         const parsed = JSON.parse(ev.target?.result as string);
-        const sessions: SavedSession[] = parsed.sessions ?? (Array.isArray(parsed) ? parsed : null);
-        if (!sessions || !Array.isArray(sessions) || sessions.length === 0) {
+        const sessions: unknown = parsed?.sessions ?? (Array.isArray(parsed) ? parsed : null);
+        if (!Array.isArray(sessions) || sessions.length === 0 || sessions.length > 10_000 ||
+            !sessions.every((session) => session && typeof session === 'object' &&
+              typeof session.id === 'string' && typeof session.name === 'string' && Array.isArray(session.maps))) {
           setImportError('No valid sessions found in this file.');
           setImportData(null);
         } else {
-          setImportData(sessions);
+          setImportData(sessions as SavedSession[]);
           setImportError(null);
         }
       } catch {
@@ -171,18 +211,22 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
     e.target.value = '';
   };
 
-  const handleConfirmImport = () => {
+  const handleConfirmImport = async () => {
     if (!importData) return;
-    importSessions(importData, conflictMode);
+    await importRepositoryDocument(JSON.stringify({ version: '1.0', sessions: importData }), conflictMode);
     setImportData(null);
     closeImport();
   };
 
   const conflictCount = importData
-    ? importData.filter((s) => !!savedSessions[s.id]).length
+    ? importData.filter((s) => repositorySessions.some(({ id }) => id === s.id)).length
     : 0;
 
   const isUnsaved = !activeSessionId;
+  const confirmedLeague = confirmedLeagueSync();
+  const crossLeague = sessionLifecycle === 'historical' && !!confirmedLeague &&
+    !!settings.leagueName.trim() && settings.leagueName !== confirmedLeague;
+  const hasDistinctLiveTarget = sessionLifecycle === 'historical' && activeSessionId !== liveSessionId;
   const flashSaved = () => {
     setSavedFlash(true);
     if (flashTimer.current) clearTimeout(flashTimer.current);
@@ -193,16 +237,45 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
   return (
     <>
       {/* ── Save modal ── */}
-      <Modal opened={saveOpen} onClose={closeSave} title="Save Session" size="sm">
+      <Modal opened={saveOpen} onClose={closeSave} title={isUnsaved ? 'Name Session' : 'Duplicate Session'} size="sm">
         <Stack gap="sm">
           <TextInput label="Session Name" placeholder="e.g. T16 Deli — 72 maps"
             value={nameInput} onChange={(e) => setNameInput(e.currentTarget.value)}
-            onKeyDown={(e) => e.key === 'Enter' && nameInput.trim() && (saveAsNewSession(nameInput.trim()), setNameInput(''), closeSave(), flashSaved())}
+            onKeyDown={(e) => e.key === 'Enter' && nameInput.trim() && void runOperation(
+              () => nameCurrent(nameInput.trim()),
+              () => { setNameInput(''); closeSave(); flashSaved(); },
+            )}
             autoFocus />
           <Group justify="flex-end">
             <Button variant="default" onClick={closeSave}>Cancel</Button>
-            <Button onClick={() => { saveAsNewSession(nameInput.trim()); setNameInput(''); closeSave(); flashSaved(); }}
+            <Button onClick={() => { void runOperation(
+              () => nameCurrent(nameInput.trim()),
+              () => { setNameInput(''); closeSave(); flashSaved(); },
+            ); }}
               disabled={!nameInput.trim()}>Save</Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal opened={forkOpen} onClose={closeFork}
+        title={`Fork into ${confirmedLeague ?? 'current league'}`} size="sm">
+        <Stack gap="sm">
+          <Text size="sm" c="dimmed">
+            This creates a new live copy and updates only the copy&apos;s league provenance. The original historical session remains unchanged.
+          </Text>
+          <TextInput label="New session name" value={nameInput}
+            onChange={(event) => setNameInput(event.currentTarget.value)}
+            onKeyDown={(event) => event.key === 'Enter' && nameInput.trim() && void runOperation(
+              () => forkCurrentToConfirmedLeague(nameInput.trim()),
+              () => { setNameInput(''); closeFork(); },
+            )}
+            autoFocus />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={closeFork}>Cancel</Button>
+            <Button disabled={!nameInput.trim()} onClick={() => { void runOperation(
+              () => forkCurrentToConfirmedLeague(nameInput.trim()),
+              () => { setNameInput(''); closeFork(); },
+            ); }}>Fork session</Button>
           </Group>
         </Stack>
       </Modal>
@@ -212,11 +285,17 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
         <Stack gap="sm">
           <TextInput label="New Name" value={nameInput}
             onChange={(e) => setNameInput(e.currentTarget.value)}
-            onKeyDown={(e) => e.key === 'Enter' && nameInput.trim() && activeSessionId && (renameSession(activeSessionId, nameInput.trim()), setNameInput(''), closeRename())}
+            onKeyDown={(e) => e.key === 'Enter' && nameInput.trim() && activeSessionId && void runOperation(
+              () => renameNamed(activeSessionId, nameInput.trim()),
+              () => { setNameInput(''); closeRename(); },
+            )}
             autoFocus />
           <Group justify="flex-end">
             <Button variant="default" onClick={closeRename}>Cancel</Button>
-            <Button onClick={() => { if (activeSessionId) renameSession(activeSessionId, nameInput.trim()); setNameInput(''); closeRename(); }}
+            <Button onClick={() => { if (activeSessionId) void runOperation(
+              () => renameNamed(activeSessionId, nameInput.trim()),
+              () => { setNameInput(''); closeRename(); },
+            ); }}
               disabled={!nameInput.trim()}>Rename</Button>
           </Group>
         </Stack>
@@ -226,17 +305,17 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
       <Modal opened={deleteTarget !== null} onClose={() => setDeleteTarget(null)} title="Delete Session" size="sm">
         <Stack gap="sm">
           <Text size="sm">
-            Permanently delete <Text span fw={700}>{deleteTarget ? savedSessions[deleteTarget]?.name : ''}</Text>? This cannot be undone.
+            Move <Text span fw={700}>{deleteTarget ? repositorySessions.find(({ id }) => id === deleteTarget)?.name : ''}</Text> to Recently Deleted?
           </Text>
           <Group justify="flex-end">
             <Button variant="default" onClick={() => setDeleteTarget(null)}>Cancel</Button>
             <Button color="red" onClick={() => {
               if (deleteTarget) {
-                deleteSession(deleteTarget);
+                void runOperation(() => deleteNamed(deleteTarget));
                 setSelected((prev) => { const next = new Set(prev); next.delete(deleteTarget); return next; }); // prune stale selection id
               }
               setDeleteTarget(null);
-            }}>Delete</Button>
+            }}>Move</Button>
           </Group>
         </Stack>
       </Modal>
@@ -245,15 +324,16 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
       <Modal opened={bulkDeleteOpen} onClose={closeBulkDelete} title="Delete Sessions" size="sm">
         <Stack gap="sm">
           <Text size="sm">
-            Permanently delete <Text span fw={700}>{selected.size} session{selected.size !== 1 ? 's' : ''}</Text>? This cannot be undone.
+            Move <Text span fw={700}>{selected.size} session{selected.size !== 1 ? 's' : ''}</Text> to Recently Deleted?
           </Text>
           <Group justify="flex-end">
             <Button variant="default" onClick={closeBulkDelete}>Cancel</Button>
-            <Button color="red" onClick={() => {
-              selected.forEach((id) => deleteSession(id));
+            <Button color="red" onClick={() => { void runOperation(async () => {
+              for (const id of selected) await deleteNamed(id);
+            }, () => {
               clearSelection();
               closeBulkDelete();
-            }}>
+            }); }}>
               Delete {selected.size}
             </Button>
           </Group>
@@ -271,7 +351,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
               <ScrollArea mah={200}>
                 <Stack gap={4}>
                   {importData.map((s) => {
-                    const exists = !!savedSessions[s.id];
+                    const exists = repositorySessions.some(({ id }) => id === s.id);
                     return (
                       <Group key={s.id} justify="space-between" wrap="nowrap">
                         <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
@@ -297,7 +377,8 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
               )}
               <Group justify="flex-end">
                 <Button variant="default" onClick={() => { closeImport(); setImportData(null); }}>Cancel</Button>
-                <Button color="teal" leftSection={<IconUpload size={12} />} onClick={handleConfirmImport}>
+                <Button color="teal" leftSection={<IconUpload size={12} />}
+                  onClick={() => { void runOperation(handleConfirmImport); }}>
                   Import {conflictMode === 'skip' ? importData.length - conflictCount : importData.length} session{importData.length !== 1 ? 's' : ''}
                 </Button>
               </Group>
@@ -306,7 +387,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
         </Stack>
       </Modal>
 
-      {/* ── Unsaved-session guard (no manual save button; auto-save only covers named sessions) ── */}
+      {/* The working slot is durable too; this guard decides identity/replacement. */}
       <WorkingSessionGuardModal
         opened={switchGuardOpen}
         mapCount={maps.length}
@@ -334,27 +415,81 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
         style={{ background: embedded ? 'transparent' : undefined, overflow: embedded ? 'visible' : 'auto' }}
       >
         <Stack gap={isMaximized ? 10 : 6}>
+          {operationError && (
+            <Alert color="red" variant="light" p="xs" withCloseButton
+              onClose={() => setOperationError(null)}>
+              <Text size="xs">{operationError}</Text>
+            </Alert>
+          )}
+          {sessionLifecycle === 'historical' && (
+            <Alert color="yellow" variant="light" p="xs"
+              title={crossLeague ? 'Previous-league session' : 'Historical session'}>
+              <Stack gap={6}>
+                <Text size="xs">
+                  {crossLeague
+                    ? `This session belongs to ${settings.leagueName}. Capture and automatic repricing stay paused while ${confirmedLeague} is active.`
+                    : 'Capture is paused while you inspect this session. Resume it to make it the live capture target.'}
+                </Text>
+                <Group gap={6}>
+                  {hasDistinctLiveTarget && (
+                    <Button size="compact-xs" variant="light"
+                      onClick={() => { void runOperation(returnToLive); }}>Return to live session</Button>
+                  )}
+                  {crossLeague ? (
+                    <>
+                      <Button size="compact-xs" variant="default"
+                        onClick={() => requestSwitch('__new__')}>Start new session</Button>
+                      <Button size="compact-xs" variant="light"
+                        onClick={() => {
+                          setNameInput(`${activeSessionName ?? 'Session'} — ${confirmedLeague}`);
+                          openFork();
+                        }}>Fork into {confirmedLeague}</Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button size="compact-xs" variant="light"
+                        onClick={() => { void runOperation(resumeCurrent); }}>Resume session</Button>
+                      <Button size="compact-xs" variant="default"
+                        onClick={() => requestSwitch('__new__')}>Start new session</Button>
+                    </>
+                  )}
+                </Group>
+              </Stack>
+            </Alert>
+          )}
           <Group justify="space-between" gap={6} wrap="nowrap">
-            {/* Storage indicator lives LEFT (Sad 2026-07-06: balance — right side
-                already carries the save-state badge). An "open save location"
-                folder icon is deliberately DEFERRED to WP14: sessions live in
-                localStorage (a LevelDB blob inside userData), so today the
-                folder contains nothing user-usable — the icon lands when
-                sessions-as-files makes it truthful. */}
-            <Tooltip label="Total localStorage used by WraeclastLedger" position="right" withArrow>
-              <Text size={isMaximized ? 'sm' : 'xs'} c={parseFloat(storageMB) > 4 ? 'orange' : 'dimmed'} style={{ cursor: 'default' }}>
-                {storageMB} MB
-              </Text>
+            {/* Storage indicator lives left; the folder is the complete
+                user-authored ledger-data backup unit. */}
+            <Group gap={4} wrap="nowrap">
+              <Tooltip label="Complete ledger-data backup size" position="right" withArrow>
+                <Text size={isMaximized ? 'sm' : 'xs'} c="dimmed" style={{ cursor: 'default' }}>{storageMB} MB</Text>
+              </Tooltip>
+              <Tooltip label="Open complete data folder" withArrow>
+                <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Open data folder"
+                  onClick={() => { void runOperation(openRepositoryFolder); }}>
+                  <IconFolderOpen size={12} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+            <Tooltip label={saveError ?? 'The latest acknowledged filesystem save'} position="left" withArrow>
+              <Badge
+                color={saveStatus === 'failed' ? 'red' : saveStatus === 'saving' ? 'yellow' : 'green'}
+                variant="dot"
+                size={isMaximized ? 'md' : 'sm'}
+              >
+                {saveStatus === 'failed' ? 'Save failed' : saveStatus === 'saving' ? 'Saving' : 'Auto-saved'}
+              </Badge>
             </Tooltip>
-            {isUnsaved
-              ? <Badge color="orange" variant="dot" size={isMaximized ? 'md' : 'sm'}>Unsaved</Badge>
-              : (
-                <Tooltip label="Changes to this session are saved automatically" position="left" withArrow>
-                  <Badge color="green" variant="dot" size={isMaximized ? 'md' : 'sm'}>Auto-saved</Badge>
-                </Tooltip>
-              )
-            }
           </Group>
+          {saveStatus === 'failed' && (
+            <Alert color="red" variant="light" p="xs">
+              <Group justify="space-between" wrap="nowrap">
+                <Text size="xs" lineClamp={2}>{saveError ?? 'The latest changes were not saved.'}</Text>
+                <Button size="compact-xs" variant="default" leftSection={<IconRefresh size={11} />}
+                  onClick={() => { void runOperation(retryRepositorySave); }}>Retry</Button>
+              </Group>
+            </Alert>
+          )}
           <Group gap={4} wrap="nowrap" align="center">
             <Select
               style={{ flex: 1, minWidth: 0 }}
@@ -362,7 +497,8 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
                 { value: '__new__', label: '— New Session —' },
                 ...sessionEntries.map((s) => ({
                   value: s.id,
-                  label: `${s.name} (${s.maps.length} maps, ${new Date(s.createdAt).toLocaleDateString()})`,
+                  label: `${s.name}${s.status === 'ready' ? '' : ` — ${s.status}`} (${sessionMapCount(s)} maps, ${new Date(s.createdAt).toLocaleDateString()})`,
+                  disabled: s.status !== 'ready',
                 })),
               ]}
               value={activeSessionId ?? '__new__'}
@@ -398,15 +534,15 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
               rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
               styles={TILE_STYLES}
               onClick={() => { setNameInput(''); openSave(); }}>
-              {savedFlash ? 'Saved' : compactPanel ? 'Save' : 'Save as'}
+              {savedFlash ? 'Named' : isUnsaved ? (compactPanel ? 'Name' : 'Name session') : (compactPanel ? 'Duplicate' : 'Duplicate as new')}
             </Button>
-            <Tooltip label={sessionEntries.length < 2 ? 'Save at least 2 sessions to compare' : 'Compare 2-3 saved sessions side by side'} withArrow>
+            <Tooltip label={selectableSessionEntries.length < 2 ? 'Save at least 2 sessions to compare' : 'Compare 2-3 saved sessions side by side'} withArrow>
               <span style={{ display: 'flex', flex: 1 }}>
                 <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
                   leftSection={<IconArrowsLeftRight size={12} />}
                   rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
                   styles={TILE_STYLES}
-                  disabled={sessionEntries.length < 2}
+                  disabled={selectableSessionEntries.length < 2}
                   onClick={openCompare} style={{ flex: 1 }}>
                   Compare
                 </Button>
@@ -442,7 +578,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
                   <Text size={isMaximized ? 'sm' : 'xs'} c="dimmed" style={{ flex: 1 }}>{selected.size} selected</Text>
                   <Tooltip label="Export selected as JSON" withArrow>
                     <Button size={isMaximized ? 'sm' : 'xs'} variant="default" leftSection={<IconDownload size={11} />}
-                      onClick={handleExport}>
+                      onClick={() => { void runOperation(handleExport); }}>
                       Export
                     </Button>
                   </Tooltip>
@@ -462,8 +598,9 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
               <Group gap={6} justify="space-between">
                 <Group gap={6}>
                   <Checkbox size={isMaximized ? 'sm' : 'xs'}
-                    checked={selected.size === sessionEntries.length && sessionEntries.length > 0}
-                    indeterminate={selected.size > 0 && selected.size < sessionEntries.length}
+                    checked={selected.size === selectableSessionEntries.length && selectableSessionEntries.length > 0}
+                    indeterminate={selected.size > 0 && selected.size < selectableSessionEntries.length}
+                    disabled={selectableSessionEntries.length === 0}
                     onChange={toggleSelectAll} />
                   <Text size={isMaximized ? 'sm' : 'xs'} c="dimmed">Select all</Text>
                 </Group>
@@ -494,16 +631,23 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
                         transition: 'background 120ms ease',
                       }}>
                       <Checkbox size={isMaximized ? 'sm' : 'xs'} checked={isSelected}
+                        disabled={s.status !== 'ready'}
                         onChange={() => toggleSelect(s.id)} style={{ flexShrink: 0 }} />
                       <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
-                        <Text size={isMaximized ? 'sm' : 'xs'} fw={600} lineClamp={1}>{s.name}</Text>
-                        <Text size={isMaximized ? 'sm' : 'xs'} c="dimmed">{s.maps.length} maps · {new Date(s.createdAt).toLocaleDateString()}</Text>
+                        <Group gap={4} wrap="nowrap">
+                          <Text size={isMaximized ? 'sm' : 'xs'} fw={600} lineClamp={1}>{s.name}</Text>
+                          {s.status !== 'ready' && (
+                            <Badge size="xs" color="red" variant="light">{s.status}</Badge>
+                          )}
+                        </Group>
+                        <Text size={isMaximized ? 'sm' : 'xs'} c="dimmed">{sessionMapCount(s)} maps · {new Date(s.createdAt).toLocaleDateString()}</Text>
                       </Stack>
                       <Group gap={4} wrap="nowrap">
                         <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
                           styles={{ root: { opacity: isHovered ? 1 : 0, transition: 'opacity 120ms ease' } }}
                           onFocus={() => setHoveredRowId(s.id)}
                           onBlur={() => setHoveredRowId(null)}
+                          disabled={s.status !== 'ready'}
                           onClick={() => requestSwitch(s.id)}>Load</Button>
                         <ActionIcon size={isMaximized ? 'lg' : 'md'} variant="default" aria-label={`Delete session ${s.name}`}
                           onMouseEnter={() => setHoveredTrashId(s.id)}

@@ -39,14 +39,15 @@ describe('WP14 repository IPC request contract', () => {
   it.each([
     { operation: 'bootstrap' },
     { operation: 'list' },
-    { operation: 'load', target: { kind: 'working' } },
+    { operation: 'load', target: { kind: 'working' }, mode: 'inspect' },
     { operation: 'save', target: { kind: 'session', sessionId: 'session-1' }, expectedGeneration: 2, payload: { maps: [] } },
     { operation: 'save', target: { kind: 'new', name: 'New session' }, expectedGeneration: null, payload: { maps: [] } },
+    { operation: 'save', target: { kind: 'working' }, expectedGeneration: 2, payload: { maps: [] }, replacement: true },
     { operation: 'rename', sessionId: 'session-1', name: 'Renamed', expectedGeneration: 2 },
     { operation: 'delete', sessionId: 'session-1', expectedGeneration: 2 },
     { operation: 'history-list', target: { kind: 'session', sessionId: 'session-1' } },
     { operation: 'history-restore', target: { kind: 'working' }, checkpointId: 'checkpoint-1', expectedGeneration: 2 },
-    { operation: 'import', document: '{"version":1}' },
+    { operation: 'import', document: '{"version":1}', conflictMode: 'skip' },
     { operation: 'export', sessionIds: ['session-1'] },
     { operation: 'retry', operationId: 'operation-1' },
     { operation: 'open-data-folder' },
@@ -71,6 +72,10 @@ describe('WP14 repository IPC request contract', () => {
     expect(() => parseSessionRepositoryRequest({
       operation: 'delete', sessionId: 'session-1', expectedGeneration: -1,
     })).toThrow('non-negative integer');
+    expect(() => parseSessionRepositoryRequest({
+      operation: 'save', target: { kind: 'session', sessionId: 'session-1' },
+      expectedGeneration: 1, payload: {}, replacement: true,
+    })).toThrow('valid only for a working-session save');
   });
 });
 
@@ -85,6 +90,7 @@ describe('WP14 repository IPC response and error contract', () => {
       ok: true,
       operation: 'list',
       data: {
+        repositorySizeBytes: 123,
         sessions: [{
           id: 'session-1',
           name: 'Session One',
@@ -92,6 +98,7 @@ describe('WP14 repository IPC response and error contract', () => {
           updatedAt: '2026-08-22T10:01:00.000Z',
           generation: 1,
           summary: {},
+          status: 'ready',
         }],
       },
     })).not.toThrow();
@@ -112,6 +119,7 @@ describe('WP14 repository IPC response and error contract', () => {
       ok: true,
       operation: 'list',
       data: {
+        repositorySizeBytes: 123,
         sessions: [{
           id: 'session-1',
           name: 'Session One',
@@ -119,6 +127,7 @@ describe('WP14 repository IPC response and error contract', () => {
           updatedAt: '2026-08-22T10:01:00.000Z',
           generation: 1,
           summary: {},
+          status: 'ready',
         }],
       },
     })).toThrow('UTC ISO timestamp');

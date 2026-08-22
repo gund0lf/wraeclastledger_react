@@ -14,6 +14,7 @@ import { FONT } from './utils/uiTokens';
 import { migrateDefaultSetupSidebarJson, migratePersistedLayout } from './utils/layoutMigration';
 import { MaximizedPanelProvider } from './layout/MaximizedPanelProvider';
 import { maximizedPanelComponent, setupSidebarCollapsed } from './layout/panelLayoutState';
+import { retryRepositorySave, saveRepositoryLayout } from './repository/sessionRepositoryRuntime';
 
 // APP_VERSION imported from UpdateBanner.tsx — single source of truth
 // window.electron and window.api are declared in src/preload/index.d.ts — no redeclaration needed here.
@@ -35,16 +36,13 @@ const ALL_PANELS = [
   { component: 'notes',            name: 'Notes' },
 ];
 
-const LAYOUT_STORAGE_KEY = 'wraeclast-layout-v1';
-
-function App(): JSX.Element {
+function App({ initialLayoutRawValue }: { initialLayoutRawValue: string | null }): JSX.Element {
   const [initialLayout] = useState(() => {
     let m: Model;
     let setupSidebarMigrated = false;
     try {
-      const saved = localStorage.getItem(LAYOUT_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
+      if (initialLayoutRawValue) {
+        const parsed = JSON.parse(initialLayoutRawValue);
         setupSidebarMigrated = migrateDefaultSetupSidebarJson(parsed);
         m = Model.fromJson(parsed);
       } else {
@@ -55,16 +53,7 @@ function App(): JSX.Element {
     }
     const persistedLayoutMigrated = migratePersistedLayout(m);
     const migrated = setupSidebarMigrated || persistedLayoutMigrated;
-    let migrationSaveFailed = false;
-    if (migrated) {
-      try {
-        localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(m.toJson()));
-      } catch {
-        console.error('[App] migrated layout could not be saved — localStorage quota exceeded');
-        migrationSaveFailed = true;
-      }
-    }
-    return { model: m, migrationSaveFailed };
+    return { model: m, migrated };
   });
   const model = initialLayout.model;
   // FlexLayout mutates its Model in place. Updating this otherwise-unused state
@@ -73,11 +62,22 @@ function App(): JSX.Element {
   const maximizedPanel = maximizedPanelComponent(model);
   const isSetupSidebarCollapsed = setupSidebarCollapsed(model);
   const [checking, setChecking] = useState(false);
-  const [quotaError, setQuotaError] = useState(initialLayout.migrationSaveFailed);
+  const [layoutError, setLayoutError] = useState<string | null>(null);
+  const repositorySaveError = useSessionStore((state) => state.saveError);
   const [gameDataStatus, setGameDataStatus] = useState(getGameDataStatus);
 
   const addMapRef      = useRef(useSessionStore.getState().addMap);
   const isWatchingRef  = useRef(useSessionStore.getState().isWatching);
+
+  useEffect(() => {
+    if (initialLayout.migrated) {
+      void saveRepositoryLayout(JSON.stringify(model.toJson()))
+        .then(() => setLayoutError(null))
+        .catch((error) => {
+          setLayoutError(error instanceof Error ? error.message : String(error));
+        });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     // Game-data manifest: adopt a newer cached revision if one exists
@@ -178,8 +178,9 @@ function App(): JSX.Element {
             })}
             <Menu.Divider />
             <Menu.Item color="red" onClick={() => {
-              localStorage.removeItem(LAYOUT_STORAGE_KEY);
-              window.location.reload();
+              void saveRepositoryLayout(JSON.stringify(defaultLayout))
+                .then(() => window.location.reload())
+                .catch((error) => setLayoutError(error instanceof Error ? error.message : String(error)));
             }}>Reset layout to default</Menu.Item>
           </Menu.Dropdown>
         </Menu>
@@ -233,27 +234,35 @@ function App(): JSX.Element {
             factory={factory}
             onModelChange={() => {
               setModelVersion((v) => v + 1);
-              try {
-                localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(model.toJson()));
-              } catch {
-                console.error('[App] localStorage quota exceeded — layout not saved');
-                setQuotaError(true);
-              }
+              void saveRepositoryLayout(JSON.stringify(model.toJson()))
+                .then(() => setLayoutError(null))
+                .catch((error) => {
+                  console.error('[App] layout file save failed:', error);
+                  setLayoutError(error instanceof Error ? error.message : String(error));
+                });
             }}
           />
         </MaximizedPanelProvider>
       </Box>
 
-      {/* Quota error banner */}
-      {quotaError && (
-        <Alert color="orange" variant="light" withCloseButton
-          onClose={() => setQuotaError(false)}
+      {(layoutError || repositorySaveError) && (
+        <Alert color="orange" variant="light"
           style={{ position: 'absolute', bottom: 32, right: 16, zIndex: 9999, maxWidth: 380 }}>
-          <Text size="xs" fw={600}>Storage quota exceeded</Text>
+          <Text size="xs" fw={600}>Save failed</Text>
           <Text size="xs" c="dimmed">
-            Layout changes couldn’t be saved — localStorage is full.
-            Delete old sessions in the Sessions panel to free space.
+            {layoutError ?? repositorySaveError}
           </Text>
+          {repositorySaveError ? (
+            <Button size="compact-xs" variant="default" mt={6}
+              onClick={() => {
+                void retryRepositorySave()
+                  .then(() => setLayoutError(null))
+                  .catch(() => undefined);
+              }}>Retry</Button>
+          ) : (
+            <Button size="compact-xs" variant="subtle" color="gray" mt={6}
+              onClick={() => setLayoutError(null)}>Dismiss</Button>
+          )}
         </Alert>
       )}
 

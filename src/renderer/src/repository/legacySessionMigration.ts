@@ -21,7 +21,7 @@ import {
   mergePersistedSessionState,
   migrateLegacyStore,
   useSessionStore,
-  type SessionState,
+  type SessionStoreState as SessionState,
 } from '../store/useSessionStore';
 import { normalizeLocalManualStatistics } from '../utils/manualStatistics';
 

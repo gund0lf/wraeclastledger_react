@@ -14,9 +14,8 @@ export interface SessionRepositoryIpcMain {
  * The factory takes an IPC-shaped port so its registration and teardown can be
  * tested without loading Electron in Vitest.
  *
- * Phase 2 deliberately does not call this from main/index.ts. Production
- * registration waits for the Phase 4 cutover, when every advertised operation
- * has a concrete implementation and the file repository becomes authoritative.
+ * Phase 4 registers this once from main/index.ts, after every advertised
+ * operation became concrete and the file repository became authoritative.
  */
 export function registerSessionRepositoryIpc(
   ipcMain: SessionRepositoryIpcMain,

@@ -4,12 +4,15 @@ import { IconChevronDown, IconChevronRight, IconX } from '@tabler/icons-react';
 import { CHANGELOG } from './utils/changelog';
 import { useUIStore } from './store/useUIStore';
 import pkg from '../../../package.json';
+import {
+  repositoryLastSeenVersion,
+  setRepositoryLastSeenVersion,
+} from './repository/sessionRepositoryRuntime';
 
 // WP3: single source of truth — electron-vite resolves the JSON import at
 // build time, so bumping package.json is the ONLY version bump needed
 // (plus the changelog entry).
 export const APP_VERSION: string = pkg.version;
-const SEEN_KEY = 'wraeclast-seen-version';
 
 const VersionEntry = ({ entry, defaultOpen }: { entry: typeof CHANGELOG[0]; defaultOpen: boolean }) => {
   const [open, setOpen] = useState(defaultOpen);
@@ -46,10 +49,10 @@ export const UpdateBanner = () => {
   const [upToDateFlash,  setUpToDateFlash]  = useState(false);
 
   useEffect(() => {
-    const seen = localStorage.getItem(SEEN_KEY);
+    const seen = repositoryLastSeenVersion();
     if (seen !== APP_VERSION) {
       setShowChangelog(true);
-      localStorage.setItem(SEEN_KEY, APP_VERSION);
+      setRepositoryLastSeenVersion(APP_VERSION);
     }
   }, []);
 

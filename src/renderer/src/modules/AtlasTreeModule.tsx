@@ -288,7 +288,7 @@ export const AtlasTreeModule = () => {
             // NEWER patch's ?v= — its point counts must never overwrite the
             // historical session's data. Same-league tree edits still
             // capture (a deliberate user action on their own session).
-            if (isCrossLeagueSession(st.activeSessionId, st.settings.leagueName)) {
+            if (isCrossLeagueSession(st.sessionLifecycle, st.settings.leagueName)) {
               console.log('[AtlasTree] point capture skipped — historical session');
               return;
             }

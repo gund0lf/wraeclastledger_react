@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { persist, type PersistStorage } from 'zustand/middleware';
 import { MapData, SessionSettings, LootItem, ManualLootItem, ManualSessionStatistics, SavedSession, ScarabSlot, ScarabPreset, RegexSet, ExclusionPreset, LeagueCloseouts } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { tryFetchDivinePrice, sanitizeExclusionTerms } from '../utils/priceUtils';
@@ -8,7 +7,7 @@ import { confirmedLeagueSync, getCurrentLeague, normalizeLeagueOverride, setLeag
 import { ModGroupState, cloneDefaultGroups } from '../utils/regexBuilderPresets';
 import { isRetrospectiveLeague, normalizeLeagueKey } from '../utils/retrospectives';
 import { MAP_DEVICE_SLOT_COUNT } from '../../../shared/mapDevice';
-import { LEGACY_STORE_VERSION } from '../../../shared/sessionMigration';
+import type { RepositorySessionSummary, SessionLifecycle } from '../../../shared/sessionRepositoryIpc';
 import {
   addManualAtlasAnomalyCount as addManualAtlasAnomalyCountValue,
   addManualMercenaryCount as addManualMercenaryCountValue,
@@ -24,6 +23,22 @@ import {
 
 /** Closed legacy-browser-store schema ceiling for the WP14 extraction path. */
 export { LEGACY_STORE_VERSION } from '../../../shared/sessionMigration';
+
+export interface SessionRepositoryActions {
+  flush: () => Promise<void>;
+  nameCurrent: (name: string) => Promise<void>;
+  loadNamed: (id: string) => Promise<void>;
+  deleteNamed: (id: string) => Promise<void>;
+  renameNamed: (id: string, name: string) => Promise<void>;
+  startWorking: () => Promise<void>;
+  importNamed: (sessions: SavedSession[], conflictMode: 'skip' | 'overwrite') => Promise<void>;
+}
+
+let repositoryActions: SessionRepositoryActions | null = null;
+
+export function configureSessionRepositoryActions(actions: SessionRepositoryActions | null): void {
+  repositoryActions = actions;
+}
 
 // WP4.2: divine price older than this is refreshed on the next init.
 const DIVINE_PRICE_STALE_MS = 30 * 60_000;
@@ -64,50 +79,11 @@ export const DEFAULT_SETTINGS: SessionSettings = {
 const DEFAULT_DISCORD_TAG = '';
 const DEFAULT_REGEX_SETS: RegexSet[] = [];
 
-// ── Debounced persist storage (write-amplification interim, pre-WP14) ───────
-// Zustand persist calls storage.setItem on EVERY set(). With createJSONStorage
-// the full store — including every saved session — was JSON.stringify'd and
-// written to localStorage per Notes keystroke / pause toggle (~1MB each).
-// This custom PersistStorage defers BOTH the stringify and the write: setItem
-// only stashes the latest state reference (immutable snapshot, so it stays
-// correct) and serialization happens once per debounce window / on flush.
-// WP14 (sessions-as-files) removes the need for this entirely.
-const PERSIST_DEBOUNCE_MS = 1000;
-let persistTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingPersist: { name: string; value: unknown } | null = null;
-
-/** Write any pending debounced persist immediately. Safe to call anytime. */
+/** Closed compatibility no-op. Phase 4 has no Zustand/localStorage writer. */
 export function flushPersist(): void {
-  if (persistTimer !== null) { clearTimeout(persistTimer); persistTimer = null; }
-  if (pendingPersist === null) return;
-  const { name, value } = pendingPersist;
-  pendingPersist = null;
-  try {
-    if (typeof localStorage !== 'undefined') localStorage.setItem(name, JSON.stringify(value));
-  } catch (e) {
-    // Surface loudly — a swallowed quota error here would mean silent data loss.
-    console.error('[Persist] localStorage write FAILED (quota?):', e);
-    throw e;
-  }
+  // Kept only so legacy migration tests and old imports fail closed instead of
+  // reaching for browser persistence after the files-authoritative cutover.
 }
-
-const debouncedStorage: PersistStorage<unknown> = {
-  getItem: (name) => {
-    if (typeof localStorage === 'undefined') return null;
-    const str = localStorage.getItem(name);
-    return str ? JSON.parse(str) : null;
-  },
-  setItem: (name, value) => {
-    pendingPersist = { name, value };
-    if (persistTimer !== null) clearTimeout(persistTimer);
-    persistTimer = setTimeout(() => { persistTimer = null; flushPersist(); }, PERSIST_DEBOUNCE_MS);
-  },
-  removeItem: (name) => {
-    if (persistTimer !== null) { clearTimeout(persistTimer); persistTimer = null; }
-    pendingPersist = null;
-    if (typeof localStorage !== 'undefined') localStorage.removeItem(name);
-  },
-};
 
 /** Strip rawText from a MapData before persisting — flags are materialised first so re-detection on load still works. */
 function stripRawText(m: MapData): MapData {
@@ -239,9 +215,8 @@ export function migrateLegacyStore(persisted: any): any {
   return { ...persisted, settings: merged as SessionSettings, savedSessions };
 }
 
-// Compatibility alias while localStorage remains the production authority.
-// Phase 4 removes the live persist path; migration callers should use the
-// deliberately named closed adapter above.
+// Closed compatibility alias for fixture/tests that still exercise the legacy
+// v18 adapter. It is not a forward repository migration axis.
 export const migrateState = migrateLegacyStore;
 
 export interface SessionState {
@@ -267,8 +242,8 @@ export interface SessionState {
   // top-level; a one-time v17 migration seeds a legacy live-session value.
   atlasBonusByLeague: Record<string, boolean>;
   // Local Personal-retrospective markers. The normalized league key is
-  // permanent cross-repo identity; session payloads remain in savedSessions
-  // and are never copied into this preference index.
+  // permanent cross-repo identity; session payloads remain in repository
+  // records and are never copied into this preference index.
   retrospectiveCloseouts: LeagueCloseouts;
   // Transient: a new live session was created before the active league was known,
   // so its Atlas Bonus still needs seeding once detection resolves — but only if
@@ -292,7 +267,6 @@ export interface SessionState {
   // to cloneDefaultGroups() for old stores (no migration needed).
   regexBuilderGroups: ModGroupState[];
   isWatching: boolean;
-  savedSessions: Record<string, SavedSession>;
   activeSessionId: string | null;
   activeSessionName: string | null;
   sessionNonce: number; // bumps on every newSession() so the UI can detect a fresh session even when activeSessionId stays null (unsaved -> unsaved)
@@ -319,6 +293,17 @@ export interface SessionState {
     runRegex: string; slamRegex?: string;
     mapType?: string;
   } | null;
+  repositoryStatus: 'dormant' | 'loading' | 'ready' | 'failed';
+  repositoryError: string | null;
+  repositorySessions: RepositorySessionSummary[];
+  repositorySizeBytes: number;
+  currentGeneration: number | null;
+  preferencesGeneration: number | null;
+  layoutGeneration: number | null;
+  saveStatus: 'idle' | 'saving' | 'saved' | 'failed';
+  saveError: string | null;
+  sessionLifecycle: SessionLifecycle;
+  liveSessionId: string | null;
 
   addMap: (map: Omit<MapData, 'id'>) => void;
   removeMap: (id: string) => void;
@@ -391,14 +376,22 @@ export interface SessionState {
   importSessions: (sessions: SavedSession[], conflictMode: 'skip' | 'overwrite') => void;
 }
 
+/** Closed v18 adapter data. Production repository code uses SessionState;
+ * only the migration/fixture compatibility store can see this collection. */
+export interface LegacySessionAdapterState {
+  savedSessions: Record<string, SavedSession>;
+}
+
+export type SessionStoreState = SessionState & LegacySessionAdapterState;
+
 /** Capture is a runtime device state, never a restart preference. Persist still
  * stores the unchanged wire object for compatibility, but hydration forcibly
  * resets the watcher before any component can ask the main process to start. */
 export function mergePersistedSessionState(
   persistedState: unknown,
-  currentState: SessionState,
-): SessionState {
-  const persisted = (persistedState ?? {}) as Partial<SessionState>;
+  currentState: SessionStoreState,
+): SessionStoreState {
+  const persisted = (persistedState ?? {}) as Partial<SessionStoreState>;
   return {
     ...currentState,
     ...persisted,
@@ -407,8 +400,7 @@ export function mergePersistedSessionState(
   };
 }
 
-export const useSessionStore = create<SessionState>()(
-  persist(
+export const useSessionStore = create<SessionStoreState>()(
     (set, get) => ({
       maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, manualLootItems: [], manualStatistics: {},
       settings: { ...DEFAULT_SETTINGS },
@@ -423,6 +415,9 @@ export const useSessionStore = create<SessionState>()(
       activeSessionId: null, activeSessionName: null, scarabPresets: [], sessionNonce: 0,
       divinePriceFetchedAt: 0,
       sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, onboardingDismissed: false, loadedStrategyInfo: null, defaultExclusionPreset: [], exclusionPresets: [],
+      repositoryStatus: 'dormant', repositoryError: null, repositorySessions: [], repositorySizeBytes: 0,
+      currentGeneration: null, preferencesGeneration: null, layoutGeneration: null,
+      saveStatus: 'idle', saveError: null, sessionLifecycle: 'live', liveSessionId: null,
 
       // parsedAt: WP9 Tier 0 — epoch ms timestamp on every parsed map (additive, no migration needed)
       addMap: (m) => set((s) => ({ maps: [...s.maps, { ...m, id: uuidv4(), parsedAt: Date.now() }] })),
@@ -430,7 +425,9 @@ export const useSessionStore = create<SessionState>()(
       undoLastMap: () => set((s) => ({ maps: s.maps.slice(0, -1) })),
       clearMaps: () => set({ maps: [] }),
       clearSession: () => set({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, manualLootItems: [], manualStatistics: {} }),
-      toggleWatch: () => set((s) => ({ isWatching: !s.isWatching })),
+      toggleWatch: () => set((s) => (
+        s.sessionLifecycle === 'live' ? { isWatching: !s.isWatching } : { isWatching: false }
+      )),
 
       updateSetting: (key, value) =>
         set((s) => {
@@ -539,15 +536,16 @@ export const useSessionStore = create<SessionState>()(
         // auto-refreshed — even days later. Now: fetch when the price is
         // unset/legacy OR the last successful fetch is older than 30 min.
         // `force` (manual refresh button) always fetches.
-        const { settings: st, divinePriceFetchedAt, activeSessionId } = get();
+        const { settings: st, divinePriceFetchedAt, activeSessionId, sessionLifecycle } = get();
         const requestedSessionId = activeSessionId;
+        const requestedLifecycle = sessionLifecycle;
         // Historical-session guard (Phase 1.5): a loaded saved session is
         // never auto-mutated — the audit found this exact path repricing AND
         // re-stamping the league of old sessions, with the WP10 auto-save
         // then persisting the corruption. Guarded HERE (store level) so no
         // UI surface can forget. `repriceLoaded` = the explicit, confirmed
         // "reprice this saved session" action, the only sanctioned override.
-        const loaded = activeSessionId !== null;
+        const loaded = sessionLifecycle === 'historical';
         if (loaded && !opts.repriceLoaded) return;
         // Resolve the league BEFORE applying price freshness. A price fetched
         // moments before a league boundary is fresh in time but stale in
@@ -565,15 +563,21 @@ export const useSessionStore = create<SessionState>()(
         // FETCH-FIRST safety: nothing is mutated unless the fetch succeeded
         // (a failed refresh preserves the old price everywhere).
         const price = await tryFetchDivinePrice(opts.force === true || leagueChanged);
+        const quotedAt = new Date().toISOString();
         set((s) => {
           const priceOk = !!(price && price > 0);
-          const stillLive = s.activeSessionId === null;
+          const stillLive = s.sessionLifecycle === 'live';
           // Ignore a response that completed after the user changed sessions.
-          if (s.activeSessionId !== requestedSessionId) return {};
+          if (s.activeSessionId !== requestedSessionId || s.sessionLifecycle !== requestedLifecycle) return {};
           const realLeague = confirmedLeagueSync();
           const sameOrUnstamped = !!realLeague && (
             !s.settings.leagueName || s.settings.leagueName === realLeague
           );
+          const provenanceMismatch = stillLive && !!realLeague &&
+            !!s.settings.leagueName.trim() && s.settings.leagueName !== realLeague;
+          if (provenanceMismatch) {
+            return { isWatching: false, sessionLifecycle: 'historical' as const };
+          }
           // Automatic price/provenance mutation fails closed: fallback/unknown
           // contexts and cross-league live sessions remain untouched. Explicit
           // loaded-session repricing is separately confirmed and never stamps.
@@ -603,9 +607,9 @@ export const useSessionStore = create<SessionState>()(
               : {}),
             settings: {
               ...s.settings,
-              ...(applyPrice && price ? { divinePrice: Math.round(price) } : {}),
-              // League is session PROVENANCE: only a live (unsaved) session is
-              // ever stamped by a fetch. A loaded session keeps its league.
+              ...(applyPrice && price ? { divinePrice: Math.round(price), divinePriceQuotedAt: quotedAt } : {}),
+              // League is session PROVENANCE: only a live session is ever
+              // stamped by a fetch. A historical view keeps its league.
               ...(stampLeague && realLeague ? { leagueName: realLeague } : {}),
               ...(doSeed && realLeague ? { atlasBonus: s.atlasBonusByLeague[realLeague] ?? false } : {}),
             },
@@ -613,13 +617,19 @@ export const useSessionStore = create<SessionState>()(
         });
       },
 
-      setDivinePriceManual: (v) =>
+      setDivinePriceManual: (v) => {
+        const now = Date.now();
         set((s) => ({
-          divinePriceFetchedAt: Date.now(),
-          settings: { ...s.settings, divinePrice: v },
-        })),
+          divinePriceFetchedAt: now,
+          settings: { ...s.settings, divinePrice: v, divinePriceQuotedAt: new Date(now).toISOString() },
+        }));
+      },
 
       saveAsNewSession: (name) => {
+        if (get().repositoryStatus === 'ready' && repositoryActions) {
+          void repositoryActions.nameCurrent(name);
+          return;
+        }
         flushActiveSessionAutoSave();
         const { maps, lootItems, baselineItems, baselineTotal, manualLootItems, manualStatistics, settings, sessionNotes, investmentNeutralization, investmentDismissed } = get();
         const id = new Date().toISOString();
@@ -629,6 +639,7 @@ export const useSessionStore = create<SessionState>()(
         }));
       },
       updateCurrentSession: () => {
+        if (get().repositoryStatus === 'ready') return;
         const { maps, lootItems, baselineItems, baselineTotal, manualLootItems, manualStatistics, settings, sessionNotes, investmentNeutralization, investmentDismissed, activeSessionId, activeSessionName, savedSessions } = get();
         if (!activeSessionId || !savedSessions[activeSessionId]) return;
         set((s) => ({
@@ -636,6 +647,10 @@ export const useSessionStore = create<SessionState>()(
         }));
       },
       loadSession: (id) => {
+        if (get().repositoryStatus === 'ready' && repositoryActions) {
+          void repositoryActions.loadNamed(id);
+          return;
+        }
         flushActiveSessionAutoSave();
         const session = get().savedSessions[id];
         if (!session) return;
@@ -665,13 +680,21 @@ export const useSessionStore = create<SessionState>()(
         });
         // A loaded historical session keeps its OWN atlasBonus snapshot; no
         // per-league seeding applies, so clear any pending seed / held choice.
-        set({ maps, lootItems: [...session.lootItems], baselineItems: [...(session.baselineItems ?? [])], baselineTotal: session.baselineTotal ?? 0, manualLootItems: [...(session.manualLootItems ?? [])], manualStatistics: normalizeLocalManualStatistics(session.manualStatistics), settings: { ...DEFAULT_SETTINGS, ...session.settings }, sessionNotes: session.notes ?? '', investmentNeutralization: session.investmentNeutralization ?? 0, investmentDismissed: session.investmentDismissed ?? false, activeSessionId: id, activeSessionName: session.name, isWatching: false, pendingAtlasBonusSeed: false, pendingAtlasBonusValue: null, loadedStrategyInfo: null });
+        set({ maps, lootItems: [...session.lootItems], baselineItems: [...(session.baselineItems ?? [])], baselineTotal: session.baselineTotal ?? 0, manualLootItems: [...(session.manualLootItems ?? [])], manualStatistics: normalizeLocalManualStatistics(session.manualStatistics), settings: { ...DEFAULT_SETTINGS, ...session.settings }, sessionNotes: session.notes ?? '', investmentNeutralization: session.investmentNeutralization ?? 0, investmentDismissed: session.investmentDismissed ?? false, activeSessionId: id, activeSessionName: session.name, isWatching: false, pendingAtlasBonusSeed: false, pendingAtlasBonusValue: null, loadedStrategyInfo: null, sessionLifecycle: 'historical', liveSessionId: null });
       },
       deleteSession: (id) =>
-        set((s) => { const { [id]: _, ...rest } = s.savedSessions; return { savedSessions: rest, activeSessionId: s.activeSessionId === id ? null : s.activeSessionId, activeSessionName: s.activeSessionId === id ? null : s.activeSessionName }; }),
+        get().repositoryStatus === 'ready' && repositoryActions
+          ? void repositoryActions.deleteNamed(id)
+          : set((s) => { const { [id]: _, ...rest } = s.savedSessions; return { savedSessions: rest, activeSessionId: s.activeSessionId === id ? null : s.activeSessionId, activeSessionName: s.activeSessionId === id ? null : s.activeSessionName }; }),
       renameSession: (id, newName) =>
-        set((s) => ({ savedSessions: { ...s.savedSessions, [id]: { ...s.savedSessions[id], name: newName } }, activeSessionName: s.activeSessionId === id ? newName : s.activeSessionName })),
+        get().repositoryStatus === 'ready' && repositoryActions
+          ? void repositoryActions.renameNamed(id, newName)
+          : set((s) => ({ savedSessions: { ...s.savedSessions, [id]: { ...s.savedSessions[id], name: newName } }, activeSessionName: s.activeSessionId === id ? newName : s.activeSessionName })),
       newSession: () => {
+        if (get().repositoryStatus === 'ready' && repositoryActions) {
+          void repositoryActions.startWorking();
+          return;
+        }
         flushActiveSessionAutoSave();
         // Atlas Bonus is league-scoped progress (per-league, not per-session).
         // Seed the new live session from the ACTIVE league's stored value — but
@@ -702,6 +725,8 @@ export const useSessionStore = create<SessionState>()(
           pendingAtlasBonusValue: null,
           activeSessionId: null,
           activeSessionName: null,
+          sessionLifecycle: 'live',
+          liveSessionId: null,
           isWatching: false,
           loadedStrategyInfo: null,
           sessionNonce: s.sessionNonce + 1,
@@ -732,9 +757,15 @@ export const useSessionStore = create<SessionState>()(
         const v = normalizeLeagueOverride(league);
         setLeagueOverrideValue(v); // clears the detection cache in league.ts
         set((s) => {
-          const live = s.activeSessionId === null;
+          const live = s.sessionLifecycle === 'live';
           if (!live) return { leagueOverride: v }; // never mutate a loaded historical session
           if (v) {
+            const provenance = s.settings.leagueName.trim();
+            if (provenance && provenance !== v) {
+              // Suspend capture immediately, but do not seed any values from
+              // the newly selected league into the old live payload.
+              return { leagueOverride: v, isWatching: false, sessionLifecycle: 'historical' as const };
+            }
             // Explicit override to a known league on a live session: re-seed its
             // Atlas Bonus from that league's stored value (supersedes any held
             // choice). Stamp only a BLANK working session: an already-recorded
@@ -745,9 +776,9 @@ export const useSessionStore = create<SessionState>()(
           // detection resolves — defer the re-seed to initDivinePrice.
           return { leagueOverride: v, pendingAtlasBonusSeed: true, pendingAtlasBonusValue: null };
         });
-        // Re-stamp settings.leagueName and refetch the divine price for the
-        // new league immediately. force bypasses BOTH the staleness guard and
-        // the fetch cooldown — an explicit league change must never be skipped.
+        // Resolve and fetch the selected context immediately. The provenance
+        // guards above either seed a blank live session or suspend an old one
+        // without restamping it.
         get().initDivinePrice({ force: true });
       },
       assignMissingSessionLeague: (league) => {
@@ -757,14 +788,16 @@ export const useSessionStore = create<SessionState>()(
           // This action is a one-way repair, not a historical league editor.
           if (s.settings.leagueName.trim()) return {};
           const settings = { ...s.settings, leagueName: v };
-          if (s.activeSessionId === null) return { settings };
-          const saved = s.savedSessions[s.activeSessionId];
+          if (s.repositoryStatus === 'ready' || s.sessionLifecycle === 'live') return { settings };
+          const legacyId = s.activeSessionId;
+          if (!legacyId) return { settings };
+          const saved = s.savedSessions[legacyId];
           if (!saved) return {};
           return {
             settings,
             savedSessions: {
               ...s.savedSessions,
-              [s.activeSessionId]: {
+              [legacyId]: {
                 ...saved,
                 settings: { ...saved.settings, leagueName: v },
               },
@@ -774,7 +807,7 @@ export const useSessionStore = create<SessionState>()(
       },
       setAtlasBonus: (value) =>
         set((s) => {
-          const live = s.activeSessionId === null;
+          const live = s.sessionLifecycle === 'live';
           const league = confirmedLeagueSync(); // confirmed active league or null (never the fallback)
           // Loaded historical session: change ONLY its own snapshot, never the map.
           if (!live) return { settings: { ...s.settings, atlasBonus: value } };
@@ -867,7 +900,9 @@ export const useSessionStore = create<SessionState>()(
       setInvestmentDismissed: (v: boolean) => set({ investmentDismissed: v }),
       dismissOnboarding: () => set({ onboardingDismissed: true }),
       importSessions: (sessions, conflictMode) =>
-        set((s) => {
+        get().repositoryStatus === 'ready' && repositoryActions
+          ? void repositoryActions.importNamed(sessions, conflictMode)
+          : set((s) => {
           const toAdd: Record<string, SavedSession> = {};
           for (const session of sessions) {
             if (conflictMode === 'skip' && s.savedSessions[session.id]) continue;
@@ -894,19 +929,12 @@ export const useSessionStore = create<SessionState>()(
             ? { ...s.settings, regexExclusions: [...s.defaultExclusionPreset] }
             : s.settings,
         })),
-    }),
-    {
-      name: 'map-tracker-storage', version: LEGACY_STORE_VERSION, migrate: migrateLegacyStore,
-      storage: debouncedStorage as PersistStorage<any>, merge: mergePersistedSessionState,
-    }
-  )
+    })
 );
 
-// ── WP10: auto-save the active session ───────────────────────────────────────
-// When a saved session is active, any edit to its content persists into
-// savedSessions[activeSessionId] automatically (debounced). Unsaved sessions
-// (activeSessionId === null) keep the old behavior. Save-as-New remains the
-// explicit forking action; the Update button is gone.
+// Closed WP10 localStorage adapter. Phase 4's file repository installs its own
+// Tier A autosave subscription and this path remains active only for migration
+// fixtures/tests before repository bootstrap reaches ready.
 const AUTO_SAVE_DEBOUNCE_MS = 800;
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -916,6 +944,10 @@ let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
  * and on window close, so debounced edits are never dropped.
  */
 export function flushActiveSessionAutoSave(): void {
+  if (useSessionStore.getState().repositoryStatus === 'ready' && repositoryActions) {
+    void repositoryActions.flush();
+    return;
+  }
   if (autoSaveTimer === null) return; // pending timer <=> dirty; otherwise skip the write
   clearTimeout(autoSaveTimer);
   autoSaveTimer = null;
@@ -924,6 +956,7 @@ export function flushActiveSessionAutoSave(): void {
 }
 
 useSessionStore.subscribe((state, prev) => {
+  if (state.repositoryStatus === 'ready') return;
   if (!state.activeSessionId) return;
   // A session switch (load / save-as-new) is not an edit: loadSession copies
   // FROM the saved session, so auto-saving here would only echo it back — and
@@ -949,14 +982,6 @@ useSessionStore.subscribe((state, prev) => {
   }, AUTO_SAVE_DEBOUNCE_MS);
 });
 
-// Flush on app close so the last debounce window is never lost.
-// Order matters: the auto-save flush runs FIRST (it set()s, which lands in
-// pendingPersist synchronously), then flushPersist writes the final state.
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', flushActiveSessionAutoSave);
-  window.addEventListener('beforeunload', flushPersist);
-}
-
 // ── Selector subscription helpers (session 17: typing-lag fix) ──────────────
 // Subscribing with `useSessionStore()` (no selector) re-renders the component
 // on EVERY store change — a Notes keystroke used to re-render the Map Log
@@ -978,14 +1003,11 @@ export function pickKeys<T extends object, K extends keyof T>(obj: T, keys: read
  * only when one of the picked values changes (actions are stable references,
  * so listing them is free).
  */
-export function useSessionKeys<K extends keyof SessionState>(...keys: K[]): Pick<SessionState, K> {
+export function useSessionKeys<K extends keyof SessionStoreState>(...keys: K[]): Pick<SessionStoreState, K> {
   return useSessionStore(useShallow((s) => pickKeys(s, keys)));
 }
 
-// Seed the persisted league override into the store-agnostic league util.
-// persist() hydrates synchronously from localStorage during create(), so the
-// value is already in state here. For old stores the additive top-level field
-// shallow-merges to null (no migration needed) — seeding null is a no-op.
+// Repository bootstrap replaces this initial value before the app mounts.
 const hydratedLeagueOverride = normalizeLeagueOverride(useSessionStore.getState().leagueOverride ?? null);
 if (hydratedLeagueOverride !== useSessionStore.getState().leagueOverride) {
   useSessionStore.setState({ leagueOverride: hydratedLeagueOverride });
