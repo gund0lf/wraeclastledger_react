@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { FIELD_OWNERSHIP } from '../store/fieldOwnership';
 import {
   WP14_FIXTURE_SEED,
+  WP14_LEGACY_V17_STORE_VERSION,
   WP14_NEWER_STORE_VERSION,
   WP14_STORE_VERSION,
   WP14_TEN_MIB,
@@ -53,6 +54,7 @@ describe('WP14 Phase 0 deterministic fixture generation', () => {
     const names = [
       'legacy-v13-envelope.json',
       'legacy-v17-envelope.json',
+      'legacy-v18-envelope.json',
       'active-named-dirty-envelope.json',
       'unnamed-working-envelope.json',
     ];
@@ -66,7 +68,7 @@ describe('WP14 Phase 0 deterministic fixture generation', () => {
     }
   });
 
-  it('keeps every current v17 data field in full current envelopes', () => {
+  it('keeps every current v18 data field in full current envelopes', () => {
     const fixtures = generateSmallWp14Fixtures();
     for (const name of [
       'active-named-dirty-envelope.json',
@@ -84,8 +86,24 @@ describe('WP14 Phase 0 deterministic fixture generation', () => {
     const fixture = generateSmallWp14Fixtures()
       .find((item) => item.fileName === 'legacy-v17-envelope.json')!;
     const envelope = parse<PersistEnvelope>(fixture.content);
-    expect(envelope.version).toBe(WP14_STORE_VERSION);
+    expect(envelope.version).toBe(WP14_LEGACY_V17_STORE_VERSION);
     expect(envelope.state).not.toHaveProperty('retrospectiveCloseouts');
+    expect(envelope.state).not.toHaveProperty('manualLootItems');
+    expect(envelope.state).not.toHaveProperty('manualStatistics');
+    const saved = Object.values(
+      envelope.state.savedSessions as Record<string, Record<string, unknown>>,
+    )[0];
+    expect(saved).not.toHaveProperty('manualLootItems');
+    expect(saved).not.toHaveProperty('manualStatistics');
+  });
+
+  it('captures current v18 manual loot and statistics in migration fixtures', () => {
+    const fixture = generateSmallWp14Fixtures()
+      .find((item) => item.fileName === 'legacy-v18-envelope.json')!;
+    const envelope = parse<PersistEnvelope>(fixture.content);
+    expect(envelope.version).toBe(WP14_STORE_VERSION);
+    expect(envelope.state.manualLootItems).not.toEqual([]);
+    expect(envelope.state.manualStatistics).toMatchObject({ starfallCraters: 0 });
   });
 
   it('models current rawText but preserves the rawText-free saved-session behavior', () => {

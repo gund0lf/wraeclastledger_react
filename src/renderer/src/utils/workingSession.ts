@@ -1,4 +1,10 @@
-import type { LootItem, ManualSessionStatistics, MapData, SessionSettings } from '../types';
+import type {
+  LootItem,
+  ManualLootItem,
+  ManualSessionStatistics,
+  MapData,
+  SessionSettings,
+} from '../types';
 import { hasManualStatistics } from './manualStatistics';
 
 export interface WorkingSessionCandidate {
@@ -7,6 +13,7 @@ export interface WorkingSessionCandidate {
   lootItems: LootItem[];
   baselineItems: LootItem[];
   baselineTotal: number;
+  manualLootItems: ManualLootItem[];
   manualStatistics: ManualSessionStatistics;
   sessionNotes: string;
   investmentNeutralization: number;
@@ -42,7 +49,12 @@ export function isWorkingSessionMeaningful(
   defaults: SessionSettings,
 ): boolean {
   if (state.activeSessionId !== null) return false;
-  if (state.maps.length > 0 || state.lootItems.length > 0 || state.baselineItems.length > 0) return true;
+  if (
+    state.maps.length > 0 ||
+    state.lootItems.length > 0 ||
+    state.baselineItems.length > 0 ||
+    state.manualLootItems.length > 0
+  ) return true;
   if (state.baselineTotal !== 0 || state.sessionNotes.trim() !== '') return true;
   if (hasManualStatistics(state.manualStatistics)) return true;
   if (state.investmentNeutralization !== 0 || state.investmentDismissed) return true;

@@ -4,7 +4,8 @@ import { parseMapClipboard } from '../mapParser';
 import { MAP_CLIPBOARDS } from './wp1Fixtures';
 
 export const WP14_FIXTURE_SEED = 0x14072026;
-export const WP14_STORE_VERSION = 17;
+export const WP14_LEGACY_V17_STORE_VERSION = 17;
+export const WP14_STORE_VERSION = 18;
 export const WP14_NEWER_STORE_VERSION = WP14_STORE_VERSION + 1;
 export const WP14_TEN_MIB = 10 * 1024 * 1024;
 export const WP14_PROFILE_EXPORT_SHA256 =
@@ -112,6 +113,19 @@ const createSavedSession = (
     baselineItems: Array.from({ length: lootCount + 1 }, (_, itemIndex) =>
       createLootItem(seed + index, itemIndex, 'baseline')),
     baselineTotal: lootCount * 10,
+    manualLootItems: [{
+      id: deterministicId(seed, 'manual-loot', index),
+      name: 'Fixture manual return',
+      quantity: index + 1,
+      total: 25 + index,
+      category: 'Other',
+      note: 'WP14 fixture',
+    }],
+    manualStatistics: {
+      infoDismissed: index % 2 === 0,
+      starfallCraters: index,
+      wildwoodEncounters: index + 1,
+    },
     settings: {
       ...(clone(defaults.settings) as SavedSession['settings']),
       baseMapCost: 7 + index,
@@ -128,17 +142,57 @@ const createEnvelope = (
   version = WP14_STORE_VERSION,
 ): PersistEnvelope => ({ state, version });
 
+const historicalV17Settings = (value: unknown): Record<string, unknown> => {
+  const current = clone(value) as Record<string, unknown>;
+  const fragmentsUsed = current.fragmentCountOverride ??
+    (current.multiplyingModifiersAllocated === true ? 4 : 0);
+  delete current.multiplyingModifiersAllocated;
+  delete current.fragmentCountOverride;
+  delete current.evidenceTargetStrategyId;
+  delete current.evidenceTargetStrategyName;
+  delete current.evidenceTargetExpectedRevision;
+  delete current.evidenceTargetSetupFingerprint;
+
+  const historical: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(current)) {
+    historical[key] = entry;
+    if (key === 'isSplitSession') historical.fragmentsUsed = fragmentsUsed;
+  }
+  return historical;
+};
+
 const createCurrentV17Envelope = (seed: number): PersistEnvelope => {
   const state = stateDefaults();
   // Preserve the historical v17 wire shape. Additive fields introduced after
   // v17 are intentionally absent even though the live store defaults contain them.
   delete state.retrospectiveCloseouts;
+  delete state.manualLootItems;
+  delete state.manualStatistics;
+  const saved = createSavedSession(seed, 0);
+  delete saved.manualLootItems;
+  delete saved.manualStatistics;
+  saved.settings = historicalV17Settings(saved.settings) as unknown as SavedSession['settings'];
+  state.savedSessions = { [saved.id]: saved };
+  state.maps = clone(saved.maps);
+  state.lootItems = clone(saved.lootItems);
+  state.baselineItems = clone(saved.baselineItems);
+  state.baselineTotal = saved.baselineTotal;
+  state.settings = historicalV17Settings(saved.settings);
+  state.activeSessionId = saved.id;
+  state.activeSessionName = saved.name;
+  return createEnvelope(state, WP14_LEGACY_V17_STORE_VERSION);
+};
+
+const createCurrentV18Envelope = (seed: number): PersistEnvelope => {
+  const state = stateDefaults();
   const saved = createSavedSession(seed, 0);
   state.savedSessions = { [saved.id]: saved };
   state.maps = clone(saved.maps);
   state.lootItems = clone(saved.lootItems);
   state.baselineItems = clone(saved.baselineItems);
   state.baselineTotal = saved.baselineTotal;
+  state.manualLootItems = clone(saved.manualLootItems);
+  state.manualStatistics = clone(saved.manualStatistics);
   state.settings = clone(saved.settings);
   state.activeSessionId = saved.id;
   state.activeSessionName = saved.name;
@@ -202,6 +256,11 @@ const createActiveNamedDirtyEnvelope = (seed: number): PersistEnvelope => {
   state.lootItems = clone(saved.lootItems);
   state.baselineItems = clone(saved.baselineItems);
   state.baselineTotal = saved.baselineTotal;
+  state.manualLootItems = clone(saved.manualLootItems);
+  state.manualStatistics = {
+    ...clone(saved.manualStatistics),
+    starfallCraters: 4,
+  };
   state.settings = { ...clone(saved.settings), baseMapCost: saved.settings.baseMapCost + 5 };
   state.sessionNotes = 'Unsaved fixture edit';
   return createEnvelope(state);
@@ -213,6 +272,8 @@ const createUnnamedWorkingEnvelope = (seed: number): PersistEnvelope => {
   state.lootItems = [createLootItem(seed, 0, 'loot')];
   state.baselineItems = [createLootItem(seed, 0, 'baseline')];
   state.baselineTotal = 10;
+  state.manualLootItems = clone(createSavedSession(seed, 0, 0, 0).manualLootItems);
+  state.manualStatistics = { starfallCraters: 0, wildwoodEncounters: 1 };
   state.sessionNotes = 'Unnamed fixture work';
   state.activeSessionId = null;
   state.activeSessionName = null;
@@ -237,7 +298,9 @@ export const generateSmallWp14Fixtures = (
 ): GeneratedFixture[] => {
   const v17 = createCurrentV17Envelope(seed);
   const serializedV17 = serialize(v17);
-  const truncated = serializedV17.slice(0, Math.floor(serializedV17.length / 2));
+  const v18 = createCurrentV18Envelope(seed);
+  const serializedV18 = serialize(v18);
+  const truncated = serializedV18.slice(0, Math.floor(serializedV18.length / 2)).trimEnd();
   const inconsistent = createEnvelope({
     ...stateDefaults(),
     maps: 'not-an-array',
@@ -256,6 +319,12 @@ export const generateSmallWp14Fixtures = (
       fileName: 'legacy-v17-envelope.json',
       fixtureClass: 'legacy',
       content: serializedV17,
+      tracked: true,
+    },
+    {
+      fileName: 'legacy-v18-envelope.json',
+      fixtureClass: 'legacy',
+      content: serializedV18,
       tracked: true,
     },
     {

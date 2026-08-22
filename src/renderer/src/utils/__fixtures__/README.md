@@ -96,11 +96,12 @@ asserted as correct):
 ## WP14 Phase 0 storage fixtures
 
 These fixtures characterize the pre-WP14 Zustand persistence boundary. Except
-for `duplicate-import.json`, every lifecycle fixture uses the wire format the app
-actually boots from:
+for the explicitly frozen v13/v17 migration inputs and
+`duplicate-import.json`, every lifecycle fixture uses the current wire format
+the app actually boots from:
 
 ```json
-{ "state": { "...top-level store data..." : "..." }, "version": 17 }
+{ "state": { "...top-level store data..." : "..." }, "version": 18 }
 ```
 
 The session-manager export format (`{ version, exportedAt, sessions }`) is NOT a
@@ -133,14 +134,15 @@ the full inventory in ignored `wp14-profile/fixture-metadata.json`.
 |---|---:|---:|---:|---|
 | `wp14/legacy-v13-envelope.json` | legacy v13 | 5,999 | 1,055 | `a87259feff9a1edf0fed54a992e298fd330f4d67133237e09cfad773ed089821` |
 | `wp14/legacy-v17-envelope.json` | legacy v17 | 7,731 | 1,726 | `6d59653d199e061bd8c931037d8d23de2964c3655c43e8fe03204a10275a7278` |
-| `wp14/active-named-dirty-envelope.json` | active named dirty | 8,801 | 2,082 | `2872c5ca5d1c54fab9c07a188238f6694b1217859e803718ec071b18d53ff78d` |
-| `wp14/unnamed-working-envelope.json` | unnamed working | 4,185 | 1,726 | `2f9354f2bb403e65c6576723d69d19948eb081dc7f97f341d15f112bc19df730` |
+| `wp14/legacy-v18-envelope.json` | legacy/current v18 | 8,625 | 1,886 | `457c39932fccef246e39c4596f7aa2db858aff004757fa201c154ea1a9434bc6` |
+| `wp14/active-named-dirty-envelope.json` | active named dirty | 9,749 | 2,267 | `5d6a639da447553686b5e2de07eb3986e95e15d6a04c95564ad4b48d09aebd4b` |
+| `wp14/unnamed-working-envelope.json` | unnamed working | 4,625 | 1,872 | `07be22ca59e7308f0b0b61e83dad297851d1eed9b3d5c76900061f5604eda0b9` |
 | `wp14/corrupt-empty.json` | corrupt: 0-byte | 0 | 20 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
 | `wp14/corrupt-malformed.json` | corrupt: malformed | 19 | 39 | `50727e4346476f428f6f0ba614c5901a75f2fb24d8ff72f7c885937d35ac386f` |
-| `wp14/corrupt-truncated.json` | corrupt: truncated | 3,871 | 1,289 | `fc4d5b58317980ba6e5228ad2211d803d38ce9885626f43d749253f743307e4b` |
-| `wp14/corrupt-inconsistent-envelope.json` | corrupt: inconsistent types | 2,153 | 955 | `5bf45609db8c9fb2e1e20e402b1a3123ff6ed68256b2a219b5b199dce981574b` |
-| `wp14/corrupt-newer-version-envelope.json` | corrupt/recovery: version 18 | 2,999 | 1,214 | `b110eb5f7c717cbf86ed7c0183d054d80a1019ffbbbf6b1fad0ea65a5e02af9c` |
-| `wp14/duplicate-import.json` | duplicate/import | 3,915 | 852 | `c815c8ce4debf2c5465cbed592f29b197850b4bd901f55d65bc29b05a74cf3ce` |
+| `wp14/corrupt-truncated.json` | corrupt: truncated | 4,317 | 1,442 | `3ffdde6caf6fe92108b65c27a0f99708b67a00dfb427cc1303e3b22ced131adf` |
+| `wp14/corrupt-inconsistent-envelope.json` | corrupt: inconsistent types | 2,224 | 985 | `e9c3b6e6ab26ff68be738f4a05f7bf4a2eaea2ca5f7d745ece8f41c7bab9e968` |
+| `wp14/corrupt-newer-version-envelope.json` | corrupt/recovery: version 19 | 3,261 | 1,297 | `f6d48be3423a4870c0711e305395cfdcbfe8bdcd57b1cc12b8ebd16c0ef115b3` |
+| `wp14/duplicate-import.json` | duplicate/import | 4,782 | 1,022 | `dc2ce149781b459ae09b7b1a224850dace37eab6ba502d2855f0da368adce504` |
 
 `duplicate-import.json` deliberately includes the same first session ID as the
 active-named-dirty fixture, plus one new session, so skip/overwrite behavior can
@@ -158,9 +160,9 @@ unchanged.
 | File | Class | Raw bytes | Gzip bytes | SHA-256 |
 |---|---:|---:|---:|---|
 | `wp14-profile/anonymized-session-export.json` | real import source | 987,474 | 160,884 | `e0f23283fb9d7cb4b5bfd6abbd3a62c16bca6a2441e6bef5cd35b42ae19f19de` |
-| `wp14-profile/large-session-envelope.json` | one large loaded session | 1,162,341 | 292,261 | `bb375a4deb1bf13372cf6cddae9c11e1c3aa9f75a58211c1d1956c3e5bcebed3` |
-| `wp14-profile/rawtext-heavy-10mib-envelope.json` | active rawText-heavy 10 MiB class | 10,486,709 | 147,993 | `4b4666a899150356ac1c6715e0eabdfd9f1911e0b457bf8f48568c8485574571` |
-| `wp14-profile/many-session-envelope.json` | deterministic 100-session catalogue | 9,778,864 | 2,484,004 | `606901a60cdc8ca82ff196eed32610ad3840ec2d311ee3313524f5a81dff8c5b` |
+| `wp14-profile/large-session-envelope.json` | one large loaded session | 1,162,412 | 292,305 | `fc5e174d080f7bbf55424379c391207def5c09c942b70b60f4b8811421ec5b15` |
+| `wp14-profile/rawtext-heavy-10mib-envelope.json` | active rawText-heavy 10 MiB class | 10,486,486 | 154,015 | `d57086731b41e7d68f58af8d721e5d9b02e6c660c73842e15ea57b268d25656a` |
+| `wp14-profile/many-session-envelope.json` | deterministic 100-session catalogue | 9,779,126 | 2,484,129 | `53c30d4c276d768933c6556b9ba4616e9e7b65e3cd3a4771676e57ae1d073179` |
 
 ### WP14 Phase 0 benchmark
 

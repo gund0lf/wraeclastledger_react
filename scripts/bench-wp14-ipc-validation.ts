@@ -40,7 +40,7 @@ const report = {
   schemaVersion: 1,
   generatedAt: new Date().toISOString(),
   commitSha: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
-  runMode: 'vite-node/node-v8',
+  runMode: 'vite-ssr/node-v8',
   method: 'assertJsonValue recursive walk including unpaired-surrogate scan; JSON parse excluded',
   fixture: {
     path: fixturePath,

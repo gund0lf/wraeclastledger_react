@@ -22,6 +22,8 @@ export const FIELD_OWNERSHIP = {
   lootItems: 'session-payload',
   baselineItems: 'session-payload',
   baselineTotal: 'session-payload',
+  manualLootItems: 'session-payload',
+  manualStatistics: 'session-payload',
   settings: 'session-payload',
   sessionNotes: 'session-payload',
   investmentNeutralization: 'session-payload',
