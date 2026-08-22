@@ -26,6 +26,7 @@
     "wp14:fixtures": "node scripts/run-vite-script.mjs scripts/gen-wp14-fixtures.ts",
     "wp14:bench": "node scripts/run-wp14-bench.mjs",
     "wp14:ipc-bench": "node scripts/run-vite-script.mjs scripts/bench-wp14-ipc-validation.ts",
+    "wp14:migration-check": "node scripts/run-vite-script.mjs scripts/verify-wp14-shadow-migration.ts",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "electron-vite build",

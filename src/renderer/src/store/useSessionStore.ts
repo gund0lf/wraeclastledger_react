@@ -8,6 +8,7 @@ import { confirmedLeagueSync, getCurrentLeague, normalizeLeagueOverride, setLeag
 import { ModGroupState, cloneDefaultGroups } from '../utils/regexBuilderPresets';
 import { isRetrospectiveLeague, normalizeLeagueKey } from '../utils/retrospectives';
 import { MAP_DEVICE_SLOT_COUNT } from '../../../shared/mapDevice';
+import { LEGACY_STORE_VERSION } from '../../../shared/sessionMigration';
 import {
   addManualAtlasAnomalyCount as addManualAtlasAnomalyCountValue,
   addManualMercenaryCount as addManualMercenaryCountValue,
@@ -21,7 +22,8 @@ import {
   type ManualStatisticField,
 } from '../utils/manualStatistics';
 
-const STORE_VERSION = 18;
+/** Closed legacy-browser-store schema ceiling for the WP14 extraction path. */
+export { LEGACY_STORE_VERSION } from '../../../shared/sessionMigration';
 
 // WP4.2: divine price older than this is refreshed on the next init.
 const DIVINE_PRICE_STALE_MS = 30 * 60_000;
@@ -139,7 +141,7 @@ function migrateMultiplyingModifiers(settings: Record<string, unknown>): void {
   delete settings['fragmentsUsed'];
 }
 
-function migrateState(persisted: any): any {
+export function migrateLegacyStore(persisted: any): any {
   // v14→v15: replace investmentNeutralization === -1 sentinel with explicit investmentDismissed boolean
   if (persisted?.investmentNeutralization === -1) {
     persisted.investmentNeutralization = 0;
@@ -237,8 +239,10 @@ function migrateState(persisted: any): any {
   return { ...persisted, settings: merged as SessionSettings, savedSessions };
 }
 
-// Exported for useSessionStore.migrate.test.ts.
-export { migrateState };
+// Compatibility alias while localStorage remains the production authority.
+// Phase 4 removes the live persist path; migration callers should use the
+// deliberately named closed adapter above.
+export const migrateState = migrateLegacyStore;
 
 export interface SessionState {
   maps: MapData[];
@@ -892,7 +896,7 @@ export const useSessionStore = create<SessionState>()(
         })),
     }),
     {
-      name: 'map-tracker-storage', version: STORE_VERSION, migrate: migrateState,
+      name: 'map-tracker-storage', version: LEGACY_STORE_VERSION, migrate: migrateLegacyStore,
       storage: debouncedStorage as PersistStorage<any>, merge: mergePersistedSessionState,
     }
   )
