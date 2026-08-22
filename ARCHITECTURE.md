@@ -27,6 +27,7 @@ flowchart LR
     MAIN <--> PRELOAD["Typed preload bridge"]
     PRELOAD <--> UI["React renderer"]
     UI <--> STATE["Zustand session state"]
+    MAIN <--> FILES["Authoritative ledger-data files"]
     UI --> PANELS["Dockable feature panels"]
     SHARED["Shared pure definitions"] --> MAIN
     SHARED --> UI
@@ -34,8 +35,9 @@ flowchart LR
 
 ## Renderer organization
 
-- `App.tsx` owns application bootstrap, the FlexLayout model, panel persistence,
-  and cross-process lifecycle wiring.
+- `main.tsx` blocks editing until the file repository has hydrated; `App.tsx`
+  owns the FlexLayout model and sends acknowledged layout saves through the
+  repository bridge.
 - `layout/` maps persisted panel identifiers to React modules and defines the
   default dock arrangement.
 - `modules/` contains the major panels: Sessions, Map Log, Investment, Atlas
@@ -108,10 +110,29 @@ compact tuple or canonical text wire changes.
 
 ## Persistence
 
-The current client persists session state and the dock layout locally. Store
-migrations preserve compatible older state, and layout migrations repair known
-legacy panel identifiers. Auto-save is local-first; the optional strategy
-service is for community sharing, not ordinary session storage.
+The main process owns an authoritative local repository beneath the Electron
+profile's `ledger-data` directory. Named session IDs are durable UUIDs and map
+to SHA-256 directory names rather than becoming paths. Session, working,
+preferences, workflow, and layout records use a framed integrity header plus an
+exact JSON body. Commits are generation-checked, hash-verified, serialized, and
+rotate a valid `current.wlrec` to `current.bak`; the catalog and human-readable
+`INDEX.txt` can be rebuilt from those records.
+
+The renderer keeps only the active payload and repository summaries in Zustand.
+It lazy-loads full payloads for navigation, comparisons, and aggregate local
+statistics, and reports `Auto-saved` only after the main process acknowledges
+the filesystem commit. Browser `localStorage` is a one-time legacy migration
+source, not a second writer. Migration retains exact source backups and removes
+the old keys only after a second semantic verification of the completed file
+repository.
+
+Batch imports are journaled and either commit in full or roll back. Replaced
+meaningful working drafts and deleted named sessions move to recoverable trash
+before workflow pointers change. The repository also has an independent
+single-writer lock. Window close, app quit, and updater restart request a final
+flush; a delayed or failed save offers waiting, retry, pending-state export, or
+an explicit force exit. The optional strategy service remains for community
+sharing, not ordinary session storage.
 
 Explicit Run Statistics counters are stored with the local session. Starfall,
 Svalinn, Wildwood, named Atlas anomalies, and selected Mercenary archetypes are
