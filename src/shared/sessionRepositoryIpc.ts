@@ -1,5 +1,7 @@
 import { assertJsonValue, type JsonObject } from './sessionRecord';
 
+export const SESSION_REPOSITORY_CHANNEL = 'session-repository:request';
+
 export const SESSION_REPOSITORY_OPERATIONS = [
   'bootstrap',
   'list',
@@ -21,9 +23,14 @@ export type SessionTarget =
   | { kind: 'working' }
   | { kind: 'session'; sessionId: string };
 
+export type SessionSaveTarget =
+  | SessionTarget
+  | { kind: 'new'; name: string };
+
 export interface RepositorySessionSummary {
   id: string;
   name: string;
+  createdAt: string;
   updatedAt: string;
   generation: number;
   summary: JsonObject;
@@ -40,7 +47,7 @@ export type SessionRepositoryRequest =
   | { operation: 'bootstrap' }
   | { operation: 'list' }
   | { operation: 'load'; target: SessionTarget }
-  | { operation: 'save'; target: SessionTarget; expectedGeneration: number | null; payload: JsonObject }
+  | { operation: 'save'; target: SessionSaveTarget; expectedGeneration: number | null; payload: JsonObject }
   | { operation: 'rename'; sessionId: string; name: string; expectedGeneration: number }
   | { operation: 'delete'; sessionId: string; expectedGeneration: number }
   | { operation: 'history-list'; target: SessionTarget }
@@ -136,6 +143,13 @@ function assertString(value: unknown, label: string): asserts value is string {
   }
 }
 
+function assertTimestamp(value: unknown, label: string): asserts value is string {
+  assertString(value, label);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value) || !Number.isFinite(Date.parse(value))) {
+    throw new SessionRepositoryRequestError(`${label} must be a UTC ISO timestamp`);
+  }
+}
+
 function assertGeneration(value: unknown, nullable: boolean): asserts value is number | null {
   if (nullable && value === null) return;
   if (!Number.isSafeInteger(value) || Number(value) < 0) {
@@ -174,6 +188,15 @@ function assertTarget(value: unknown): asserts value is SessionTarget {
   throw new SessionRepositoryRequestError('target kind is invalid');
 }
 
+function assertSaveTarget(value: unknown): asserts value is SessionSaveTarget {
+  if (isPlainObject(value) && value.kind === 'new') {
+    assertExactKeys(value, ['kind', 'name'], 'new session target');
+    assertString(value.name, 'session name');
+    return;
+  }
+  assertTarget(value);
+}
+
 function assertInteger(value: unknown, label: string): asserts value is number {
   if (!Number.isSafeInteger(value) || Number(value) < 0) {
     throw new SessionRepositoryRequestError(`${label} must be a non-negative integer`);
@@ -182,10 +205,11 @@ function assertInteger(value: unknown, label: string): asserts value is number {
 
 function assertSummary(value: unknown): asserts value is RepositorySessionSummary {
   if (!isPlainObject(value)) throw new SessionRepositoryRequestError('session summary must be an object');
-  assertExactKeys(value, ['id', 'name', 'updatedAt', 'generation', 'summary'], 'session summary');
+  assertExactKeys(value, ['id', 'name', 'createdAt', 'updatedAt', 'generation', 'summary'], 'session summary');
   assertString(value.id, 'summary id');
   assertString(value.name, 'summary name');
-  assertString(value.updatedAt, 'summary updatedAt');
+  assertTimestamp(value.createdAt, 'summary createdAt');
+  assertTimestamp(value.updatedAt, 'summary updatedAt');
   assertInteger(value.generation, 'summary generation');
   if (!isPlainObject(value.summary)) throw new SessionRepositoryRequestError('summary payload must be an object');
 }
@@ -234,7 +258,7 @@ function assertSuccessData(operation: SessionRepositoryOperation, value: unknown
       if (!isPlainObject(checkpoint)) throw new SessionRepositoryRequestError('checkpoint must be an object');
       assertExactKeys(checkpoint, ['id', 'createdAt', 'reason', 'summary'], 'checkpoint');
       assertString(checkpoint.id, 'checkpoint id');
-      assertString(checkpoint.createdAt, 'checkpoint createdAt');
+      assertTimestamp(checkpoint.createdAt, 'checkpoint createdAt');
       if (!['activation', 'destructive', 'pre-restore', 'periodic'].includes(String(checkpoint.reason))) {
         throw new SessionRepositoryRequestError('checkpoint reason is invalid');
       }
@@ -277,8 +301,11 @@ export function parseSessionRepositoryRequest(value: unknown): SessionRepository
     assertTarget(value.target);
   } else if (operation === 'save') {
     assertExactKeys(value, ['operation', 'target', 'expectedGeneration', 'payload'], 'save request');
-    assertTarget(value.target);
+    assertSaveTarget(value.target);
     assertGeneration(value.expectedGeneration, true);
+    if (value.target.kind === 'new' && value.expectedGeneration !== null) {
+      throw new SessionRepositoryRequestError('new session saves require a null expectedGeneration');
+    }
     assertJsonValue(value.payload, '$.payload');
     if (!isPlainObject(value.payload)) throw new SessionRepositoryRequestError('payload must be an object');
   } else if (operation === 'rename') {

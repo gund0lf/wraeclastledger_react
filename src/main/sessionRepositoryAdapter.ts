@@ -141,6 +141,7 @@ export function createSessionRepositoryAdapter(
   };
 }
 
-// This adapter is intentionally not registered with ipcMain in Phase 2A.
-// Registration and concrete repository binding belong to Phase 2B.
+// This adapter is intentionally not registered with ipcMain in Phase 2.
+// Phase 2B supplies a tested binding factory only; production registration and
+// the complete concrete repository wait for the Phase 4 cutover.
 export type SessionRepositoryAdapter = ReturnType<typeof createSessionRepositoryAdapter>;

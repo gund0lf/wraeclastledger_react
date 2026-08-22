@@ -96,6 +96,18 @@ describe('WP14 repository paths', () => {
     expect(() => assertPathInside(paths.root, join(paths.root, '..', 'escape'))).toThrow();
   });
 
+  it('derives the same contained layout from a Linux user-data root', () => {
+    const paths = deriveRepositoryPaths('/home/example/.config/WraeclastLedger');
+    const normalizedRoot = paths.root.replaceAll('\\', '/');
+    const normalizedWorking = paths.working.replaceAll('\\', '/');
+    expect(normalizedRoot).toMatch(/\/home\/example\/\.config\/WraeclastLedger\/ledger-data$/);
+    expect(normalizedWorking).toBe(`${normalizedRoot}/sessions/working`);
+    const sessionPath = deriveSessionDirectory(paths.root, '../../etc/passwd:legacy');
+    expect(sessionPath.replaceAll('\\', '/'))
+      .toBe(`${paths.entries.replaceAll('\\', '/')}/${sessionDirectoryName('../../etc/passwd:legacy')}`);
+    expect(() => assertPathInside(paths.root, '/home/example/.config/outside')).toThrow();
+  });
+
   it('creates UUID identity independently from its timestamp', () => {
     const identity = createSessionIdentity(new Date('2026-07-22T12:34:56.000Z'));
     expect(identity.id).toMatch(/^[0-9a-f-]{36}$/);

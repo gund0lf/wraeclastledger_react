@@ -41,6 +41,7 @@ describe('WP14 repository IPC request contract', () => {
     { operation: 'list' },
     { operation: 'load', target: { kind: 'working' } },
     { operation: 'save', target: { kind: 'session', sessionId: 'session-1' }, expectedGeneration: 2, payload: { maps: [] } },
+    { operation: 'save', target: { kind: 'new', name: 'New session' }, expectedGeneration: null, payload: { maps: [] } },
     { operation: 'rename', sessionId: 'session-1', name: 'Renamed', expectedGeneration: 2 },
     { operation: 'delete', sessionId: 'session-1', expectedGeneration: 2 },
     { operation: 'history-list', target: { kind: 'session', sessionId: 'session-1' } },
@@ -81,6 +82,20 @@ describe('WP14 repository IPC response and error contract', () => {
       data: { opened: true },
     })).not.toThrow();
     expect(() => assertSessionRepositoryResponse({
+      ok: true,
+      operation: 'list',
+      data: {
+        sessions: [{
+          id: 'session-1',
+          name: 'Session One',
+          createdAt: '2026-08-22T10:00:00.000Z',
+          updatedAt: '2026-08-22T10:01:00.000Z',
+          generation: 1,
+          summary: {},
+        }],
+      },
+    })).not.toThrow();
+    expect(() => assertSessionRepositoryResponse({
       ok: false,
       operation: 'save',
       error: { code: 'generation-conflict', message: 'stale', retryable: true },
@@ -93,6 +108,20 @@ describe('WP14 repository IPC response and error contract', () => {
       operation: 'open-data-folder',
       data: { opened: false },
     })).toThrow('opened must be true');
+    expect(() => assertSessionRepositoryResponse({
+      ok: true,
+      operation: 'list',
+      data: {
+        sessions: [{
+          id: 'session-1',
+          name: 'Session One',
+          createdAt: 'not-a-date',
+          updatedAt: '2026-08-22T10:01:00.000Z',
+          generation: 1,
+          summary: {},
+        }],
+      },
+    })).toThrow('UTC ISO timestamp');
     expect(() => assertSessionRepositoryResponse({
       ok: false,
       operation: null,

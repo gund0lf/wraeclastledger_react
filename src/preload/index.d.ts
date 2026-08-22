@@ -1,7 +1,6 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type { AtlasStatsReadResult } from '../shared/atlasStats'
 import type { ClipboardBridgeStatus } from '../shared/protonClipboardBridge'
-import type { SessionRepositoryRequest, SessionRepositoryResponse } from '../shared/sessionRepositoryIpc'
 
 type TradeParams = {
   league: string; minIIQ: number; minPack: number; minIIR: number;
@@ -35,7 +34,6 @@ declare global {
       writeGameDataCache: (manifest: unknown) => Promise<{ ok: boolean; error: string | null }>
       fetchGameDataLatest: (baseUrl: string) => Promise<{ payload: { revision: number; manifest: unknown } | null; error: string | null }>
       readAtlasTreeStats: (url: string) => Promise<AtlasStatsReadResult>
-      sessionRepository: (request: SessionRepositoryRequest) => Promise<SessionRepositoryResponse>
     }
   }
 }
