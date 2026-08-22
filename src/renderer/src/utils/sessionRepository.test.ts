@@ -17,6 +17,7 @@ import {
   LEGACY_STORE_STORAGE_KEY,
   type LegacyStorageSnapshot,
 } from '../../../shared/sessionMigration';
+import { decodeRecordV1, encodeRecordV1, type JsonObject } from '../../../shared/sessionRecord';
 import { migrateSessionEnvelope } from '../repository/legacySessionMigration';
 
 const roots: string[] = [];
@@ -298,6 +299,24 @@ describe('WP14 Phase 4 concrete file repository', () => {
     await writeFile(join(directory, CURRENT_RECORD_NAME), 'corrupt-after-first-verification');
     await expect(repository.bootstrap({ operation: 'bootstrap', migrationPlan: plan }))
       .rejects.toThrow('header');
+    await repository.releaseLock();
+  });
+
+  it('allows rebuildable catalog metadata to advance before legacy cleanup', async () => {
+    const profile = await tempProfile();
+    const plan = await migrationPlan();
+    const repository = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
+    await repository.bootstrap({ operation: 'bootstrap', migrationPlan: plan });
+    const paths = deriveRepositoryPaths(profile);
+    const catalog = await decodeRecordV1(new Uint8Array(await readFile(paths.catalog)));
+    const body = catalog.body as JsonObject;
+    await writeFile(paths.catalog, await encodeRecordV1('catalog', 1, {
+      ...body,
+      generation: Number(body.generation) + 1,
+    }));
+
+    await expect(repository.bootstrap({ operation: 'bootstrap', migrationPlan: plan }))
+      .resolves.toMatchObject({ sessions: [{ status: 'ready' }] });
     await repository.releaseLock();
   });
 

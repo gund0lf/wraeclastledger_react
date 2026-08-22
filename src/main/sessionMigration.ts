@@ -546,6 +546,7 @@ async function verifyRepository(
   paths: RepositoryPaths,
   plan: LegacyMigrationPlanV1,
   readPolicy: RepositoryReadPolicy,
+  verifyCatalog = true,
 ): Promise<void> {
   if (plan.sourceHash !== await computeSemanticHash(plan.sourceValues)) {
     throw new LegacyMigrationRepositoryError('verification-failed', 'Migration source hash mismatch');
@@ -586,7 +587,7 @@ async function verifyRepository(
   await verifyRecord(join(paths.preferences, CURRENT_RECORD_NAME), 'preferences', plan.preferences, readPolicy);
   await verifyRecord(join(paths.layout, CURRENT_RECORD_NAME), 'layout', plan.layout, readPolicy);
   await verifyRecord(join(paths.bootstrap, CURRENT_RECORD_NAME), 'bootstrap', plan.bootstrap, readPolicy);
-  await verifyRecord(paths.catalog, 'catalog', plan.catalog, readPolicy);
+  if (verifyCatalog) await verifyRecord(paths.catalog, 'catalog', plan.catalog, readPolicy);
 }
 
 function readyStorage(plan: LegacyMigrationPlanV1): RepositoryStorageV1 {
@@ -720,7 +721,11 @@ export async function migrateLegacyProfileClone(
   if (initial.kind === 'ready' || initial.kind === 'complete') {
     const storage = initial.storage as RepositoryStorageV1;
     assertSameOperation(storage, plan);
-    await verifyRepository(finalPaths, plan, readPolicy);
+    // A completed migration has already verified the exact staged catalog.
+    // Production bootstrap may legitimately rebuild or advance that catalog
+    // before the renderer removes its legacy keys, while every authoritative
+    // migrated record must still match the plan during this second check.
+    await verifyRepository(finalPaths, plan, readPolicy, initial.kind === 'ready');
     if (initial.kind === 'ready') {
       await markComplete(
         finalPaths.root,
