@@ -26,7 +26,6 @@ import {
   resolveSpecialMapTradeStats,
   tradeItemTypeForMapType,
 } from '../shared/tradeMapFilters'
-import { runWp14Benchmark } from './wp14Benchmark'
 import { FileSessionRepository } from './sessionRepository'
 import { createSessionRepositoryAdapter } from './sessionRepositoryAdapter'
 import { registerSessionRepositoryIpc } from './sessionRepositoryIpc'
@@ -43,20 +42,9 @@ import {
 // both processes were running. Isolate development before Chromium storage is
 // initialised; ProcessSingleton is scoped to this userData directory, so each
 // profile permits one writer while dev and installed builds may coexist.
-const wp14BenchmarkRequested = process.env.WL_WP14_BENCH === '1'
-const wp14BenchmarkMode = is.dev && wp14BenchmarkRequested
-if (wp14BenchmarkRequested && !is.dev) {
-  throw new Error('WP14 benchmark hooks are forbidden in a packaged application')
-}
-if (wp14BenchmarkMode) {
-  const benchmarkUserData = process.env.WL_WP14_BENCH_USER_DATA
-  if (!benchmarkUserData) throw new Error('WP14 benchmark userData path is missing')
-  app.setPath('userData', benchmarkUserData)
-} else {
-  app.setPath('userData', resolveUserDataPath(app.getPath('userData'), is.dev))
-}
+app.setPath('userData', resolveUserDataPath(app.getPath('userData'), is.dev))
 const hasSingleInstanceLock = app.requestSingleInstanceLock({
-  profile: wp14BenchmarkMode ? 'wp14-benchmark' : is.dev ? 'development' : 'installed',
+  profile: is.dev ? 'development' : 'installed',
 })
 
 const sessionRepository = new FileSessionRepository({
@@ -946,13 +934,6 @@ if (!hasSingleInstanceLock) {
   });
 
   app.whenReady().then(() => {
-    if (wp14BenchmarkMode) {
-      runWp14Benchmark().catch((error) => {
-        console.error('[WP14 bench] Fatal coordinator failure:', error)
-        app.exit(1)
-      })
-      return
-    }
     electronApp.setAppUserModelId('com.wraeclastledger.app');
     app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window));
     createWindow();

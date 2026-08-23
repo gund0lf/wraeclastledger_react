@@ -164,17 +164,21 @@ unchanged.
 | `wp14-profile/rawtext-heavy-10mib-envelope.json` | active rawText-heavy 10 MiB class | 10,486,486 | 154,015 | `d57086731b41e7d68f58af8d721e5d9b02e6c660c73842e15ea57b268d25656a` |
 | `wp14-profile/many-session-envelope.json` | deterministic 100-session catalogue | 9,779,126 | 2,484,129 | `53c30d4c276d768933c6556b9ba4616e9e7b65e3cd3a4771676e57ae1d073179` |
 
-### WP14 Phase 0 benchmark
+### WP14 release-hardening benchmark
 
-The benchmark consumes the generated `wp14-profile/` artifacts above and
-refuses to run if any file is missing or differs from the recorded byte count
-or SHA-256. It builds dedicated production-bundle entries, launches them in an
-isolated temporary Electron profile, and writes one ignored report:
+The benchmark reuses the locked Phase 0 `wp14-profile/` artifacts above and
+refuses to run if either performance fixture differs from its recorded byte
+count or SHA-256. It measures the final file repository directly: warm bootstrap
+of the migrated 100-session catalogue, generation-checked durable saves of a
+10 MiB working payload through the real current/temp/bak path, and the same
+synchronous recursive response validation used by the renderer IPC client. It
+writes one ignored report:
 
 `<project>/.wp14-bench/wp14-benchmark-report.json`
 
-The benchmark work/profile directory is removed after Electron exits. If
-cleanup fails, the report records the exact leftover path. No retained profile
+The disposable repository profiles are removed after each scenario. Acceptance
+runs require a clean tracked worktree so the report names an exact commit SHA;
+`--allow-dirty` exists only for developing the verifier. No retained profile
 data is written outside `.wp14-bench/`.
 
 Run from Command Prompt:
@@ -189,6 +193,6 @@ Run from PowerShell (the `npm.ps1` shim is blocked on this machine):
 npm.cmd run wp14:bench
 ```
 
-The first real run belongs to Sad's Windows machine. Do not infer retention,
-transport, or debounce constants until that report is reviewed; its candidate
-targets are hypotheses and any relaxation must be recorded explicitly.
+The locked targets remain 100-session warm-bootstrap P95 <= 500 ms, 10 MiB
+durable-save P95 <= 500 ms, and renderer validation max <= 50 ms. The report
+records any threshold relaxation; Phase 6 accepts none.

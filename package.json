@@ -24,7 +24,7 @@
     "game-data:generate": "node scripts/gen-manifest-json.mjs",
     "trade-stats:check": "node scripts/check-tradestats.mjs",
     "wp14:fixtures": "node scripts/run-vite-script.mjs scripts/gen-wp14-fixtures.ts",
-    "wp14:bench": "node scripts/run-wp14-bench.mjs",
+    "wp14:bench": "node scripts/run-vite-script.mjs scripts/verify-wp14-performance.ts",
     "wp14:ipc-bench": "node scripts/run-vite-script.mjs scripts/bench-wp14-ipc-validation.ts",
     "wp14:migration-check": "node scripts/run-vite-script.mjs scripts/verify-wp14-shadow-migration.ts",
     "wp14:session-export-check": "node scripts/run-vite-script.mjs scripts/verify-wp14-session-exports.ts",
