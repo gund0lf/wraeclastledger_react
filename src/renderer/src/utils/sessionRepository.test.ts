@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -256,6 +256,72 @@ describe('WP14 concrete file repository', () => {
     await repository.releaseLock();
   });
 
+  it('keeps change details specific when the same baseline starts a later activation', async () => {
+    const profile = await tempProfile();
+    const repository = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
+    await repository.bootstrap({ operation: 'bootstrap', migrationPlan: await migrationPlan() });
+    const originalPayload: JsonObject = {
+      maps: [],
+      settings: { scarabs: [{ name: 'Horned Scarab of Bloodlines', cost: 100 }] },
+    };
+    const created = await repository.save({
+      operation: 'save', target: { kind: 'new', name: 'Repeated baseline details' },
+      expectedGeneration: null, payload: originalPayload,
+    });
+    const sessionId = created.target.kind === 'session' ? created.target.sessionId : '';
+    const firstView = await repository.load({
+      operation: 'load', target: { kind: 'session', sessionId }, mode: 'view',
+    });
+    const firstEdit = await repository.save({
+      operation: 'save', target: { kind: 'session', sessionId }, expectedGeneration: firstView.generation,
+      activationId: firstView.workflow.activationId,
+      payload: {
+        ...originalPayload,
+        settings: { scarabs: [{ name: 'Horned Scarab of Bloodlines', cost: 1111 }] },
+      },
+    });
+    const firstBaseline = (await repository.historyList({
+      operation: 'history-list', target: { kind: 'session', sessionId },
+    })).checkpoints.find(({ reason }) => reason === 'activation')!;
+    await repository.historyRestore({
+      operation: 'history-restore', target: { kind: 'session', sessionId },
+      checkpointId: firstBaseline.id, expectedGeneration: firstEdit.generation,
+    });
+
+    const secondView = await repository.load({
+      operation: 'load', target: { kind: 'session', sessionId }, mode: 'view',
+    });
+    await repository.save({
+      operation: 'save', target: { kind: 'session', sessionId }, expectedGeneration: firstEdit.generation + 1,
+      activationId: secondView.workflow.activationId,
+      payload: {
+        ...originalPayload,
+        settings: { scarabs: [{ name: 'Horned Scarab of Bloodlines', cost: 1222 }] },
+      },
+    });
+
+    const activationCheckpoints = (await repository.historyList({
+      operation: 'history-list', target: { kind: 'session', sessionId },
+    })).checkpoints.filter(({ reason }) => reason === 'activation');
+    expect(activationCheckpoints).toHaveLength(2);
+    const laterBaseline = activationCheckpoints.find(({ id }) => id !== firstBaseline.id)!;
+    expect(laterBaseline).toMatchObject({
+      changes: [{
+        label: 'Horned Scarab of Bloodlines price',
+        before: '100c',
+        after: '1222c',
+      }],
+    });
+    expect(firstBaseline).toMatchObject({
+      changes: [{
+        label: 'Horned Scarab of Bloodlines price',
+        before: '100c',
+        after: '1111c',
+      }],
+    });
+    await repository.releaseLock();
+  });
+
   it('resumes the same activation across restart without creating another baseline', async () => {
     const profile = await tempProfile();
     const first = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
@@ -288,6 +354,35 @@ describe('WP14 concrete file repository', () => {
       operation: 'history-list', target: { kind: 'session', sessionId },
     })).checkpoints).toHaveLength(1);
     await restarted.releaseLock();
+  });
+
+  it('propagates unexpected target read failures without rewriting workflow to a fallback', async () => {
+    const profile = await tempProfile();
+    const first = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
+    await first.bootstrap({ operation: 'bootstrap', migrationPlan: await migrationPlan() });
+    const created = await first.save({
+      operation: 'save', target: { kind: 'new', name: 'Permission read target' },
+      expectedGeneration: null, payload: { maps: [{ id: 'must-remain-selected' }] },
+    });
+    const sessionId = created.target.kind === 'session' ? created.target.sessionId : '';
+    await first.releaseLock();
+
+    const denied = Object.assign(new Error('Session read denied'), { code: 'EACCES' });
+    const blocked = new FileSessionRepository({
+      userDataPath: profile,
+      openPath: async () => '',
+      onSessionRead: (target) => {
+        if (target.kind === 'session' && target.sessionId === sessionId) throw denied;
+      },
+    });
+    await expect(blocked.bootstrap({ operation: 'bootstrap' })).rejects.toBe(denied);
+    await blocked.releaseLock();
+
+    const recovered = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
+    const bootstrap = await recovered.bootstrap({ operation: 'bootstrap' });
+    expect(bootstrap.workflow.activeTarget).toEqual({ kind: 'session', sessionId });
+    expect(bootstrap.workflow.viewedTarget).toEqual({ kind: 'session', sessionId });
+    await recovered.releaseLock();
   });
 
   it('creates coarse periodic recovery without checkpointing a fresh empty draft', async () => {
@@ -395,6 +490,27 @@ describe('WP14 concrete file repository', () => {
     const result = await repository.importDocument({ operation: 'import', document, conflictMode: 'overwrite' });
     expect(result.importedSessionIds).toEqual([existingId, 'new-import-id']);
     await repository.releaseLock();
+  });
+
+  it('preserves a pre-journal abandoned import path without renaming it on every bootstrap', async () => {
+    const profile = await tempProfile();
+    const first = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
+    await first.bootstrap({ operation: 'bootstrap', migrationPlan: await migrationPlan() });
+    await first.releaseLock();
+
+    const transactions = join(profile, 'ledger-data', 'transactions');
+    await mkdir(join(transactions, 'import-pre-journal-evidence'), { recursive: true });
+    const second = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
+    await second.bootstrap({ operation: 'bootstrap' });
+    await second.releaseLock();
+    const afterFirstRecovery = await readdir(transactions);
+    expect(afterFirstRecovery).toHaveLength(1);
+    expect(afterFirstRecovery[0]).toMatch(/^abandoned-import-pre-journal-evidence-/);
+
+    const third = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
+    await third.bootstrap({ operation: 'bootstrap' });
+    await third.releaseLock();
+    expect(await readdir(transactions)).toEqual(afterFirstRecovery);
   });
 
   it('moves a meaningful replaced working draft to recoverable trash', async () => {
@@ -673,6 +789,69 @@ describe('WP14 concrete file repository', () => {
     expect((await repository.load({
       operation: 'load', target: { kind: 'session', sessionId: namedId }, mode: 'inspect',
     })).payload).toMatchObject({ maps: [{ id: 'kept' }] });
+    await repository.releaseLock();
+  });
+
+  it('keeps working recovery metadata when both replacement and rollback fail', async () => {
+    const profile = await tempProfile();
+    let failCommit = false;
+    const repository = new FileSessionRepository({
+      userDataPath: profile,
+      openPath: async () => '',
+      onSessionCommit: () => {
+        if (failCommit) throw new Error('injected session commit failure');
+      },
+      onRecoveryRollback: () => {
+        throw new Error('injected recovery rollback failure');
+      },
+    });
+    await repository.bootstrap({ operation: 'bootstrap', migrationPlan: await migrationPlan() });
+    const working = await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: null,
+      payload: { maps: [{ id: 'recoverable-working' }] },
+    });
+    failCommit = true;
+    await expect(repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: working.generation,
+      payload: { maps: [], sessionNotes: 'replacement' }, replacement: true,
+    })).rejects.toThrow('Working replacement and its recovery rollback both failed');
+    const trash = await repository.trashList({ operation: 'trash-list' });
+    expect(trash.entries).toHaveLength(1);
+    expect(trash.entries[0]).toMatchObject({ sourceKind: 'working', status: 'ready' });
+    await repository.releaseLock();
+  });
+
+  it('keeps named recovery metadata when workflow and rollback both fail', async () => {
+    const profile = await tempProfile();
+    let failWorkflow = false;
+    let failRollback = false;
+    const repository = new FileSessionRepository({
+      userDataPath: profile,
+      openPath: async () => '',
+      onWorkflowWrite: () => {
+        if (failWorkflow) throw new Error('injected workflow failure');
+      },
+      onRecoveryRollback: () => {
+        if (failRollback) throw new Error('injected recovery rollback failure');
+      },
+    });
+    await repository.bootstrap({ operation: 'bootstrap', migrationPlan: await migrationPlan() });
+    await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: null, payload: { maps: [] },
+    });
+    const named = await repository.save({
+      operation: 'save', target: { kind: 'new', name: 'Rollback evidence' },
+      expectedGeneration: null, payload: { maps: [{ id: 'recoverable-named' }] },
+    });
+    const sessionId = named.target.kind === 'session' ? named.target.sessionId : '';
+    failWorkflow = true;
+    failRollback = true;
+    await expect(repository.delete({
+      operation: 'delete', sessionId, expectedGeneration: named.generation,
+    })).rejects.toThrow('Session moved to recovery but its workflow update and rollback both failed');
+    const trash = await repository.trashList({ operation: 'trash-list' });
+    expect(trash.entries).toHaveLength(1);
+    expect(trash.entries[0]).toMatchObject({ sourceKind: 'named', sessionId, status: 'ready' });
     await repository.releaseLock();
   });
 

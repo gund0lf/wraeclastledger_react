@@ -121,21 +121,34 @@ rotate a valid `current.wlrec` to `current.bak`; the catalog and human-readable
 The renderer keeps only the active payload and repository summaries in Zustand.
 It lazy-loads full payloads for navigation, comparisons, and aggregate local
 statistics, and reports `Auto-saved` only after the main process acknowledges
-the filesystem commit. Browser `localStorage` is a one-time legacy migration
-source, not a second writer. Migration retains exact source backups and removes
-the old keys only after a second semantic verification of the completed file
-repository.
+the filesystem commit. One shared, exact session-payload contract defines every
+persisted session field; the renderer codec, portable import/export, legacy
+migration, inspection loading, and meaningful-working classifier are exhaustive
+over that contract. Browser `localStorage` is a one-time legacy migration source,
+not a second writer. Migration retains exact source backups and removes the old
+keys only after a second semantic verification of the completed file repository.
+Bootstrap falls back from a persisted target only for a missing record or an
+explicit repository recovery condition; permission and unexpected I/O failures
+remain loud and do not rewrite workflow pointers.
 
 Batch imports are journaled and either commit in full or roll back. Replaced
 meaningful working drafts and deleted named sessions move to recoverable trash
-before workflow pointers change. The first edit after opening an existing
-session durably checkpoints its opening payload and exposes Undo only after that
-write is acknowledged. Version history also records destructive, pre-restore,
-and coarse periodic recovery points; restore preserves current before making a
-selected version current. New checkpoints include bounded collapsible field-level
-changes with exact before/after prices; Note content is not copied into the diff,
-and older checkpoints without details remain readable. Count and compressed-byte
-limits prune optional history before protected recovery promises. The explicit
+before workflow pointers change. If a later step fails, recovery metadata is
+removed only after the reverse rename has restored the authoritative source;
+failed rollback therefore leaves a self-describing recovery entry. Abandoned
+pre-journal imports are moved out of the active transaction namespace so later
+bootstraps do not repeatedly process them. The first edit after opening an
+existing session durably checkpoints its opening payload and exposes Undo only
+after that write is acknowledged. Version history also records destructive,
+pre-restore, and coarse periodic recovery points; restore preserves current
+before making a selected version current. Checkpoint identity includes the
+editing activation, reason, opening-payload hash, and resulting-payload hash, so
+reusing the same opening payload for a different later edit cannot reuse stale
+transition details. New checkpoints include bounded collapsible summaries for
+selected field-level changes, including exact before/after prices; Note content
+is not copied into the diff, and older checkpoints without details remain
+readable. Count and compressed-byte limits prune optional history before
+protected recovery promises. The explicit
 fresh-empty working slot is infrastructure and never enters history or trash;
 semantically empty autosaves preserve its marker across automatic league,
 divine-price/provenance, and seeded Atlas metadata, while the first meaningful

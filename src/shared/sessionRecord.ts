@@ -31,6 +31,7 @@ export interface SessionCheckpointV1 extends JsonObject {
   at: string;
   reason: CheckpointReason;
   activationId?: string;
+  afterSemanticHash?: string;
   summary: JsonObject;
   afterSummary?: JsonObject;
   changes?: JsonObject[];
@@ -268,6 +269,14 @@ export function assertSessionBodyV1(value: unknown): asserts value is SessionBod
     }
     if (value.checkpoint.activationId !== undefined) {
       assertNonEmptyString(value.checkpoint.activationId, 'checkpoint.activationId');
+    }
+    if (value.checkpoint.afterSemanticHash !== undefined &&
+        (typeof value.checkpoint.afterSemanticHash !== 'string' ||
+         !HASH_PATTERN.test(value.checkpoint.afterSemanticHash))) {
+      throw new RecordValidationError(
+        'invalid-body',
+        'checkpoint.afterSemanticHash must be a SHA-256 hash',
+      );
     }
     if (!isPlainObject(value.checkpoint.summary)) {
       throw new RecordValidationError('invalid-body', 'checkpoint.summary must be an object');

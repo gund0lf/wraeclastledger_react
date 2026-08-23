@@ -40,6 +40,14 @@ import {
 import { confirmedLeagueSync } from '../utils/league';
 
 const TILE_STYLES = { inner: { width: '100%' }, label: { flex: 1, textAlign: 'center' as const } };
+const RECOVERY_LIST_SCROLL_PROPS = {
+  mah: 420,
+  type: 'hover',
+  scrollHideDelay: 650,
+  scrollbarSize: 8,
+  scrollbars: 'y',
+  offsetScrollbars: 'y',
+} as const;
 
 function summaryCount(summary: RepositoryCheckpointSummary['summary'], key: string): number {
   return typeof summary[key] === 'number' ? Number(summary[key]) : 0;
@@ -490,7 +498,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
           ) : versionHistory.length === 0 ? (
             <Text size="sm" c="dimmed">No earlier versions have been recorded for this session yet.</Text>
           ) : (
-            <ScrollArea mah={420}>
+            <ScrollArea.Autosize {...RECOVERY_LIST_SCROLL_PROPS}>
               <Stack gap={6}>
                 {versionHistory.map((checkpoint) => (
                   <Card key={checkpoint.id} withBorder padding="sm" radius="sm">
@@ -538,7 +546,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
                   </Card>
                 ))}
               </Stack>
-            </ScrollArea>
+            </ScrollArea.Autosize>
           )}
         </Stack>
       </Modal>
@@ -575,7 +583,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
           ) : trashEntries.length === 0 ? (
             <Text size="sm" c="dimmed">Recently Deleted is empty.</Text>
           ) : (
-            <ScrollArea mah={420}>
+            <ScrollArea.Autosize {...RECOVERY_LIST_SCROLL_PROPS}>
               <Stack gap={6}>
                 {trashEntries.map((entry) => (
                   <Card key={entry.recoveryId} withBorder padding="sm" radius="sm">
@@ -604,7 +612,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
                   </Card>
                 ))}
               </Stack>
-            </ScrollArea>
+            </ScrollArea.Autosize>
           )}
         </Stack>
       </Modal>

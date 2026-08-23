@@ -7,16 +7,15 @@ import {
   type LegacyMigrationPlanV1,
   type LegacyStorageSnapshot,
 } from '../../../shared/sessionMigration';
-import { assertJsonValue, computeSemanticHash, type JsonObject, type JsonValue } from '../../../shared/sessionRecord';
+import { computeSemanticHash, type JsonObject } from '../../../shared/sessionRecord';
 import type {
   RepositorySessionSummary,
   RepositoryWorkflow,
   SessionRepositoryDataMap,
   SessionTarget,
 } from '../../../shared/sessionRepositoryIpc';
-import type { SavedSession, SessionSettings } from '../types';
+import type { SavedSession } from '../types';
 import { confirmedLeagueSync, getCurrentLeague, setLeagueOverrideValue } from '../utils/league';
-import { normalizeLocalManualStatistics } from '../utils/manualStatistics';
 import { isWorkingPayloadMeaningful, isWorkingSessionMeaningful } from '../utils/workingSession';
 import {
   DEFAULT_SETTINGS,
@@ -25,6 +24,12 @@ import {
   type SessionState,
 } from '../store/useSessionStore';
 import { migrateSessionEnvelope } from './legacySessionMigration';
+import {
+  decodeSessionPayload,
+  encodeSessionPayload,
+  SESSION_PAYLOAD_STATE_KEYS,
+  toJsonObject,
+} from './sessionPayloadCodec';
 import {
   createSessionRepositoryClient,
   SessionRepositoryClientError,
@@ -42,6 +47,17 @@ interface PendingSessionSave {
   activationId?: string;
   checkpointReason?: 'destructive';
   freshEmptyWorking?: true;
+}
+
+export function coalescePendingSessionSnapshot<T extends { checkpointReason?: 'destructive' }>(
+  previous: T | null,
+  next: T,
+): T {
+  const checkpointReason = previous?.checkpointReason ?? next.checkpointReason;
+  return {
+    ...next,
+    ...(checkpointReason ? { checkpointReason } : {}),
+  };
 }
 
 interface LayoutSaveWaiter {
@@ -116,35 +132,6 @@ function queueRepositoryMetadataRefresh(): void {
       console.error('[Session repository] Metadata refresh failed:', error);
     });
   }, 1500);
-}
-
-function jsonValue(value: unknown, path = '$'): JsonValue {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) throw new Error(`${path} contains a non-finite number`);
-    return Object.is(value, -0) ? 0 : value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((child, index) => {
-      if (child === undefined) throw new Error(`${path}[${index}] is undefined`);
-      return jsonValue(child, `${path}[${index}]`);
-    });
-  }
-  if (typeof value !== 'object') throw new Error(`${path} contains an unsupported value`);
-  const output: JsonObject = {};
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    if (child !== undefined) output[key] = jsonValue(child, `${path}.${key}`);
-  }
-  return output;
-}
-
-function jsonObject(value: unknown): JsonObject {
-  const normalized = jsonValue(value);
-  if (normalized === null || Array.isArray(normalized) || typeof normalized !== 'object') {
-    throw new Error('Repository payload must be an object');
-  }
-  assertJsonValue(normalized);
-  return normalized;
 }
 
 function legacySnapshot(createSynthetic = false): LegacyStorageSnapshot {
@@ -224,23 +211,8 @@ function applyPreferences(preferences: JsonObject): Partial<SessionState> {
 }
 
 function applyPayload(data: LoadData, sessions: RepositorySessionSummary[]): Partial<SessionState> {
-  const payload = data.payload;
-  const settings = typeof payload.settings === 'object' && payload.settings !== null && !Array.isArray(payload.settings)
-    ? payload.settings as unknown as Partial<SessionSettings> : {};
   return {
-    maps: Array.isArray(payload.maps) ? payload.maps as unknown as SessionState['maps'] : [],
-    lootItems: Array.isArray(payload.lootItems) ? payload.lootItems as unknown as SessionState['lootItems'] : [],
-    baselineItems: Array.isArray(payload.baselineItems) ? payload.baselineItems as unknown as SessionState['baselineItems'] : [],
-    baselineTotal: typeof payload.baselineTotal === 'number' ? payload.baselineTotal : 0,
-    manualLootItems: Array.isArray(payload.manualLootItems) ? payload.manualLootItems as unknown as SessionState['manualLootItems'] : [],
-    manualStatistics: normalizeLocalManualStatistics(payload.manualStatistics),
-    settings: { ...DEFAULT_SETTINGS, ...settings },
-    sessionNotes: typeof payload.sessionNotes === 'string' ? payload.sessionNotes : '',
-    investmentNeutralization: typeof payload.investmentNeutralization === 'number'
-      ? payload.investmentNeutralization : 0,
-    investmentDismissed: payload.investmentDismissed === true,
-    loadedStrategyInfo: payload.strategySourceContext && typeof payload.strategySourceContext === 'object' && !Array.isArray(payload.strategySourceContext)
-      ? payload.strategySourceContext as SessionState['loadedStrategyInfo'] : null,
+    ...decodeSessionPayload(data.payload, DEFAULT_SETTINGS),
     activeSessionId: data.target.kind === 'session' ? data.target.sessionId : null,
     activeSessionName: summaryName(sessions, data.target),
     currentGeneration: data.generation,
@@ -261,23 +233,11 @@ function currentTarget(state = useSessionStore.getState()): SessionTarget {
 }
 
 function sessionPayload(state = useSessionStore.getState()): JsonObject {
-  return jsonObject({
-    maps: state.maps,
-    lootItems: state.lootItems,
-    baselineItems: state.baselineItems,
-    baselineTotal: state.baselineTotal,
-    manualLootItems: state.manualLootItems,
-    manualStatistics: state.manualStatistics,
-    settings: state.settings,
-    sessionNotes: state.sessionNotes,
-    investmentNeutralization: state.investmentNeutralization,
-    investmentDismissed: state.investmentDismissed,
-    strategySourceContext: state.loadedStrategyInfo,
-  });
+  return encodeSessionPayload(state);
 }
 
 function preferencePayload(state = useSessionStore.getState()): JsonObject {
-  return jsonObject({
+  return toJsonObject({
     discordTag: state.discordTag,
     regexSets: state.regexSets,
     leagueOverride: state.leagueOverride,
@@ -378,18 +338,17 @@ function queueSessionSave(immediate: boolean): void {
     if (pendingRestoreHydration) {
       throw new Error('A restored version is waiting to be reloaded. Retry before making more changes.');
     }
-    const checkpointReason = pendingSessionSave?.checkpointReason ?? pendingExplicitCheckpointReason;
-    pendingExplicitCheckpointReason = null;
     const state = useSessionStore.getState();
     const target = currentTarget(state);
-    pendingSessionSave = {
+    pendingSessionSave = coalescePendingSessionSnapshot(pendingSessionSave, {
       target,
       payload: sessionPayload(state),
       ...(repositoryWorkflow?.activationId ? { activationId: repositoryWorkflow.activationId } : {}),
-      ...(checkpointReason ? { checkpointReason } : {}),
+      ...(pendingExplicitCheckpointReason ? { checkpointReason: pendingExplicitCheckpointReason } : {}),
       ...(target.kind === 'working' && !isWorkingSessionMeaningful(state, DEFAULT_SETTINGS)
         ? { freshEmptyWorking: true as const } : {}),
-    };
+    });
+    pendingExplicitCheckpointReason = null;
     markRepositorySaving();
     if (sessionSaveTimer) clearTimeout(sessionSaveTimer);
     if (immediate) {
@@ -680,7 +639,7 @@ export function forkPayloadIntoLeague(
   forkSettings.divinePrice = 0;
   forkSettings.atlasBonus = atlasBonus;
   delete forkSettings.divinePriceQuotedAt;
-  return { ...payload, settings: jsonObject(forkSettings) };
+  return { ...payload, settings: toJsonObject(forkSettings) };
 }
 
 export async function forkCurrentToConfirmedLeague(name: string): Promise<void> {
@@ -741,7 +700,7 @@ export async function forkCurrentToConfirmedLeague(name: string): Promise<void> 
 function freshWorkingPayload(): JsonObject {
   const state = useSessionStore.getState();
   const known = confirmedLeagueSync();
-  return jsonObject({
+  return encodeSessionPayload({
     maps: [],
     lootItems: [],
     baselineItems: [],
@@ -757,7 +716,7 @@ function freshWorkingPayload(): JsonObject {
     sessionNotes: '',
     investmentNeutralization: 0,
     investmentDismissed: false,
-    strategySourceContext: null,
+    loadedStrategyInfo: null,
   });
 }
 
@@ -892,14 +851,7 @@ function installStoreSubscription(): void {
   unsubscribeStore?.();
   unsubscribeStore = useSessionStore.subscribe((state, previous) => {
     if (applyingRepositoryState || state.repositoryStatus !== 'ready') return;
-    const sessionChanged =
-      state.maps !== previous.maps || state.lootItems !== previous.lootItems ||
-      state.baselineItems !== previous.baselineItems || state.baselineTotal !== previous.baselineTotal ||
-      state.manualLootItems !== previous.manualLootItems || state.manualStatistics !== previous.manualStatistics ||
-      state.settings !== previous.settings || state.sessionNotes !== previous.sessionNotes ||
-      state.investmentNeutralization !== previous.investmentNeutralization ||
-      state.investmentDismissed !== previous.investmentDismissed ||
-      state.loadedStrategyInfo !== previous.loadedStrategyInfo;
+    const sessionChanged = SESSION_PAYLOAD_STATE_KEYS.some((key) => state[key] !== previous[key]);
     if (sessionChanged) {
       const discrete = state.maps !== previous.maps || state.lootItems !== previous.lootItems ||
         state.baselineItems !== previous.baselineItems || state.baselineTotal !== previous.baselineTotal ||
@@ -1261,21 +1213,21 @@ export async function loadRepositorySessionForInspection(id: string): Promise<Sa
   });
   const summary = useSessionStore.getState().repositorySessions.find((entry) => entry.id === id);
   if (!summary) throw new Error('Session summary was not found');
-  const payload = data.payload;
+  const payload = decodeSessionPayload(data.payload, DEFAULT_SETTINGS);
   return {
     id,
     name: summary.name,
     createdAt: summary.createdAt,
-    maps: Array.isArray(payload.maps) ? payload.maps as unknown as SavedSession['maps'] : [],
-    lootItems: Array.isArray(payload.lootItems) ? payload.lootItems as unknown as SavedSession['lootItems'] : [],
-    baselineItems: Array.isArray(payload.baselineItems) ? payload.baselineItems as unknown as SavedSession['baselineItems'] : [],
-    baselineTotal: typeof payload.baselineTotal === 'number' ? payload.baselineTotal : 0,
-    manualLootItems: Array.isArray(payload.manualLootItems) ? payload.manualLootItems as unknown as SavedSession['manualLootItems'] : [],
-    manualStatistics: normalizeLocalManualStatistics(payload.manualStatistics),
-    settings: { ...DEFAULT_SETTINGS, ...(payload.settings as unknown as Partial<SessionSettings>) },
-    notes: typeof payload.sessionNotes === 'string' ? payload.sessionNotes : '',
-    investmentNeutralization: typeof payload.investmentNeutralization === 'number' ? payload.investmentNeutralization : 0,
-    investmentDismissed: payload.investmentDismissed === true,
+    maps: payload.maps,
+    lootItems: payload.lootItems,
+    baselineItems: payload.baselineItems,
+    baselineTotal: payload.baselineTotal,
+    manualLootItems: payload.manualLootItems,
+    manualStatistics: payload.manualStatistics,
+    settings: payload.settings,
+    notes: payload.sessionNotes,
+    investmentNeutralization: payload.investmentNeutralization,
+    investmentDismissed: payload.investmentDismissed,
   };
 }
 

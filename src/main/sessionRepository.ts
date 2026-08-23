@@ -32,11 +32,15 @@ import {
   MAX_CHECKPOINT_CHANGE_DETAILS,
   MAX_CHECKPOINT_CHANGE_TEXT_LENGTH,
   type JsonObject,
-  type JsonValue,
   type CheckpointReason,
   type RecordContentType,
   type SessionBodyV1,
 } from '../shared/sessionRecord';
+import {
+  portableFieldsFromSessionPayload,
+  sessionPayloadFromPortableFields,
+  type PortableSessionPayloadFields,
+} from '../shared/sessionPayload';
 import {
   SESSION_REPOSITORY_MAX_IMPORT_BYTES,
   type RepositoryCheckpointSummary,
@@ -103,22 +107,11 @@ interface RepositoryLockBody {
   startedAt: string;
 }
 
-interface PortableSession extends JsonObject {
+type PortableSession = JsonObject & PortableSessionPayloadFields & {
   id: string;
   name: string;
   createdAt: string;
-  maps: JsonValue[];
-  lootItems: JsonValue[];
-  baselineItems: JsonValue[];
-  baselineTotal: number;
-  manualLootItems?: JsonValue[];
-  manualStatistics?: JsonObject;
-  settings: JsonObject;
-  notes?: string;
-  investmentNeutralization?: number;
-  investmentDismissed?: boolean;
-  strategySourceContext?: JsonObject | null;
-}
+};
 
 interface ImportTransactionAction {
   sessionId: string;
@@ -184,6 +177,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function isMissing(error: unknown): boolean {
   return error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT';
+}
+
+function isRecoverableTargetReadFailure(error: unknown): boolean {
+  return isMissing(error) || error instanceof RepositoryRecoveryRequiredError;
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -572,6 +569,9 @@ export interface FileSessionRepositoryOptions {
     index: number,
   ) => void | Promise<void>;
   onWorkflowWrite?: (workflow: RepositoryWorkflow) => void | Promise<void>;
+  onSessionRead?: (target: SessionTarget) => void | Promise<void>;
+  onSessionCommit?: (target: SessionTarget) => void | Promise<void>;
+  onRecoveryRollback?: (recoveryDirectory: string, sourceDirectory: string) => void | Promise<void>;
 }
 
 export class FileSessionRepository implements SessionRepositoryPort {
@@ -727,9 +727,13 @@ export class FileSessionRepository implements SessionRepositoryPort {
       const directory = join(transactions, entry.name);
       const journalPath = join(directory, 'journal.json');
       if (!(await exists(journalPath))) {
+        const abandonedDirectory = join(
+          transactions,
+          `abandoned-${entry.name}-${this.now().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}`,
+        );
         await retryTransientFileOperation(() => rename(
           directory,
-          `${directory}.abandoned-${this.now().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}`,
+          abandonedDirectory,
         ));
         continue;
       }
@@ -759,6 +763,22 @@ export class FileSessionRepository implements SessionRepositoryPort {
         : deriveSessionDirectory(this.paths.root, target.sessionId);
   }
 
+  private async rollbackRecoveryDirectory(
+    recoveryDirectory: string,
+    sourceDirectory: string,
+  ): Promise<void> {
+    await this.options.onRecoveryRollback?.(recoveryDirectory, sourceDirectory);
+    await retryTransientFileOperation(() => rename(recoveryDirectory, sourceDirectory));
+    // Recovery metadata is authoritative while the directory remains in trash.
+    // Once the reverse rename succeeds it is ignored, so cleanup is best effort
+    // and can never make a successful rollback ambiguous.
+    try {
+      await rm(join(sourceDirectory, 'recovery.json'), { force: true });
+    } catch {
+      // The restored source payload remains authoritative.
+    }
+  }
+
   private async moveDirectoryToTrash(
     source: string,
     metadata: JsonObject,
@@ -777,7 +797,14 @@ export class FileSessionRepository implements SessionRepositoryPort {
         ...metadata,
       }), 'utf8'));
     } catch (error) {
-      await retryTransientFileOperation(() => rename(destination, source));
+      try {
+        await this.rollbackRecoveryDirectory(destination, source);
+      } catch (rollbackError) {
+        throw new AggregateError(
+          [error, rollbackError],
+          'Recovery metadata write and directory rollback both failed',
+        );
+      }
       throw error;
     }
     return { recoveryId, destination };
@@ -868,6 +895,7 @@ export class FileSessionRepository implements SessionRepositoryPort {
   }
 
   private async readBody(target: SessionTarget): Promise<SessionBodyV1> {
+    await this.options.onSessionRead?.(target);
     const recovered = await recoverRecordDirectory(this.targetDirectory(target), this.readPolicy, 'session');
     if (recovered.status === 'damaged' || recovered.status === 'unsupported') {
       throw new RepositoryRecoveryRequiredError(recovered.status);
@@ -1180,11 +1208,13 @@ export class FileSessionRepository implements SessionRepositoryPort {
     // damaged viewed target falls back without deleting either persisted ID.
     try {
       await this.readBody(this.workflow.viewedTarget);
-    } catch {
+    } catch (viewedError) {
+      if (!isRecoverableTargetReadFailure(viewedError)) throw viewedError;
       try {
         await this.readBody(this.workflow.activeTarget);
         this.workflow = { ...this.workflow, viewedTarget: this.workflow.activeTarget, suspended: false };
-      } catch {
+      } catch (activeError) {
+        if (!isRecoverableTargetReadFailure(activeError)) throw activeError;
         await this.readBody({ kind: 'working' });
         this.workflow = {
           ...this.workflow,
@@ -1340,7 +1370,8 @@ export class FileSessionRepository implements SessionRepositoryPort {
           try {
             const activeNamed = await this.readBody(this.workflow!.activeTarget);
             preservedAsNamed = activeNamed.semanticHash === prior.semanticHash;
-          } catch {
+          } catch (error) {
+            if (!isRecoverableTargetReadFailure(error)) throw error;
             preservedAsNamed = false;
           }
         }
@@ -1426,6 +1457,7 @@ export class FileSessionRepository implements SessionRepositoryPort {
       };
       let result: Awaited<ReturnType<typeof commitRecordAtomically>>;
       try {
+        await this.options.onSessionCommit?.(target);
         result = await commitRecordAtomically({
           directory: this.targetDirectory(target),
           entityKey: target.kind === 'working' ? 'working' : target.sessionId,
@@ -1445,8 +1477,14 @@ export class FileSessionRepository implements SessionRepositoryPort {
         });
       } catch (error) {
         if (replacementRecovery && !(await exists(this.paths.working))) {
-          await rm(join(replacementRecovery.destination, 'recovery.json'), { force: true });
-          await retryTransientFileOperation(() => rename(replacementRecovery.destination, this.paths.working));
+          try {
+            await this.rollbackRecoveryDirectory(replacementRecovery.destination, this.paths.working);
+          } catch (rollbackError) {
+            throw new AggregateError(
+              [error, rollbackError],
+              'Working replacement and its recovery rollback both failed',
+            );
+          }
         }
         throw error;
       }
@@ -1535,7 +1573,8 @@ export class FileSessionRepository implements SessionRepositoryPort {
       if (sameTarget(this.workflow!.activeTarget, target) || sameTarget(this.workflow!.viewedTarget, target)) {
         try {
           await this.readBody({ kind: 'working' });
-        } catch {
+        } catch (error) {
+          if (!isRecoverableTargetReadFailure(error)) throw error;
           throw new Error('Create a valid working session before removing the currently open named session');
         }
       }
@@ -1565,8 +1604,7 @@ export class FileSessionRepository implements SessionRepositoryPort {
           await this.writeWorkflow(workflow, this.workflowGeneration!);
         } catch (error) {
           try {
-            await rm(join(recovery.destination, 'recovery.json'), { force: true });
-            await retryTransientFileOperation(() => rename(recovery.destination, sourceDirectory));
+            await this.rollbackRecoveryDirectory(recovery.destination, sourceDirectory);
             this.sessions.set(request.sessionId, await this.catalogEntry(body));
           } catch (rollbackError) {
             throw new AggregateError([error, rollbackError], 'Session moved to recovery but its workflow update and rollback both failed');
@@ -1871,9 +1909,16 @@ export class FileSessionRepository implements SessionRepositoryPort {
     } = {},
   ): Promise<CheckpointWriteResult> {
     const checkpointAt = this.now().toISOString();
+    const afterSemanticHash = options.afterPayload
+      ? await computeSemanticHash(options.afterPayload)
+      : undefined;
     const records = await this.versionRecordsInDirectory(directory);
     let selected = records.find((record) => (
-      record.contentVersion === SESSION_CONTENT_VERSION && record.body.semanticHash === body.semanticHash
+      record.contentVersion === SESSION_CONTENT_VERSION &&
+      record.body.semanticHash === body.semanticHash &&
+      record.body.checkpoint?.reason === reason &&
+      record.body.checkpoint.activationId === options.activationId &&
+      record.body.checkpoint.afterSemanticHash === afterSemanticHash
     ));
     const existingRetention = this.retentionForVersions(records, options.activationBaselineCheckpointId);
     if (!selected && options.optional && existingRetention.refuseOptionalCheckpoints) {
@@ -1891,6 +1936,7 @@ export class FileSessionRepository implements SessionRepositoryPort {
           at: checkpointAt,
           reason,
           ...(options.activationId ? { activationId: options.activationId } : {}),
+          ...(afterSemanticHash ? { afterSemanticHash } : {}),
           summary: cloneJson(body.summary),
           ...(options.afterSummary ? { afterSummary: cloneJson(options.afterSummary) } : {}),
           ...(detail.changeCount > 0 ? {
@@ -2011,10 +2057,7 @@ export class FileSessionRepository implements SessionRepositoryPort {
     const ids = new Set<string>();
     return rawSessions.map((raw, index) => {
       if (!isPlainObject(raw)) throw new Error(`Imported session ${index + 1} is invalid`);
-      const session: PortableSession = {
-        id: requireString(raw.id, `sessions[${index}].id`),
-        name: requireString(raw.name, `sessions[${index}].name`),
-        createdAt: requireTimestamp(raw.createdAt, `sessions[${index}].createdAt`),
+      const portablePayload: PortableSessionPayloadFields = {
         maps: Array.isArray(raw.maps) ? cloneJson(raw.maps) : (() => { throw new Error('maps must be an array'); })(),
         lootItems: Array.isArray(raw.lootItems) ? cloneJson(raw.lootItems) : (() => { throw new Error('lootItems must be an array'); })(),
         baselineItems: Array.isArray(raw.baselineItems) ? cloneJson(raw.baselineItems) : [],
@@ -2029,6 +2072,12 @@ export class FileSessionRepository implements SessionRepositoryPort {
         strategySourceContext: isPlainObject(raw.strategySourceContext)
           ? cloneJson(raw.strategySourceContext) as JsonObject : null,
       };
+      const session: PortableSession = {
+        id: requireString(raw.id, `sessions[${index}].id`),
+        name: requireString(raw.name, `sessions[${index}].name`),
+        createdAt: requireTimestamp(raw.createdAt, `sessions[${index}].createdAt`),
+        ...portablePayload,
+      };
       if (ids.has(session.id)) throw new Error(`Duplicate imported session id ${session.id}`);
       ids.add(session.id);
       assertJsonValue(session);
@@ -2037,19 +2086,7 @@ export class FileSessionRepository implements SessionRepositoryPort {
   }
 
   private portablePayload(session: PortableSession): JsonObject {
-    return {
-      maps: session.maps,
-      lootItems: session.lootItems,
-      baselineItems: session.baselineItems,
-      baselineTotal: session.baselineTotal,
-      manualLootItems: session.manualLootItems ?? [],
-      manualStatistics: session.manualStatistics ?? {},
-      settings: session.settings,
-      sessionNotes: session.notes ?? '',
-      investmentNeutralization: session.investmentNeutralization ?? 0,
-      investmentDismissed: session.investmentDismissed ?? false,
-      strategySourceContext: session.strategySourceContext ?? null,
-    };
+    return cloneJson(sessionPayloadFromPortableFields(session));
   }
 
   async importDocument(request: RequestFor<'import'>): Promise<SessionRepositoryDataMap['import']> {
@@ -2167,23 +2204,14 @@ export class FileSessionRepository implements SessionRepositoryPort {
       for (const id of request.sessionIds) {
         const body = await this.readBody({ kind: 'session', sessionId: id });
         const payload = body.payload;
-        sessions.push({
+        const portable = {
           id,
           name: body.name as string,
           createdAt: body.createdAt,
-          maps: cloneJson(Array.isArray(payload.maps) ? payload.maps : []),
-          lootItems: cloneJson(Array.isArray(payload.lootItems) ? payload.lootItems : []),
-          baselineItems: cloneJson(Array.isArray(payload.baselineItems) ? payload.baselineItems : []),
-          baselineTotal: typeof payload.baselineTotal === 'number' ? payload.baselineTotal : 0,
-          manualLootItems: cloneJson(Array.isArray(payload.manualLootItems) ? payload.manualLootItems : []),
-          manualStatistics: isPlainObject(payload.manualStatistics) ? cloneJson(payload.manualStatistics) as JsonObject : {},
-          settings: isPlainObject(payload.settings) ? cloneJson(payload.settings) as JsonObject : {},
-          notes: typeof payload.sessionNotes === 'string' ? payload.sessionNotes : '',
-          investmentNeutralization: typeof payload.investmentNeutralization === 'number' ? payload.investmentNeutralization : 0,
-          investmentDismissed: payload.investmentDismissed === true,
-          strategySourceContext: isPlainObject(payload.strategySourceContext)
-            ? cloneJson(payload.strategySourceContext) as JsonObject : null,
-        });
+          ...cloneJson(portableFieldsFromSessionPayload(payload)),
+        };
+        assertJsonValue(portable);
+        sessions.push(portable as PortableSession);
       }
       return {
         document: JSON.stringify({ version: IMPORT_SCHEMA_VERSION, exportedAt: this.now().toISOString(), sessions }, null, 2),

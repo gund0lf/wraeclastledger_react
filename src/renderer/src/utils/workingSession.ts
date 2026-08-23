@@ -6,6 +6,7 @@ import type {
   SessionSettings,
 } from '../types';
 import type { JsonObject } from '../../../shared/sessionRecord';
+import { SESSION_PAYLOAD_KEYS, type SessionPayloadKey } from '../../../shared/sessionPayload';
 import {
   hasManualStatistics,
   MANUAL_STATISTIC_FIELDS,
@@ -48,19 +49,30 @@ const AUTO_MANAGED_SETTINGS = new Set<keyof SessionSettings>([
 
 const valuesEqual = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
-const SESSION_PAYLOAD_KEYS = new Set([
-  'maps',
-  'lootItems',
-  'baselineItems',
-  'baselineTotal',
-  'manualLootItems',
-  'manualStatistics',
-  'settings',
-  'sessionNotes',
-  'investmentNeutralization',
-  'investmentDismissed',
-  'strategySourceContext',
-]);
+const SESSION_PAYLOAD_KEY_SET = new Set<string>(SESSION_PAYLOAD_KEYS);
+
+function assertClassifierHandlesSessionPayloadKey(key: SessionPayloadKey): void {
+  switch (key) {
+    case 'maps':
+    case 'lootItems':
+    case 'baselineItems':
+    case 'baselineTotal':
+    case 'manualLootItems':
+    case 'manualStatistics':
+    case 'settings':
+    case 'sessionNotes':
+    case 'investmentNeutralization':
+    case 'investmentDismissed':
+    case 'strategySourceContext':
+      return;
+    default: {
+      const unhandled: never = key;
+      return unhandled;
+    }
+  }
+}
+
+SESSION_PAYLOAD_KEYS.forEach(assertClassifierHandlesSessionPayloadKey);
 
 const isPlainObject = (value: unknown): value is JsonObject =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -155,7 +167,7 @@ export function isWorkingPayloadMeaningful(
   defaults: SessionSettings,
   defaultExclusionPreset: string[] = [],
 ): boolean {
-  if (Object.keys(payload).some((key) => !SESSION_PAYLOAD_KEYS.has(key))) return true;
+  if (Object.keys(payload).some((key) => !SESSION_PAYLOAD_KEY_SET.has(key))) return true;
 
   for (const key of ['maps', 'lootItems', 'baselineItems', 'manualLootItems'] as const) {
     if (payload[key] !== undefined && !Array.isArray(payload[key])) return true;

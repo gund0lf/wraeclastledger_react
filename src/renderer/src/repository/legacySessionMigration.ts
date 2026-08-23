@@ -16,6 +16,7 @@ import {
   type JsonValue,
   type SessionBodyV1,
 } from '../../../shared/sessionRecord';
+import { createSessionPayload } from '../../../shared/sessionPayload';
 import {
   LEGACY_STORE_VERSION,
   mergePersistedSessionState,
@@ -172,7 +173,7 @@ function normalizePayload(
     ? null
     : options.strategySourceContext;
   if (strategySourceContext !== null) requireObject(strategySourceContext, `${label}.strategySourceContext`);
-  const payload: JsonObject = {
+  const payload = createSessionPayload({
     maps: requireArray(source.maps, `${label}.maps`),
     lootItems: requireArray(source.lootItems, `${label}.lootItems`),
     baselineItems: requireArray(source.baselineItems ?? [], `${label}.baselineItems`),
@@ -196,7 +197,7 @@ function normalizePayload(
     strategySourceContext: strategySourceContext === null
       ? null
       : cloneJson(strategySourceContext) as JsonObject,
-  };
+  });
   assertJsonValue(payload);
   return payload;
 }

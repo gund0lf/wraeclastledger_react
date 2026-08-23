@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { RepositoryWorkflow } from '../../../shared/sessionRepositoryIpc';
 import {
+  coalescePendingSessionSnapshot,
   forkPayloadIntoLeague,
   selectRetrySnapshot,
   shouldSuspendForConfirmedLeague,
@@ -18,6 +19,13 @@ const workflow = (lifecycle: 'live' | 'historical' = 'live'): RepositoryWorkflow
 });
 
 describe('WP14 repository lifecycle provenance', () => {
+  it('coalesces production save snapshots to the newest body while retaining a pending checkpoint', () => {
+    expect(coalescePendingSessionSnapshot(
+      { payload: { revision: 1 }, checkpointReason: 'destructive' as const },
+      { payload: { revision: 2 } },
+    )).toEqual({ payload: { revision: 2 }, checkpointReason: 'destructive' });
+  });
+
   it('retries the newest queued snapshot rather than the older failed write', () => {
     expect(selectRetrySnapshot({ revision: 2 }, { revision: 1 })).toEqual({ revision: 2 });
     expect(selectRetrySnapshot(null, { revision: 1 })).toEqual({ revision: 1 });

@@ -15,6 +15,7 @@ import {
   type LegacyMigrationStage,
   type LegacyStorageSnapshot,
 } from '../../../shared/sessionMigration';
+import { hasExactSessionPayloadKeys } from '../../../shared/sessionPayload';
 import { LEGACY_STORE_VERSION } from '../store/useSessionStore';
 import {
   LegacyMigrationSourceError,
@@ -84,6 +85,10 @@ describe('WP14 closed legacy migration adapter', () => {
     expect(migrated.sourceStoreVersion).toBe(Number(fixtureName.match(/v(\d+)/)?.[1]));
     expect(migrated.sessions).toHaveLength(1);
     expect(migrated.expectedSessionIds).toHaveLength(1);
+    for (const session of migrated.sessions) {
+      expect(hasExactSessionPayloadKeys(session.current.payload)).toBe(true);
+      if (session.checkpoint) expect(hasExactSessionPayloadKeys(session.checkpoint.payload)).toBe(true);
+    }
     expect(migrated.preferences).toHaveProperty('lastDivineFetchAt');
     expect(migrated.layout.rawValue).toBe(source.layout.rawValue);
     expect(JSON.stringify(source)).toBe(before);
