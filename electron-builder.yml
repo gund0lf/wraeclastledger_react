@@ -19,6 +19,7 @@ linux:
       arch: [x64]
   category: Utility
   executableName: wraeclastledger
+  syncDesktopName: true
   icon: resources/icon.png
   extraResources:
     - from: resources/linux/wl-proton-clipboard.exe

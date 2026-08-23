@@ -6,6 +6,7 @@
   "main": "./out/main/index.js",
   "author": "gund0lf",
   "homepage": "https://github.com/gund0lf/wraeclastledger_react",
+  "desktopName": "com.wraeclastledger.app.desktop",
   "repository": {
     "type": "git",
     "url": "https://github.com/gund0lf/wraeclastledger_react"
