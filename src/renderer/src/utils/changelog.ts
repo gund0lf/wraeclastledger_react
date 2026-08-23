@@ -10,7 +10,7 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: '1.0.80',
+    version: '1.0.81',
     date: '2026-08-23',
     changes: [
       'Sessions now live in an integrity-checked local file repository instead of browser storage. Existing data migrates automatically through a copy-and-verify process; if verification fails, editing stays blocked and the legacy backup remains available instead of risking a partial conversion.',
