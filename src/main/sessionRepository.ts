@@ -29,8 +29,11 @@ import {
   computeSemanticHash,
   decodeRecordV1,
   encodeRecordV1,
+  MAX_CHECKPOINT_CHANGE_DETAILS,
+  MAX_CHECKPOINT_CHANGE_TEXT_LENGTH,
   type JsonObject,
   type JsonValue,
+  type CheckpointReason,
   type RecordContentType,
   type SessionBodyV1,
 } from '../shared/sessionRecord';
@@ -38,6 +41,7 @@ import {
   SESSION_REPOSITORY_MAX_IMPORT_BYTES,
   type RepositoryCheckpointSummary,
   type RepositorySessionSummary,
+  type RepositoryTrashSummary,
   type RepositoryWorkflow,
   type SessionRepositoryDataMap,
   type SessionRepositoryRequest,
@@ -61,6 +65,16 @@ import {
   type RepositoryReadPolicy,
 } from './sessionRepositoryCore';
 import type { SessionRepositoryPort } from './sessionRepositoryAdapter';
+import {
+  PERIODIC_CHECKPOINT_INTERVAL_MS,
+  TRASH_RETENTION_DAYS,
+  applyGlobalRecoveryRetention,
+  applyTrashRetention,
+  applyVersionRetention,
+  type GlobalRecoveryClass,
+  type GlobalRetentionResult,
+  type VersionRetentionResult,
+} from './sessionRetention';
 import {
   LEGACY_MIGRATION_READ_POLICY,
   migrateLegacyProfileClone,
@@ -117,6 +131,35 @@ interface ImportTransactionJournal {
   conflictMode: 'skip' | 'overwrite';
   actions: ImportTransactionAction[];
   createdAt: string;
+}
+
+interface StoredVersionRecord {
+  path: string;
+  body: SessionBodyV1;
+  contentVersion: number;
+  compressedBytes: number;
+}
+
+interface CheckpointWriteResult {
+  checkpoint: RepositoryCheckpointSummary | null;
+  checkpointAt: string | null;
+  historyStoragePressure: boolean;
+}
+
+interface RecoveryMetadata {
+  schema: 1;
+  recoveryId: string;
+  deletedAt: string;
+  sourceKind: 'named' | 'working' | 'failed-new';
+  displayName: string;
+  sessionId?: string;
+  originalGeneration: number;
+}
+
+interface StoredTrashEntry {
+  directory: string;
+  metadata: RecoveryMetadata | null;
+  summary: RepositoryTrashSummary;
 }
 
 export class SessionRepositoryMigrationRequiredError extends Error {
@@ -225,15 +268,195 @@ function sessionSummary(body: SessionBodyV1): RepositorySessionSummary {
   };
 }
 
+const COST_SUMMARY_SETTING_KEYS = [
+  'divinePrice',
+  'chiselUsed',
+  'chiselType',
+  'chiselPrice',
+  'baseMapCost',
+  'scarabs',
+  'advChaos',
+  'advExalt',
+  'advExaltPrice',
+  'advScour',
+  'advScourPrice',
+  'advAlch',
+  'advAlchPrice',
+  'advDeliOrbType',
+  'advDeliOrbQtyPerMap',
+  'advDeliOrbPriceEach',
+  'advSplitPrice',
+  'advAstrolabeType',
+  'advAstrolabePrice',
+  'advAstrolabeCount',
+  'advGemCount',
+  'advGemBuyPrice',
+  'advGemSellPrice',
+  'advGemName',
+] as const;
+
+function compactSummaryHash(value: unknown): string {
+  return createHash('sha256').update(JSON.stringify(value ?? null)).digest('hex');
+}
+
 function summarizePayload(payload: JsonObject): JsonObject {
   const maps = Array.isArray(payload.maps) ? payload.maps : [];
   const lootItems = Array.isArray(payload.lootItems) ? payload.lootItems : [];
   const baselineItems = Array.isArray(payload.baselineItems) ? payload.baselineItems : [];
+  const settings = isPlainObject(payload.settings) ? payload.settings : {};
+  const costs = Object.fromEntries(COST_SUMMARY_SETTING_KEYS.map((key) => [key, settings[key]]));
+  const notes = typeof payload.sessionNotes === 'string' ? payload.sessionNotes : '';
   return {
     mapCount: maps.length,
     lootItemCount: lootItems.length,
     baselineItemCount: baselineItems.length,
-    hasNotes: typeof payload.sessionNotes === 'string' && payload.sessionNotes.length > 0,
+    hasNotes: notes.length > 0,
+    notesHash: compactSummaryHash(notes),
+    settingsHash: compactSummaryHash(settings),
+    costsHash: compactSummaryHash({
+      settings: costs,
+      investmentNeutralization: payload.investmentNeutralization ?? 0,
+    }),
+  };
+}
+
+const COST_CHANGE_FIELDS: ReadonlyArray<readonly [string, string, string]> = [
+  ['divinePrice', 'Divine price', 'c'],
+  ['chiselUsed', 'Chisel use', ''],
+  ['chiselType', 'Chisel type', ''],
+  ['chiselPrice', 'Chisel price', 'c'],
+  ['baseMapCost', 'Base map price', 'c'],
+  ['advChaos', 'Added Chaos Orbs', ''],
+  ['advExalt', 'Added Exalted Orbs', ''],
+  ['advExaltPrice', 'Exalted Orb price', 'c'],
+  ['advScour', 'Added Orbs of Scouring', ''],
+  ['advScourPrice', 'Orb of Scouring price', 'c'],
+  ['advAlch', 'Added Orbs of Alchemy', ''],
+  ['advAlchPrice', 'Orb of Alchemy price', 'c'],
+  ['advDeliOrbType', 'Delirium Orb type', ''],
+  ['advDeliOrbQtyPerMap', 'Delirium Orbs per map', ''],
+  ['advDeliOrbPriceEach', 'Delirium Orb price', 'c'],
+  ['advSplitPrice', 'Split price', 'c'],
+  ['advAstrolabeType', 'Astrolabe type', ''],
+  ['advAstrolabePrice', 'Astrolabe price', 'c'],
+  ['advAstrolabeCount', 'Astrolabe count', ''],
+  ['advGemCount', 'Gem count', ''],
+  ['advGemBuyPrice', 'Gem buy price', 'c'],
+  ['advGemSellPrice', 'Gem sell price', 'c'],
+  ['advGemName', 'Gem name', ''],
+] as const;
+
+function valuesEqual(left: unknown, right: unknown): boolean {
+  return compactSummaryHash(left) === compactSummaryHash(right);
+}
+
+function boundedChangeText(value: unknown, unit = ''): string {
+  let text: string;
+  if (value === undefined || value === null || value === '') text = 'Not set';
+  else if (typeof value === 'boolean') text = value ? 'Yes' : 'No';
+  else if (typeof value === 'number') text = `${value}${unit}`;
+  else if (typeof value === 'string') text = value;
+  else if (Array.isArray(value) && value.every((item) => (
+    item === null || ['string', 'number', 'boolean'].includes(typeof item)
+  ))) text = value.length === 0 ? 'None' : value.join(', ');
+  else if (Array.isArray(value)) text = `${value.length} entries`;
+  else text = 'Configured';
+  return text.length <= MAX_CHECKPOINT_CHANGE_TEXT_LENGTH
+    ? text : `${text.slice(0, MAX_CHECKPOINT_CHANGE_TEXT_LENGTH - 3)}...`;
+}
+
+function humanizeSettingKey(key: string): string {
+  const text = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/^adv /, '');
+  return text.length === 0 ? 'Session setting' : `${text[0].toUpperCase()}${text.slice(1)}`;
+}
+
+function checkpointChangeDetails(
+  beforePayload: JsonObject,
+  afterPayload: JsonObject,
+): { changes: JsonObject[]; changeCount: number } {
+  const details: JsonObject[] = [];
+  const add = (label: string, before: string, after: string): void => {
+    details.push({
+      label: boundedChangeText(label),
+      before: boundedChangeText(before),
+      after: boundedChangeText(after),
+    });
+  };
+  const beforeSettings = isPlainObject(beforePayload.settings) ? beforePayload.settings : {};
+  const afterSettings = isPlainObject(afterPayload.settings) ? afterPayload.settings : {};
+
+  const beforeScarabs = Array.isArray(beforeSettings.scarabs) ? beforeSettings.scarabs : [];
+  const afterScarabs = Array.isArray(afterSettings.scarabs) ? afterSettings.scarabs : [];
+  for (let index = 0; index < Math.max(beforeScarabs.length, afterScarabs.length); index += 1) {
+    const beforeValue = beforeScarabs[index];
+    const afterValue = afterScarabs[index];
+    const before: JsonObject = isPlainObject(beforeValue) ? beforeValue : {};
+    const after: JsonObject = isPlainObject(afterValue) ? afterValue : {};
+    if (valuesEqual(before, after)) continue;
+    const beforeName = typeof before.name === 'string' ? before.name : '';
+    const afterName = typeof after.name === 'string' ? after.name : '';
+    if (beforeName && beforeName === afterName && before.cost !== after.cost) {
+      add(`${beforeName} price`, boundedChangeText(before.cost, 'c'), boundedChangeText(after.cost, 'c'));
+    } else {
+      const scarabText = (entry: JsonObject): string => {
+        const name = typeof entry.name === 'string' && entry.name ? entry.name : 'Empty';
+        return name === 'Empty' ? name : `${name} — ${boundedChangeText(entry.cost, 'c')}`;
+      };
+      add(`Scarab slot ${index + 1}`, scarabText(before), scarabText(after));
+    }
+  }
+
+  const handledSettings = new Set<string>(['scarabs', 'divinePriceQuotedAt']);
+  for (const [key, label, unit] of COST_CHANGE_FIELDS) {
+    handledSettings.add(key);
+    if (!valuesEqual(beforeSettings[key], afterSettings[key])) {
+      add(label, boundedChangeText(beforeSettings[key], unit), boundedChangeText(afterSettings[key], unit));
+    }
+  }
+  if (!valuesEqual(beforePayload.investmentNeutralization, afterPayload.investmentNeutralization)) {
+    add(
+      'Investment correction',
+      boundedChangeText(beforePayload.investmentNeutralization ?? 0, 'c'),
+      boundedChangeText(afterPayload.investmentNeutralization ?? 0, 'c'),
+    );
+  }
+
+  const addCollectionChange = (key: string, label: string): void => {
+    const before = Array.isArray(beforePayload[key]) ? beforePayload[key] : [];
+    const after = Array.isArray(afterPayload[key]) ? afterPayload[key] : [];
+    if (valuesEqual(before, after)) return;
+    add(label, `${before.length} entries`, `${after.length} entries`);
+  };
+  addCollectionChange('maps', 'Map log');
+  addCollectionChange('lootItems', 'Return snapshot');
+  addCollectionChange('baselineItems', 'Baseline snapshot');
+  addCollectionChange('manualLootItems', 'Manual loot additions');
+
+  const beforeNotes = typeof beforePayload.sessionNotes === 'string' ? beforePayload.sessionNotes : '';
+  const afterNotes = typeof afterPayload.sessionNotes === 'string' ? afterPayload.sessionNotes : '';
+  if (beforeNotes !== afterNotes) {
+    add('Notes', beforeNotes ? `${beforeNotes.length} characters` : 'Empty',
+      afterNotes ? `${afterNotes.length} characters` : 'Empty');
+  }
+  if (!valuesEqual(beforePayload.manualStatistics, afterPayload.manualStatistics)) {
+    add('Run statistics', 'Previous values', 'Updated values');
+  }
+
+  const remainingSettings = new Set([...Object.keys(beforeSettings), ...Object.keys(afterSettings)]);
+  for (const key of [...remainingSettings].sort()) {
+    if (handledSettings.has(key) || valuesEqual(beforeSettings[key], afterSettings[key])) continue;
+    let before = boundedChangeText(beforeSettings[key]);
+    let after = boundedChangeText(afterSettings[key]);
+    if (before === after) {
+      before = 'Previous value';
+      after = 'Updated value';
+    }
+    add(humanizeSettingKey(key), before, after);
+  }
+
+  return {
+    changes: details.slice(0, MAX_CHECKPOINT_CHANGE_DETAILS),
+    changeCount: details.length,
   };
 }
 
@@ -558,6 +781,90 @@ export class FileSessionRepository implements SessionRepositoryPort {
       throw error;
     }
     return { recoveryId, destination };
+  }
+
+  private parseRecoveryMetadata(value: unknown, recoveryId: string): RecoveryMetadata {
+    if (!isPlainObject(value) || value.schema !== 1 || value.recoveryId !== recoveryId) {
+      throw new Error('Recovery metadata is invalid');
+    }
+    const sourceKind = value.sourceKind;
+    if (sourceKind !== 'named' && sourceKind !== 'working' && sourceKind !== 'failed-new') {
+      throw new Error('Recovery source kind is invalid');
+    }
+    const metadata: RecoveryMetadata = {
+      schema: 1,
+      recoveryId,
+      deletedAt: requireTimestamp(value.deletedAt, 'recovery deletedAt'),
+      sourceKind,
+      displayName: requireString(value.displayName, 'recovery displayName'),
+      originalGeneration: requireGeneration(value.originalGeneration, 'recovery originalGeneration'),
+    };
+    if (value.sessionId !== undefined) metadata.sessionId = requireString(value.sessionId, 'recovery sessionId');
+    if (sourceKind !== 'working' && !metadata.sessionId) {
+      throw new Error('Named recovery metadata requires a session id');
+    }
+    return metadata;
+  }
+
+  private async storedTrashEntries(): Promise<StoredTrashEntry[]> {
+    let entries;
+    try {
+      entries = await readdir(this.paths.trash, { withFileTypes: true });
+    } catch (error) {
+      if (isMissing(error)) return [];
+      throw error;
+    }
+    const stored: StoredTrashEntry[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const directory = join(this.paths.trash, entry.name);
+      assertPathInside(this.paths.root, directory);
+      const details = await stat(directory);
+      const fallbackDeletedAt = details.mtime.toISOString();
+      let metadata: RecoveryMetadata | null = null;
+      try {
+        metadata = this.parseRecoveryMetadata(
+          JSON.parse(await readFile(join(directory, 'recovery.json'), 'utf8')),
+          entry.name,
+        );
+      } catch {
+        metadata = null;
+      }
+      const deletedAt = metadata?.deletedAt ?? fallbackDeletedAt;
+      stored.push({
+        directory,
+        metadata,
+        summary: {
+          recoveryId: entry.name,
+          deletedAt,
+          expiresAt: new Date(Date.parse(deletedAt) + TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString(),
+          displayName: metadata?.displayName ?? 'Damaged recovery entry',
+          sourceKind: metadata?.sourceKind ?? 'working',
+          sessionId: metadata?.sessionId ?? null,
+          bytes: await directoryBytes(directory),
+          status: metadata ? 'ready' : 'damaged',
+        },
+      });
+    }
+    return stored.sort((left, right) => Date.parse(right.summary.deletedAt) - Date.parse(left.summary.deletedAt) ||
+      left.summary.recoveryId.localeCompare(right.summary.recoveryId));
+  }
+
+  private async enforceTrashRetention(): Promise<StoredTrashEntry[]> {
+    const entries = await this.storedTrashEntries();
+    const ready = entries.filter(({ summary }) => summary.status === 'ready');
+    const retention = applyTrashRetention(ready.map(({ summary }) => ({
+      id: summary.recoveryId,
+      deletedAt: summary.deletedAt,
+      bytes: summary.bytes,
+    })), this.now());
+    const prunedIds = new Set(retention.pruned.map(({ entry }) => entry.id));
+    for (const entry of ready) {
+      if (!prunedIds.has(entry.summary.recoveryId)) continue;
+      assertPathInside(this.paths.root, entry.directory);
+      await rm(entry.directory, { recursive: true, force: true });
+    }
+    return entries.filter(({ summary }) => !prunedIds.has(summary.recoveryId));
   }
 
   private async readBody(target: SessionTarget): Promise<SessionBodyV1> {
@@ -958,6 +1265,8 @@ export class FileSessionRepository implements SessionRepositoryPort {
         summary: null,
         workflow: this.workflow!,
         workflowGeneration: this.workflowGeneration!,
+        checkpoint: null,
+        historyStoragePressure: false,
       };
     }
     const directory = target.kind === 'preferences' ? this.paths.preferences : this.paths.layout;
@@ -979,6 +1288,8 @@ export class FileSessionRepository implements SessionRepositoryPort {
       summary: null,
       workflow: this.workflow!,
       workflowGeneration: this.workflowGeneration!,
+      checkpoint: null,
+      historyStoragePressure: false,
     };
   }
 
@@ -1021,7 +1332,8 @@ export class FileSessionRepository implements SessionRepositoryPort {
       }
       const semanticHash = await computeSemanticHash(request.payload);
       let replacementRecovery: { recoveryId: string; destination: string } | null = null;
-      if (target.kind === 'working' && request.replacement === true && prior && prior.semanticHash !== semanticHash) {
+      if (target.kind === 'working' && request.replacement === true && prior &&
+          !prior.freshEmptyWorking && prior.semanticHash !== semanticHash) {
         let preservedAsNamed = false;
         if (this.workflow!.activeTarget.kind === 'session') {
           try {
@@ -1032,6 +1344,12 @@ export class FileSessionRepository implements SessionRepositoryPort {
           }
         }
         if (!preservedAsNamed) {
+          await this.writeCheckpoint(target, prior, 'destructive', {
+            activationId: prior.activationId,
+            afterSummary: summarizePayload(request.payload),
+            afterPayload: request.payload,
+            activationBaselineCheckpointId: prior.activationBaselineCheckpointId,
+          });
           replacementRecovery = await this.moveDirectoryToTrash(this.paths.working, {
             sourceKind: 'working',
             displayName: `Unnamed session — ${now.slice(0, 16).replace('T', ' ')}`,
@@ -1043,6 +1361,51 @@ export class FileSessionRepository implements SessionRepositoryPort {
       }
       const commitExpectedGeneration = prior?.generation ?? null;
       const generation = (commitExpectedGeneration ?? 0) + 1;
+      const nextSummary = summarizePayload(request.payload);
+      const semanticChanged = prior !== null && prior.semanticHash !== semanticHash;
+      let activationId = prior?.activationId;
+      let activationBaselineCheckpointId = prior?.activationBaselineCheckpointId;
+      let lastCheckpointAt = prior?.lastCheckpointAt;
+      let historyStoragePressure = prior?.historyStoragePressure ?? false;
+      let checkpoint: RepositoryCheckpointSummary | null = null;
+      if (!prior && request.activationId) {
+        activationId = request.activationId;
+        lastCheckpointAt = now;
+      } else if (prior && semanticChanged) {
+        if (prior.freshEmptyWorking) {
+          // A fresh empty working slot is infrastructure, not authored work.
+          // Replacing or making its first meaningful edit must not manufacture
+          // a recovery promise for the empty placeholder.
+          activationId = request.activationId ?? prior.activationId;
+          activationBaselineCheckpointId = undefined;
+          lastCheckpointAt = now;
+        } else {
+          const startsActivation = !!request.activationId && prior.activationId !== request.activationId;
+          const periodicDue = !!request.activationId && prior.activationId === request.activationId &&
+            !!prior.lastCheckpointAt && Date.parse(now) - Date.parse(prior.lastCheckpointAt) >=
+              PERIODIC_CHECKPOINT_INTERVAL_MS;
+          const checkpointReason = request.checkpointReason ??
+            (startsActivation ? 'activation' : periodicDue ? 'periodic' : null);
+          if (checkpointReason) {
+            const checkpointResult = await this.writeCheckpoint(target, prior, checkpointReason, {
+              ...(request.activationId ? { activationId: request.activationId } : {}),
+              afterSummary: nextSummary,
+              afterPayload: request.payload,
+              activationBaselineCheckpointId,
+              pinAsActivationBaseline: startsActivation,
+              optional: checkpointReason === 'periodic',
+            });
+            checkpoint = checkpointResult.checkpoint;
+            historyStoragePressure = checkpointResult.historyStoragePressure;
+            if (checkpointResult.checkpointAt) lastCheckpointAt = checkpointResult.checkpointAt;
+            if (startsActivation) {
+              if (!checkpoint) throw new Error('Activation baseline was not retained');
+              activationId = request.activationId;
+              activationBaselineCheckpointId = checkpoint.id;
+            }
+          }
+        }
+      }
       const body: SessionBodyV1 = {
         kind: target.kind === 'working' ? 'working' : 'named',
         id,
@@ -1051,8 +1414,14 @@ export class FileSessionRepository implements SessionRepositoryPort {
         updatedAt: now,
         generation,
         semanticHash,
-        summary: summarizePayload(request.payload),
+        summary: nextSummary,
         payload: cloneJson(request.payload),
+        ...(activationId ? { activationId } : {}),
+        ...(activationBaselineCheckpointId ? { activationBaselineCheckpointId } : {}),
+        ...(lastCheckpointAt ? { lastCheckpointAt } : {}),
+        historyStoragePressure,
+        ...((request.freshEmptyWorking === true || (prior?.freshEmptyWorking === true && !semanticChanged))
+          ? { freshEmptyWorking: true as const } : {}),
       };
       assertSessionBodyV1(body);
       let result: Awaited<ReturnType<typeof commitRecordAtomically>>;
@@ -1116,6 +1485,8 @@ export class FileSessionRepository implements SessionRepositoryPort {
         summary,
         workflow: this.workflow!,
         workflowGeneration: this.workflowGeneration!,
+        checkpoint,
+        historyStoragePressure,
       };
     });
   }
@@ -1161,6 +1532,10 @@ export class FileSessionRepository implements SessionRepositoryPort {
         }
       }
       const sourceDirectory = this.targetDirectory(target);
+      await this.writeCheckpoint(target, body, 'destructive', {
+        activationId: body.activationId,
+        activationBaselineCheckpointId: body.activationBaselineCheckpointId,
+      });
       const recovery = await this.moveDirectoryToTrash(sourceDirectory, {
         sourceKind: 'named',
         sessionId: request.sessionId,
@@ -1202,8 +1577,100 @@ export class FileSessionRepository implements SessionRepositoryPort {
     });
   }
 
-  private async versionRecords(target: SessionTarget): Promise<Array<{ path: string; body: SessionBodyV1 }>> {
-    const directory = join(this.targetDirectory(target), 'versions');
+  async trashList(_request: RequestFor<'trash-list'>): Promise<SessionRepositoryDataMap['trash-list']> {
+    await this.requireReady();
+    return this.queue.enqueue('repository', async () => {
+      await this.enforceTrashRetention();
+      await this.enforceGlobalRecoveryRetention();
+      return { entries: (await this.storedTrashEntries()).map(({ summary }) => summary) };
+    });
+  }
+
+  async trashRestore(request: RequestFor<'trash-restore'>): Promise<SessionRepositoryDataMap['trash-restore']> {
+    await this.requireReady();
+    return this.queue.enqueue('repository', async () => {
+      const entry = (await this.storedTrashEntries())
+        .find(({ summary }) => summary.recoveryId === request.recoveryId);
+      if (!entry) throw Object.assign(new Error('Recently Deleted entry was not found'), { code: 'ENOENT' });
+      if (!entry.metadata) throw new RepositoryRecoveryRequiredError('damaged');
+      const recovered = await recoverRecordDirectory(entry.directory, this.readPolicy, 'session');
+      if (!recovered.record || recovered.status === 'damaged' || recovered.status === 'unsupported') {
+        throw new RepositoryRecoveryRequiredError(recovered.status === 'unsupported' ? 'unsupported' : 'damaged');
+      }
+      assertSessionBodyV1(recovered.record.body);
+      let body = recovered.record.body;
+      let restoredSessionId = body.kind === 'working' ? randomUUID() : body.id as string;
+      let destination = deriveSessionDirectory(this.paths.root, restoredSessionId);
+      while (this.sessions.has(restoredSessionId) || await exists(destination)) {
+        restoredSessionId = randomUUID();
+        destination = deriveSessionDirectory(this.paths.root, restoredSessionId);
+      }
+      if (body.kind === 'working' || body.id !== restoredSessionId) {
+        const namedBody: SessionBodyV1 = {
+          ...body,
+          kind: 'named',
+          id: restoredSessionId,
+          name: body.kind === 'working' ? entry.metadata.displayName : body.name,
+          updatedAt: this.now().toISOString(),
+          generation: body.generation + 1,
+        };
+        const converted = await commitRecordAtomically({
+          directory: entry.directory,
+          entityKey: restoredSessionId,
+          operationId: randomUUID(),
+          contentType: 'session',
+          contentVersion: SESSION_CONTENT_VERSION,
+          body: namedBody,
+          expectedGeneration: body.generation,
+        }, { root: this.paths.root, readPolicy: this.readPolicy });
+        body = converted.record.body as SessionBodyV1;
+      }
+      const currentDetails = await stat(currentPath(entry.directory));
+      const restoredCatalogEntry: CatalogEntry = {
+        ...sessionSummary(body),
+        recordBytes: currentDetails.size,
+        modifiedAtMs: currentDetails.mtimeMs,
+        directoryName: sessionDirectoryName(restoredSessionId),
+      };
+      await retryTransientFileOperation(() => rename(entry.directory, destination));
+      // The directory move is the durable restore boundary. Recovery metadata
+      // is ignored outside trash, so a cleanup failure must not turn a
+      // successful restore into an ambiguous error for the renderer.
+      try {
+        await rm(join(destination, 'recovery.json'), { force: true });
+      } catch {
+        // Best-effort cleanup only; the restored session remains authoritative.
+      }
+      this.sessions.set(restoredSessionId, restoredCatalogEntry);
+      this.scheduleMetadataWrite(true);
+      return {
+        recoveryId: request.recoveryId,
+        restoredSessionId,
+        sessions: this.sortedSessions(),
+      };
+    });
+  }
+
+  async trashDelete(request: RequestFor<'trash-delete'>): Promise<SessionRepositoryDataMap['trash-delete']> {
+    await this.requireReady();
+    return this.queue.enqueue('repository', async () => {
+      const directory = join(this.paths.trash, request.recoveryId);
+      assertPathInside(this.paths.trash, directory);
+      if (!(await exists(directory))) {
+        throw Object.assign(new Error('Recently Deleted entry was not found'), { code: 'ENOENT' });
+      }
+      await rm(directory, { recursive: true, force: false });
+      await this.enforceTrashRetention();
+      await this.enforceGlobalRecoveryRetention();
+      return {
+        recoveryId: request.recoveryId,
+        entries: (await this.storedTrashEntries()).map(({ summary }) => summary),
+      };
+    });
+  }
+
+  private async versionRecordsInDirectory(targetDirectory: string): Promise<StoredVersionRecord[]> {
+    const directory = join(targetDirectory, 'versions');
     let names: string[];
     try {
       names = await readdir(directory);
@@ -1211,7 +1678,7 @@ export class FileSessionRepository implements SessionRepositoryPort {
       if (isMissing(error)) return [];
       throw error;
     }
-    const records: Array<{ path: string; body: SessionBodyV1 }> = [];
+    const records: StoredVersionRecord[] = [];
     for (const name of names.sort()) {
       if (!name.endsWith('.wlrec') && !name.endsWith('.wlrec.gz')) continue;
       const path = join(directory, name);
@@ -1219,54 +1686,260 @@ export class FileSessionRepository implements SessionRepositoryPort {
       const decoded = await decodeRecordV1(name.endsWith('.gz') ? new Uint8Array(await gunzipAsync(bytes)) : bytes);
       if (decoded.header.contentType !== 'session') continue;
       assertSessionBodyV1(decoded.body);
-      records.push({ path, body: decoded.body });
+      records.push({
+        path,
+        body: decoded.body,
+        contentVersion: decoded.header.contentVersion,
+        compressedBytes: name.endsWith('.gz') ? bytes.byteLength : (await gzipAsync(bytes)).byteLength,
+      });
     }
     return records;
+  }
+
+  private versionRecords(target: SessionTarget): Promise<StoredVersionRecord[]> {
+    return this.versionRecordsInDirectory(this.targetDirectory(target));
+  }
+
+  private checkpointSummary(
+    body: SessionBodyV1,
+    activationBaselineCheckpointId: string | undefined,
+  ): RepositoryCheckpointSummary {
+    if (!body.checkpoint) throw new Error('Checkpoint metadata is missing');
+    return {
+      id: body.checkpoint.id,
+      createdAt: body.checkpoint.at,
+      reason: body.checkpoint.reason,
+      summary: cloneJson(body.checkpoint.summary),
+      afterSummary: body.checkpoint.afterSummary ? cloneJson(body.checkpoint.afterSummary) : null,
+      changes: (body.checkpoint.changes ?? []).map((change) => ({
+        label: String(change.label),
+        before: String(change.before),
+        after: String(change.after),
+      })),
+      changeCount: body.checkpoint.changeCount ?? body.checkpoint.changes?.length ?? 0,
+      isActivationBaseline: body.checkpoint.id === activationBaselineCheckpointId,
+    };
+  }
+
+  private retentionForVersions(
+    records: readonly StoredVersionRecord[],
+    activationBaselineCheckpointId: string | undefined,
+  ): VersionRetentionResult {
+    return applyVersionRetention(records.flatMap((record) => record.body.checkpoint ? [{
+      id: record.body.checkpoint.id,
+      createdAt: record.body.checkpoint.at,
+      compressedBytes: record.compressedBytes,
+      reason: record.body.checkpoint.reason,
+      isCurrentActivationBaseline: record.body.checkpoint.id === activationBaselineCheckpointId,
+    }] : []));
+  }
+
+  private async pruneVersions(
+    records: readonly StoredVersionRecord[],
+    activationBaselineCheckpointId: string | undefined,
+  ): Promise<VersionRetentionResult> {
+    const retention = this.retentionForVersions(records, activationBaselineCheckpointId);
+    const pathsById = new Map(records.flatMap((record) => record.body.checkpoint
+      ? [[record.body.checkpoint.id, record.path] as const] : []));
+    for (const { entry } of retention.pruned) {
+      const path = pathsById.get(entry.id);
+      if (!path) continue;
+      assertPathInside(this.paths.root, path);
+      await rm(path, { force: true });
+    }
+    return retention;
+  }
+
+  private activeBaselineFor(target: SessionTarget, body: SessionBodyV1): string | undefined {
+    return sameTarget(this.workflow!.viewedTarget, target) && body.activationId === this.workflow!.activationId
+      ? body.activationBaselineCheckpointId : undefined;
+  }
+
+  private globalVersionClass(
+    entry: VersionRetentionResult['kept'][number],
+  ): GlobalRecoveryClass {
+    if (entry.reason === 'current-activation-baseline' || entry.reason === 'protected-destructive' ||
+        entry.reason === 'recovery-promise-over-budget') return 'promised-recovery';
+    if (entry.entry.reason === 'periodic') return 'periodic';
+    if (entry.entry.reason === 'activation') return 'ordinary-activation';
+    return 'excess-protected';
+  }
+
+  private async enforceGlobalRecoveryRetention(
+    promisedCheckpointId?: string,
+  ): Promise<GlobalRetentionResult> {
+    const candidates: Parameters<typeof applyGlobalRecoveryRetention>[0][number][] = [];
+    const paths = new Map<string, { path: string; directory: boolean }>();
+    const targets: SessionTarget[] = [{ kind: 'working' }];
+    for (const session of this.sessions.values()) {
+      if (session.status === 'ready') targets.push({ kind: 'session', sessionId: session.id });
+    }
+    for (const target of targets) {
+      try {
+        const body = await this.readBody(target);
+        const records = await this.versionRecords(target);
+        const retention = this.retentionForVersions(records, this.activeBaselineFor(target, body));
+        const recordsById = new Map(records.flatMap((record) => record.body.checkpoint
+          ? [[record.body.checkpoint.id, record] as const] : []));
+        for (const kept of retention.kept) {
+          const record = recordsById.get(kept.entry.id);
+          if (!record) continue;
+          const id = `version:${kept.entry.id}`;
+          candidates.push({
+            id,
+            createdAt: kept.entry.createdAt,
+            bytes: kept.entry.compressedBytes,
+            classification: kept.entry.id === promisedCheckpointId
+              ? 'promised-recovery' : this.globalVersionClass(kept),
+          });
+          paths.set(id, { path: record.path, directory: false });
+        }
+      } catch {
+        // Damaged entries remain visible and untouched; retention must not turn
+        // a diagnosable recovery problem into silent deletion.
+      }
+    }
+    const expiryBoundary = this.now().getTime() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    for (const entry of await this.storedTrashEntries()) {
+      if (entry.summary.status !== 'ready') continue;
+      const id = `trash:${entry.summary.recoveryId}`;
+      candidates.push({
+        id,
+        createdAt: entry.summary.deletedAt,
+        bytes: entry.summary.bytes,
+        classification: Date.parse(entry.summary.deletedAt) <= expiryBoundary ? 'expired-trash' : 'trash',
+      });
+      paths.set(id, { path: entry.directory, directory: true });
+    }
+    const retention = applyGlobalRecoveryRetention(candidates);
+    for (const { entry } of retention.pruned) {
+      const stored = paths.get(entry.id);
+      if (!stored) continue;
+      assertPathInside(this.paths.root, stored.path);
+      await rm(stored.path, stored.directory
+        ? { recursive: true, force: true }
+        : { force: true });
+    }
+    return retention;
   }
 
   async historyList(request: RequestFor<'history-list'>): Promise<SessionRepositoryDataMap['history-list']> {
     await this.requireReady();
     return this.queue.enqueue('repository', async () => {
-      const checkpoints: RepositoryCheckpointSummary[] = (await this.versionRecords(request.target))
+      const current = await this.readBody(request.target);
+      const currentActivationBaseline = this.activeBaselineFor(request.target, current);
+      const localRetention = await this.pruneVersions(
+        await this.versionRecords(request.target),
+        currentActivationBaseline,
+      );
+      const globalRetention = await this.enforceGlobalRecoveryRetention();
+      // Global retention can remove checkpoints from this target, so build the
+      // response from a fresh directory read instead of the pre-prune snapshot.
+      const records = await this.versionRecords(request.target);
+      const checkpoints: RepositoryCheckpointSummary[] = records
         .flatMap(({ body }) => body.checkpoint ? [{
-          id: body.checkpoint.id,
-          createdAt: body.checkpoint.at,
-          reason: body.checkpoint.reason,
-          summary: cloneJson(body.checkpoint.summary),
+          ...this.checkpointSummary(body, currentActivationBaseline),
         }] : [])
         .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
-      return { target: request.target, checkpoints };
+      return {
+        target: request.target,
+        checkpoints,
+        historyStoragePressure: localRetention.storagePressure || globalRetention.storagePressure,
+      };
     });
   }
 
   private async writeCheckpointInDirectory(
     directory: string,
     body: SessionBodyV1,
-    reason: 'pre-restore' | 'destructive',
-  ): Promise<void> {
-    const checkpointId = randomUUID();
-    const checkpoint: SessionBodyV1 = {
-      ...body,
-      checkpoint: {
-        id: checkpointId,
-        at: this.now().toISOString(),
-        reason,
-        summary: cloneJson(body.summary),
-      },
+    reason: CheckpointReason,
+    options: {
+      activationId?: string;
+      afterSummary?: JsonObject;
+      afterPayload?: JsonObject;
+      activationBaselineCheckpointId?: string;
+      pinAsActivationBaseline?: boolean;
+      optional?: boolean;
+    } = {},
+  ): Promise<CheckpointWriteResult> {
+    const checkpointAt = this.now().toISOString();
+    const records = await this.versionRecordsInDirectory(directory);
+    let selected = records.find((record) => (
+      record.contentVersion === SESSION_CONTENT_VERSION && record.body.semanticHash === body.semanticHash
+    ));
+    const existingRetention = this.retentionForVersions(records, options.activationBaselineCheckpointId);
+    if (!selected && options.optional && existingRetention.refuseOptionalCheckpoints) {
+      return { checkpoint: null, checkpointAt: null, historyStoragePressure: true };
+    }
+    if (!selected) {
+      const checkpointId = randomUUID();
+      const detail = options.afterPayload
+        ? checkpointChangeDetails(body.payload, options.afterPayload)
+        : { changes: [], changeCount: 0 };
+      const checkpoint: SessionBodyV1 = {
+        ...body,
+        checkpoint: {
+          id: checkpointId,
+          at: checkpointAt,
+          reason,
+          ...(options.activationId ? { activationId: options.activationId } : {}),
+          summary: cloneJson(body.summary),
+          ...(options.afterSummary ? { afterSummary: cloneJson(options.afterSummary) } : {}),
+          ...(detail.changeCount > 0 ? {
+            changes: detail.changes.map((change) => cloneJson(change)),
+            changeCount: detail.changeCount,
+          } : {}),
+        },
+      };
+      const bytes = await encodeRecordV1('session', SESSION_CONTENT_VERSION, checkpoint);
+      const compressed = await gzipAsync(bytes);
+      const versions = join(directory, 'versions');
+      await mkdir(versions, { recursive: true });
+      const path = join(versions, `${createHash('sha256').update(checkpointId).digest('hex')}.wlrec.gz`);
+      await syncWriteExclusive(path, compressed);
+      selected = {
+        path,
+        body: checkpoint,
+        contentVersion: SESSION_CONTENT_VERSION,
+        compressedBytes: compressed.byteLength,
+      };
+      records.push(selected);
+    }
+    const selectedId = selected.body.checkpoint?.id;
+    if (!selectedId) throw new Error('Stored checkpoint is missing its identity');
+    const activationBaselineCheckpointId = options.pinAsActivationBaseline
+      ? selectedId : options.activationBaselineCheckpointId;
+    const retention = await this.pruneVersions(records, activationBaselineCheckpointId);
+    const keptIds = new Set(retention.kept.map(({ entry }) => entry.id));
+    return {
+      checkpoint: keptIds.has(selectedId)
+        ? this.checkpointSummary(selected.body, activationBaselineCheckpointId) : null,
+      checkpointAt,
+      historyStoragePressure: retention.storagePressure,
     };
-    const bytes = await encodeRecordV1('session', SESSION_CONTENT_VERSION, checkpoint);
-    const compressed = await gzipAsync(bytes);
-    const versions = join(directory, 'versions');
-    await mkdir(versions, { recursive: true });
-    await syncWriteExclusive(join(versions, `${createHash('sha256').update(checkpointId).digest('hex')}.wlrec.gz`), compressed);
   }
 
   private async writeCheckpoint(
     target: SessionTarget,
     body: SessionBodyV1,
-    reason: 'pre-restore' | 'destructive',
-  ): Promise<void> {
-    await this.writeCheckpointInDirectory(this.targetDirectory(target), body, reason);
+    reason: CheckpointReason,
+    options?: Parameters<FileSessionRepository['writeCheckpointInDirectory']>[3],
+  ): Promise<CheckpointWriteResult> {
+    const result = await this.writeCheckpointInDirectory(this.targetDirectory(target), body, reason, options);
+    const globalRetention = await this.enforceGlobalRecoveryRetention(
+      options?.pinAsActivationBaseline ? result.checkpoint?.id : undefined,
+    );
+    let checkpoint = result.checkpoint;
+    if (checkpoint) {
+      const stillStored = (await this.versionRecords(target))
+        .some(({ body: stored }) => stored.checkpoint?.id === checkpoint?.id);
+      if (!stillStored) checkpoint = null;
+    }
+    return {
+      ...result,
+      checkpoint,
+      historyStoragePressure: result.historyStoragePressure || globalRetention.storagePressure,
+    };
   }
 
   async historyRestore(request: RequestFor<'history-restore'>): Promise<SessionRepositoryDataMap['history-restore']> {
@@ -1279,7 +1952,12 @@ export class FileSessionRepository implements SessionRepositoryPort {
       const selected = (await this.versionRecords(request.target))
         .find(({ body }) => body.checkpoint?.id === request.checkpointId)?.body;
       if (!selected) throw Object.assign(new Error('Checkpoint was not found'), { code: 'ENOENT' });
-      await this.writeCheckpoint(request.target, current, 'pre-restore');
+      const checkpointResult = await this.writeCheckpoint(request.target, current, 'pre-restore', {
+        activationId: current.activationId,
+        afterSummary: selected.summary,
+        afterPayload: selected.payload,
+        activationBaselineCheckpointId: current.activationBaselineCheckpointId,
+      });
       const restored: SessionBodyV1 = {
         ...current,
         payload: cloneJson(selected.payload),
@@ -1287,6 +1965,8 @@ export class FileSessionRepository implements SessionRepositoryPort {
         summary: cloneJson(selected.summary),
         updatedAt: this.now().toISOString(),
         generation: current.generation + 1,
+        ...(checkpointResult.checkpointAt ? { lastCheckpointAt: checkpointResult.checkpointAt } : {}),
+        historyStoragePressure: checkpointResult.historyStoragePressure,
       };
       delete restored.checkpoint;
       const result = await commitRecordAtomically({
@@ -1390,14 +2070,18 @@ export class FileSessionRepository implements SessionRepositoryPort {
           const target = { kind: 'session', sessionId: session.id } as const;
           const prior = this.sessions.has(session.id) ? await this.readBody(target) : null;
           const staged = importTransactionEntry(transactionDirectory, 'staged', session.id);
+          const payload = this.portablePayload(session);
           if (prior) {
             await mkdir(dirname(staged), { recursive: true });
             await cp(this.targetDirectory(target), staged, { recursive: true, errorOnExist: true, force: false });
-            await this.writeCheckpointInDirectory(staged, prior, 'destructive');
+            await this.writeCheckpointInDirectory(staged, prior, 'destructive', {
+              afterSummary: summarizePayload(payload),
+              afterPayload: payload,
+              activationBaselineCheckpointId: prior.activationBaselineCheckpointId,
+            });
           } else {
             await mkdir(staged, { recursive: true });
           }
-          const payload = this.portablePayload(session);
           const body: SessionBodyV1 = {
             kind: 'named',
             id: session.id,
@@ -1448,6 +2132,7 @@ export class FileSessionRepository implements SessionRepositoryPort {
         }
 
         await this.rebuildCatalog();
+        await this.enforceGlobalRecoveryRetention();
         await this.options.onImportBoundary?.('before-complete', journal.actions.length);
         await syncWriteExclusive(
           join(transactionDirectory, 'complete.json'),

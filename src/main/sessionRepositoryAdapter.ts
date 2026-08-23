@@ -35,6 +35,9 @@ export interface SessionRepositoryPort {
   delete(request: RequestFor<'delete'>): Promise<SessionRepositoryDataMap['delete']>;
   historyList(request: RequestFor<'history-list'>): Promise<SessionRepositoryDataMap['history-list']>;
   historyRestore(request: RequestFor<'history-restore'>): Promise<SessionRepositoryDataMap['history-restore']>;
+  trashList(request: RequestFor<'trash-list'>): Promise<SessionRepositoryDataMap['trash-list']>;
+  trashRestore(request: RequestFor<'trash-restore'>): Promise<SessionRepositoryDataMap['trash-restore']>;
+  trashDelete(request: RequestFor<'trash-delete'>): Promise<SessionRepositoryDataMap['trash-delete']>;
   importDocument(request: RequestFor<'import'>): Promise<SessionRepositoryDataMap['import']>;
   exportDocument(request: RequestFor<'export'>): Promise<SessionRepositoryDataMap['export']>;
   retry(request: RequestFor<'retry'>): Promise<SessionRepositoryDataMap['retry']>;
@@ -120,6 +123,9 @@ async function execute(
     case 'delete': return success(request.operation, await repository.delete(request));
     case 'history-list': return success(request.operation, await repository.historyList(request));
     case 'history-restore': return success(request.operation, await repository.historyRestore(request));
+    case 'trash-list': return success(request.operation, await repository.trashList(request));
+    case 'trash-restore': return success(request.operation, await repository.trashRestore(request));
+    case 'trash-delete': return success(request.operation, await repository.trashDelete(request));
     case 'import': return success(request.operation, await repository.importDocument(request));
     case 'export': {
       const data = await repository.exportDocument(request);

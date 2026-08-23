@@ -128,11 +128,34 @@ repository.
 
 Batch imports are journaled and either commit in full or roll back. Replaced
 meaningful working drafts and deleted named sessions move to recoverable trash
-before workflow pointers change. The repository also has an independent
-single-writer lock. Window close, app quit, and updater restart request a final
-flush; a delayed or failed save offers waiting, retry, pending-state export, or
-an explicit force exit. The optional strategy service remains for community
-sharing, not ordinary session storage.
+before workflow pointers change. The first edit after opening an existing
+session durably checkpoints its opening payload and exposes Undo only after that
+write is acknowledged. Version history also records destructive, pre-restore,
+and coarse periodic recovery points; restore preserves current before making a
+selected version current. New checkpoints include bounded collapsible field-level
+changes with exact before/after prices; Note content is not copied into the diff,
+and older checkpoints without details remain readable. Count and compressed-byte
+limits prune optional history before protected recovery promises. The explicit
+fresh-empty working slot is infrastructure and never enters history or trash;
+semantically empty autosaves preserve its marker across automatic league,
+divine-price/provenance, and seeded Atlas metadata, while the first meaningful
+user edit clears it. Before replacing an older unmarked working slot, the
+renderer may adopt the marker only after a closed-shape classifier proves its
+payload empty and the adoption save is acknowledged. Automatic metadata and
+exclusions exactly matching the current global default preset are not authored
+work; unknown fields or malformed values fail safe as meaningful and remain
+recoverable. Nullable deselection from the controlled session picker is not
+navigation: only its explicit New Session value creates a working session.
+Recently Deleted states its
+expiry and supports restore or explicit permanent deletion; an identity
+collision restores under a fresh UUID so both sessions survive. Restore returns
+a named session to Saved sessions as Historical rather than silently changing
+the live capture target.
+
+The repository also has an independent single-writer lock. Window close, app
+quit, and updater restart request a final flush; a delayed or failed save offers
+waiting, retry, pending-state export, or an explicit force exit. The optional
+strategy service remains for community sharing, not ordinary session storage.
 
 Explicit Run Statistics counters are stored with the local session. Starfall,
 Svalinn, Wildwood, named Atlas anomalies, and selected Mercenary archetypes are

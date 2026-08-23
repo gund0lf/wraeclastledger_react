@@ -7,7 +7,11 @@ import { confirmedLeagueSync, getCurrentLeague, normalizeLeagueOverride, setLeag
 import { ModGroupState, cloneDefaultGroups } from '../utils/regexBuilderPresets';
 import { isRetrospectiveLeague, normalizeLeagueKey } from '../utils/retrospectives';
 import { MAP_DEVICE_SLOT_COUNT } from '../../../shared/mapDevice';
-import type { RepositorySessionSummary, SessionLifecycle } from '../../../shared/sessionRepositoryIpc';
+import type {
+  RepositoryCheckpointSummary,
+  RepositorySessionSummary,
+  SessionLifecycle,
+} from '../../../shared/sessionRepositoryIpc';
 import {
   addManualAtlasAnomalyCount as addManualAtlasAnomalyCountValue,
   addManualMercenaryCount as addManualMercenaryCountValue,
@@ -32,6 +36,7 @@ export interface SessionRepositoryActions {
   renameNamed: (id: string, name: string) => Promise<void>;
   startWorking: () => Promise<void>;
   importNamed: (sessions: SavedSession[], conflictMode: 'skip' | 'overwrite') => Promise<void>;
+  checkpointBeforeDestructive: () => void;
 }
 
 let repositoryActions: SessionRepositoryActions | null = null;
@@ -304,12 +309,15 @@ export interface SessionState {
   saveError: string | null;
   sessionLifecycle: SessionLifecycle;
   liveSessionId: string | null;
+  activationCheckpointNotice: RepositoryCheckpointSummary | null;
+  historyStoragePressure: boolean;
 
   addMap: (map: Omit<MapData, 'id'>) => void;
   removeMap: (id: string) => void;
   undoLastMap: () => void;
   clearMaps: () => void;
   clearSession: () => void;
+  dismissActivationCheckpointNotice: () => void;
   toggleWatch: () => void;
   updateSetting: <K extends keyof SessionSettings>(key: K, value: SessionSettings[K]) => void;
   updateAdvSetting: <K extends keyof SessionSettings>(key: K, value: SessionSettings[K]) => void;
@@ -418,13 +426,21 @@ export const useSessionStore = create<SessionStoreState>()(
       repositoryStatus: 'dormant', repositoryError: null, repositorySessions: [], repositorySizeBytes: 0,
       currentGeneration: null, preferencesGeneration: null, layoutGeneration: null,
       saveStatus: 'idle', saveError: null, sessionLifecycle: 'live', liveSessionId: null,
+      activationCheckpointNotice: null, historyStoragePressure: false,
 
       // parsedAt: WP9 Tier 0 — epoch ms timestamp on every parsed map (additive, no migration needed)
       addMap: (m) => set((s) => ({ maps: [...s.maps, { ...m, id: uuidv4(), parsedAt: Date.now() }] })),
       removeMap: (id) => set((s) => ({ maps: s.maps.filter((m) => m.id !== id) })),
       undoLastMap: () => set((s) => ({ maps: s.maps.slice(0, -1) })),
-      clearMaps: () => set({ maps: [] }),
-      clearSession: () => set({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, manualLootItems: [], manualStatistics: {} }),
+      clearMaps: () => {
+        repositoryActions?.checkpointBeforeDestructive();
+        set({ maps: [] });
+      },
+      clearSession: () => {
+        repositoryActions?.checkpointBeforeDestructive();
+        set({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, manualLootItems: [], manualStatistics: {} });
+      },
+      dismissActivationCheckpointNotice: () => set({ activationCheckpointNotice: null }),
       toggleWatch: () => set((s) => (
         s.sessionLifecycle === 'live' ? { isWatching: !s.isWatching } : { isWatching: false }
       )),
@@ -468,6 +484,7 @@ export const useSessionStore = create<SessionStoreState>()(
         }),
 
       setLootItems: (items) => {
+        repositoryActions?.checkpointBeforeDestructive();
         // Auto-exclude gems if a gem name is configured
         const gemName = get().settings.advGemName?.trim().toLowerCase();
         const processed = gemName
@@ -475,10 +492,13 @@ export const useSessionStore = create<SessionStoreState>()(
           : items;
         set({ lootItems: processed });
       },
-      setBaselineItems: (items) => set({
-        baselineItems: items,
-        baselineTotal: items.reduce((a, b) => a + b.total, 0),
-      }),
+      setBaselineItems: (items) => {
+        repositoryActions?.checkpointBeforeDestructive();
+        set({
+          baselineItems: items,
+          baselineTotal: items.reduce((a, b) => a + b.total, 0),
+        });
+      },
       setBaselineTotal: (total) => set({ baselineTotal: total }),
       toggleLootItemExcluded: (id) =>
         set((s) => ({ lootItems: s.lootItems.map((i) => i.id === id ? { ...i, excluded: !i.excluded } : i) })),
@@ -488,7 +508,10 @@ export const useSessionStore = create<SessionStoreState>()(
         set((s) => ({ manualLootItems: s.manualLootItems.map((entry) => entry.id === id ? { ...item, id } : entry) })),
       removeManualLootItem: (id) =>
         set((s) => ({ manualLootItems: s.manualLootItems.filter((entry) => entry.id !== id) })),
-      clearLoot: () => set({ lootItems: [], baselineItems: [], baselineTotal: 0, manualLootItems: [] }),
+      clearLoot: () => {
+        repositoryActions?.checkpointBeforeDestructive();
+        set({ lootItems: [], baselineItems: [], baselineTotal: 0, manualLootItems: [] });
+      },
       setManualStatistic: (field, value) =>
         set((s) => ({ manualStatistics: setManualStatisticValue(s.manualStatistics, field, value) })),
       setRunStatisticsInfoDismissed: (dismissed) =>

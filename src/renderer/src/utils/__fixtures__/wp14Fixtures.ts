@@ -49,7 +49,8 @@ const stateDefaults = (): Record<string, unknown> => {
   for (const key of [
     'repositoryStatus', 'repositoryError', 'repositorySessions', 'repositorySizeBytes',
     'currentGeneration', 'preferencesGeneration', 'layoutGeneration', 'saveStatus',
-    'saveError', 'sessionLifecycle', 'liveSessionId',
+    'saveError', 'sessionLifecycle', 'liveSessionId', 'activationCheckpointNotice',
+    'historyStoragePressure',
   ]) delete state[key];
   return state;
 };

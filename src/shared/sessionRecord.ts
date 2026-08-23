@@ -23,12 +23,18 @@ export interface RecordHeaderV1 {
 
 export type CheckpointReason = 'activation' | 'destructive' | 'pre-restore' | 'periodic';
 
+export const MAX_CHECKPOINT_CHANGE_DETAILS = 24;
+export const MAX_CHECKPOINT_CHANGE_TEXT_LENGTH = 120;
+
 export interface SessionCheckpointV1 extends JsonObject {
   id: string;
   at: string;
   reason: CheckpointReason;
   activationId?: string;
   summary: JsonObject;
+  afterSummary?: JsonObject;
+  changes?: JsonObject[];
+  changeCount?: number;
 }
 
 export interface SessionBodyV1<
@@ -44,6 +50,11 @@ export interface SessionBodyV1<
   semanticHash: string;
   summary: Summary;
   payload: Payload;
+  activationId?: string;
+  activationBaselineCheckpointId?: string;
+  lastCheckpointAt?: string;
+  historyStoragePressure?: boolean;
+  freshEmptyWorking?: boolean;
   checkpoint?: SessionCheckpointV1;
 }
 
@@ -228,6 +239,24 @@ export function assertSessionBodyV1(value: unknown): asserts value is SessionBod
   if (!isPlainObject(value.summary) || !isPlainObject(value.payload)) {
     throw new RecordValidationError('invalid-body', 'summary and payload must be objects');
   }
+  if (value.activationId !== undefined) {
+    assertNonEmptyString(value.activationId, 'activationId');
+  }
+  if (value.activationBaselineCheckpointId !== undefined) {
+    assertNonEmptyString(value.activationBaselineCheckpointId, 'activationBaselineCheckpointId');
+    if (value.activationId === undefined) {
+      throw new RecordValidationError('invalid-body', 'activation baseline requires an activation id');
+    }
+  }
+  if (value.lastCheckpointAt !== undefined) {
+    assertTimestamp(value.lastCheckpointAt, 'lastCheckpointAt');
+  }
+  if (value.historyStoragePressure !== undefined && typeof value.historyStoragePressure !== 'boolean') {
+    throw new RecordValidationError('invalid-body', 'historyStoragePressure must be a boolean');
+  }
+  if (value.freshEmptyWorking !== undefined && value.freshEmptyWorking !== true) {
+    throw new RecordValidationError('invalid-body', 'freshEmptyWorking must be true when present');
+  }
   if (value.checkpoint !== undefined) {
     if (!isPlainObject(value.checkpoint)) {
       throw new RecordValidationError('invalid-body', 'checkpoint must be an object');
@@ -242,6 +271,30 @@ export function assertSessionBodyV1(value: unknown): asserts value is SessionBod
     }
     if (!isPlainObject(value.checkpoint.summary)) {
       throw new RecordValidationError('invalid-body', 'checkpoint.summary must be an object');
+    }
+    if (value.checkpoint.afterSummary !== undefined && !isPlainObject(value.checkpoint.afterSummary)) {
+      throw new RecordValidationError('invalid-body', 'checkpoint.afterSummary must be an object');
+    }
+    if (value.checkpoint.changes !== undefined) {
+      if (!Array.isArray(value.checkpoint.changes) ||
+          value.checkpoint.changes.length > MAX_CHECKPOINT_CHANGE_DETAILS) {
+        throw new RecordValidationError('invalid-body', 'checkpoint.changes exceeds its bounded array contract');
+      }
+      value.checkpoint.changes.forEach((change, index) => {
+        if (!isPlainObject(change) ||
+            typeof change.label !== 'string' || typeof change.before !== 'string' ||
+            typeof change.after !== 'string' ||
+            change.label.length === 0 || change.label.length > MAX_CHECKPOINT_CHANGE_TEXT_LENGTH ||
+            change.before.length === 0 || change.before.length > MAX_CHECKPOINT_CHANGE_TEXT_LENGTH ||
+            change.after.length === 0 || change.after.length > MAX_CHECKPOINT_CHANGE_TEXT_LENGTH) {
+          throw new RecordValidationError('invalid-body', `checkpoint.changes[${index}] is invalid`);
+        }
+      });
+    }
+    if (value.checkpoint.changeCount !== undefined &&
+        (!Number.isSafeInteger(value.checkpoint.changeCount) || Number(value.checkpoint.changeCount) < 0 ||
+         Number(value.checkpoint.changeCount) < (value.checkpoint.changes?.length ?? 0))) {
+      throw new RecordValidationError('invalid-body', 'checkpoint.changeCount is invalid');
     }
   }
 }

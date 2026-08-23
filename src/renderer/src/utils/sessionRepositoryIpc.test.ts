@@ -27,6 +27,9 @@ function repositoryPort(overrides: Partial<SessionRepositoryPort> = {}): Session
     delete: vi.fn(),
     historyList: vi.fn(),
     historyRestore: vi.fn(),
+    trashList: vi.fn(),
+    trashRestore: vi.fn(),
+    trashDelete: vi.fn(),
     importDocument: vi.fn(),
     exportDocument: vi.fn(),
     retry: vi.fn(),
@@ -43,10 +46,15 @@ describe('WP14 repository IPC request contract', () => {
     { operation: 'save', target: { kind: 'session', sessionId: 'session-1' }, expectedGeneration: 2, payload: { maps: [] } },
     { operation: 'save', target: { kind: 'new', name: 'New session' }, expectedGeneration: null, payload: { maps: [] } },
     { operation: 'save', target: { kind: 'working' }, expectedGeneration: 2, payload: { maps: [] }, replacement: true },
+    { operation: 'save', target: { kind: 'working' }, expectedGeneration: 2, payload: { maps: [] }, activationId: 'activation-1', checkpointReason: 'destructive' },
+    { operation: 'save', target: { kind: 'working' }, expectedGeneration: 2, payload: { maps: [] }, activationId: 'activation-1', freshEmptyWorking: true },
     { operation: 'rename', sessionId: 'session-1', name: 'Renamed', expectedGeneration: 2 },
     { operation: 'delete', sessionId: 'session-1', expectedGeneration: 2 },
     { operation: 'history-list', target: { kind: 'session', sessionId: 'session-1' } },
     { operation: 'history-restore', target: { kind: 'working' }, checkpointId: 'checkpoint-1', expectedGeneration: 2 },
+    { operation: 'trash-list' },
+    { operation: 'trash-restore', recoveryId: 'recovery-1' },
+    { operation: 'trash-delete', recoveryId: 'recovery-1' },
     { operation: 'import', document: '{"version":1}', conflictMode: 'skip' },
     { operation: 'export', sessionIds: ['session-1'] },
     { operation: 'retry', operationId: 'operation-1' },
@@ -85,6 +93,40 @@ describe('WP14 repository IPC response and error contract', () => {
       ok: true,
       operation: 'open-data-folder',
       data: { opened: true },
+    })).not.toThrow();
+    expect(() => assertSessionRepositoryResponse({
+      ok: true,
+      operation: 'trash-list',
+      data: {
+        entries: [{
+          recoveryId: 'recovery-1',
+          deletedAt: '2026-08-22T10:00:00.000Z',
+          expiresAt: '2026-09-21T10:00:00.000Z',
+          displayName: 'Deleted session',
+          sourceKind: 'named',
+          sessionId: 'session-1',
+          bytes: 123,
+          status: 'ready',
+        }],
+      },
+    })).not.toThrow();
+    expect(() => assertSessionRepositoryResponse({
+      ok: true,
+      operation: 'history-list',
+      data: {
+        target: { kind: 'working' },
+        historyStoragePressure: false,
+        checkpoints: [{
+          id: 'checkpoint-1',
+          createdAt: '2026-08-22T10:00:00.000Z',
+          reason: 'activation',
+          summary: {},
+          afterSummary: {},
+          changes: [{ label: 'Divine price', before: '200c', after: '201c' }],
+          changeCount: 1,
+          isActivationBaseline: true,
+        }],
+      },
     })).not.toThrow();
     expect(() => assertSessionRepositoryResponse({
       ok: true,

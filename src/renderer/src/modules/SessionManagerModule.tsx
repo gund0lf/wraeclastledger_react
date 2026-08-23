@@ -1,17 +1,17 @@
 import {
   Card, Text, Button, Group, Stack, Select, TextInput, ActionIcon,
-  Badge, Modal, Divider, Tooltip, Checkbox, Radio, Alert, ScrollArea, SimpleGrid,
+  Badge, Modal, Divider, Tooltip, Checkbox, Radio, Alert, ScrollArea, SimpleGrid, Collapse,
 } from '@mantine/core';
 import { useDisclosure, useElementSize } from '@mantine/hooks';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { DEFAULT_SETTINGS, useSessionKeys, useSessionStore } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
-import { IconTrash, IconPencil, IconDeviceFloppy, IconShare2, IconBrandDiscord, IconDownload, IconUpload, IconX, IconArrowsLeftRight, IconCheck, IconFolderOpen, IconRefresh } from '@tabler/icons-react';
+import { IconTrash, IconPencil, IconDeviceFloppy, IconShare2, IconBrandDiscord, IconDownload, IconUpload, IconX, IconArrowsLeftRight, IconCheck, IconFolderOpen, IconRefresh, IconHistory, IconRestore } from '@tabler/icons-react';
 import type { SavedSession } from '../types';
 import { SessionCompareModal } from '../components/SessionCompareModal';
 import { CollapsibleSection } from '../components/ui/CollapsibleSection';
 import { WorkingSessionGuardModal } from '../components/WorkingSessionGuardModal';
-import { isWorkingSessionMeaningful } from '../utils/workingSession';
+import { isWorkingSessionMeaningful, resolveSessionSelectionIntent } from '../utils/workingSession';
 import { usePanelMaximized } from '../layout/panelLayoutContext';
 import {
   deleteNamed,
@@ -21,15 +21,55 @@ import {
   loadNamed,
   nameCurrent,
   openRepositoryFolder,
+  listCurrentVersionHistory,
+  listRecentlyDeleted,
+  permanentlyDeleteRecentlyDeleted,
   renameNamed,
+  restoreRecentlyDeleted,
+  restoreCurrentCheckpoint,
   resumeCurrent,
   retryRepositorySave,
   startWorking,
+  undoChangesSinceOpening,
 } from '../repository/sessionRepositoryRuntime';
-import { SESSION_REPOSITORY_MAX_IMPORT_BYTES } from '../../../shared/sessionRepositoryIpc';
+import {
+  SESSION_REPOSITORY_MAX_IMPORT_BYTES,
+  type RepositoryCheckpointSummary,
+  type RepositoryTrashSummary,
+} from '../../../shared/sessionRepositoryIpc';
 import { confirmedLeagueSync } from '../utils/league';
 
 const TILE_STYLES = { inner: { width: '100%' }, label: { flex: 1, textAlign: 'center' as const } };
+
+function summaryCount(summary: RepositoryCheckpointSummary['summary'], key: string): number {
+  return typeof summary[key] === 'number' ? Number(summary[key]) : 0;
+}
+
+function checkpointSummaryText(checkpoint: RepositoryCheckpointSummary): string {
+  const before = checkpoint.summary;
+  const after = checkpoint.afterSummary;
+  if (!after) {
+    return `${summaryCount(before, 'mapCount')} maps · ${summaryCount(before, 'lootItemCount')} loot rows · ${summaryCount(before, 'baselineItemCount')} baseline rows`;
+  }
+  const parts = [
+    `${summaryCount(before, 'mapCount')} → ${summaryCount(after, 'mapCount')} maps`,
+    `${summaryCount(before, 'lootItemCount')} → ${summaryCount(after, 'lootItemCount')} loot rows`,
+    `${summaryCount(before, 'baselineItemCount')} → ${summaryCount(after, 'baselineItemCount')} baseline rows`,
+  ];
+  if (before.costsHash && after.costsHash && before.costsHash !== after.costsHash) parts.push('costs changed');
+  if (before.notesHash && after.notesHash && before.notesHash !== after.notesHash) parts.push('notes changed');
+  if (before.settingsHash && after.settingsHash && before.settingsHash !== after.settingsHash &&
+      before.costsHash === after.costsHash) parts.push('settings changed');
+  return parts.join(' · ');
+}
+
+function checkpointReasonLabel(checkpoint: RepositoryCheckpointSummary): string {
+  if (checkpoint.isActivationBaseline) return 'When session opened';
+  if (checkpoint.reason === 'destructive') return 'Before destructive change';
+  if (checkpoint.reason === 'pre-restore') return 'Before restore';
+  if (checkpoint.reason === 'periodic') return 'Automatic recovery';
+  return 'Session opened';
+}
 
 export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean } = {}) => {
   const panelIsMaximized = usePanelMaximized('session-manager');
@@ -39,9 +79,11 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
   const {
     maps, settings, repositorySessions, activeSessionId, activeSessionName,
     repositorySizeBytes, saveStatus, saveError, sessionLifecycle, liveSessionId,
+    activationCheckpointNotice, historyStoragePressure, dismissActivationCheckpointNotice,
   } = useSessionKeys(
     'maps', 'settings', 'repositorySessions', 'activeSessionId', 'activeSessionName',
     'repositorySizeBytes', 'saveStatus', 'saveError', 'sessionLifecycle', 'liveSessionId',
+    'activationCheckpointNotice', 'historyStoragePressure', 'dismissActivationCheckpointNotice',
   );
 
   const [saveOpen,   { open: openSave,   close: closeSave   }] = useDisclosure(false);
@@ -51,6 +93,8 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
   const [importOpen, { open: openImport, close: closeImport }] = useDisclosure(false);
   const [compareOpen, { open: openCompare, close: closeCompare }] = useDisclosure(false);
   const [switchGuardOpen, { open: openSwitchGuard, close: closeSwitchGuard }] = useDisclosure(false);
+  const [versionsOpen, { open: openVersions, close: closeVersions }] = useDisclosure(false);
+  const [trashOpen, { open: openTrash, close: closeTrash }] = useDisclosure(false);
 
   const [nameInput, setNameInput] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null); // WP5: single-delete confirmation
@@ -66,6 +110,13 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
   const [importError, setImportError] = useState<string | null>(null);
   const [conflictMode, setConflictMode] = useState<'skip' | 'overwrite'>('skip');
   const [operationError, setOperationError] = useState<string | null>(null);
+  const [versionHistory, setVersionHistory] = useState<RepositoryCheckpointSummary[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [expandedCheckpointIds, setExpandedCheckpointIds] = useState<Set<string>>(new Set());
+  const [restoreTarget, setRestoreTarget] = useState<RepositoryCheckpointSummary | null>(null);
+  const [trashEntries, setTrashEntries] = useState<RepositoryTrashSummary[]>([]);
+  const [trashLoading, setTrashLoading] = useState(false);
+  const [permanentDeleteTarget, setPermanentDeleteTarget] = useState<RepositoryTrashSummary | null>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (flashTimer.current) clearTimeout(flashTimer.current); }, []); // clear pending flash on unmount
@@ -94,6 +145,42 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
     }
   };
 
+  const refreshVersionHistory = async (): Promise<void> => {
+    setVersionsLoading(true);
+    try {
+      const data = await listCurrentVersionHistory();
+      setVersionHistory(data.checkpoints);
+    } finally {
+      setVersionsLoading(false);
+    }
+  };
+
+  const showVersionHistory = (): void => {
+    setOperationError(null);
+    openVersions();
+    void refreshVersionHistory().catch((error) => {
+      setOperationError(error instanceof Error ? error.message : 'Version history could not be loaded.');
+    });
+  };
+
+  const refreshRecentlyDeleted = async (): Promise<void> => {
+    setTrashLoading(true);
+    try {
+      const data = await listRecentlyDeleted();
+      setTrashEntries(data.entries);
+    } finally {
+      setTrashLoading(false);
+    }
+  };
+
+  const showRecentlyDeleted = (): void => {
+    setOperationError(null);
+    openTrash();
+    void refreshRecentlyDeleted().catch((error) => {
+      setOperationError(error instanceof Error ? error.message : 'Recently Deleted could not be loaded.');
+    });
+  };
+
   const performSwitch = async (target: string): Promise<void> => {
     if (target === '__new__') await startWorking(true);
     else await loadNamed(target);
@@ -120,7 +207,8 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
 
   const handleSessionSelect = (val: string | null) => {
     setSessionSelectOpen(false);
-    requestSwitch(val && val !== '__new__' ? val : '__new__');
+    const intent = resolveSessionSelectionIntent(val);
+    if (intent !== undefined) requestSwitch(intent);
   };
 
   const doSaveAndSwitch = async () => {
@@ -302,7 +390,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
       </Modal>
 
       {/* ── Single delete confirmation (WP5) ── */}
-      <Modal opened={deleteTarget !== null} onClose={() => setDeleteTarget(null)} title="Delete Session" size="sm">
+      <Modal opened={deleteTarget !== null} onClose={() => setDeleteTarget(null)} title="Move Session to Recently Deleted" size="sm">
         <Stack gap="sm">
           <Text size="sm">
             Move <Text span fw={700}>{deleteTarget ? repositorySessions.find(({ id }) => id === deleteTarget)?.name : ''}</Text> to Recently Deleted?
@@ -321,7 +409,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
       </Modal>
 
       {/* ── Bulk delete confirmation ── */}
-      <Modal opened={bulkDeleteOpen} onClose={closeBulkDelete} title="Delete Sessions" size="sm">
+      <Modal opened={bulkDeleteOpen} onClose={closeBulkDelete} title="Move Sessions to Recently Deleted" size="sm">
         <Stack gap="sm">
           <Text size="sm">
             Move <Text span fw={700}>{selected.size} session{selected.size !== 1 ? 's' : ''}</Text> to Recently Deleted?
@@ -334,7 +422,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
               clearSelection();
               closeBulkDelete();
             }); }}>
-              Delete {selected.size}
+              Move {selected.size}
             </Button>
           </Group>
         </Stack>
@@ -387,6 +475,160 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
         </Stack>
       </Modal>
 
+      <Modal opened={versionsOpen} onClose={closeVersions} title="Version history" size="lg">
+        <Stack gap="sm">
+          <Text size="xs" c="dimmed">
+            Restoring a version first preserves the current state, then makes the selected timestamp current.
+          </Text>
+          {historyStoragePressure && (
+            <Alert color="yellow" variant="light" p="xs">
+              <Text size="xs">Protected recovery versions exceed the normal history budget. They remain available; optional recovery points are paused.</Text>
+            </Alert>
+          )}
+          {versionsLoading ? (
+            <Text size="sm" c="dimmed">Loading version history…</Text>
+          ) : versionHistory.length === 0 ? (
+            <Text size="sm" c="dimmed">No earlier versions have been recorded for this session yet.</Text>
+          ) : (
+            <ScrollArea mah={420}>
+              <Stack gap={6}>
+                {versionHistory.map((checkpoint) => (
+                  <Card key={checkpoint.id} withBorder padding="sm" radius="sm">
+                    <Group justify="space-between" align="flex-start" wrap="nowrap">
+                      <Stack gap={2} style={{ minWidth: 0 }}>
+                        <Group gap={6}>
+                          <Text size="sm" fw={600}>{checkpointReasonLabel(checkpoint)}</Text>
+                          {checkpoint.isActivationBaseline && <Badge size="xs" color="blue" variant="light">Undo available</Badge>}
+                        </Group>
+                        <Text size="xs" c="dimmed">{new Date(checkpoint.createdAt).toLocaleString()}</Text>
+                        <Text size="xs">{checkpointSummaryText(checkpoint)}</Text>
+                        {checkpoint.changeCount > 0 && (
+                          <>
+                            <Button size="compact-xs" variant="subtle" px={0}
+                              style={{ alignSelf: 'flex-start' }}
+                              onClick={() => setExpandedCheckpointIds((current) => {
+                                const next = new Set(current);
+                                if (next.has(checkpoint.id)) next.delete(checkpoint.id);
+                                else next.add(checkpoint.id);
+                                return next;
+                              })}>
+                              {expandedCheckpointIds.has(checkpoint.id) ? 'Hide' : 'Show'} changes ({checkpoint.changeCount})
+                            </Button>
+                            <Collapse in={expandedCheckpointIds.has(checkpoint.id)}>
+                              <Stack gap={2} pt={2}>
+                                {checkpoint.changes.map((change, index) => (
+                                  <Group key={`${checkpoint.id}-${index}`} gap={6} justify="space-between" wrap="nowrap">
+                                    <Text size="xs" c="dimmed">{change.label}</Text>
+                                    <Text size="xs" ta="right">{change.before} → {change.after}</Text>
+                                  </Group>
+                                ))}
+                                {checkpoint.changeCount > checkpoint.changes.length && (
+                                  <Text size="xs" c="dimmed">
+                                    {checkpoint.changeCount - checkpoint.changes.length} additional changes omitted by the display limit.
+                                  </Text>
+                                )}
+                              </Stack>
+                            </Collapse>
+                          </>
+                        )}
+                      </Stack>
+                      <Button size="compact-xs" variant="default" leftSection={<IconRestore size={11} />}
+                        onClick={() => setRestoreTarget(checkpoint)}>Restore</Button>
+                    </Group>
+                  </Card>
+                ))}
+              </Stack>
+            </ScrollArea>
+          )}
+        </Stack>
+      </Modal>
+
+      <Modal opened={restoreTarget !== null} onClose={() => setRestoreTarget(null)}
+        title="Restore session version" size="sm">
+        <Stack gap="sm">
+          <Text size="sm">
+            Restore the version from <Text span fw={700}>{restoreTarget ? new Date(restoreTarget.createdAt).toLocaleString() : ''}</Text>?
+          </Text>
+          <Text size="xs" c="dimmed">Your current state will be preserved first, so this restore can also be undone.</Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setRestoreTarget(null)}>Cancel</Button>
+            <Button leftSection={<IconRestore size={12} />} onClick={() => {
+              if (!restoreTarget) return;
+              const checkpointId = restoreTarget.id;
+              void runOperation(async () => {
+                await restoreCurrentCheckpoint(checkpointId);
+                await refreshVersionHistory();
+              }, () => setRestoreTarget(null));
+            }}>Restore version</Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal opened={trashOpen} onClose={closeTrash} title="Recently Deleted" size="lg">
+        <Stack gap="sm">
+          <Text size="xs" c="dimmed">
+            Deleted sessions remain recoverable for up to 30 days, subject to the 20-entry and 32 MB Recently Deleted limits.
+            Restoring returns a session to Saved sessions without changing the live capture target; load it, then choose Resume session when you want it live again.
+          </Text>
+          {trashLoading ? (
+            <Text size="sm" c="dimmed">Loading Recently Deleted…</Text>
+          ) : trashEntries.length === 0 ? (
+            <Text size="sm" c="dimmed">Recently Deleted is empty.</Text>
+          ) : (
+            <ScrollArea mah={420}>
+              <Stack gap={6}>
+                {trashEntries.map((entry) => (
+                  <Card key={entry.recoveryId} withBorder padding="sm" radius="sm">
+                    <Group justify="space-between" align="flex-start" wrap="nowrap">
+                      <Stack gap={2} style={{ minWidth: 0 }}>
+                        <Group gap={6}>
+                          <Text size="sm" fw={600} lineClamp={1}>{entry.displayName}</Text>
+                          {entry.status === 'damaged' && <Badge size="xs" color="red" variant="light">Damaged</Badge>}
+                        </Group>
+                        <Text size="xs" c="dimmed">
+                          Deleted {new Date(entry.deletedAt).toLocaleString()} · available until {new Date(entry.expiresAt).toLocaleString()} · {(entry.bytes / 1024 / 1024).toFixed(2)} MB
+                        </Text>
+                      </Stack>
+                      <Group gap={4} wrap="nowrap">
+                        <Button size="compact-xs" variant="default" leftSection={<IconRestore size={11} />}
+                          disabled={entry.status !== 'ready'} onClick={() => {
+                            void runOperation(async () => {
+                              await restoreRecentlyDeleted(entry.recoveryId);
+                              await refreshRecentlyDeleted();
+                            });
+                          }}>Restore</Button>
+                        <Button size="compact-xs" variant="subtle" color="red"
+                          onClick={() => setPermanentDeleteTarget(entry)}>Delete permanently</Button>
+                      </Group>
+                    </Group>
+                  </Card>
+                ))}
+              </Stack>
+            </ScrollArea>
+          )}
+        </Stack>
+      </Modal>
+
+      <Modal opened={permanentDeleteTarget !== null} onClose={() => setPermanentDeleteTarget(null)}
+        title="Permanently delete session" size="sm">
+        <Stack gap="sm">
+          <Text size="sm">
+            Permanently delete <Text span fw={700}>{permanentDeleteTarget?.displayName ?? ''}</Text>? This cannot be undone.
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setPermanentDeleteTarget(null)}>Cancel</Button>
+            <Button color="red" onClick={() => {
+              if (!permanentDeleteTarget) return;
+              const recoveryId = permanentDeleteTarget.recoveryId;
+              void runOperation(async () => {
+                const data = await permanentlyDeleteRecentlyDeleted(recoveryId);
+                setTrashEntries(data.entries);
+              }, () => setPermanentDeleteTarget(null));
+            }}>Delete permanently</Button>
+          </Group>
+        </Stack>
+      </Modal>
+
       {/* The working slot is durable too; this guard decides identity/replacement. */}
       <WorkingSessionGuardModal
         opened={switchGuardOpen}
@@ -419,6 +661,18 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
             <Alert color="red" variant="light" p="xs" withCloseButton
               onClose={() => setOperationError(null)}>
               <Text size="xs">{operationError}</Text>
+            </Alert>
+          )}
+          {activationCheckpointNotice && (
+            <Alert color="blue" variant="light" p="xs" withCloseButton
+              title="Changes are protected" onClose={dismissActivationCheckpointNotice}>
+              <Stack gap={6}>
+                <Text size="xs">Changes are auto-saved. The version from when you opened this session was kept.</Text>
+                <Button size="compact-xs" variant="light" leftSection={<IconRestore size={11} />}
+                  onClick={() => { void runOperation(undoChangesSinceOpening); }}>
+                  Undo changes since opening
+                </Button>
+              </Stack>
             </Alert>
           )}
           {sessionLifecycle === 'historical' && (
@@ -503,6 +757,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
               ]}
               value={activeSessionId ?? '__new__'}
               onChange={handleSessionSelect}
+              allowDeselect={false}
               dropdownOpened={sessionSelectOpen}
               onDropdownOpen={() => setSessionSelectOpen(true)}
               onDropdownClose={() => setSessionSelectOpen(false)}
@@ -516,8 +771,8 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
                     <IconPencil size={14} />
                   </ActionIcon>
                 </Tooltip>
-                <Tooltip label="Delete session" withArrow>
-                  <ActionIcon variant="default" size="lg" aria-label="Delete session"
+                <Tooltip label="Move session to Recently Deleted" withArrow>
+                  <ActionIcon variant="default" size="lg" aria-label="Move session to Recently Deleted"
                     onMouseEnter={() => setHoveredTrashTop(true)}
                     onMouseLeave={() => setHoveredTrashTop(false)}
                     style={hoveredTrashTop ? { borderColor: 'var(--mantine-color-red-7)', color: 'var(--mantine-color-red-4)' } : undefined}
@@ -565,8 +820,20 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
               {compactPanel ? 'Share' : 'Share Strategy'}
             </Button>
           </SimpleGrid>
+          <SimpleGrid cols={2} spacing={isMaximized ? 8 : 4}>
+            <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
+              leftSection={<IconHistory size={12} />} styles={TILE_STYLES}
+              onClick={showVersionHistory}>
+              {compactPanel ? 'Versions' : 'Version history'}
+            </Button>
+            <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
+              leftSection={<IconTrash size={12} />} styles={TILE_STYLES}
+              onClick={showRecentlyDeleted}>
+              {compactPanel ? 'Deleted' : 'Recently Deleted'}
+            </Button>
+          </SimpleGrid>
           {sessionEntries.length > 0 && (
-            <CollapsibleSection variant="group" defaultOpen={false} title="History"
+            <CollapsibleSection variant="group" defaultOpen={false} title="Saved sessions"
               right={<Badge size={isMaximized ? 'sm' : 'xs'} variant="light" color="gray">{sessionEntries.length}</Badge>}>
 
               {/* Bulk action bar — ALWAYS mounted, revealed via visibility so
@@ -582,13 +849,13 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
                       Export
                     </Button>
                   </Tooltip>
-                  <Tooltip label="Delete selected" withArrow>
+                  <Tooltip label="Move selected to Recently Deleted" withArrow>
                     <Button size={isMaximized ? 'sm' : 'xs'} variant="default" leftSection={<IconTrash size={11} />}
                       onMouseEnter={() => setHoveredBulkDelete(true)}
                       onMouseLeave={() => setHoveredBulkDelete(false)}
                       style={hoveredBulkDelete ? { borderColor: 'var(--mantine-color-red-7)', color: 'var(--mantine-color-red-4)' } : undefined}
                       onClick={() => { setHoveredBulkDelete(false); openBulkDelete(); }}>
-                      Delete
+                      Move
                     </Button>
                   </Tooltip>
                   <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Clear selection" onClick={clearSelection}><IconX size={11} /></ActionIcon>
@@ -649,7 +916,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
                           onBlur={() => setHoveredRowId(null)}
                           disabled={s.status !== 'ready'}
                           onClick={() => requestSwitch(s.id)}>Load</Button>
-                        <ActionIcon size={isMaximized ? 'lg' : 'md'} variant="default" aria-label={`Delete session ${s.name}`}
+                        <ActionIcon size={isMaximized ? 'lg' : 'md'} variant="default" aria-label={`Move session ${s.name} to Recently Deleted`}
                           onMouseEnter={() => setHoveredTrashId(s.id)}
                           onMouseLeave={() => setHoveredTrashId(null)}
                           onFocus={() => { setHoveredRowId(s.id); setHoveredTrashId(s.id); }}

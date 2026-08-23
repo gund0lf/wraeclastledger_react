@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '../store/useSessionStore';
-import { isWorkingSessionMeaningful, type WorkingSessionCandidate } from './workingSession';
+import {
+  isWorkingPayloadMeaningful,
+  isWorkingSessionMeaningful,
+  resolveSessionSelectionIntent,
+  type WorkingSessionCandidate,
+} from './workingSession';
 
 const candidate = (patch: Partial<WorkingSessionCandidate> = {}): WorkingSessionCandidate => ({
   activeSessionId: null,
@@ -25,9 +30,21 @@ describe('isWorkingSessionMeaningful', () => {
 
   it('ignores automatically managed league, price, and seeded Atlas Bonus', () => {
     const state = candidate({
-      settings: { ...DEFAULT_SETTINGS, leagueName: 'Mirage', divinePrice: 250, atlasBonus: true },
+      settings: {
+        ...DEFAULT_SETTINGS,
+        leagueName: 'Mirage',
+        divinePrice: 250,
+        divinePriceQuotedAt: '2026-08-23T12:00:00.000Z',
+        atlasBonus: true,
+      },
     });
     expect(isWorkingSessionMeaningful(state, DEFAULT_SETTINGS)).toBe(false);
+  });
+
+  it('does not translate deselecting the current session into New Session', () => {
+    expect(resolveSessionSelectionIntent(null)).toBeUndefined();
+    expect(resolveSessionSelectionIntent('__new__')).toBe('__new__');
+    expect(resolveSessionSelectionIntent('session-1')).toBe('session-1');
   });
 
   it('ignores metadata written automatically by an untouched Atlas Tree webview', () => {
@@ -39,6 +56,14 @@ describe('isWorkingSessionMeaningful', () => {
         atlasPointsMax: 138,
         atlasDetectedTags: ['scarabs'],
       },
+    });
+    expect(isWorkingSessionMeaningful(state, DEFAULT_SETTINGS)).toBe(false);
+  });
+
+  it('ignores the user preference seeded into a fresh sessions regex exclusions', () => {
+    const state = candidate({
+      settings: { ...DEFAULT_SETTINGS, regexExclusions: ['reflect', 'no regen'] },
+      defaultExclusionPreset: ['reflect', 'no regen'],
     });
     expect(isWorkingSessionMeaningful(state, DEFAULT_SETTINGS)).toBe(false);
   });
@@ -92,5 +117,44 @@ describe('isWorkingSessionMeaningful', () => {
       activeSessionId: 'saved-1',
       sessionNotes: 'already auto-saved',
     }), DEFAULT_SETTINGS)).toBe(false);
+  });
+});
+
+describe('isWorkingPayloadMeaningful', () => {
+  it('recognises an older unmarked empty payload after automatic metadata writes', () => {
+    expect(isWorkingPayloadMeaningful({
+      maps: [],
+      lootItems: [],
+      baselineItems: [],
+      baselineTotal: 0,
+      manualLootItems: [],
+      manualStatistics: {},
+      settings: {
+        ...DEFAULT_SETTINGS,
+        leagueName: 'Allflame',
+        divinePrice: 208,
+        divinePriceQuotedAt: '2026-08-23T13:16:00.000Z',
+        regexExclusions: ['reflect'],
+        atlasTreeUrl: 'https://pathofpathing.com/?v=3.28.0-atlas-league#',
+        atlasPoints: 0,
+        atlasPointsMax: 138,
+      },
+      sessionNotes: '',
+      investmentNeutralization: 0,
+      investmentDismissed: false,
+      strategySourceContext: null,
+    }, DEFAULT_SETTINGS, ['reflect'])).toBe(false);
+  });
+
+  it('fails safe for meaningful, unknown, or malformed payload data', () => {
+    expect(isWorkingPayloadMeaningful({ maps: [{ id: 'keep-me' }] }, DEFAULT_SETTINGS)).toBe(true);
+    expect(isWorkingPayloadMeaningful({ futureAuthoredField: 'keep-me' }, DEFAULT_SETTINGS)).toBe(true);
+    expect(isWorkingPayloadMeaningful({ maps: 'not-an-array' }, DEFAULT_SETTINGS)).toBe(true);
+    expect(isWorkingPayloadMeaningful({
+      settings: { ...DEFAULT_SETTINGS, divinePrice: 'not-a-number' },
+    }, DEFAULT_SETTINGS)).toBe(true);
+    expect(isWorkingPayloadMeaningful({
+      manualStatistics: { futureStatistic: 1 },
+    }, DEFAULT_SETTINGS)).toBe(true);
   });
 });

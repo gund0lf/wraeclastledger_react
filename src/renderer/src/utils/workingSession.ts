@@ -5,7 +5,13 @@ import type {
   MapData,
   SessionSettings,
 } from '../types';
-import { hasManualStatistics } from './manualStatistics';
+import type { JsonObject } from '../../../shared/sessionRecord';
+import {
+  hasManualStatistics,
+  MANUAL_STATISTIC_FIELDS,
+  normalizeLocalManualStatistics,
+  sanitizeManualStatistics,
+} from './manualStatistics';
 
 export interface WorkingSessionCandidate {
   activeSessionId: string | null;
@@ -20,10 +26,12 @@ export interface WorkingSessionCandidate {
   investmentDismissed: boolean;
   loadedStrategyInfo: unknown | null;
   settings: SessionSettings;
+  defaultExclusionPreset?: string[];
 }
 
 const AUTO_MANAGED_SETTINGS = new Set<keyof SessionSettings>([
   'divinePrice',
+  'divinePriceQuotedAt',
   'leagueName',
   // Atlas Bonus is persisted as user-scoped per-league progress and seeded
   // automatically into every fresh session. Replacing the session cannot lose
@@ -39,6 +47,67 @@ const AUTO_MANAGED_SETTINGS = new Set<keyof SessionSettings>([
 ]);
 
 const valuesEqual = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+
+const SESSION_PAYLOAD_KEYS = new Set([
+  'maps',
+  'lootItems',
+  'baselineItems',
+  'baselineTotal',
+  'manualLootItems',
+  'manualStatistics',
+  'settings',
+  'sessionNotes',
+  'investmentNeutralization',
+  'investmentDismissed',
+  'strategySourceContext',
+]);
+
+const isPlainObject = (value: unknown): value is JsonObject =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const MANUAL_STATISTICS_KEYS = new Set<string>([
+  ...MANUAL_STATISTIC_FIELDS,
+  'infoDismissed',
+  'beastInfoDismissed',
+  'atlasAnomalies',
+  'mercenaries',
+]);
+
+function isEmptyManualStatisticsInput(value: JsonObject): boolean {
+  return Object.entries(value).every(([key, candidate]) =>
+    ((key === 'infoDismissed' || key === 'beastInfoDismissed') && candidate === false)
+    || ((key === 'atlasAnomalies' || key === 'mercenaries')
+      && Array.isArray(candidate) && candidate.length === 0));
+}
+
+function isAutoManagedSettingWellFormed(key: keyof SessionSettings, value: unknown): boolean {
+  switch (key) {
+    case 'divinePrice':
+      return typeof value === 'number' && Number.isFinite(value);
+    case 'divinePriceQuotedAt':
+      return value === null || typeof value === 'string';
+    case 'leagueName':
+    case 'atlasTreeUrl':
+      return typeof value === 'string';
+    case 'atlasBonus':
+      return typeof value === 'boolean';
+    case 'atlasPoints':
+    case 'atlasPointsMax':
+      return value === null || (typeof value === 'number' && Number.isFinite(value));
+    case 'atlasDetectedTags':
+      return Array.isArray(value) && value.every((tag) => typeof tag === 'string');
+    default:
+      return false;
+  }
+}
+
+/**
+ * A null Select change means Mantine deselected the current option; it is not
+ * the explicit New Session row. Keep those two intents distinct.
+ */
+export function resolveSessionSelectionIntent(value: string | null): string | undefined {
+  return value ?? undefined;
+}
 
 /**
  * Does the unnamed working session contain state that a replacement would lose?
@@ -67,7 +136,74 @@ export function isWorkingSessionMeaningful(
   ] as (keyof SessionSettings)[]);
   for (const key of settingKeys) {
     if (AUTO_MANAGED_SETTINGS.has(key)) continue;
+    if (key === 'regexExclusions' && valuesEqual(
+      state.settings.regexExclusions,
+      state.defaultExclusionPreset ?? defaults.regexExclusions,
+    )) continue;
     if (!valuesEqual(state.settings[key], defaults[key])) return true;
   }
   return false;
+}
+
+/**
+ * Classify a repository-backed working payload before replacing it. Unknown or
+ * malformed fields fail safe as meaningful so an additive future payload can
+ * never be discarded merely because this renderer does not understand it.
+ */
+export function isWorkingPayloadMeaningful(
+  payload: JsonObject,
+  defaults: SessionSettings,
+  defaultExclusionPreset: string[] = [],
+): boolean {
+  if (Object.keys(payload).some((key) => !SESSION_PAYLOAD_KEYS.has(key))) return true;
+
+  for (const key of ['maps', 'lootItems', 'baselineItems', 'manualLootItems'] as const) {
+    if (payload[key] !== undefined && !Array.isArray(payload[key])) return true;
+  }
+  if (payload.baselineTotal !== undefined && typeof payload.baselineTotal !== 'number') return true;
+  if (payload.sessionNotes !== undefined && typeof payload.sessionNotes !== 'string') return true;
+  if (payload.investmentNeutralization !== undefined &&
+      typeof payload.investmentNeutralization !== 'number') return true;
+  if (payload.investmentDismissed !== undefined && typeof payload.investmentDismissed !== 'boolean') return true;
+  if (payload.manualStatistics !== undefined && !isPlainObject(payload.manualStatistics)) return true;
+  if (payload.settings !== undefined && !isPlainObject(payload.settings)) return true;
+  if (payload.strategySourceContext !== undefined && payload.strategySourceContext !== null &&
+      !isPlainObject(payload.strategySourceContext)) return true;
+
+  const manualStatisticsInput = isPlainObject(payload.manualStatistics)
+    ? payload.manualStatistics : undefined;
+  if (manualStatisticsInput) {
+    if (Object.keys(manualStatisticsInput).some((key) => !MANUAL_STATISTICS_KEYS.has(key))) return true;
+    if (sanitizeManualStatistics(manualStatisticsInput) === null &&
+        !isEmptyManualStatisticsInput(manualStatisticsInput)) return true;
+  }
+
+  const settingsInput = isPlainObject(payload.settings) ? payload.settings : {};
+  for (const [rawKey, value] of Object.entries(settingsInput)) {
+    const key = rawKey as keyof SessionSettings;
+    if (AUTO_MANAGED_SETTINGS.has(key) && !isAutoManagedSettingWellFormed(key, value)) return true;
+  }
+
+  return isWorkingSessionMeaningful({
+    activeSessionId: null,
+    maps: Array.isArray(payload.maps) ? payload.maps as unknown as MapData[] : [],
+    lootItems: Array.isArray(payload.lootItems) ? payload.lootItems as unknown as LootItem[] : [],
+    baselineItems: Array.isArray(payload.baselineItems)
+      ? payload.baselineItems as unknown as LootItem[] : [],
+    baselineTotal: typeof payload.baselineTotal === 'number' ? payload.baselineTotal : 0,
+    manualLootItems: Array.isArray(payload.manualLootItems)
+      ? payload.manualLootItems as unknown as ManualLootItem[] : [],
+    manualStatistics: normalizeLocalManualStatistics(manualStatisticsInput),
+    settings: {
+      ...defaults,
+      ...settingsInput as Partial<SessionSettings>,
+    },
+    sessionNotes: typeof payload.sessionNotes === 'string' ? payload.sessionNotes : '',
+    investmentNeutralization: typeof payload.investmentNeutralization === 'number'
+      ? payload.investmentNeutralization : 0,
+    investmentDismissed: payload.investmentDismissed === true,
+    loadedStrategyInfo: isPlainObject(payload.strategySourceContext)
+      ? payload.strategySourceContext : null,
+    defaultExclusionPreset,
+  }, defaults);
 }

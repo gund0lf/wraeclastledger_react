@@ -17,6 +17,7 @@ import type {
 import type { SavedSession, SessionSettings } from '../types';
 import { confirmedLeagueSync, getCurrentLeague, setLeagueOverrideValue } from '../utils/league';
 import { normalizeLocalManualStatistics } from '../utils/manualStatistics';
+import { isWorkingPayloadMeaningful, isWorkingSessionMeaningful } from '../utils/workingSession';
 import {
   DEFAULT_SETTINGS,
   configureSessionRepositoryActions,
@@ -38,6 +39,9 @@ type LoadData = SessionRepositoryDataMap['load'];
 interface PendingSessionSave {
   target: SessionTarget;
   payload: JsonObject;
+  activationId?: string;
+  checkpointReason?: 'destructive';
+  freshEmptyWorking?: true;
 }
 
 interface LayoutSaveWaiter {
@@ -66,6 +70,7 @@ export function workflowForHistoricalDuplicate(
 let client: ReturnType<typeof createSessionRepositoryClient> | null = null;
 let applyingRepositoryState = false;
 let pendingSessionSave: PendingSessionSave | null = null;
+let pendingExplicitCheckpointReason: 'destructive' | null = null;
 let failedSessionSave: PendingSessionSave | null = null;
 let sessionSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let sessionSaveDrain: Promise<void> | null = null;
@@ -78,6 +83,7 @@ let layoutSaveWaiters: LayoutSaveWaiter[] = [];
 let layoutSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let layoutSaveDrain: Promise<void> | null = null;
 let failedLayoutSave = false;
+let pendingRestoreHydration: { target: SessionTarget } | null = null;
 let workflowSaveBarrier: Promise<void> = Promise.resolve();
 let workflowWritesPending = 0;
 let failedWorkflowSave: RepositoryWorkflow | null = null;
@@ -150,7 +156,8 @@ function legacySnapshot(createSynthetic = false): LegacyStorageSnapshot {
         typeof value !== 'function' && ![
           'repositoryStatus', 'repositoryError', 'repositorySessions', 'repositorySizeBytes',
           'currentGeneration', 'preferencesGeneration', 'layoutGeneration', 'saveStatus',
-          'saveError', 'sessionLifecycle', 'liveSessionId',
+          'saveError', 'sessionLifecycle', 'liveSessionId', 'activationCheckpointNotice',
+          'historyStoragePressure',
         ].includes(key)
       )),
     );
@@ -242,6 +249,8 @@ function applyPayload(data: LoadData, sessions: RepositorySessionSummary[]): Par
     pendingAtlasBonusSeed: data.workflow.pendingAtlasBonusSeed,
     pendingAtlasBonusValue: data.workflow.pendingAtlasBonusValue,
     isWatching: false,
+    activationCheckpointNotice: null,
+    historyStoragePressure: false,
   };
 }
 
@@ -322,6 +331,9 @@ async function drainSessionSaves(): Promise<void> {
         target: pending.target,
         expectedGeneration: useSessionStore.getState().currentGeneration,
         payload: pending.payload,
+        ...(pending.activationId ? { activationId: pending.activationId } : {}),
+        ...(pending.checkpointReason ? { checkpointReason: pending.checkpointReason } : {}),
+        ...(pending.freshEmptyWorking ? { freshEmptyWorking: true as const } : {}),
       });
       failedSessionSave = null;
       const sessions = data.summary
@@ -332,6 +344,9 @@ async function drainSessionSaves(): Promise<void> {
         repositorySessions: sessions,
         saveStatus: 'saving',
         saveError: null,
+        ...(data.checkpoint?.isActivationBaseline
+          ? { activationCheckpointNotice: data.checkpoint } : {}),
+        historyStoragePressure: data.historyStoragePressure,
       });
       updateWorkflowState(data.workflow);
       queueRepositoryMetadataRefresh();
@@ -360,7 +375,21 @@ function ensureSessionDrain(): Promise<void> {
 
 function queueSessionSave(immediate: boolean): void {
   try {
-    pendingSessionSave = { target: currentTarget(), payload: sessionPayload() };
+    if (pendingRestoreHydration) {
+      throw new Error('A restored version is waiting to be reloaded. Retry before making more changes.');
+    }
+    const checkpointReason = pendingSessionSave?.checkpointReason ?? pendingExplicitCheckpointReason;
+    pendingExplicitCheckpointReason = null;
+    const state = useSessionStore.getState();
+    const target = currentTarget(state);
+    pendingSessionSave = {
+      target,
+      payload: sessionPayload(state),
+      ...(repositoryWorkflow?.activationId ? { activationId: repositoryWorkflow.activationId } : {}),
+      ...(checkpointReason ? { checkpointReason } : {}),
+      ...(target.kind === 'working' && !isWorkingSessionMeaningful(state, DEFAULT_SETTINGS)
+        ? { freshEmptyWorking: true as const } : {}),
+    };
     markRepositorySaving();
     if (sessionSaveTimer) clearTimeout(sessionSaveTimer);
     if (immediate) {
@@ -375,6 +404,10 @@ function queueSessionSave(immediate: boolean): void {
   } catch (error) {
     useSessionStore.setState({ saveStatus: 'failed', saveError: error instanceof Error ? error.message : String(error) });
   }
+}
+
+export function checkpointBeforeDestructive(): void {
+  pendingExplicitCheckpointReason = 'destructive';
 }
 
 async function savePreferencesNow(): Promise<void> {
@@ -459,6 +492,19 @@ export async function flushRepositoryNow(): Promise<void> {
 
 export async function retryRepositorySave(): Promise<void> {
   markRepositorySaving();
+  if (pendingRestoreHydration) {
+    const pending = pendingRestoreHydration;
+    try {
+      await hydrateRestoredTarget(pending.target);
+      pendingRestoreHydration = null;
+    } catch (error) {
+      useSessionStore.setState({
+        saveStatus: 'failed',
+        saveError: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
   // Edits may continue after a failed write. Never replace a newer queued
   // snapshot with the older snapshot that originally failed.
   pendingSessionSave = selectRetrySnapshot(pendingSessionSave, failedSessionSave);
@@ -743,12 +789,32 @@ export async function startWorking(replaceExisting = false): Promise<void> {
   try {
     const working = await repositoryClient().request({ operation: 'load', target: workingTarget, mode: 'inspect' });
     expectedGeneration = working.generation;
+    const preferences = useSessionStore.getState();
+    if (!isWorkingPayloadMeaningful(
+      working.payload,
+      DEFAULT_SETTINGS,
+      preferences.defaultExclusionPreset,
+    )) {
+      // Phase 5 introduced the explicit fresh-empty marker. Adopt an older
+      // semantically empty working slot before replacement so legacy/autopriced
+      // infrastructure cannot become a spurious Unnamed recovery entry.
+      const adopted = await repositoryClient().request({
+        operation: 'save',
+        target: workingTarget,
+        expectedGeneration,
+        payload: working.payload,
+        freshEmptyWorking: true,
+      });
+      expectedGeneration = adopted.generation;
+    }
   } catch (error) {
     if (!(error instanceof SessionRepositoryClientError && error.repositoryError.code === 'not-found')) throw error;
   }
   const payload = freshWorkingPayload();
+  const activationId = uuidv4();
   const saved = await repositoryClient().request({
-    operation: 'save', target: workingTarget, expectedGeneration, payload, replacement: true,
+    operation: 'save', target: workingTarget, expectedGeneration, payload, replacement: true, activationId,
+    freshEmptyWorking: true,
   });
   // The destination record is already durable. Reflect it before the separate
   // workflow-pointer commit so a failed pointer write can be retried without
@@ -774,7 +840,7 @@ export async function startWorking(replaceExisting = false): Promise<void> {
     viewedTarget: workingTarget,
     lifecycle: 'live',
     suspended: false,
-    activationId: uuidv4(),
+    activationId,
     pendingAtlasBonusSeed: confirmedLeagueSync() === null,
     pendingAtlasBonusValue: null,
   }));
@@ -953,6 +1019,7 @@ async function performRepositoryBootstrap(): Promise<{ layoutRawValue: string | 
     renameNamed,
     startWorking,
     importNamed,
+    checkpointBeforeDestructive,
   });
   installStoreSubscription();
   return { layoutRawValue: initialLayoutRawValue };
@@ -1083,6 +1150,90 @@ export function saveRepositoryLayout(rawValue: string): Promise<void> {
 
 export async function openRepositoryFolder(): Promise<void> {
   await repositoryClient().request({ operation: 'open-data-folder' });
+}
+
+export async function listCurrentVersionHistory(): Promise<SessionRepositoryDataMap['history-list']> {
+  await flushRepositoryNow();
+  const data = await repositoryClient().request({ operation: 'history-list', target: currentTarget() });
+  useSessionStore.setState({ historyStoragePressure: data.historyStoragePressure });
+  return data;
+}
+
+async function hydrateRestoredTarget(target: SessionTarget): Promise<void> {
+  const loaded = await repositoryClient().request({ operation: 'load', target, mode: 'inspect' });
+  repositoryWorkflow = loaded.workflow;
+  repositoryBootstrapGeneration = loaded.workflowGeneration;
+  applyingRepositoryState = true;
+  useSessionStore.setState({
+    ...applyPayload(loaded, useSessionStore.getState().repositorySessions),
+    activationCheckpointNotice: null,
+    saveStatus: 'saved',
+    saveError: null,
+    sessionNonce: useSessionStore.getState().sessionNonce + 1,
+  });
+  applyingRepositoryState = false;
+  queueRepositoryMetadataRefresh();
+}
+
+export async function restoreCurrentCheckpoint(checkpointId: string): Promise<void> {
+  await flushRepositoryNow();
+  const state = useSessionStore.getState();
+  const target = currentTarget(state);
+  if (state.currentGeneration === null) throw new Error('Session generation is not hydrated');
+  markRepositorySaving();
+  try {
+    const restored = await repositoryClient().request({
+      operation: 'history-restore',
+      target,
+      checkpointId,
+      expectedGeneration: state.currentGeneration,
+    });
+    pendingRestoreHydration = { target };
+    // Advance the generation immediately after the durable restore ack. If the
+    // follow-up read fails, Retry reloads this target instead of replaying the
+    // pre-restore in-memory payload over it.
+    useSessionStore.setState({ currentGeneration: restored.generation });
+    await hydrateRestoredTarget(target);
+    pendingRestoreHydration = null;
+  } catch (error) {
+    applyingRepositoryState = false;
+    if (pendingRestoreHydration) {
+      useSessionStore.setState({
+        saveStatus: 'failed',
+        saveError: 'The version was restored safely, but the refreshed session could not be loaded. Retry to reload it.',
+      });
+    } else {
+      settleRepositorySaved();
+    }
+    throw error;
+  }
+}
+
+export async function undoChangesSinceOpening(): Promise<void> {
+  const checkpoint = useSessionStore.getState().activationCheckpointNotice;
+  if (!checkpoint) return;
+  await restoreCurrentCheckpoint(checkpoint.id);
+}
+
+export async function listRecentlyDeleted(): Promise<SessionRepositoryDataMap['trash-list']> {
+  await flushRepositoryNow();
+  return repositoryClient().request({ operation: 'trash-list' });
+}
+
+export async function restoreRecentlyDeleted(recoveryId: string): Promise<void> {
+  await flushRepositoryNow();
+  const data = await repositoryClient().request({ operation: 'trash-restore', recoveryId });
+  useSessionStore.setState({ repositorySessions: data.sessions });
+  queueRepositoryMetadataRefresh();
+}
+
+export async function permanentlyDeleteRecentlyDeleted(
+  recoveryId: string,
+): Promise<SessionRepositoryDataMap['trash-delete']> {
+  await flushRepositoryNow();
+  const data = await repositoryClient().request({ operation: 'trash-delete', recoveryId });
+  queueRepositoryMetadataRefresh();
+  return data;
 }
 
 export async function exportRepositorySessions(sessionIds: string[]): Promise<string> {

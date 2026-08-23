@@ -39,6 +39,8 @@ export const FIELD_OWNERSHIP = {
   layoutGeneration: 'runtime-derived',
   saveStatus: 'runtime-derived',
   saveError: 'runtime-derived',
+  activationCheckpointNotice: 'runtime-derived',
+  historyStoragePressure: 'runtime-derived',
   sessionLifecycle: 'bootstrap-workflow',
   liveSessionId: 'bootstrap-workflow',
 

@@ -13,6 +13,9 @@ export const SESSION_REPOSITORY_OPERATIONS = [
   'delete',
   'history-list',
   'history-restore',
+  'trash-list',
+  'trash-restore',
+  'trash-delete',
   'import',
   'export',
   'retry',
@@ -74,6 +77,27 @@ export interface RepositoryCheckpointSummary {
   createdAt: string;
   reason: 'activation' | 'destructive' | 'pre-restore' | 'periodic';
   summary: JsonObject;
+  afterSummary: JsonObject | null;
+  changes: RepositoryCheckpointChange[];
+  changeCount: number;
+  isActivationBaseline: boolean;
+}
+
+export interface RepositoryCheckpointChange {
+  label: string;
+  before: string;
+  after: string;
+}
+
+export interface RepositoryTrashSummary {
+  recoveryId: string;
+  deletedAt: string;
+  expiresAt: string;
+  displayName: string;
+  sourceKind: 'named' | 'working' | 'failed-new';
+  sessionId: string | null;
+  bytes: number;
+  status: 'ready' | 'damaged';
 }
 
 export type SessionRepositoryRequest =
@@ -86,11 +110,17 @@ export type SessionRepositoryRequest =
       expectedGeneration: number | null;
       payload: JsonObject;
       replacement?: true;
+      activationId?: string;
+      checkpointReason?: 'destructive';
+      freshEmptyWorking?: true;
     }
   | { operation: 'rename'; sessionId: string; name: string; expectedGeneration: number }
   | { operation: 'delete'; sessionId: string; expectedGeneration: number }
   | { operation: 'history-list'; target: SessionTarget }
   | { operation: 'history-restore'; target: SessionTarget; checkpointId: string; expectedGeneration: number }
+  | { operation: 'trash-list' }
+  | { operation: 'trash-restore'; recoveryId: string }
+  | { operation: 'trash-delete'; recoveryId: string }
   | { operation: 'import'; document: string; conflictMode: 'skip' | 'overwrite' }
   | { operation: 'export'; sessionIds: string[] }
   | { operation: 'retry'; operationId: string }
@@ -122,6 +152,8 @@ export interface SessionRepositoryDataMap {
     summary: RepositorySessionSummary | null;
     workflow: RepositoryWorkflow;
     workflowGeneration: number;
+    checkpoint: RepositoryCheckpointSummary | null;
+    historyStoragePressure: boolean;
   };
   rename: { sessionId: string; generation: number; name: string; sessions: RepositorySessionSummary[] };
   delete: {
@@ -131,8 +163,19 @@ export interface SessionRepositoryDataMap {
     workflow: RepositoryWorkflow;
     workflowGeneration: number;
   };
-  'history-list': { target: SessionTarget; checkpoints: RepositoryCheckpointSummary[] };
+  'history-list': {
+    target: SessionTarget;
+    checkpoints: RepositoryCheckpointSummary[];
+    historyStoragePressure: boolean;
+  };
   'history-restore': { target: SessionTarget; generation: number; checkpointId: string };
+  'trash-list': { entries: RepositoryTrashSummary[] };
+  'trash-restore': {
+    recoveryId: string;
+    restoredSessionId: string;
+    sessions: RepositorySessionSummary[];
+  };
+  'trash-delete': { recoveryId: string; entries: RepositoryTrashSummary[] };
   import: { importedSessionIds: string[]; sessions: RepositorySessionSummary[] };
   export: { document: string };
   retry: { operationId: string; status: 'pending' | 'completed' };
@@ -300,6 +343,60 @@ function assertSummary(value: unknown): asserts value is RepositorySessionSummar
   }
 }
 
+function assertCheckpointSummary(value: unknown): asserts value is RepositoryCheckpointSummary {
+  if (!isPlainObject(value)) throw new SessionRepositoryRequestError('checkpoint must be an object');
+  assertExactKeys(value, [
+    'id', 'createdAt', 'reason', 'summary', 'afterSummary', 'changes', 'changeCount',
+    'isActivationBaseline',
+  ], 'checkpoint');
+  assertString(value.id, 'checkpoint id');
+  assertTimestamp(value.createdAt, 'checkpoint createdAt');
+  if (!['activation', 'destructive', 'pre-restore', 'periodic'].includes(String(value.reason))) {
+    throw new SessionRepositoryRequestError('checkpoint reason is invalid');
+  }
+  if (!isPlainObject(value.summary)) throw new SessionRepositoryRequestError('checkpoint summary must be an object');
+  if (value.afterSummary !== null && !isPlainObject(value.afterSummary)) {
+    throw new SessionRepositoryRequestError('checkpoint afterSummary must be an object or null');
+  }
+  if (!Array.isArray(value.changes)) {
+    throw new SessionRepositoryRequestError('checkpoint changes must be an array');
+  }
+  value.changes.forEach((change) => {
+    if (!isPlainObject(change)) throw new SessionRepositoryRequestError('checkpoint change must be an object');
+    assertExactKeys(change, ['label', 'before', 'after'], 'checkpoint change');
+    assertString(change.label, 'checkpoint change label');
+    assertString(change.before, 'checkpoint change before');
+    assertString(change.after, 'checkpoint change after');
+  });
+  assertInteger(value.changeCount, 'checkpoint changeCount');
+  if (value.changeCount < value.changes.length) {
+    throw new SessionRepositoryRequestError('checkpoint changeCount cannot be smaller than changes');
+  }
+  if (typeof value.isActivationBaseline !== 'boolean') {
+    throw new SessionRepositoryRequestError('checkpoint isActivationBaseline must be a boolean');
+  }
+}
+
+function assertTrashSummary(value: unknown): asserts value is RepositoryTrashSummary {
+  if (!isPlainObject(value)) throw new SessionRepositoryRequestError('trash entry must be an object');
+  assertExactKeys(value, [
+    'recoveryId', 'deletedAt', 'expiresAt', 'displayName', 'sourceKind', 'sessionId',
+    'bytes', 'status',
+  ], 'trash entry');
+  assertString(value.recoveryId, 'trash recoveryId');
+  assertTimestamp(value.deletedAt, 'trash deletedAt');
+  assertTimestamp(value.expiresAt, 'trash expiresAt');
+  assertString(value.displayName, 'trash displayName');
+  if (value.sourceKind !== 'named' && value.sourceKind !== 'working' && value.sourceKind !== 'failed-new') {
+    throw new SessionRepositoryRequestError('trash sourceKind is invalid');
+  }
+  if (value.sessionId !== null) assertString(value.sessionId, 'trash sessionId');
+  assertInteger(value.bytes, 'trash bytes');
+  if (value.status !== 'ready' && value.status !== 'damaged') {
+    throw new SessionRepositoryRequestError('trash status is invalid');
+  }
+}
+
 function assertStringArray(value: unknown, label: string): asserts value is string[] {
   if (!Array.isArray(value)) throw new SessionRepositoryRequestError(`${label} must be an array`);
   value.forEach((item) => assertString(item, `${label} item`));
@@ -372,12 +469,19 @@ function assertSuccessData(operation: SessionRepositoryOperation, value: unknown
     assertWorkflow(value.workflow);
     assertInteger(value.workflowGeneration, 'workflowGeneration');
   } else if (operation === 'save') {
-    assertExactKeys(value, ['target', 'generation', 'summary', 'workflow', 'workflowGeneration'], 'save data');
+    assertExactKeys(value, [
+      'target', 'generation', 'summary', 'workflow', 'workflowGeneration', 'checkpoint',
+      'historyStoragePressure',
+    ], 'save data');
     assertResponseTarget(value.target);
     assertInteger(value.generation, 'generation');
     if (value.summary !== null) assertSummary(value.summary);
     assertWorkflow(value.workflow);
     assertInteger(value.workflowGeneration, 'workflowGeneration');
+    if (typeof value.historyStoragePressure !== 'boolean') {
+      throw new SessionRepositoryRequestError('historyStoragePressure must be a boolean');
+    }
+    if (value.checkpoint !== null) assertCheckpointSummary(value.checkpoint);
   } else if (operation === 'rename') {
     assertExactKeys(value, ['sessionId', 'generation', 'name', 'sessions'], 'rename data');
     assertString(value.sessionId, 'sessionId');
@@ -392,24 +496,32 @@ function assertSuccessData(operation: SessionRepositoryOperation, value: unknown
     assertWorkflow(value.workflow);
     assertInteger(value.workflowGeneration, 'workflowGeneration');
   } else if (operation === 'history-list') {
-    assertExactKeys(value, ['target', 'checkpoints'], 'history-list data');
+    assertExactKeys(value, ['target', 'checkpoints', 'historyStoragePressure'], 'history-list data');
     assertTarget(value.target);
+    if (typeof value.historyStoragePressure !== 'boolean') {
+      throw new SessionRepositoryRequestError('historyStoragePressure must be a boolean');
+    }
     if (!Array.isArray(value.checkpoints)) throw new SessionRepositoryRequestError('checkpoints must be an array');
-    value.checkpoints.forEach((checkpoint) => {
-      if (!isPlainObject(checkpoint)) throw new SessionRepositoryRequestError('checkpoint must be an object');
-      assertExactKeys(checkpoint, ['id', 'createdAt', 'reason', 'summary'], 'checkpoint');
-      assertString(checkpoint.id, 'checkpoint id');
-      assertTimestamp(checkpoint.createdAt, 'checkpoint createdAt');
-      if (!['activation', 'destructive', 'pre-restore', 'periodic'].includes(String(checkpoint.reason))) {
-        throw new SessionRepositoryRequestError('checkpoint reason is invalid');
-      }
-      if (!isPlainObject(checkpoint.summary)) throw new SessionRepositoryRequestError('checkpoint summary must be an object');
-    });
+    value.checkpoints.forEach(assertCheckpointSummary);
   } else if (operation === 'history-restore') {
     assertExactKeys(value, ['target', 'generation', 'checkpointId'], 'history-restore data');
     assertTarget(value.target);
     assertInteger(value.generation, 'generation');
     assertString(value.checkpointId, 'checkpointId');
+  } else if (operation === 'trash-list') {
+    assertExactKeys(value, ['entries'], 'trash-list data');
+    if (!Array.isArray(value.entries)) throw new SessionRepositoryRequestError('trash entries must be an array');
+    value.entries.forEach(assertTrashSummary);
+  } else if (operation === 'trash-restore') {
+    assertExactKeys(value, ['recoveryId', 'restoredSessionId', 'sessions'], 'trash-restore data');
+    assertString(value.recoveryId, 'recoveryId');
+    assertString(value.restoredSessionId, 'restoredSessionId');
+    assertSummaries(value.sessions);
+  } else if (operation === 'trash-delete') {
+    assertExactKeys(value, ['recoveryId', 'entries'], 'trash-delete data');
+    assertString(value.recoveryId, 'recoveryId');
+    if (!Array.isArray(value.entries)) throw new SessionRepositoryRequestError('trash entries must be an array');
+    value.entries.forEach(assertTrashSummary);
   } else if (operation === 'import') {
     assertExactKeys(value, ['importedSessionIds', 'sessions'], 'import data');
     assertStringArray(value.importedSessionIds, 'importedSessionIds');
@@ -445,7 +557,7 @@ export function parseSessionRepositoryRequest(value: unknown): SessionRepository
         throw new SessionRepositoryRequestError('migrationPlan must be an object');
       }
     }
-  } else if (operation === 'list' || operation === 'open-data-folder') {
+  } else if (operation === 'list' || operation === 'trash-list' || operation === 'open-data-folder') {
     assertExactKeys(value, ['operation'], `${operation} request`);
   } else if (operation === 'load') {
     assertExactKeys(value, ['operation', 'target', 'mode'], 'load request');
@@ -457,9 +569,11 @@ export function parseSessionRepositoryRequest(value: unknown): SessionRepository
     assertExactKeys(value, ['operation', 'target'], `${operation} request`);
     assertTarget(value.target);
   } else if (operation === 'save') {
-    const keys = value.replacement === undefined
-      ? ['operation', 'target', 'expectedGeneration', 'payload']
-      : ['operation', 'target', 'expectedGeneration', 'payload', 'replacement'];
+    const keys = ['operation', 'target', 'expectedGeneration', 'payload'];
+    if (value.replacement !== undefined) keys.push('replacement');
+    if (value.activationId !== undefined) keys.push('activationId');
+    if (value.checkpointReason !== undefined) keys.push('checkpointReason');
+    if (value.freshEmptyWorking !== undefined) keys.push('freshEmptyWorking');
     assertExactKeys(value, keys, 'save request');
     assertSaveTarget(value.target);
     assertGeneration(value.expectedGeneration, true);
@@ -470,6 +584,17 @@ export function parseSessionRepositoryRequest(value: unknown): SessionRepository
     if (!isPlainObject(value.payload)) throw new SessionRepositoryRequestError('payload must be an object');
     if (value.replacement !== undefined && (value.replacement !== true || value.target.kind !== 'working')) {
       throw new SessionRepositoryRequestError('replacement is valid only for a working-session save');
+    }
+    if (value.activationId !== undefined) assertString(value.activationId, 'activationId');
+    if (value.checkpointReason !== undefined) {
+      if (value.checkpointReason !== 'destructive' ||
+          value.target.kind === 'preferences' || value.target.kind === 'layout' || value.target.kind === 'bootstrap') {
+        throw new SessionRepositoryRequestError('checkpointReason is valid only for an entity save');
+      }
+    }
+    if (value.freshEmptyWorking !== undefined &&
+        (value.freshEmptyWorking !== true || value.target.kind !== 'working')) {
+      throw new SessionRepositoryRequestError('freshEmptyWorking is valid only for a working-session save');
     }
   } else if (operation === 'rename') {
     assertExactKeys(value, ['operation', 'sessionId', 'name', 'expectedGeneration'], 'rename request');
@@ -485,6 +610,9 @@ export function parseSessionRepositoryRequest(value: unknown): SessionRepository
     assertTarget(value.target);
     assertString(value.checkpointId, 'checkpointId');
     assertGeneration(value.expectedGeneration, false);
+  } else if (operation === 'trash-restore' || operation === 'trash-delete') {
+    assertExactKeys(value, ['operation', 'recoveryId'], `${operation} request`);
+    assertString(value.recoveryId, 'recoveryId');
   } else if (operation === 'import') {
     assertExactKeys(value, ['operation', 'document', 'conflictMode'], 'import request');
     assertString(value.document, 'document');

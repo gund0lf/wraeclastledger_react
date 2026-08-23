@@ -71,7 +71,7 @@ function portableSession(id: string, name: string, marker: string) {
   };
 }
 
-describe('WP14 Phase 4 concrete file repository', () => {
+describe('WP14 concrete file repository', () => {
   it('opens the recovery folder even when bootstrap has not completed', async () => {
     const profile = await tempProfile();
     const openPath = vi.fn().mockResolvedValue('');
@@ -82,7 +82,7 @@ describe('WP14 Phase 4 concrete file repository', () => {
     expect(openPath).toHaveBeenCalledWith(join(profile, 'ledger-data'));
   });
 
-  it('implements the complete twelve-operation contract over authoritative files', async () => {
+  it('implements the complete fifteen-operation contract over authoritative files', async () => {
     const profile = await tempProfile();
     const openPath = vi.fn().mockResolvedValue('');
     const repository = new FileSessionRepository({ userDataPath: profile, openPath });
@@ -159,6 +159,207 @@ describe('WP14 Phase 4 concrete file repository', () => {
     await repository.releaseLock();
   });
 
+  it('keeps one activation baseline and restores the exact pre-edit payload non-destructively', async () => {
+    const profile = await tempProfile();
+    const repository = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
+    await repository.bootstrap({ operation: 'bootstrap', migrationPlan: await migrationPlan() });
+    const originalPayload: JsonObject = {
+      maps: [],
+      lootItems: [],
+      baselineItems: [],
+      baselineTotal: 0,
+      settings: { scarabs: [{ name: 'Horned Scarab of Bloodlines', cost: 100 }] },
+      sessionNotes: 'Activation baseline acceptance case',
+    };
+    const created = await repository.save({
+      operation: 'save', target: { kind: 'new', name: 'Historical 3333' },
+      expectedGeneration: null, payload: originalPayload,
+    });
+    expect(created.target.kind).toBe('session');
+    const sessionId = created.target.kind === 'session' ? created.target.sessionId : '';
+    const working = await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: null,
+      payload: { maps: [] }, activationId: 'activation:working',
+    });
+    expect(working.generation).toBe(1);
+    await repository.load({ operation: 'load', target: { kind: 'working' }, mode: 'resume' });
+    const viewed = await repository.load({
+      operation: 'load', target: { kind: 'session', sessionId }, mode: 'view',
+    });
+
+    const changedOnce = await repository.save({
+      operation: 'save', target: { kind: 'session', sessionId }, expectedGeneration: viewed.generation,
+      activationId: viewed.workflow.activationId,
+      payload: {
+        ...originalPayload,
+        settings: { scarabs: [{ name: 'Horned Scarab of Bloodlines', cost: 1111 }] },
+      },
+    });
+    expect(changedOnce.checkpoint).toMatchObject({ reason: 'activation', isActivationBaseline: true });
+    const afterFirstEdit = await repository.historyList({
+      operation: 'history-list', target: { kind: 'session', sessionId },
+    });
+    expect(afterFirstEdit.checkpoints).toHaveLength(1);
+    expect(afterFirstEdit.checkpoints[0]).toMatchObject({
+      changeCount: 1,
+      changes: [{
+        label: 'Horned Scarab of Bloodlines price',
+        before: '100c',
+        after: '1111c',
+      }],
+    });
+
+    const changedTwice = await repository.save({
+      operation: 'save', target: { kind: 'session', sessionId }, expectedGeneration: changedOnce.generation,
+      activationId: viewed.workflow.activationId,
+      payload: {
+        ...originalPayload,
+        settings: { scarabs: [{ name: 'Horned Scarab of Bloodlines', cost: 1222 }] },
+      },
+    });
+    expect(changedTwice.checkpoint).toBeNull();
+    expect((await repository.historyList({
+      operation: 'history-list', target: { kind: 'session', sessionId },
+    })).checkpoints).toHaveLength(1);
+
+    const restored = await repository.historyRestore({
+      operation: 'history-restore', target: { kind: 'session', sessionId },
+      checkpointId: afterFirstEdit.checkpoints[0].id, expectedGeneration: changedTwice.generation,
+    });
+    const restoredPayload = (await repository.load({
+      operation: 'load', target: { kind: 'session', sessionId }, mode: 'inspect',
+    })).payload;
+    expect(restoredPayload).toEqual(originalPayload);
+
+    const afterRestore = await repository.historyList({
+      operation: 'history-list', target: { kind: 'session', sessionId },
+    });
+    const preRestore = afterRestore.checkpoints.find(({ reason }) => reason === 'pre-restore');
+    expect(preRestore).toBeDefined();
+    expect(preRestore).toMatchObject({
+      changes: [{
+        label: 'Horned Scarab of Bloodlines price',
+        before: '1222c',
+        after: '100c',
+      }],
+    });
+    await repository.historyRestore({
+      operation: 'history-restore', target: { kind: 'session', sessionId },
+      checkpointId: preRestore!.id, expectedGeneration: restored.generation,
+    });
+    const recoveredEditedPayload = (await repository.load({
+      operation: 'load', target: { kind: 'session', sessionId }, mode: 'inspect',
+    })).payload;
+    expect(recoveredEditedPayload).toMatchObject({
+      settings: { scarabs: [{ name: 'Horned Scarab of Bloodlines', cost: 1222 }] },
+    });
+    await repository.releaseLock();
+  });
+
+  it('resumes the same activation across restart without creating another baseline', async () => {
+    const profile = await tempProfile();
+    const first = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
+    await first.bootstrap({ operation: 'bootstrap', migrationPlan: await migrationPlan() });
+    const created = await first.save({
+      operation: 'save', target: { kind: 'new', name: 'Restart activation' },
+      expectedGeneration: null, payload: { maps: [{ id: 'before' }] },
+    });
+    const sessionId = created.target.kind === 'session' ? created.target.sessionId : '';
+    const activated = await first.load({
+      operation: 'load', target: { kind: 'session', sessionId }, mode: 'resume',
+    });
+    const edited = await first.save({
+      operation: 'save', target: { kind: 'session', sessionId }, expectedGeneration: activated.generation,
+      activationId: activated.workflow.activationId, payload: { maps: [{ id: 'first-edit' }] },
+    });
+    expect((await first.historyList({
+      operation: 'history-list', target: { kind: 'session', sessionId },
+    })).checkpoints).toHaveLength(1);
+    await first.releaseLock();
+
+    const restarted = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
+    const bootstrap = await restarted.bootstrap({ operation: 'bootstrap' });
+    expect(bootstrap.workflow.activationId).toBe(activated.workflow.activationId);
+    await restarted.save({
+      operation: 'save', target: { kind: 'session', sessionId }, expectedGeneration: edited.generation,
+      activationId: bootstrap.workflow.activationId, payload: { maps: [{ id: 'second-edit' }] },
+    });
+    expect((await restarted.historyList({
+      operation: 'history-list', target: { kind: 'session', sessionId },
+    })).checkpoints).toHaveLength(1);
+    await restarted.releaseLock();
+  });
+
+  it('creates coarse periodic recovery without checkpointing a fresh empty draft', async () => {
+    const profile = await tempProfile();
+    let clock = new Date('2026-08-23T10:00:00.000Z');
+    const repository = new FileSessionRepository({
+      userDataPath: profile,
+      openPath: async () => '',
+      now: () => clock,
+    });
+    await repository.bootstrap({ operation: 'bootstrap', migrationPlan: await migrationPlan() });
+    const fresh = await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: null,
+      payload: { maps: [] }, activationId: 'activation:fresh', freshEmptyWorking: true,
+    });
+    clock = new Date('2026-08-23T10:31:00.000Z');
+    const firstMeaningful = await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: fresh.generation,
+      payload: { maps: [{ id: 'first' }] }, activationId: 'activation:fresh',
+    });
+    expect((await repository.historyList({
+      operation: 'history-list', target: { kind: 'working' },
+    })).checkpoints).toEqual([]);
+
+    clock = new Date('2026-08-23T11:02:00.000Z');
+    const periodic = await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: firstMeaningful.generation,
+      payload: { maps: [{ id: 'first' }, { id: 'second' }] }, activationId: 'activation:fresh',
+    });
+    expect(periodic.checkpoint).toMatchObject({ reason: 'periodic', isActivationBaseline: false });
+    expect((await repository.historyList({
+      operation: 'history-list', target: { kind: 'working' },
+    })).checkpoints).toHaveLength(1);
+    await repository.releaseLock();
+  });
+
+  it('applies the 24-version bound on disk while pinning the current activation baseline', async () => {
+    const profile = await tempProfile();
+    let clock = new Date('2026-08-23T08:00:00.000Z');
+    const repository = new FileSessionRepository({
+      userDataPath: profile,
+      openPath: async () => '',
+      now: () => clock,
+    });
+    await repository.bootstrap({ operation: 'bootstrap', migrationPlan: await migrationPlan() });
+    const created = await repository.save({
+      operation: 'save', target: { kind: 'new', name: 'Bounded history' },
+      expectedGeneration: null, payload: { maps: [{ id: 'initial' }] },
+    });
+    const sessionId = created.target.kind === 'session' ? created.target.sessionId : '';
+    let generation = created.generation;
+    for (let index = 0; index < 30; index += 1) {
+      clock = new Date(clock.getTime() + 60_000);
+      const viewed = await repository.load({
+        operation: 'load', target: { kind: 'session', sessionId }, mode: 'view',
+      });
+      const saved = await repository.save({
+        operation: 'save', target: { kind: 'session', sessionId }, expectedGeneration: generation,
+        activationId: viewed.workflow.activationId, payload: { maps: [{ id: `edit-${index}` }] },
+      });
+      generation = saved.generation;
+    }
+    const history = await repository.historyList({
+      operation: 'history-list', target: { kind: 'session', sessionId },
+    });
+    expect(history.checkpoints).toHaveLength(24);
+    expect(history.checkpoints.filter(({ isActivationBaseline }) => isActivationBaseline)).toHaveLength(1);
+    const versions = join(deriveSessionDirectory(deriveRepositoryPaths(profile).root, sessionId), 'versions');
+    expect((await readdir(versions)).filter((name) => name.endsWith('.wlrec.gz'))).toHaveLength(24);
+    await repository.releaseLock();
+  });
+
   it('rolls back every entry when a staged batch import fails after its first commit', async () => {
     const profile = await tempProfile();
     let fail = true;
@@ -215,6 +416,221 @@ describe('WP14 Phase 4 concrete file repository', () => {
     expect(recoveryEntries).toHaveLength(1);
     const metadata = JSON.parse(await readFile(join(trash, recoveryEntries[0], 'recovery.json'), 'utf8'));
     expect(metadata).toMatchObject({ sourceKind: 'working', originalGeneration: first.generation });
+    await repository.releaseLock();
+  });
+
+  it('replaces a fresh empty working slot without manufacturing recovery trash or history', async () => {
+    const profile = await tempProfile();
+    const repository = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
+    await repository.bootstrap({ operation: 'bootstrap', migrationPlan: await migrationPlan() });
+    const fresh = await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: null,
+      payload: { maps: [], settings: { leagueName: 'Mirage', divinePrice: 200 } },
+      activationId: 'activation:fresh-before-delete', freshEmptyWorking: true,
+    });
+    const autoManaged = await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: fresh.generation,
+      payload: {
+        maps: [],
+        settings: {
+          leagueName: 'Mirage',
+          divinePrice: 208,
+          divinePriceQuotedAt: '2026-08-23T12:00:00.000Z',
+        },
+      },
+      activationId: 'activation:fresh-before-delete', freshEmptyWorking: true,
+    });
+    const replaced = await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: autoManaged.generation,
+      payload: { maps: [], settings: { leagueName: 'Mirage', divinePrice: 201 } },
+      replacement: true, activationId: 'activation:fresh-after-delete', freshEmptyWorking: true,
+    });
+
+    expect(replaced.generation).toBe(autoManaged.generation + 1);
+    expect((await repository.trashList({ operation: 'trash-list' })).entries).toEqual([]);
+    expect((await repository.historyList({
+      operation: 'history-list', target: { kind: 'working' },
+    })).checkpoints).toEqual([]);
+    await repository.releaseLock();
+  });
+
+  it('adopts an older unmarked empty working slot before replacing it', async () => {
+    const profile = await tempProfile();
+    const repository = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
+    await repository.bootstrap({ operation: 'bootstrap', migrationPlan: await migrationPlan() });
+    const legacyPayload = {
+      maps: [],
+      settings: {
+        leagueName: 'Allflame',
+        divinePrice: 208,
+        divinePriceQuotedAt: '2026-08-23T13:16:00.000Z',
+      },
+    };
+    const legacy = await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: null,
+      payload: legacyPayload, activationId: 'activation:old-empty-without-marker',
+    });
+    const adopted = await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: legacy.generation,
+      payload: legacyPayload, freshEmptyWorking: true,
+    });
+    await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: adopted.generation,
+      payload: { maps: [], settings: { leagueName: 'Allflame', divinePrice: 0 } },
+      replacement: true, activationId: 'activation:replacement', freshEmptyWorking: true,
+    });
+
+    expect((await repository.trashList({ operation: 'trash-list' })).entries).toEqual([]);
+    expect((await repository.historyList({
+      operation: 'history-list', target: { kind: 'working' },
+    })).checkpoints).toEqual([]);
+    await repository.releaseLock();
+  });
+
+  it('lists, restores and permanently deletes Recently Deleted entries', async () => {
+    const profile = await tempProfile();
+    const repository = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
+    await repository.bootstrap({ operation: 'bootstrap', migrationPlan: await migrationPlan() });
+    const named = await repository.save({
+      operation: 'save', target: { kind: 'new', name: 'Recover me' }, expectedGeneration: null,
+      payload: { maps: [{ id: 'recover-map' }], sessionNotes: 'recoverable' },
+    });
+    const namedId = named.target.kind === 'session' ? named.target.sessionId : '';
+    await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: null,
+      payload: { maps: [] }, activationId: 'activation:trash-test', freshEmptyWorking: true,
+    });
+    await repository.load({ operation: 'load', target: { kind: 'working' }, mode: 'resume' });
+    const deleted = await repository.delete({
+      operation: 'delete', sessionId: namedId, expectedGeneration: named.generation,
+    });
+    const listed = await repository.trashList({ operation: 'trash-list' });
+    expect(listed.entries).toEqual([
+      expect.objectContaining({
+        recoveryId: deleted.recoveryId,
+        displayName: 'Recover me',
+        sourceKind: 'named',
+        sessionId: namedId,
+        status: 'ready',
+      }),
+    ]);
+
+    const restored = await repository.trashRestore({
+      operation: 'trash-restore', recoveryId: deleted.recoveryId,
+    });
+    expect(restored.restoredSessionId).toBe(namedId);
+    expect((await repository.load({
+      operation: 'load', target: { kind: 'session', sessionId: namedId }, mode: 'inspect',
+    })).payload).toMatchObject({ maps: [{ id: 'recover-map' }], sessionNotes: 'recoverable' });
+    expect((await repository.historyList({
+      operation: 'history-list', target: { kind: 'session', sessionId: namedId },
+    })).checkpoints).toEqual([
+      expect.objectContaining({ reason: 'destructive' }),
+    ]);
+    expect((await repository.trashList({ operation: 'trash-list' })).entries).toEqual([]);
+
+    const restoredSummary = restored.sessions.find(({ id }) => id === namedId)!;
+    const deletedAgain = await repository.delete({
+      operation: 'delete', sessionId: namedId, expectedGeneration: restoredSummary.generation,
+    });
+    const permanentlyDeleted = await repository.trashDelete({
+      operation: 'trash-delete', recoveryId: deletedAgain.recoveryId,
+    });
+    expect(permanentlyDeleted.entries).toEqual([]);
+    await repository.releaseLock();
+  });
+
+  it('restores a replaced unnamed draft as an independent named session', async () => {
+    const profile = await tempProfile();
+    const repository = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
+    await repository.bootstrap({ operation: 'bootstrap', migrationPlan: await migrationPlan() });
+    const first = await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: null,
+      payload: { maps: [{ id: 'draft-map' }], sessionNotes: 'draft' }, activationId: 'activation:draft',
+    });
+    await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: first.generation,
+      payload: { maps: [], sessionNotes: '' }, replacement: true,
+      activationId: 'activation:fresh-replacement', freshEmptyWorking: true,
+    });
+    const trash = await repository.trashList({ operation: 'trash-list' });
+    expect(trash.entries).toHaveLength(1);
+    const restored = await repository.trashRestore({
+      operation: 'trash-restore', recoveryId: trash.entries[0].recoveryId,
+    });
+    expect(restored.restoredSessionId).not.toBe('');
+    expect((await repository.load({
+      operation: 'load',
+      target: { kind: 'session', sessionId: restored.restoredSessionId },
+      mode: 'inspect',
+    })).payload).toMatchObject({ maps: [{ id: 'draft-map' }], sessionNotes: 'draft' });
+    await repository.releaseLock();
+  });
+
+  it('restores a deleted named session under a new identity when its old id was re-imported', async () => {
+    const profile = await tempProfile();
+    const repository = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
+    await repository.bootstrap({ operation: 'bootstrap', migrationPlan: await migrationPlan() });
+    const named = await repository.save({
+      operation: 'save', target: { kind: 'new', name: 'Original recoverable' }, expectedGeneration: null,
+      payload: { maps: [{ id: 'original-map' }], sessionNotes: 'original recoverable payload' },
+    });
+    const namedId = named.target.kind === 'session' ? named.target.sessionId : '';
+    await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: null,
+      payload: { maps: [] }, activationId: 'activation:trash-conflict', freshEmptyWorking: true,
+    });
+    await repository.load({ operation: 'load', target: { kind: 'working' }, mode: 'resume' });
+    const deleted = await repository.delete({
+      operation: 'delete', sessionId: namedId, expectedGeneration: named.generation,
+    });
+    await repository.importDocument({
+      operation: 'import',
+      document: JSON.stringify({
+        version: '1.0',
+        sessions: [portableSession(namedId, 'Re-imported replacement', 'replacement')],
+      }),
+      conflictMode: 'skip',
+    });
+
+    const restored = await repository.trashRestore({
+      operation: 'trash-restore', recoveryId: deleted.recoveryId,
+    });
+    expect(restored.restoredSessionId).not.toBe(namedId);
+    expect(restored.sessions.some(({ id }) => id === namedId)).toBe(true);
+    expect(restored.sessions.some(({ id }) => id === restored.restoredSessionId)).toBe(true);
+    expect((await repository.load({
+      operation: 'load', target: { kind: 'session', sessionId: namedId }, mode: 'inspect',
+    })).payload).toMatchObject({ maps: [{ id: 'map-replacement' }], sessionNotes: 'replacement' });
+    expect((await repository.load({
+      operation: 'load',
+      target: { kind: 'session', sessionId: restored.restoredSessionId },
+      mode: 'inspect',
+    })).payload).toMatchObject({ maps: [{ id: 'original-map' }], sessionNotes: 'original recoverable payload' });
+    await repository.releaseLock();
+  });
+
+  it('checkpoints the state before an explicit destructive payload replacement', async () => {
+    const profile = await tempProfile();
+    const repository = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
+    await repository.bootstrap({ operation: 'bootstrap', migrationPlan: await migrationPlan() });
+    const original = await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: null,
+      payload: { maps: [{ id: 'keep-before-clear' }] }, activationId: 'activation:clear',
+    });
+    const cleared = await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: original.generation,
+      payload: { maps: [] }, activationId: 'activation:clear', checkpointReason: 'destructive',
+    });
+    expect(cleared.checkpoint).toMatchObject({ reason: 'destructive' });
+    const history = await repository.historyList({ operation: 'history-list', target: { kind: 'working' } });
+    await repository.historyRestore({
+      operation: 'history-restore', target: { kind: 'working' },
+      checkpointId: history.checkpoints[0].id, expectedGeneration: cleared.generation,
+    });
+    expect((await repository.load({
+      operation: 'load', target: { kind: 'working' }, mode: 'inspect',
+    })).payload).toMatchObject({ maps: [{ id: 'keep-before-clear' }] });
     await repository.releaseLock();
   });
 
