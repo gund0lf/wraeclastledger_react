@@ -46,11 +46,12 @@ For an Electron-major change, also complete the broader application/runtime
 matrix in `ELECTRON_RUNTIME_UPGRADE.md`; this checklist is the Linux-specific
 subset.
 
-## v1.0.80 WP14 migration smoke - Traceur
+## v1.0.81 WP14 migration smoke - Traceur
 
-v1.0.80 is the first file-backed Sessions release. Its migration is deliberately
-one-way, so preserve the live v1.0.79 profile and test the candidate against an
-isolated copy before any public updater test.
+v1.0.81 is the first public file-backed Sessions release. Its migration is
+deliberately one-way. The private v1.0.80 candidates were tested against an
+isolated copy before publication; preserve the live v1.0.79 profile until the
+public v1.0.81 updater test is accepted.
 
 ### Before testing
 
@@ -70,14 +71,14 @@ isolated copy before any public updater test.
    printf 'Backup: %s\n' "$WL_BACKUP"
    ```
 
-   Keep both the JSON export and this full profile copy until v1.0.80 is accepted.
+   Keep both the JSON export and this full profile copy until v1.0.81 is accepted.
    The profile copy protects the active working session, preferences, layout,
    and browser migration source that a selected-session JSON export does not.
 
-### Pre-publication candidate on an isolated profile
+### Historical pre-publication candidate on an isolated profile (completed)
 
-Use the artifact-only workflow AppImage, not a public release asset. Replace the
-example backup path with the exact path printed above:
+Traceur used the artifact-only private v1.0.80 workflow AppImage, not a public
+release asset. The completed command pattern was:
 
 ```bash
 WL_BACKUP="$HOME/WraeclastLedger-v1.0.79-profile-backup-YYYYMMDD-HHMMSS"
@@ -128,7 +129,7 @@ already v1.0.79, and a pass/fail line for each numbered item. Keep the isolated
 smoke directory until release acceptance; do not point v1.0.79 at it after the
 migration.
 
-### v1.0.80 replacement-path repeat after the native-smoke fix
+### Private v1.0.80 replacement-path repeat after the native-smoke fix
 
 The first artifact-only v1.0.80 candidate is superseded. Use only the rebuilt
 AppImage whose SHA-256 is supplied with the new exact source commit, then verify:
@@ -151,13 +152,13 @@ AppImage whose SHA-256 is supplied with the new exact source commit, then verify
    collapses them, and the hover-visible scrollbar still works when the list is
    taller than the modal.
 
-Report each line separately. These checks are required on Traceur's CachyOS/KDE
-Wayland system and on Sad's rebuilt Windows installer before publication.
+Traceur reported all five checks green on CachyOS/KDE Wayland; Sad reported the
+matching rebuilt-Windows checks green before publication.
 
-### After v1.0.80 is public
+### After v1.0.81 is public
 
 Launch the ordinary v1.0.79 AppImage without the `XDG_CONFIG_HOME` override and
-accept the stable update. Confirm it restarts as v1.0.80, migrates the live
+accept the stable update. Confirm it restarts as v1.0.81, migrates the live
 profile without an error, retains the recorded session/layout values, and
 captures one additional map through Proton. Do not launch v1.0.79 against that
 live profile again after migration. Keep the two backups until this final smoke
