@@ -9,6 +9,7 @@ import {
 } from '../../../shared/sessionMigration';
 import { computeSemanticHash, type JsonObject } from '../../../shared/sessionRecord';
 import type {
+  RepositoryCheckpointSummary,
   RepositorySessionSummary,
   RepositoryWorkflow,
   SessionRepositoryDataMap,
@@ -81,6 +82,40 @@ export function workflowForHistoricalDuplicate(
     suspended: true,
     activationId,
   };
+}
+
+export function workflowAfterNamingWorking(
+  previous: RepositoryWorkflow,
+  namedTarget: SessionTarget,
+): RepositoryWorkflow {
+  return {
+    ...previous,
+    activeTarget: namedTarget,
+    viewedTarget: previous.viewedTarget.kind === 'working'
+      ? namedTarget
+      : previous.viewedTarget,
+  };
+}
+
+export function workingReplacementRequiresProtection(
+  meaningful: boolean,
+  workingSemanticHash: string,
+  activeNamedSemanticHash: string | null,
+): boolean {
+  return meaningful && workingSemanticHash !== activeNamedSemanticHash;
+}
+
+export function defaultExpandedCheckpointIds(
+  checkpoints: readonly Pick<RepositoryCheckpointSummary, 'id' | 'changeCount'>[],
+): Set<string> {
+  return new Set(checkpoints
+    .filter(({ changeCount }) => changeCount > 0)
+    .map(({ id }) => id));
+}
+
+export interface WorkingReplacementInspection {
+  requiresProtection: boolean;
+  mapCount: number;
 }
 
 let client: ReturnType<typeof createSessionRepositoryClient> | null = null;
@@ -562,6 +597,93 @@ export async function nameCurrent(name: string): Promise<void> {
     ));
   }
   queueRepositoryMetadataRefresh();
+}
+
+/**
+ * Preserve the repository's authoritative working slot even when a historical
+ * named session is currently being viewed. The visible Zustand payload cannot
+ * be used here because active and viewed targets intentionally diverge.
+ */
+export async function nameWorking(name: string): Promise<void> {
+  await flushRepositoryNow();
+  const previousWorkflow = repositoryWorkflow;
+  if (!previousWorkflow) throw new Error('Repository workflow is not hydrated');
+  const workingTarget = { kind: 'working' } as const;
+  const working = await repositoryClient().request({
+    operation: 'load', target: workingTarget, mode: 'inspect',
+  });
+  const data = await repositoryClient().request({
+    operation: 'save',
+    target: { kind: 'new', name },
+    expectedGeneration: null,
+    payload: working.payload,
+  });
+  if (data.target.kind !== 'session' || !data.summary) {
+    throw new Error('Naming the working session returned an invalid target');
+  }
+  const namedTarget: SessionTarget = { kind: 'session', sessionId: data.target.sessionId };
+  repositoryWorkflow = data.workflow;
+  repositoryBootstrapGeneration = data.workflowGeneration;
+  applyingRepositoryState = true;
+  useSessionStore.setState((state) => ({
+    ...(previousWorkflow.viewedTarget.kind === 'working' ? {
+      activeSessionId: data.target.kind === 'session' ? data.target.sessionId : state.activeSessionId,
+      activeSessionName: name,
+      currentGeneration: data.generation,
+    } : {}),
+    repositorySessions: [
+      ...state.repositorySessions.filter(({ id }) => id !== data.summary!.id),
+      data.summary!,
+    ],
+    saveStatus: 'saved',
+    saveError: null,
+  }));
+  applyingRepositoryState = false;
+  await mutateWorkflow(() => workflowAfterNamingWorking(previousWorkflow, namedTarget));
+  queueRepositoryMetadataRefresh();
+}
+
+/**
+ * Inspect the durable working target before an operation replaces it. A named
+ * live target with the same payload already preserves that work, matching the
+ * main-process replacement rule, so it does not need another confirmation.
+ */
+export async function inspectWorkingReplacement(): Promise<WorkingReplacementInspection> {
+  await flushRepositoryNow();
+  const workingTarget = { kind: 'working' } as const;
+  let working: LoadData;
+  try {
+    working = await repositoryClient().request({
+      operation: 'load', target: workingTarget, mode: 'inspect',
+    });
+  } catch (error) {
+    if (error instanceof SessionRepositoryClientError && error.repositoryError.code === 'not-found') {
+      return { requiresProtection: false, mapCount: 0 };
+    }
+    throw error;
+  }
+  const preferences = useSessionStore.getState();
+  const meaningful = isWorkingPayloadMeaningful(
+    working.payload,
+    DEFAULT_SETTINGS,
+    preferences.defaultExclusionPreset,
+  );
+  const workingSemanticHash = await computeSemanticHash(working.payload);
+  let activeNamedSemanticHash: string | null = null;
+  if (repositoryWorkflow?.activeTarget.kind === 'session') {
+    const active = await repositoryClient().request({
+      operation: 'load', target: repositoryWorkflow.activeTarget, mode: 'inspect',
+    });
+    activeNamedSemanticHash = await computeSemanticHash(active.payload);
+  }
+  return {
+    requiresProtection: workingReplacementRequiresProtection(
+      meaningful,
+      workingSemanticHash,
+      activeNamedSemanticHash,
+    ),
+    mapCount: Array.isArray(working.payload.maps) ? working.payload.maps.length : 0,
+  };
 }
 
 function sessionLeague(data: LoadData): string {

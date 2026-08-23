@@ -4,22 +4,25 @@ import {
 } from '@mantine/core';
 import { useDisclosure, useElementSize } from '@mantine/hooks';
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { DEFAULT_SETTINGS, useSessionKeys, useSessionStore } from '../store/useSessionStore';
+import { useSessionKeys } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
 import { IconTrash, IconPencil, IconDeviceFloppy, IconShare2, IconBrandDiscord, IconDownload, IconUpload, IconX, IconArrowsLeftRight, IconCheck, IconFolderOpen, IconRefresh, IconHistory, IconRestore } from '@tabler/icons-react';
 import type { SavedSession } from '../types';
 import { SessionCompareModal } from '../components/SessionCompareModal';
 import { CollapsibleSection } from '../components/ui/CollapsibleSection';
 import { WorkingSessionGuardModal } from '../components/WorkingSessionGuardModal';
-import { isWorkingSessionMeaningful, resolveSessionSelectionIntent } from '../utils/workingSession';
+import { resolveReselectedNewSessionIntent, resolveSessionSelectionIntent } from '../utils/workingSession';
 import { usePanelMaximized } from '../layout/panelLayoutContext';
 import {
   deleteNamed,
   exportRepositorySessions,
   forkCurrentToConfirmedLeague,
+  defaultExpandedCheckpointIds,
+  inspectWorkingReplacement,
   importRepositoryDocument,
   loadNamed,
   nameCurrent,
+  nameWorking,
   openRepositoryFolder,
   listCurrentVersionHistory,
   listRecentlyDeleted,
@@ -85,11 +88,11 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
   const { ref: panelRef, width: panelWidth } = useElementSize();
   const compactPanel = panelWidth > 0 && panelWidth < 285;
   const {
-    maps, settings, repositorySessions, activeSessionId, activeSessionName,
+    settings, repositorySessions, activeSessionId, activeSessionName,
     repositorySizeBytes, saveStatus, saveError, sessionLifecycle, liveSessionId,
     activationCheckpointNotice, historyStoragePressure, dismissActivationCheckpointNotice,
   } = useSessionKeys(
-    'maps', 'settings', 'repositorySessions', 'activeSessionId', 'activeSessionName',
+    'settings', 'repositorySessions', 'activeSessionId', 'activeSessionName',
     'repositorySizeBytes', 'saveStatus', 'saveError', 'sessionLifecycle', 'liveSessionId',
     'activationCheckpointNotice', 'historyStoragePressure', 'dismissActivationCheckpointNotice',
   );
@@ -107,6 +110,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
   const [nameInput, setNameInput] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null); // WP5: single-delete confirmation
   const [pendingSwitch, setPendingSwitch] = useState<string | null>(null); // guard: session to switch to once the unsaved one is handled
+  const [guardedWorkingMapCount, setGuardedWorkingMapCount] = useState(0);
   const [savedFlash, setSavedFlash] = useState(false); // brief green confirmation on the Save tile after a save
   const [sessionSelectOpen, setSessionSelectOpen] = useState(false);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null); // row hover for history tile reveal
@@ -158,6 +162,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
     try {
       const data = await listCurrentVersionHistory();
       setVersionHistory(data.checkpoints);
+      setExpandedCheckpointIds(defaultExpandedCheckpointIds(data.checkpoints));
     } finally {
       setVersionsLoading(false);
     }
@@ -202,19 +207,24 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
   // Peeking at a named session preserves the live working target. Only a
   // deliberate new-live-session transition can replace the working slot.
   const requestSwitch = (target: string) => {
-    const current = useSessionStore.getState();
-    if (target === '__new__' && current.activeSessionId === null &&
-        isWorkingSessionMeaningful(current, DEFAULT_SETTINGS)) {
-      setPendingSwitch(target);
-      setNameInput('');
-      openSwitchGuard();
-    } else {
-      void runOperation(() => performSwitch(target));
-    }
+    void runOperation(async () => {
+      if (target === '__new__') {
+        const inspection = await inspectWorkingReplacement();
+        if (inspection.requiresProtection) {
+          setPendingSwitch(target);
+          setGuardedWorkingMapCount(inspection.mapCount);
+          setNameInput('');
+          openSwitchGuard();
+          return;
+        }
+      }
+      await performSwitch(target);
+    });
   };
 
   const handleSessionSelect = (val: string | null) => {
     setSessionSelectOpen(false);
+    if (val === (activeSessionId ?? '__new__')) return;
     const intent = resolveSessionSelectionIntent(val);
     if (intent !== undefined) requestSwitch(intent);
   };
@@ -223,11 +233,12 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
     const name = nameInput.trim();
     if (!name || pendingSwitch === null) return;
     await runOperation(async () => {
-      await nameCurrent(name);
+      await nameWorking(name);
       await performSwitch(pendingSwitch);
     }, () => {
       setNameInput('');
       setPendingSwitch(null);
+      setGuardedWorkingMapCount(0);
       closeSwitchGuard();
     });
   };
@@ -236,11 +247,13 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
     if (pendingSwitch === null) return;
     void runOperation(() => performSwitch(pendingSwitch));
     setPendingSwitch(null);
+    setGuardedWorkingMapCount(0);
     closeSwitchGuard();
   };
 
   const cancelSwitch = () => {
     setPendingSwitch(null);
+    setGuardedWorkingMapCount(0);
     closeSwitchGuard();
   };
 
@@ -640,7 +653,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
       {/* The working slot is durable too; this guard decides identity/replacement. */}
       <WorkingSessionGuardModal
         opened={switchGuardOpen}
-        mapCount={maps.length}
+        mapCount={guardedWorkingMapCount}
         name={nameInput}
         actionDescription="Switching sessions"
         onNameChange={setNameInput}
@@ -765,6 +778,16 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
               ]}
               value={activeSessionId ?? '__new__'}
               onChange={handleSessionSelect}
+              onOptionSubmit={(value) => {
+                const intent = resolveReselectedNewSessionIntent(
+                  value,
+                  activeSessionId ?? '__new__',
+                );
+                if (intent) {
+                  setSessionSelectOpen(false);
+                  requestSwitch(intent);
+                }
+              }}
               allowDeselect={false}
               dropdownOpened={sessionSelectOpen}
               onDropdownOpen={() => setSessionSelectOpen(true)}

@@ -535,6 +535,67 @@ describe('WP14 concrete file repository', () => {
     await repository.releaseLock();
   });
 
+  it('does not create unnamed trash after a hidden working draft is named before replacement', async () => {
+    const profile = await tempProfile();
+    const repository = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
+    const bootstrap = await repository.bootstrap({
+      operation: 'bootstrap', migrationPlan: await migrationPlan(),
+    });
+    const historicalTarget = {
+      kind: 'session' as const,
+      sessionId: bootstrap.sessions[0].id,
+    };
+    const workingPayload = {
+      maps: [],
+      sessionNotes: '',
+      strategySourceContext: { authorName: 'Traceur', runRegex: 'keep-me' },
+    };
+    const working = await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: null,
+      payload: workingPayload, activationId: 'activation:hidden-working',
+    });
+    await repository.load({
+      operation: 'load', target: { kind: 'working' }, mode: 'resume',
+    });
+    const historical = await repository.load({
+      operation: 'load', target: historicalTarget, mode: 'view',
+    });
+    expect(historical.workflow).toMatchObject({
+      activeTarget: { kind: 'working' },
+      viewedTarget: historicalTarget,
+      lifecycle: 'historical',
+    });
+
+    const named = await repository.save({
+      operation: 'save', target: { kind: 'new', name: 'Protected strategy draft' },
+      expectedGeneration: null, payload: workingPayload,
+    });
+    expect(named.target.kind).toBe('session');
+    const namedTarget = named.target.kind === 'session' ? named.target : historicalTarget;
+    const protectedWorkflow = {
+      ...historical.workflow,
+      activeTarget: namedTarget,
+      viewedTarget: historicalTarget,
+    };
+    await repository.save({
+      operation: 'save', target: { kind: 'bootstrap' },
+      expectedGeneration: named.workflowGeneration,
+      payload: protectedWorkflow,
+    });
+
+    await repository.save({
+      operation: 'save', target: { kind: 'working' }, expectedGeneration: working.generation,
+      payload: { maps: [], sessionNotes: '', strategySourceContext: null },
+      replacement: true, activationId: 'activation:new-strategy', freshEmptyWorking: true,
+    });
+
+    expect((await repository.trashList({ operation: 'trash-list' })).entries).toEqual([]);
+    expect((await repository.load({
+      operation: 'load', target: namedTarget, mode: 'inspect',
+    })).payload).toEqual(workingPayload);
+    await repository.releaseLock();
+  });
+
   it('replaces a fresh empty working slot without manufacturing recovery trash or history', async () => {
     const profile = await tempProfile();
     const repository = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });

@@ -158,7 +158,13 @@ payload empty and the adoption save is acknowledged. Automatic metadata and
 exclusions exactly matching the current global default preset are not authored
 work; unknown fields or malformed values fail safe as meaningful and remain
 recoverable. Nullable deselection from the controlled session picker is not
-navigation: only its explicit New Session value creates a working session.
+navigation: an explicit New Session row submission creates a working session,
+including when that row is already selected. Every replacement transition,
+including Strategy Browser build loading while a historical session is visible,
+inspects the authoritative repository working target rather than the viewed
+renderer payload. Meaningful unprotected work must be named or deliberately
+moved to Recently Deleted before replacement; naming a hidden working target
+preserves that exact payload without changing the historical view.
 Recently Deleted states its
 expiry and supports restore or explicit permanent deletion; an identity
 collision restores under a fresh UUID so both sessions survive. Restore returns

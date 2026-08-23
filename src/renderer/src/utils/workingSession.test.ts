@@ -3,6 +3,7 @@ import { DEFAULT_SETTINGS } from '../store/useSessionStore';
 import {
   isWorkingPayloadMeaningful,
   isWorkingSessionMeaningful,
+  resolveReselectedNewSessionIntent,
   resolveSessionSelectionIntent,
   type WorkingSessionCandidate,
 } from './workingSession';
@@ -45,6 +46,12 @@ describe('isWorkingSessionMeaningful', () => {
     expect(resolveSessionSelectionIntent(null)).toBeUndefined();
     expect(resolveSessionSelectionIntent('__new__')).toBe('__new__');
     expect(resolveSessionSelectionIntent('session-1')).toBe('session-1');
+  });
+
+  it('recognises an explicit click on the already-selected New Session row', () => {
+    expect(resolveReselectedNewSessionIntent('__new__', '__new__')).toBe('__new__');
+    expect(resolveReselectedNewSessionIntent('session-1', '__new__')).toBeUndefined();
+    expect(resolveReselectedNewSessionIntent('__new__', 'session-1')).toBeUndefined();
   });
 
   it('ignores metadata written automatically by an untouched Atlas Tree webview', () => {

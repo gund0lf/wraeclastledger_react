@@ -5,7 +5,7 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { IconRefresh, IconBrandDiscord, IconShare2 } from '@tabler/icons-react';
-import { DEFAULT_SETTINGS, useSessionKeys, useSessionStore } from '../store/useSessionStore';
+import { useSessionKeys, useSessionStore } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
 import { KNOWN_LEAGUES, activeKnownLeagues, isLeagueEnded } from '../utils/league';
 import { parseDiscordExport } from '../utils/parseDiscordExport';
@@ -27,14 +27,14 @@ import { PublicRetrospectives } from '../components/PublicRetrospectives';
 import type { DiscordImport } from '../utils/parseDiscordExport';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { WorkingSessionGuardModal } from '../components/WorkingSessionGuardModal';
-import { isWorkingSessionMeaningful } from '../utils/workingSession';
 import { deriveAtlasCalcSettings } from '../../../shared/atlasStats';
 import { fingerprintSetupSnapshot, setupSnapshotFromDiscordImport } from '../utils/evidenceIdentity';
 import { usePanelMaximized, useSetupSidebarCollapsed } from '../layout/panelLayoutContext';
 import { deriveShareTags } from '../utils/shareTags';
 import {
   loadNamed,
-  nameCurrent,
+  inspectWorkingReplacement,
+  nameWorking,
   startWorking,
 } from '../repository/sessionRepositoryRuntime';
 
@@ -160,6 +160,7 @@ export const StrategyBrowserModule = () => {
   const [replacementGuardOpen, { open: openReplacementGuard, close: closeReplacementGuard }] = useDisclosure(false);
   const [replacementName, setReplacementName] = useState('');
   const [pendingReplacement, setPendingReplacement] = useState<(() => Promise<void>) | null>(null);
+  const [guardedWorkingMapCount, setGuardedWorkingMapCount] = useState(0);
 
   const runReplacement = (action: () => Promise<void>): void => {
     void action().catch((error: unknown) => {
@@ -168,18 +169,23 @@ export const StrategyBrowserModule = () => {
   };
 
   const requestReplacement = (action: () => Promise<void>) => {
-    const current = useSessionStore.getState();
-    if (current.activeSessionId !== null || !isWorkingSessionMeaningful(current, DEFAULT_SETTINGS)) {
-      runReplacement(action);
-      return;
-    }
-    setPendingReplacement(() => action);
-    setReplacementName('');
-    openReplacementGuard();
+    void inspectWorkingReplacement().then((inspection) => {
+      if (!inspection.requiresProtection) {
+        runReplacement(action);
+        return;
+      }
+      setPendingReplacement(() => action);
+      setGuardedWorkingMapCount(inspection.mapCount);
+      setReplacementName('');
+      openReplacementGuard();
+    }).catch((error: unknown) => {
+      setLoadedMsg(error instanceof Error ? error.message : 'Could not inspect the working session.');
+    });
   };
 
   const cancelReplacement = () => {
     setPendingReplacement(null);
+    setGuardedWorkingMapCount(0);
     setReplacementName('');
     closeReplacementGuard();
   };
@@ -191,7 +197,7 @@ export const StrategyBrowserModule = () => {
       if (saveFirst) {
         const name = replacementName.trim();
         if (!name) return;
-        await nameCurrent(name);
+        await nameWorking(name);
       }
       cancelReplacement();
       await action();
@@ -482,7 +488,7 @@ export const StrategyBrowserModule = () => {
       <ImportModal opened={importOpen} onClose={closeImport} onLoadBuild={handleLoadFromImport} />
       <WorkingSessionGuardModal
         opened={replacementGuardOpen}
-        mapCount={maps.length}
+        mapCount={guardedWorkingMapCount}
         name={replacementName}
         actionDescription="Loading these build settings"
         onNameChange={setReplacementName}

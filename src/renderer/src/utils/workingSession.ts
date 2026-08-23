@@ -121,6 +121,16 @@ export function resolveSessionSelectionIntent(value: string | null): string | un
   return value ?? undefined;
 }
 
+/** Mantine does not emit onChange when the already-selected New Session row is clicked. */
+export function resolveReselectedNewSessionIntent(
+  optionValue: string,
+  selectedValue: string,
+): '__new__' | undefined {
+  return optionValue === '__new__' && selectedValue === '__new__'
+    ? '__new__'
+    : undefined;
+}
+
 /**
  * Does the unnamed working session contain state that a replacement would lose?
  * Named sessions are auto-saved and therefore never need this confirmation.

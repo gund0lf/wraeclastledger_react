@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { RepositoryWorkflow } from '../../../shared/sessionRepositoryIpc';
 import {
   coalescePendingSessionSnapshot,
+  defaultExpandedCheckpointIds,
   forkPayloadIntoLeague,
   selectRetrySnapshot,
   shouldSuspendForConfirmedLeague,
+  workingReplacementRequiresProtection,
+  workflowAfterNamingWorking,
   workflowForHistoricalDuplicate,
 } from '../repository/sessionRepositoryRuntime';
 
@@ -50,6 +53,48 @@ describe('WP14 repository lifecycle provenance', () => {
       suspended: true,
       activationId: 'activation-2',
     });
+  });
+
+  it('names a hidden working target without replacing the historical view', () => {
+    const previous: RepositoryWorkflow = {
+      ...workflow('historical'),
+      activeTarget: { kind: 'working' },
+      viewedTarget: { kind: 'session', sessionId: 'historical-session' },
+      suspended: true,
+    };
+
+    expect(workflowAfterNamingWorking(
+      previous,
+      { kind: 'session', sessionId: 'named-working' },
+    )).toEqual({
+      ...previous,
+      activeTarget: { kind: 'session', sessionId: 'named-working' },
+    });
+  });
+
+  it('moves the view with a working target that is named in place', () => {
+    expect(workflowAfterNamingWorking(
+      workflow(),
+      { kind: 'session', sessionId: 'named-working' },
+    )).toEqual({
+      ...workflow(),
+      activeTarget: { kind: 'session', sessionId: 'named-working' },
+      viewedTarget: { kind: 'session', sessionId: 'named-working' },
+    });
+  });
+
+  it('guards meaningful working data unless the active named session already preserves it', () => {
+    expect(workingReplacementRequiresProtection(true, 'working-hash', null)).toBe(true);
+    expect(workingReplacementRequiresProtection(true, 'working-hash', 'other-hash')).toBe(true);
+    expect(workingReplacementRequiresProtection(true, 'working-hash', 'working-hash')).toBe(false);
+    expect(workingReplacementRequiresProtection(false, 'working-hash', null)).toBe(false);
+  });
+
+  it('opens every available checkpoint change list by default', () => {
+    expect([...defaultExpandedCheckpointIds([
+      { id: 'with-changes', changeCount: 2 },
+      { id: 'legacy-summary-only', changeCount: 0 },
+    ])]).toEqual(['with-changes']);
   });
 
   it('forks into a confirmed league without mutating old provenance or carrying its quote', () => {

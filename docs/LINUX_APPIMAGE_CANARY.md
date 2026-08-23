@@ -128,6 +128,32 @@ already v1.0.79, and a pass/fail line for each numbered item. Keep the isolated
 smoke directory until release acceptance; do not point v1.0.79 at it after the
 migration.
 
+### v1.0.80 replacement-path repeat after the native-smoke fix
+
+The first artifact-only v1.0.80 candidate is superseded. Use only the rebuilt
+AppImage whose SHA-256 is supplied with the new exact source commit, then verify:
+
+1. Load build settings from Strategy Browser into **New Session**. Open the
+   Sessions picker and click the already-selected **New Session** row. The
+   **Protect working session** dialog must appear; **Cancel** must leave the
+   loaded build untouched.
+2. With that loaded working build still live, open a named historical session,
+   return to Strategy Browser, and load a second build. The same protection
+   dialog must appear even though the historical session is on screen.
+3. Choose **Name & continue**, using `WP14 protected Linux build`. The named
+   session must contain the first build, the second build must load into the new
+   working session, and Recently Deleted must gain no unnamed entry.
+4. Click **New Session** again and choose **Move & continue**. This deliberate
+   discard must create exactly one unnamed Recently Deleted entry containing the
+   second build; restore or permanently delete that disposable entry afterward.
+5. Make a price change that creates Version history details. Open Version
+   history and confirm its changes are visible by default, **Hide changes**
+   collapses them, and the hover-visible scrollbar still works when the list is
+   taller than the modal.
+
+Report each line separately. These checks are required on Traceur's CachyOS/KDE
+Wayland system and on Sad's rebuilt Windows installer before publication.
+
 ### After v1.0.80 is public
 
 Launch the ordinary v1.0.79 AppImage without the `XDG_CONFIG_HOME` override and

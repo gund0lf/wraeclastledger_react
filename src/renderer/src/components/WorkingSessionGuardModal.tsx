@@ -23,10 +23,10 @@ export function WorkingSessionGuardModal({
 }: WorkingSessionGuardModalProps) {
   const trimmedName = name.trim();
   return (
-    <Modal opened={opened} onClose={onCancel} title="Protect current session" size="sm" returnFocus={false}>
+    <Modal opened={opened} onClose={onCancel} title="Protect working session" size="sm" returnFocus={false}>
       <Stack gap="sm">
         <Text size="sm">
-          Your unnamed current session contains work
+          Your unnamed working session contains work
           {mapCount > 0 ? ` (${mapCount} map${mapCount !== 1 ? 's' : ''})` : ''}.
           {' '}{actionDescription} will replace its working slot. WraeclastLedger will move it to Recently Deleted,
           or you can name it now to keep it in Sessions.
