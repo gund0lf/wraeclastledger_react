@@ -873,8 +873,9 @@ export class FileSessionRepository implements SessionRepositoryPort {
       throw new RepositoryRecoveryRequiredError(recovered.status);
     }
     if (!recovered.record) throw Object.assign(new Error('Session record was not found'), { code: 'ENOENT' });
-    assertSessionBodyV1(recovered.record.body);
-    const body = recovered.record.body;
+    // decodeRecordV1 already validated the session body according to the
+    // framed content type. Avoid rescanning large payload strings here.
+    const body = recovered.record.body as SessionBodyV1;
     if (target.kind === 'working' && body.kind !== 'working') throw new Error('Working target contains a named session');
     if (target.kind === 'session' && (body.kind !== 'named' || body.id !== target.sessionId)) {
       throw new Error('Named session identity does not match its repository target');
@@ -1423,7 +1424,6 @@ export class FileSessionRepository implements SessionRepositoryPort {
         ...((request.freshEmptyWorking === true || (prior?.freshEmptyWorking === true && !semanticChanged))
           ? { freshEmptyWorking: true as const } : {}),
       };
-      assertSessionBodyV1(body);
       let result: Awaited<ReturnType<typeof commitRecordAtomically>>;
       try {
         result = await commitRecordAtomically({
@@ -1434,7 +1434,15 @@ export class FileSessionRepository implements SessionRepositoryPort {
           contentVersion: SESSION_CONTENT_VERSION,
           body,
           expectedGeneration: commitExpectedGeneration,
-        }, { root: this.paths.root, readPolicy: this.readPolicy });
+        }, {
+          root: this.paths.root,
+          readPolicy: this.readPolicy,
+          // readBody recovered and validated this target in the same exclusive
+          // queue. New UUID targets still take the full defensive scan.
+          ...(request.target.kind !== 'new'
+            ? { prevalidatedGeneration: commitExpectedGeneration }
+            : {}),
+        });
       } catch (error) {
         if (replacementRecovery && !(await exists(this.paths.working))) {
           await rm(join(replacementRecovery.destination, 'recovery.json'), { force: true });

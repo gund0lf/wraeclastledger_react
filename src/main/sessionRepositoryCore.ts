@@ -426,6 +426,12 @@ export interface AtomicCommitResult {
 export interface AtomicCommitOptions {
   root: string;
   readPolicy: RepositoryReadPolicy;
+  /**
+   * A generation read by the same exclusive repository queue immediately
+   * before this commit. Supplying it avoids decoding current and backup a
+   * second time; callers that have not just completed recovery must omit it.
+   */
+  prevalidatedGeneration?: number | null;
   retry?: Partial<RetryPolicy>;
   hooks?: AtomicCommitHooks;
   processId?: number;
@@ -449,17 +455,21 @@ export async function commitRecordAtomically(
   const retry = options.retry ?? {};
   const currentPath = join(request.directory, CURRENT_RECORD_NAME);
   const backupPath = join(request.directory, BACKUP_RECORD_NAME);
-  const recovered = await recoverRecordDirectory(
-    request.directory,
-    options.readPolicy,
-    request.contentType,
-    retry,
-  );
-  if (recovered.status === 'damaged' || recovered.status === 'unsupported') {
-    throw new RepositoryRecoveryRequiredError(recovered.status);
+  let actualGeneration: number | null;
+  if (options.prevalidatedGeneration !== undefined) {
+    actualGeneration = options.prevalidatedGeneration;
+  } else {
+    const recovered = await recoverRecordDirectory(
+      request.directory,
+      options.readPolicy,
+      request.contentType,
+      retry,
+    );
+    if (recovered.status === 'damaged' || recovered.status === 'unsupported') {
+      throw new RepositoryRecoveryRequiredError(recovered.status);
+    }
+    actualGeneration = recovered.record ? recordGeneration(recovered.record) : null;
   }
-  const current = recovered.record;
-  const actualGeneration = current ? recordGeneration(current) : null;
   if (actualGeneration !== request.expectedGeneration) {
     throw new GenerationConflictError(request.expectedGeneration, actualGeneration);
   }
@@ -504,7 +514,7 @@ export async function commitRecordAtomically(
   await stage(options.hooks, 'temp-verified');
   await prepareBackupDestination(backupPath, options.readPolicy, request.contentType, retry);
   await stage(options.hooks, 'backup-prepared');
-  if (current) {
+  if (actualGeneration !== null) {
     await retryTransientFileOperation(() => rename(currentPath, backupPath), retry);
   }
   await stage(options.hooks, 'current-rotated');

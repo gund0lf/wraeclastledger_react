@@ -127,6 +127,28 @@ describe('WP14 atomic repository commit', () => {
       .toEqual([[BACKUP_RECORD_NAME, 1], [CURRENT_RECORD_NAME, 2]]);
   });
 
+  it('accepts a generation prevalidated by the exclusive repository queue', async () => {
+    const root = await tempRoot();
+    const directory = deriveSessionDirectory(root, 'session-id');
+    await commit(root, directory, 1);
+    await commitRecordAtomically({
+      directory,
+      entityKey: 'session-id',
+      operationId: 'prevalidated-generation',
+      contentType: 'session',
+      contentVersion: 1,
+      body: body(2),
+      expectedGeneration: 1,
+    }, {
+      root,
+      readPolicy: policy,
+      prevalidatedGeneration: 1,
+    });
+    const inspection = await inspectRecordCandidates(directory, policy, 'session');
+    expect(inspection.valid.map(({ name, generation }) => [name, generation]))
+      .toEqual([[BACKUP_RECORD_NAME, 1], [CURRENT_RECORD_NAME, 2]]);
+  });
+
   it('rejects stale expected generations before writing', async () => {
     const root = await tempRoot();
     const directory = deriveSessionDirectory(root, 'session-id');
