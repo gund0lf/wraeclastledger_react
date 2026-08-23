@@ -46,6 +46,97 @@ For an Electron-major change, also complete the broader application/runtime
 matrix in `ELECTRON_RUNTIME_UPGRADE.md`; this checklist is the Linux-specific
 subset.
 
+## v1.0.80 WP14 migration smoke - Traceur
+
+v1.0.80 is the first file-backed Sessions release. Its migration is deliberately
+one-way, so preserve the live v1.0.79 profile and test the candidate against an
+isolated copy before any public updater test.
+
+### Before testing
+
+1. In the live v1.0.79 AppImage, expand **Saved sessions**, choose **Select all**,
+   then **Export**. Confirm the downloaded JSON is non-empty and keep it outside
+   the AppImage and WraeclastLedger config directories.
+2. Record the saved-session count, current session name, one known session's map
+   count and edited value, and the current panel layout. A screenshot is enough.
+3. Fully quit WraeclastLedger. Then make a complete profile copy:
+
+   ```bash
+   WL_PROFILE="${XDG_CONFIG_HOME:-$HOME/.config}/WraeclastLedger"
+   WL_BACKUP="$HOME/WraeclastLedger-v1.0.79-profile-backup-$(date +%Y%m%d-%H%M%S)"
+   test -d "$WL_PROFILE"
+   cp -a -- "$WL_PROFILE" "$WL_BACKUP"
+   test -d "$WL_BACKUP" && du -sh "$WL_BACKUP"
+   printf 'Backup: %s\n' "$WL_BACKUP"
+   ```
+
+   Keep both the JSON export and this full profile copy until v1.0.80 is accepted.
+   The profile copy protects the active working session, preferences, layout,
+   and browser migration source that a selected-session JSON export does not.
+
+### Pre-publication candidate on an isolated profile
+
+Use the artifact-only workflow AppImage, not a public release asset. Replace the
+example backup path with the exact path printed above:
+
+```bash
+WL_BACKUP="$HOME/WraeclastLedger-v1.0.79-profile-backup-YYYYMMDD-HHMMSS"
+WL_SMOKE="$HOME/.local/share/WraeclastLedger-v1.0.80-smoke"
+mkdir -p "$WL_SMOKE/config/WraeclastLedger"
+cp -a -- "$WL_BACKUP/." "$WL_SMOKE/config/WraeclastLedger/"
+chmod +x WraeclastLedger-1.0.80-x86_64.AppImage
+XDG_CONFIG_HOME="$WL_SMOKE/config" ./WraeclastLedger-1.0.80-x86_64.AppImage
+```
+
+Verify all of the following inside that isolated candidate:
+
+1. The header shows **v1.0.80 / DATA R3**. Startup completes without a record-
+   mismatch or migration error.
+2. Saved-session count and names, the previously recorded current session, map
+   count/value, Notes, Baseline/Return data, Investment settings, and layout all
+   match v1.0.79.
+3. **Open data folder** opens
+   `$WL_SMOKE/config/WraeclastLedger/ledger-data`; `README.txt`, `storage.json`,
+   session entries, preferences, layout, and bootstrap records are present.
+4. Duplicate a session as `WP14 Linux disposable`. Change one known scarab price,
+   wait for **Auto-saved**, and confirm **Undo changes since opening** restores
+   the old value. Repeat the edit, open **Version history**, expand its change
+   details, and confirm the exact old and new values are shown. Restart and verify
+   the edited value and history persist, then restore the opening version.
+5. Move the disposable session to **Recently Deleted**. It appears exactly once
+   under its real name. Restore it; it opens as **Historical session** without
+   replacing the separate live target. Resume it, delete it again, then delete it
+   permanently. No unnamed companion entry appears at any point.
+6. Start a fresh empty session and switch away. Recently Deleted remains
+   unchanged. Fork one historical session into the current league, select the
+   fork from the session picker, and confirm it opens the fork rather than a new
+   blank session.
+7. Open a historical session, edit a value, wait for **Auto-saved**, then choose
+   **Return to live session**. The previous live target returns and the historical
+   edit remains when that session is reopened; Return to live is navigation, not
+   an undo action.
+8. Export the disposable/restored session as JSON and restore it once with the
+   non-destructive conflict option. Quit normally and relaunch once more; session
+   state, history, Recently Deleted state, and layout still persist.
+9. Complete the ordinary Linux checks below: one-instance behavior, capture
+   starts off, Proton capture of three maps in order, off/on behavior, manual
+   Paste, visible bridge failure fallback, Open Trade, Atlas Tree, and
+   WealthyExile file selection.
+
+Report the AppImage SHA-256, distro/desktop/session type, whether the profile was
+already v1.0.79, and a pass/fail line for each numbered item. Keep the isolated
+smoke directory until release acceptance; do not point v1.0.79 at it after the
+migration.
+
+### After v1.0.80 is public
+
+Launch the ordinary v1.0.79 AppImage without the `XDG_CONFIG_HOME` override and
+accept the stable update. Confirm it restarts as v1.0.80, migrates the live
+profile without an error, retains the recorded session/layout values, and
+captures one additional map through Proton. Do not launch v1.0.79 against that
+live profile again after migration. Keep the two backups until this final smoke
+is accepted.
+
 ## Linux smoke checklist
 
 Install `protontricks` through the normal distro package flow, start Path of

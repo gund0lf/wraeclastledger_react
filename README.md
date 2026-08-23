@@ -4,7 +4,7 @@
 
 [![GitHub release](https://img.shields.io/github/v/release/gund0lf/wraeclastledger_react?style=flat-square&color=orange&label=latest)](https://github.com/gund0lf/wraeclastledger_react/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/gund0lf/wraeclastledger_react/total?style=flat-square&color=blue)](https://github.com/gund0lf/wraeclastledger_react/releases)
-[![Platform](https://img.shields.io/badge/platform-Windows_%7C_Linux-informational?style=flat-square)](https://github.com/gund0lf/wraeclastledger_react/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows_%7C_Linux_AppImage-informational?style=flat-square)](https://github.com/gund0lf/wraeclastledger_react/releases/latest)
 [![Electron](https://img.shields.io/badge/Electron-47848f?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React_19-20232a?style=flat-square&logo=react&logoColor=61dafb)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178c6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -12,7 +12,9 @@
 
 A desktop companion app for Path of Exile map farming. Copy a map tooltip in game (Ctrl+C), and it logs the map — IIQ, IIR, pack size, tier, mods. From there it tracks session profit, generates stash-highlight regex, and builds pre-filled trade searches.
 
-Available as a Windows installer and Linux AppImage.
+Available as a Windows installer and x86_64 Linux AppImage. The Linux capture
+and update path is validated on CachyOS with KDE Wayland and Steam Proton; other
+distributions and desktop environments are currently best-effort until tested.
 
 [**Download the latest release**](https://github.com/gund0lf/wraeclastledger_react/releases/latest)
 Free for personal use — see LICENSE

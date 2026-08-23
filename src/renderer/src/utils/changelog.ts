@@ -10,6 +10,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.80',
+    date: '2026-08-23',
+    changes: [
+      'Sessions now live in an integrity-checked local file repository instead of browser storage. Existing data migrates automatically through a copy-and-verify process; if verification fails, editing stays blocked and the legacy backup remains available instead of risking a partial conversion.',
+      'Auto-saved now means the latest session state was acknowledged by the filesystem. Closing, quitting, or installing an update waits for pending changes and offers explicit retry, recovery export, and force-exit choices if saving cannot finish.',
+      'Opening and editing a session preserves its starting state. A contextual Undo action and bounded Version history show the fields that changed, keep older compatible checkpoints readable, and restore non-destructively by preserving the state being replaced first.',
+      'Recently Deleted keeps recoverable sessions for up to 30 days within its documented entry and storage limits. Restoring preserves colliding copies, keeps the separate live capture target intact, and returns the recovered session as historical until you explicitly resume it.',
+      'Live and viewed sessions are now tracked separately. Historical edits persist without silently repricing or replacing the live run, Return to live switches back without undoing those edits, and fork, restore, picker, and empty-session transitions no longer create unnamed trash entries or redirect to a blank session.',
+      'Sessions can still be exported and restored as portable JSON, while the folder button opens the complete local ledger-data backup unit containing sessions, preferences, layout, workflow state, history, and recovery data. No session data is uploaded by this change.',
+    ],
+  },
+  {
     version: '1.0.79',
     date: '2026-08-21',
     changes: [
