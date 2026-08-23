@@ -69,7 +69,7 @@ jobs:
       - name: Build the AppImage without publishing
         run: npm run build:linux
 
-      - name: Extract the packaged updater configuration
+      - name: Extract the packaged runtime evidence
         shell: bash
         run: |
           APPIMAGE="$(find dist -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
@@ -95,6 +95,16 @@ jobs:
             exit 1
           fi
           cp "$PACKAGED_HELPER" dist/packaged-wl-proton-clipboard.exe
+          PACKAGED_DESKTOP="$(find dist/squashfs-root -maxdepth 1 -type f -name '*.desktop' -print -quit)"
+          if [[ -z "$PACKAGED_DESKTOP" ]]; then
+            echo "The AppImage does not contain a desktop launcher" >&2
+            exit 1
+          fi
+          if [[ "$(basename "$PACKAGED_DESKTOP")" != "com.wraeclastledger.app.desktop" ]]; then
+            echo "The AppImage desktop launcher has an unexpected identity: $(basename "$PACKAGED_DESKTOP")" >&2
+            exit 1
+          fi
+          cp "$PACKAGED_DESKTOP" dist/com.wraeclastledger.app.desktop
           rm -rf dist/squashfs-root
 
       - name: Verify the stable updater artifacts
@@ -110,6 +120,7 @@ jobs:
             dist/latest-linux.yml
             dist/packaged-app-update.yml
             dist/packaged-wl-proton-clipboard.exe
+            dist/com.wraeclastledger.app.desktop
             dist/linux-release-evidence.json
             electron-builder.yml
 
