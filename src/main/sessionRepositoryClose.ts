@@ -16,6 +16,18 @@ export interface RepositoryCloseDecisionDependencies {
   exportPending: (knownDocument?: string) => Promise<void>;
 }
 
+export type RepositoryQuitReason = 'window-close' | 'app-quit' | 'updater';
+
+export interface RepositoryQuitCompletionDependencies {
+  releaseLock: () => Promise<void>;
+  unregister: () => void;
+  prepareFinalAction: () => void;
+  closeWindow: () => void;
+  quitApp: () => void;
+  installUpdate: () => void;
+  onReleaseError: (error: unknown) => void;
+}
+
 /**
  * Pure close-decision loop shared by user close, app.quit, and updater install.
  * Keep-waiting retains an unresolved save; Retry starts a fresh renderer flush;
@@ -46,4 +58,26 @@ export async function decideRepositoryClose(
       return 'force';
     }
   }
+}
+
+/**
+ * Complete the close only after the repository lock has been released (or its
+ * recoverable release failure has been surfaced) and IPC has been detached.
+ * The updater route therefore cannot install while this profile is still an
+ * active repository writer.
+ */
+export async function completeRepositoryQuit(
+  reason: RepositoryQuitReason,
+  dependencies: RepositoryQuitCompletionDependencies,
+): Promise<void> {
+  try {
+    await dependencies.releaseLock();
+  } catch (error) {
+    dependencies.onReleaseError(error);
+  }
+  dependencies.unregister();
+  dependencies.prepareFinalAction();
+  if (reason === 'updater') dependencies.installUpdate();
+  else if (reason === 'app-quit') dependencies.quitApp();
+  else dependencies.closeWindow();
 }

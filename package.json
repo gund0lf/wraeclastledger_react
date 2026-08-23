@@ -28,6 +28,7 @@
     "wp14:ipc-bench": "node scripts/run-vite-script.mjs scripts/bench-wp14-ipc-validation.ts",
     "wp14:migration-check": "node scripts/run-vite-script.mjs scripts/verify-wp14-shadow-migration.ts",
     "wp14:session-export-check": "node scripts/run-vite-script.mjs scripts/verify-wp14-session-exports.ts",
+    "wp14:profile-backup-check": "node scripts/run-vite-script.mjs scripts/verify-wp14-profile-backup.ts",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "electron-vite build",

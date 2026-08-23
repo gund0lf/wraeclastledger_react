@@ -32,8 +32,10 @@ import { createSessionRepositoryAdapter } from './sessionRepositoryAdapter'
 import { registerSessionRepositoryIpc } from './sessionRepositoryIpc'
 import { WP14_RECOMMENDED_MAX_EXPORT_DOCUMENT_BYTES } from '../shared/wp14Benchmark'
 import {
+  completeRepositoryQuit,
   decideRepositoryClose,
   type RendererFlushResult,
+  type RepositoryQuitReason,
 } from './sessionRepositoryClose'
 
 // The installed build and `npm run dev` used to share one Chromium profile.
@@ -67,8 +69,6 @@ const unregisterSessionRepositoryIpc = registerSessionRepositoryIpc(
     maxExportDocumentBytes: WP14_RECOMMENDED_MAX_EXPORT_DOCUMENT_BYTES,
   }),
 )
-
-type RepositoryQuitReason = 'window-close' | 'app-quit' | 'updater'
 
 const rendererFlushWaiters = new Map<string, (result: RendererFlushResult) => void>()
 let quitBypass = false
@@ -166,18 +166,19 @@ async function continueQuit(reason: RepositoryQuitReason, mainWindow: BrowserWin
     if (!rendererFlushUnavailable) {
       await awaitFlushDecision(mainWindow, requestRendererFlush(mainWindow, 'flush'))
     }
-    try {
-      await sessionRepository.releaseLock()
-    } catch (error) {
+    await completeRepositoryQuit(reason, {
+      releaseLock: () => sessionRepository.releaseLock(),
+      unregister: unregisterSessionRepositoryIpc,
+      prepareFinalAction: () => { quitBypass = true },
+      closeWindow: () => mainWindow.close(),
+      quitApp: () => app.quit(),
+      installUpdate: () => autoUpdater.quitAndInstall(false, true),
       // A stale lock is recoverable on the next launch and must not trap the
       // user after their data is saved (or after explicit force-exit consent).
-      console.error('[Session repository] Could not release close lock:', error)
-    }
-    unregisterSessionRepositoryIpc()
-    quitBypass = true
-    if (reason === 'updater') autoUpdater.quitAndInstall(false, true)
-    else if (reason === 'app-quit') app.quit()
-    else mainWindow.close()
+      onReleaseError: (error) => console.error(
+        '[Session repository] Could not release close lock:', error,
+      ),
+    })
   } catch (error) {
     console.error('[Session repository] Close protocol failed:', error)
   } finally {

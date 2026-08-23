@@ -176,6 +176,44 @@ describe('WP14 atomic repository commit', () => {
     const recoveredBody = recovery.record?.body as JsonObject;
     expect(recoveredBody.generation).toBe(2);
   });
+
+  it.each([
+    ['ENOSPC', 'disk full'],
+    ['EACCES', 'permission denied'],
+  ])('surfaces %s without rotating a valid current record', async (code, message) => {
+    const root = await tempRoot();
+    const directory = deriveSessionDirectory(root, 'session-id');
+    await commit(root, directory, 1);
+    const failure = new Error(message) as NodeJS.ErrnoException;
+    failure.code = code;
+    await expect(commitRecordAtomically({
+      directory,
+      entityKey: 'session-id',
+      operationId: `failed-${code}`,
+      contentType: 'session',
+      contentVersion: 1,
+      body: body(2),
+      expectedGeneration: 1,
+    }, {
+      root,
+      readPolicy: policy,
+      processId: 123,
+      uniqueId: () => `failed-${code}`,
+      retry: { sleep: async () => undefined, random: () => 0.5 },
+      hooks: {
+        afterStage: (stage) => {
+          if (stage === 'temp-written') throw failure;
+        },
+      },
+    })).rejects.toMatchObject({ code, message });
+    const names = await readdir(directory);
+    expect(names).toContain(CURRENT_RECORD_NAME);
+    expect(names).not.toContain(BACKUP_RECORD_NAME);
+    const inspection = await inspectRecordCandidates(directory, policy, 'session');
+    expect(inspection.valid.find(({ name }) => name === CURRENT_RECORD_NAME)?.generation).toBe(1);
+    const recovered = await recoverRecordDirectory(directory, policy, 'session');
+    expect((recovered.record?.body as JsonObject).generation).toBe(2);
+  });
 });
 
 describe('WP14 startup recovery', () => {
@@ -297,15 +335,34 @@ describe('WP14 transient file retry', () => {
     expect(delays).toEqual([20, 40]);
   });
 
-  it('does not retry non-transient errors', async () => {
+  it('does not retry a disk-full error and surfaces it exactly', async () => {
     let attempts = 0;
+    const failure = new Error('disk full') as NodeJS.ErrnoException;
+    failure.code = 'ENOSPC';
     await expect(retryTransientFileOperation(async () => {
       attempts += 1;
-      throw new Error('invalid');
+      throw failure;
     }, {
       sleep: async () => undefined,
-    })).rejects.toThrow('invalid');
+    })).rejects.toMatchObject({ code: 'ENOSPC', message: 'disk full' });
     expect(attempts).toBe(1);
+  });
+
+  it('bounds permission retries and surfaces the final error', async () => {
+    let attempts = 0;
+    const failure = new Error('permission denied') as NodeJS.ErrnoException;
+    failure.code = 'EACCES';
+    await expect(retryTransientFileOperation(async () => {
+      attempts += 1;
+      throw failure;
+    }, {
+      attempts: 3,
+      baseDelayMs: 1,
+      maxDelayMs: 2,
+      random: () => 0.5,
+      sleep: async () => undefined,
+    })).rejects.toMatchObject({ code: 'EACCES', message: 'permission denied' });
+    expect(attempts).toBe(3);
   });
 });
 
