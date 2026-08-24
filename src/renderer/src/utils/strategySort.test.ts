@@ -22,4 +22,9 @@ describe('Strategy Browser sort catalogue', () => {
     expect(new Set(keys).size).toBe(keys.length);
     expect(keys.every((key) => SORT_DEFAULT_DIR[key] !== undefined)).toBe(true);
   });
+
+  it('offers the visible map total as a descending server-backed sort', () => {
+    expect(SORT_OPTIONS).toContainEqual({ value: 'map_count', label: 'Most maps' });
+    expect(SORT_DEFAULT_DIR.map_count).toBe('desc');
+  });
 });

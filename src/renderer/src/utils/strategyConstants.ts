@@ -200,12 +200,13 @@ export const TAG_SHORT: Record<string, string> = {
 // computed server-side from author-declared timed evidence only, NULLS LAST.
 
 export type SortKey =
-  | 'activity' | 'div_per_map' | 'net_profit' | 'score'
+  | 'activity' | 'map_count' | 'div_per_map' | 'net_profit' | 'score'
   | 'least_invest' | 'cost_per_map' | 'div_per_hour';
 export type SortOrder = 'asc' | 'desc';
 
 export const SORT_DEFAULT_DIR: Record<SortKey, SortOrder> = {
   activity:     'desc',
+  map_count:    'desc',
   div_per_map:  'desc',
   net_profit:   'desc',
   score:        'desc',
@@ -218,6 +219,7 @@ export const DEFAULT_STRATEGY_SORT: SortKey = 'activity';
 
 export const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: 'activity',     label: 'Latest activity' },
+  { value: 'map_count',    label: 'Most maps' },
   { value: 'div_per_map',  label: 'Best d/map' },
   { value: 'div_per_hour', label: 'Best d/hour' },
   { value: 'net_profit',   label: 'Most profit' },

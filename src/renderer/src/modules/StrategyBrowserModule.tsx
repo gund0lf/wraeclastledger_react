@@ -636,7 +636,12 @@ export const StrategyBrowserModule = () => {
           <Tooltip label="Observed average when exact map evidence was shared; otherwise the 6-mod/8-mod strategy bucket. Filtering always uses the bucket." withArrow multiline w={250}>
             <Text size="xs" c="dimmed" style={{ width: browserCols.mod,    flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>Mod</Text>
           </Tooltip>
-          <Text size="xs" c="dimmed" style={{ width: browserCols.maps,   flexShrink: 0, fontSize: FONT.small }}>Maps</Text>
+          <Tooltip label="Total maps represented by the visible result pool — click to sort" withArrow multiline w={250}>
+            <UnstyledButton onClick={() => handleHeaderSort('map_count')} aria-pressed={sortBy === 'map_count'}
+              style={{ width: browserCols.maps, textAlign: 'center', flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>
+              Maps{sortArrow('map_count')}
+            </UnstyledButton>
+          </Tooltip>
           <Tooltip label="All-in: total investment ÷ map count — click to sort" withArrow>
             <UnstyledButton onClick={() => handleHeaderSort('cost_per_map')} aria-pressed={sortBy === 'cost_per_map'}
               style={{ width: browserCols.cost, flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Cost/map{sortArrow('cost_per_map')}</UnstyledButton>
