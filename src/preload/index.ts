@@ -5,6 +5,7 @@ import type { ClipboardBridgeStatus } from '../shared/protonClipboardBridge'
 import type {
   OverlayAction,
   OverlayBounds,
+  OverlayBoundsInteraction,
   OverlayPreferences,
   OverlayShortcutStatus,
   OverlaySnapshot,
@@ -27,6 +28,7 @@ type RepositoryFlushRequest = { requestId: string; mode: 'flush' | 'export-recov
 type RepositoryFlushResult = { requestId: string; ok: boolean; error?: string; recoveryDocument?: string };
 
 const api = {
+  usesManagedOverlayBounds: process.platform === 'linux',
   sessionRepository: createSessionRepositoryBridge((channel, request) =>
     ipcRenderer.invoke(channel, request)),
   onSessionRepositoryFlushRequest: (callback: (request: RepositoryFlushRequest) => void): (() => void) => {
@@ -57,6 +59,9 @@ const api = {
     const listener = (_event: Electron.IpcRendererEvent, bounds: OverlayBounds): void => callback(bounds)
     ipcRenderer.on('overlay:bounds', listener)
     return () => ipcRenderer.removeListener('overlay:bounds', listener)
+  },
+  sendOverlayBoundsInteraction: (interaction: OverlayBoundsInteraction): void => {
+    ipcRenderer.send('overlay:bounds-interaction', interaction)
   },
   onClipboardCapture: (callback: (text: string) => void): void => {
     ipcRenderer.on('on-clipboard-capture', (_event, text) => callback(text))

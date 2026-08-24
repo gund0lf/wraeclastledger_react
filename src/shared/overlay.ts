@@ -46,6 +46,15 @@ export type OverlayAction =
   | { type: 'toggle-lock' }
   | { type: 'close' };
 
+export type OverlayBoundsInteraction =
+  | {
+    phase: 'start' | 'update';
+    kind: 'move' | 'resize';
+    screenX: number;
+    screenY: number;
+  }
+  | { phase: 'end'; kind: 'move' | 'resize' };
+
 export interface OverlayShortcutStatus {
   timer: { accelerator: string; registered: boolean; error: string | null } | null;
   counters: Record<string, { accelerator: string; registered: boolean; error: string | null }>;
@@ -76,6 +85,18 @@ const boundedNumber = (value: unknown, minimum: number, maximum: number): number
 
 const shortcut = (value: unknown): string =>
   typeof value === 'string' ? value.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 80) : '';
+
+export function normalizeOverlayBoundsInteraction(value: unknown): OverlayBoundsInteraction | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const input = value as Record<string, unknown>;
+  if (input.kind !== 'move' && input.kind !== 'resize') return null;
+  if (input.phase === 'end') return { phase: 'end', kind: input.kind };
+  if (input.phase !== 'start' && input.phase !== 'update') return null;
+  const screenX = boundedNumber(input.screenX, -100_000, 100_000);
+  const screenY = boundedNumber(input.screenY, -100_000, 100_000);
+  if (screenX === null || screenY === null) return null;
+  return { phase: input.phase, kind: input.kind, screenX, screenY };
+}
 
 export function normalizeOverlayPreferences(value: unknown): OverlayPreferences {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {

@@ -95,6 +95,21 @@ jobs:
             exit 1
           fi
           cp "$PACKAGED_ASAR" dist/packaged-app.asar
+          PACKAGED_LAUNCHER="dist/squashfs-root/wraeclastledger"
+          PACKAGED_BINARY="dist/squashfs-root/wraeclastledger-bin"
+          if [[ ! -x "$PACKAGED_LAUNCHER" ]]; then
+            echo "The AppImage does not contain the executable Linux launcher wrapper" >&2
+            exit 1
+          fi
+          if [[ ! -x "$PACKAGED_BINARY" ]]; then
+            echo "The AppImage does not contain the wrapped Electron executable" >&2
+            exit 1
+          fi
+          cp "$PACKAGED_LAUNCHER" dist/packaged-linux-launcher
+          printf 'bytes=%s\nsha256=%s\n' \
+            "$(stat -c '%s' "$PACKAGED_BINARY")" \
+            "$(sha256sum "$PACKAGED_BINARY" | cut -d ' ' -f 1)" \
+            > dist/packaged-linux-binary.txt
           PACKAGED_HELPER="$(find dist/squashfs-root -type f -path '*/resources/linux/wl-proton-clipboard.exe' -print -quit)"
           if [[ -z "$PACKAGED_HELPER" ]]; then
             echo "The AppImage does not contain the Proton clipboard helper" >&2
@@ -125,6 +140,8 @@ jobs:
             dist/*.AppImage
             dist/latest-linux.yml
             dist/packaged-app-update.yml
+            dist/packaged-linux-launcher
+            dist/packaged-linux-binary.txt
             dist/packaged-wl-proton-clipboard.exe
             dist/com.wraeclastledger.app.desktop
             dist/linux-release-evidence.json

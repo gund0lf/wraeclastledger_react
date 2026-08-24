@@ -10,6 +10,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.84',
+    date: '2026-08-25',
+    changes: [
+      'Linux AppImages now select XWayland from their executable launcher so Electron renderer and GPU child processes inherit the setting, fixing v1.0.83 startup failures on CachyOS/KDE. The non-activating Timer/Counters overlay no longer uses a compositor-positioned toolbar hint and provides its own bounded header drag and resize grip; Lock disables both without making overlay controls steal Path of Exile focus.',
+    ],
+  },
+  {
     version: '1.0.83',
     date: '2026-08-24',
     changes: [

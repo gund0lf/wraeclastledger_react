@@ -38,6 +38,8 @@ import {
   type RepositoryQuitReason,
 } from './sessionRepositoryClose'
 import {
+  DEFAULT_OVERLAY_PREFERENCES,
+  normalizeOverlayBoundsInteraction,
   normalizeOverlayPreferences,
   type OverlayAction,
   type OverlayBounds,
@@ -45,12 +47,6 @@ import {
   type OverlayShortcutStatus,
   type OverlaySnapshot,
 } from '../shared/overlay'
-
-// Electron does not support always-on-top windows on native Wayland, and its
-// documented positioning/focus limitations also make a draggable companion
-// overlay unreliable there. Use XWayland for the Linux app so the advertised
-// overlay contract works while the surrounding desktop session remains Wayland.
-if (process.platform === 'linux') app.commandLine.appendSwitch('ozone-platform', 'x11')
 
 // The installed build and `npm run dev` used to share one Chromium profile.
 // Their file:// and localhost origins could then touch the same LevelDB while
@@ -199,6 +195,16 @@ let mainWindowRef: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
 let overlayBoundsTimer: NodeJS.Timeout | null = null;
 let lastOverlaySnapshot: OverlaySnapshot | null = null;
+let lastOverlayPreferences: OverlayPreferences = {
+  ...DEFAULT_OVERLAY_PREFERENCES,
+  counterIds: [...DEFAULT_OVERLAY_PREFERENCES.counterIds],
+};
+let overlayBoundsInteraction: {
+  kind: 'move' | 'resize';
+  screenX: number;
+  screenY: number;
+  bounds: OverlayBounds;
+} | null = null;
 const overlayShortcutRegistrations = new Set<string>();
 let clipboardBridgeProcess: ChildProcessWithoutNullStreams | null = null;
 let clipboardBridgeGeneration = 0;
@@ -291,7 +297,6 @@ function createOverlayWindow(preferences: OverlayPreferences): BrowserWindow {
     focusable: !linuxOverlay,
     fullscreenable: false,
     skipTaskbar: true,
-    type: linuxOverlay ? 'toolbar' : undefined,
     autoHideMenuBar: true,
     hasShadow: true,
     resizable: !preferences.locked,
@@ -321,6 +326,7 @@ function createOverlayWindow(preferences: OverlayPreferences): BrowserWindow {
   win.on('resize', scheduleBounds);
   win.on('closed', () => {
     overlayWindow = null;
+    overlayBoundsInteraction = null;
     if (overlayBoundsTimer) clearTimeout(overlayBoundsTimer);
     overlayBoundsTimer = null;
   });
@@ -336,6 +342,10 @@ function createOverlayWindow(preferences: OverlayPreferences): BrowserWindow {
 
 function syncOverlayWindow(rawPreferences: unknown): OverlayShortcutStatus {
   const preferences = normalizeOverlayPreferences(rawPreferences);
+  lastOverlayPreferences = preferences;
+  if (preferences.locked || preferences.clickThrough || !preferences.visible) {
+    overlayBoundsInteraction = null;
+  }
   const shortcutStatus = registerOverlayShortcuts(preferences);
   if (!preferences.visible) {
     if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.destroy();
@@ -365,6 +375,47 @@ ipcMain.on('overlay:snapshot', (_event, snapshot: OverlaySnapshot) => {
   }
 });
 ipcMain.on('overlay:action', (_event, action: OverlayAction) => sendOverlayAction(action));
+ipcMain.on('overlay:bounds-interaction', (event, rawInteraction: unknown) => {
+  if (process.platform !== 'linux' || !overlayWindow || overlayWindow.isDestroyed() ||
+      event.sender !== overlayWindow.webContents || lastOverlayPreferences.locked ||
+      lastOverlayPreferences.clickThrough) {
+    overlayBoundsInteraction = null;
+    return;
+  }
+  const interaction = normalizeOverlayBoundsInteraction(rawInteraction);
+  if (!interaction) return;
+  if (interaction.phase === 'end') {
+    if (overlayBoundsInteraction?.kind === interaction.kind) {
+      overlayBoundsInteraction = null;
+      publishOverlayBounds();
+    }
+    return;
+  }
+  if (interaction.phase === 'start') {
+    overlayBoundsInteraction = {
+      kind: interaction.kind,
+      screenX: interaction.screenX,
+      screenY: interaction.screenY,
+      bounds: overlayWindow.getBounds(),
+    };
+    return;
+  }
+  const active = overlayBoundsInteraction;
+  if (!active || active.kind !== interaction.kind) return;
+  const deltaX = Math.round(interaction.screenX - active.screenX);
+  const deltaY = Math.round(interaction.screenY - active.screenY);
+  const requested = active.kind === 'move'
+    ? { ...active.bounds, x: active.bounds.x + deltaX, y: active.bounds.y + deltaY }
+    : {
+      ...active.bounds,
+      width: active.bounds.width + deltaX,
+      height: active.bounds.height + deltaY,
+    };
+  overlayWindow.setBounds(visibleOverlayBounds({
+    ...lastOverlayPreferences,
+    bounds: requested,
+  }));
+});
 
 function publishClipboardBridgeStatus(status: ClipboardBridgeStatus): void {
   clipboardBridgeStatus = status;

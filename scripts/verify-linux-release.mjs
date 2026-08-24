@@ -1,7 +1,11 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { missingLinuxWindowingMarkers } from './linux-windowing-evidence.mjs';
+import {
+  forbiddenLinuxWindowingMarkers,
+  missingLinuxLauncherMarkers,
+  missingLinuxWindowingMarkers,
+} from './linux-windowing-evidence.mjs';
 
 function fail(message) {
   console.error(`[linux-release] ${message}`);
@@ -45,6 +49,8 @@ const packagedUpdaterConfigPath = join('dist', 'packaged-app-update.yml');
 const packagedAppPath = join('dist', 'packaged-app.asar');
 const packagedClipboardHelperPath = join('dist', 'packaged-wl-proton-clipboard.exe');
 const packagedDesktopPath = join('dist', expectedDesktopName);
+const packagedLauncherPath = join('dist', 'packaged-linux-launcher');
+const packagedBinaryEvidencePath = join('dist', 'packaged-linux-binary.txt');
 
 const appImageBytes = requireFile(appImagePath, 50 * 1024 * 1024);
 requireFile(metadataPath, 100);
@@ -54,7 +60,23 @@ const packagedApp = readFileSync(packagedAppPath, 'utf8');
 for (const marker of missingLinuxWindowingMarkers(packagedApp)) {
   fail(`packaged app is missing Linux overlay marker: ${marker}`);
 }
+for (const marker of forbiddenLinuxWindowingMarkers(packagedApp)) {
+  fail(`packaged app still contains forbidden Linux overlay marker: ${marker}`);
+}
 rmSync(packagedAppPath);
+const packagedLauncherBytes = requireFile(packagedLauncherPath, 100);
+const packagedLauncher = readFileSync(packagedLauncherPath, 'utf8');
+for (const marker of missingLinuxLauncherMarkers(packagedLauncher)) {
+  fail(`packaged launcher is missing XWayland marker: ${marker}`);
+}
+requireFile(packagedBinaryEvidencePath, 80);
+const packagedBinaryEvidence = readFileSync(packagedBinaryEvidencePath, 'utf8');
+const packagedBinaryBytes = Number(packagedBinaryEvidence.match(/^bytes=(\d+)$/m)?.[1]);
+const packagedBinarySha256 = packagedBinaryEvidence.match(/^sha256=([a-f0-9]{64})$/m)?.[1];
+if (!Number.isSafeInteger(packagedBinaryBytes) || packagedBinaryBytes < 50 * 1024 * 1024 ||
+    !packagedBinarySha256) {
+  fail(`${packagedBinaryEvidencePath} does not describe the wrapped Electron executable`);
+}
 const desktopLauncherBytes = requireFile(packagedDesktopPath, 100);
 const clipboardHelperBytes = requireFile(packagedClipboardHelperPath, 10 * 1024);
 const clipboardHelperHeader = readFileSync(packagedClipboardHelperPath).subarray(0, 2).toString('ascii');
@@ -103,7 +125,18 @@ const evidence = {
   embeddedBlockMapBytes,
   updateMetadata: basename(metadataPath),
   packagedUpdateChannel: packagedChannel ?? 'latest',
-  linuxWindowing: { ozonePlatform: 'x11', nonActivatingToolbar: true, visibleOnAllWorkspaces: true },
+  linuxWindowing: {
+    ozonePlatform: 'x11',
+    launchBoundary: 'packaged-wrapper',
+    nonActivatingManagedWindow: true,
+    visibleOnAllWorkspaces: true,
+  },
+  packagedLauncher: {
+    bytes: packagedLauncherBytes,
+    sha256: sha256(packagedLauncherPath),
+    wrappedExecutableBytes: packagedBinaryBytes,
+    wrappedExecutableSha256: packagedBinarySha256,
+  },
   desktopLauncher: {
     name: basename(packagedDesktopPath),
     bytes: desktopLauncherBytes,

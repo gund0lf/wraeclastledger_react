@@ -4,6 +4,7 @@ import type { ClipboardBridgeStatus } from '../shared/protonClipboardBridge'
 import type {
   OverlayAction,
   OverlayBounds,
+  OverlayBoundsInteraction,
   OverlayPreferences,
   OverlayShortcutStatus,
   OverlaySnapshot,
@@ -29,6 +30,7 @@ declare global {
   interface Window {
     electron: ElectronAPI
     api: {
+      usesManagedOverlayBounds: boolean
       sessionRepository: SessionRepositoryBridge
       onSessionRepositoryFlushRequest: (callback: (request: RepositoryFlushRequest) => void) => () => void
       completeSessionRepositoryFlush: (result: RepositoryFlushResult) => void
@@ -38,6 +40,7 @@ declare global {
       sendOverlayAction: (action: OverlayAction) => void
       onOverlayAction: (callback: (action: OverlayAction) => void) => () => void
       onOverlayBounds: (callback: (bounds: OverlayBounds) => void) => () => void
+      sendOverlayBoundsInteraction: (interaction: OverlayBoundsInteraction) => void
       onClipboardCapture:  (callback: (text: string) => void) => void
       removeClipboardListener: () => void
       onClipboardBridgeStatus: (callback: (status: ClipboardBridgeStatus) => void) => () => void

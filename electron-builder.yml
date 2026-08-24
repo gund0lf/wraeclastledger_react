@@ -1,5 +1,6 @@
 appId: com.wraeclastledger.app
 productName: WraeclastLedger
+afterPack: scripts/after-pack.cjs
 
 publish:
   provider: github

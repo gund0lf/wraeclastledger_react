@@ -9,8 +9,14 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { IconLock, IconLockOpen, IconMinus, IconPlayerPause, IconPlayerPlay, IconSquare, IconX } from '@tabler/icons-react';
-import { useEffect, useState, type CSSProperties } from 'react';
-import type { OverlaySnapshot } from '../../shared/overlay';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
+import type { OverlayBoundsInteraction, OverlaySnapshot } from '../../shared/overlay';
 import { formatStopwatch } from './utils/manualRunTimer';
 import { COLOR, FONT } from './utils/uiTokens';
 
@@ -20,6 +26,44 @@ const noDragStyle = { WebkitAppRegion: 'no-drag' } as CSSProperties;
 export default function OverlayApp() {
   const [snapshot, setSnapshot] = useState<OverlaySnapshot | null>(null);
   const [, setTick] = useState(0);
+  const boundsInteraction = useRef<{
+    pointerId: number;
+    kind: OverlayBoundsInteraction['kind'];
+  } | null>(null);
+
+  const beginBoundsInteraction = (
+    kind: OverlayBoundsInteraction['kind'],
+    event: ReactPointerEvent<HTMLElement>,
+  ): void => {
+    if (!window.api.usesManagedOverlayBounds || snapshot?.preferences.locked ||
+        snapshot?.preferences.clickThrough || event.button !== 0 ||
+        (event.target instanceof Element && event.target.closest('[data-overlay-control]'))) return;
+    event.preventDefault();
+    boundsInteraction.current = { pointerId: event.pointerId, kind };
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* capture is best effort */ }
+    window.api.sendOverlayBoundsInteraction({
+      phase: 'start', kind, screenX: event.screenX, screenY: event.screenY,
+    });
+  };
+
+  const updateBoundsInteraction = (event: ReactPointerEvent<HTMLElement>): void => {
+    const active = boundsInteraction.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+    window.api.sendOverlayBoundsInteraction({
+      phase: 'update',
+      kind: active.kind,
+      screenX: event.screenX,
+      screenY: event.screenY,
+    });
+  };
+
+  const endBoundsInteraction = (event: ReactPointerEvent<HTMLElement>): void => {
+    const active = boundsInteraction.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+    boundsInteraction.current = null;
+    window.api.sendOverlayBoundsInteraction({ phase: 'end', kind: active.kind });
+    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* already released */ }
+  };
 
   useEffect(() => {
     document.documentElement.style.background = 'transparent';
@@ -45,6 +89,7 @@ export default function OverlayApp() {
       radius="md"
       p="xs"
       style={{
+        position: 'relative',
         height: '100vh',
         overflow: 'hidden',
         background: COLOR.bgPanel,
@@ -56,7 +101,15 @@ export default function OverlayApp() {
           justify="space-between"
           wrap="nowrap"
           gap={4}
-          style={snapshot.preferences.locked ? noDragStyle : dragStyle}
+          onPointerDown={(event) => beginBoundsInteraction('move', event)}
+          onPointerMove={updateBoundsInteraction}
+          onPointerUp={endBoundsInteraction}
+          onPointerCancel={endBoundsInteraction}
+          style={snapshot.preferences.locked
+            ? noDragStyle
+            : window.api.usesManagedOverlayBounds
+              ? { ...noDragStyle, cursor: 'move', userSelect: 'none' }
+              : dragStyle}
         >
           <Box style={{ minWidth: 0 }}>
             <Text size="xs" fw={700} truncate>{snapshot.sessionLabel}</Text>
@@ -64,7 +117,7 @@ export default function OverlayApp() {
               {live ? 'LIVE SESSION' : 'HISTORICAL · CONTROLS PAUSED'}
             </Text>
           </Box>
-          <Group gap={2} wrap="nowrap" style={noDragStyle}>
+          <Group gap={2} wrap="nowrap" style={noDragStyle} data-overlay-control>
             <Tooltip label={snapshot.preferences.locked ? 'Unlock position and size' : 'Lock position and size'}>
               <ActionIcon
                 size="sm"
@@ -204,6 +257,30 @@ export default function OverlayApp() {
           </Stack>
         )}
       </Stack>
+      {window.api.usesManagedOverlayBounds && !snapshot.preferences.locked &&
+        !snapshot.preferences.clickThrough && (
+        <Box
+          role="separator"
+          aria-label="Resize overlay"
+          data-overlay-control
+          onPointerDown={(event) => beginBoundsInteraction('resize', event)}
+          onPointerMove={updateBoundsInteraction}
+          onPointerUp={endBoundsInteraction}
+          onPointerCancel={endBoundsInteraction}
+          style={{
+            ...noDragStyle,
+            position: 'absolute',
+            right: 3,
+            bottom: 3,
+            width: 12,
+            height: 12,
+            cursor: 'nwse-resize',
+            borderRight: `2px solid ${COLOR.textFaint}`,
+            borderBottom: `2px solid ${COLOR.textFaint}`,
+            touchAction: 'none',
+          }}
+        />
+      )}
     </Paper>
   );
 }

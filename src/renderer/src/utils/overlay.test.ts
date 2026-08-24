@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_OVERLAY_COUNTER_IDS, normalizeOverlayPreferences } from '../../../shared/overlay';
+import {
+  DEFAULT_OVERLAY_COUNTER_IDS,
+  normalizeOverlayBoundsInteraction,
+  normalizeOverlayPreferences,
+} from '../../../shared/overlay';
 import { overlayCounterSnapshot, parseOverlayCounterId } from './overlayCounters';
 
 describe('overlay preferences', () => {
@@ -26,6 +30,23 @@ describe('overlay preferences', () => {
     });
     expect(normalized.counterIds).toHaveLength(8);
     expect(normalized.counterShortcuts['stat:starfallCraters']).toBe('Ctrl+1');
+  });
+
+  it('accepts only bounded move and resize pointer interactions', () => {
+    expect(normalizeOverlayBoundsInteraction({
+      phase: 'start', kind: 'move', screenX: 120, screenY: -40,
+    })).toEqual({ phase: 'start', kind: 'move', screenX: 120, screenY: -40 });
+    expect(normalizeOverlayBoundsInteraction({
+      phase: 'update', kind: 'resize', screenX: 500_000, screenY: -500_000,
+    })).toEqual({ phase: 'update', kind: 'resize', screenX: 100_000, screenY: -100_000 });
+    expect(normalizeOverlayBoundsInteraction({ phase: 'end', kind: 'move' }))
+      .toEqual({ phase: 'end', kind: 'move' });
+    expect(normalizeOverlayBoundsInteraction({
+      phase: 'update', kind: 'teleport', screenX: 1, screenY: 2,
+    })).toBeNull();
+    expect(normalizeOverlayBoundsInteraction({
+      phase: 'update', kind: 'move', screenX: Number.NaN, screenY: 2,
+    })).toBeNull();
   });
 });
 
