@@ -1,6 +1,6 @@
 import {
   Card, Text, Group, Stack, Badge, TextInput, Select, MultiSelect, Button,
-  ActionIcon, Loader, Alert, Tooltip, Modal, UnstyledButton, SegmentedControl,
+  ActionIcon, Loader, Alert, Tooltip, Modal, UnstyledButton, SegmentedControl, Paper,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -555,8 +555,9 @@ export const StrategyBrowserModule = () => {
         {/* session-16: "Strategy Browser" title dropped (redundant with the
             tab label); the count badge anchors the left. */}
         <ModuleHeader
+          mb="sm"
           title={
-            <Group gap={6} wrap="nowrap">
+            <Group gap="xs" wrap="nowrap">
               <SegmentedControl
                 size="xs"
                 value={browserView}
@@ -574,7 +575,7 @@ export const StrategyBrowserModule = () => {
             </Group>
           }
           right={
-            browserView === 'live' ? <Group gap={4}>
+            browserView === 'live' ? <Group gap="xs">
               <Tooltip label="Analyse an export from Discord">
                 <Button size="xs" variant="default" leftSection={<IconBrandDiscord size={12} />} onClick={openImport}>Import Strategy</Button>
               </Tooltip>
@@ -591,29 +592,41 @@ export const StrategyBrowserModule = () => {
 
         {browserView === 'live' ? (
           <>
-        <Group gap={6} mb={6} style={{ flexShrink: 0 }} wrap="nowrap">
-          <MultiSelect size="xs" placeholder="Any type" clearable style={{ flex: 1 }}
-            data={ALL_TYPE_TAGS.map((t) => ({ value: t, label: t.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') }))}
-            value={typeTags} onChange={setTypeTags} maxDropdownHeight={200} searchable />
-          <Select size="xs" style={{ width: 110 }}
-            data={[...new Set([...(leagueOverride ? [leagueOverride] : []), ...KNOWN_LEAGUES])]
-              .filter((l) => l !== 'Standard').map((l) => ({ value: l, label: l }))}
-            value={leagueFilter} onChange={(v) => setLeagueFilter(v ?? leagueOverride ?? activeKnownLeagues()[0])} />
-          <TextInput size="xs" placeholder="Min d/map" style={{ width: 80 }}
-            value={minDiv} onChange={(e) => setMinDiv(e.currentTarget.value)} />
-          <Select size="xs" style={{ width: 90 }}
-            data={[{ value: 'all', label: 'All time' },{ value: '1d', label: 'Last 24h' },{ value: '3d', label: 'Last 3 days' },{ value: '7d', label: 'Last 7 days' }]}
-            value={period} onChange={(v) => setPeriod(v ?? 'all')} />
-          <Select size="xs" style={{ flex: 1 }}
-            data={SORT_OPTIONS}
-            value={sortBy} onChange={(v) => setSort((v as SortKey) ?? DEFAULT_STRATEGY_SORT)} />
-          <Tooltip label={hideGroup ? 'Group/party strategies hidden — click to show them' : 'Click to hide group/party strategies'} withArrow>
-            <Button size="xs" variant={hideGroup ? 'light' : 'default'} color={hideGroup ? 'cyan' : undefined}
-              onClick={() => setHideGroup((v) => !v)}>
-              {hideGroup ? 'Show group' : 'Hide group'}
-            </Button>
-          </Tooltip>
-        </Group>
+        <Paper withBorder radius="sm" p="xs" mb="xs" style={{ flexShrink: 0 }}>
+          <Group gap="md" wrap="nowrap" align="flex-end">
+            <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+              <Text size="xs" c="dimmed" fw={600}>Filters</Text>
+              <Group gap="xs" wrap="nowrap">
+                <MultiSelect size="xs" placeholder="Any type" clearable style={{ flex: 1 }}
+                  data={ALL_TYPE_TAGS.map((t) => ({ value: t, label: t.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') }))}
+                  value={typeTags} onChange={setTypeTags} maxDropdownHeight={200} searchable />
+                <Select size="xs" style={{ width: 110 }}
+                  data={[...new Set([...(leagueOverride ? [leagueOverride] : []), ...KNOWN_LEAGUES])]
+                    .filter((l) => l !== 'Standard').map((l) => ({ value: l, label: l }))}
+                  value={leagueFilter} onChange={(v) => setLeagueFilter(v ?? leagueOverride ?? activeKnownLeagues()[0])} />
+                <TextInput size="xs" placeholder="Min d/map" style={{ width: 80 }}
+                  value={minDiv} onChange={(e) => setMinDiv(e.currentTarget.value)} />
+                <Select size="xs" style={{ width: 90 }}
+                  data={[{ value: 'all', label: 'All time' },{ value: '1d', label: 'Last 24h' },{ value: '3d', label: 'Last 3 days' },{ value: '7d', label: 'Last 7 days' }]}
+                  value={period} onChange={(v) => setPeriod(v ?? 'all')} />
+              </Group>
+            </Stack>
+            <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+              <Text size="xs" c="dimmed" fw={600}>Sort and visibility</Text>
+              <Group gap="xs" wrap="nowrap">
+                <Select size="xs" style={{ flex: 1 }}
+                  data={SORT_OPTIONS}
+                  value={sortBy} onChange={(v) => setSort((v as SortKey) ?? DEFAULT_STRATEGY_SORT)} />
+                <Tooltip label={hideGroup ? 'Group/party strategies hidden — click to show them' : 'Click to hide group/party strategies'} withArrow>
+                  <Button size="xs" variant={hideGroup ? 'light' : 'default'} color={hideGroup ? 'cyan' : undefined}
+                    onClick={() => setHideGroup((v) => !v)}>
+                    {hideGroup ? 'Show group' : 'Hide group'}
+                  </Button>
+                </Tooltip>
+              </Group>
+            </Stack>
+          </Group>
+        </Paper>
 
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         <div style={{
