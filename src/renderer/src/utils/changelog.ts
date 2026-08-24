@@ -11,7 +11,7 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '1.0.83',
-    date: 'Unreleased',
+    date: '2026-08-24',
     changes: [
       'On Linux, the Timer/Counters companion now stays above Path of Exile by using Electron through XWayland, because native Wayland does not support Electron always-on-top windows. Lock position and size now also disables the overlay header\'s drag region, fixing Linux where the native movable flag is unsupported.',
       'Strategy Browser Maps is now sortable from both the dropdown and the Maps column header. It sorts the same total shown in each row, including the combined map count for strategies with multiple evidence runs.',
