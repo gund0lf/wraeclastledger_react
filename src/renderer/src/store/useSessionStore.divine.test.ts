@@ -1,9 +1,9 @@
 /**
- * useSessionStore.divine.test.ts — WP4.2: divine-price staleness refresh.
+ * useSessionStore.divine.test.ts — session-bound Divine-price snapshots.
  *
  * initDivinePrice fetches when the price is unset (0) or the legacy default
- * (200), OR when the last successful fetch is older than 30 minutes, OR when
- * forced. A manual entry via setDivinePriceManual counts as fresh.
+ * (200), or when explicitly forced. Once set, age alone never reprices a
+ * session. A manual entry remains authoritative until another explicit action.
  *
  * Network is mocked at the priceUtils/league module boundary.
  */
@@ -35,8 +35,6 @@ vi.mock('../utils/league', async (importOriginal) => {
 
 import { useSessionStore, DEFAULT_SETTINGS } from './useSessionStore';
 
-const THIRTY_MIN = 30 * 60_000;
-
 const resetStore = (divinePrice: number, fetchedAt: number): void => {
   useSessionStore.setState({
     settings: { ...DEFAULT_SETTINGS, divinePrice },
@@ -46,7 +44,7 @@ const resetStore = (divinePrice: number, fetchedAt: number): void => {
   });
 };
 
-describe('WP4.2 divine price staleness', () => {
+describe('session-bound Divine price', () => {
   beforeEach(() => {
     leagueState.current = 'Ancestors';
     leagueState.confirmed = 'Ancestors';
@@ -76,11 +74,11 @@ describe('WP4.2 divine price staleness', () => {
     expect(useSessionStore.getState().settings.divinePrice).toBe(300);
   });
 
-  it('fetches when the last fetch is older than 30 minutes', async () => {
-    resetStore(300, Date.now() - THIRTY_MIN - 1000);
+  it('does not reprice an authored session merely because its quote is old', async () => {
+    resetStore(300, 1);
     await useSessionStore.getState().initDivinePrice();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(useSessionStore.getState().settings.divinePrice).toBe(250);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(useSessionStore.getState().settings.divinePrice).toBe(300);
   });
 
   it('force fetches even when set and fresh', async () => {
@@ -147,7 +145,7 @@ describe('WP4.2 divine price staleness', () => {
     await Promise.resolve();
   });
 
-  it('failed fetch does not advance the timestamp (stays stale, will retry)', async () => {
+  it('failed initialization does not advance the timestamp and may retry', async () => {
     fetchMock.mockResolvedValue(null);
     resetStore(0, 0);
     await useSessionStore.getState().initDivinePrice();
@@ -159,8 +157,8 @@ describe('WP4.2 divine price staleness', () => {
 
   it('failed fetch never clears an already-set price (fetch-first safety)', async () => {
     fetchMock.mockResolvedValue(null);
-    resetStore(300, Date.now() - THIRTY_MIN - 1000); // stale -> fetch attempted
-    await useSessionStore.getState().initDivinePrice();
+    resetStore(300, 1);
+    await useSessionStore.getState().initDivinePrice({ force: true });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(useSessionStore.getState().settings.divinePrice).toBe(300); // preserved
   });
@@ -188,8 +186,8 @@ describe('historical-session protection', () => {
     fetchMock.mockResolvedValue(250);
   });
 
-  it('loaded session: stale auto-refresh does NOT fetch or mutate anything', async () => {
-    loadSessionState(180, 'Mirage', Date.now() - THIRTY_MIN - 1000); // stale on purpose
+  it('loaded session: automatic initialization does NOT fetch or mutate anything', async () => {
+    loadSessionState(180, 'Mirage', 1);
     await useSessionStore.getState().initDivinePrice();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(useSessionStore.getState().settings.divinePrice).toBe(180);

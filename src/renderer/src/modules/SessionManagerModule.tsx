@@ -4,11 +4,12 @@ import {
 } from '@mantine/core';
 import { useDisclosure, useElementSize } from '@mantine/hooks';
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { useSessionKeys } from '../store/useSessionStore';
+import { useSessionKeys, useSessionStore } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
 import { IconTrash, IconPencil, IconDeviceFloppy, IconShare2, IconBrandDiscord, IconDownload, IconUpload, IconX, IconArrowsLeftRight, IconCheck, IconFolderOpen, IconRefresh, IconHistory, IconRestore } from '@tabler/icons-react';
 import type { SavedSession } from '../types';
 import { SessionCompareModal } from '../components/SessionCompareModal';
+import { ShareModal } from '../components/ShareModal';
 import { CollapsibleSection } from '../components/ui/CollapsibleSection';
 import { WorkingSessionGuardModal } from '../components/WorkingSessionGuardModal';
 import { resolveReselectedNewSessionIntent, resolveSessionSelectionIntent } from '../utils/workingSession';
@@ -41,6 +42,7 @@ import {
   type RepositoryTrashSummary,
 } from '../../../shared/sessionRepositoryIpc';
 import { confirmedLeagueSync } from '../utils/league';
+import { deriveShareTags } from '../utils/shareTags';
 
 const TILE_STYLES = { inner: { width: '100%' }, label: { flex: 1, textAlign: 'center' as const } };
 const RECOVERY_LIST_SCROLL_PROPS = {
@@ -106,6 +108,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
   const [switchGuardOpen, { open: openSwitchGuard, close: closeSwitchGuard }] = useDisclosure(false);
   const [versionsOpen, { open: openVersions, close: closeVersions }] = useDisclosure(false);
   const [trashOpen, { open: openTrash, close: closeTrash }] = useDisclosure(false);
+  const [shareOpen, { open: openShare, close: closeShare }] = useDisclosure(false);
 
   const [nameInput, setNameInput] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null); // WP5: single-delete confirmation
@@ -129,6 +132,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
   const [trashEntries, setTrashEntries] = useState<RepositoryTrashSummary[]>([]);
   const [trashLoading, setTrashLoading] = useState(false);
   const [permanentDeleteTarget, setPermanentDeleteTarget] = useState<RepositoryTrashSummary | null>(null);
+  const [shareTags, setShareTags] = useState<string[]>([]);
   const importFileRef = useRef<HTMLInputElement>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (flashTimer.current) clearTimeout(flashTimer.current); }, []); // clear pending flash on unmount
@@ -342,9 +346,16 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
     flashTimer.current = setTimeout(() => setSavedFlash(false), 1600);
   };
   const { triggerStrategyAction } = useUIStore();
+  const handleOpenShare = (): void => {
+    const { settings: currentSettings, maps: currentMaps } = useSessionStore.getState();
+    setShareTags(deriveShareTags(currentSettings, currentMaps));
+    openShare();
+  };
 
   return (
     <>
+      <ShareModal opened={shareOpen} onClose={closeShare} initialTags={shareTags} />
+
       {/* ── Save modal ── */}
       <Modal opened={saveOpen} onClose={closeSave} title={isUnsaved ? 'Name Session' : 'Duplicate Session'} size="sm">
         <Stack gap="sm">
@@ -847,7 +858,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
               leftSection={<IconShare2 size={12} />}
               rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
               styles={TILE_STYLES}
-              onClick={() => triggerStrategyAction('share')}>
+              onClick={handleOpenShare}>
               {compactPanel ? 'Share' : 'Share Strategy'}
             </Button>
           </SimpleGrid>

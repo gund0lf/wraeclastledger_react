@@ -65,6 +65,16 @@ export interface ManualSessionStatistics {
   mercenaries?: ManualMercenaryCount[];
 }
 
+/** Explicit active-play stopwatch for bulk-import workflows. Display time is
+ * derived from Date.now while running; the repository persists transitions and
+ * a bounded heartbeat rather than one write per visible second. */
+export interface ManualRunTimer {
+  accumulatedMs: number;
+  runningSince: number | null;
+  lastHeartbeatAt: number | null;
+  finishedAt: number | null;
+}
+
 export interface MapData {
   id: string; tier: number; name: string;
   quantity: number; rarity: number; packSize: number;
@@ -184,6 +194,7 @@ export interface SavedSession {
   baselineItems: LootItem[]; baselineTotal: number;
   manualLootItems?: ManualLootItem[];
   manualStatistics?: ManualSessionStatistics;
+  manualRunTimer?: ManualRunTimer;
   settings: SessionSettings;
   notes?: string;
   // Double-count correction the user applied to THIS session (WP11 / C, additive).

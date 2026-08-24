@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { MapData, SessionSettings, LootItem, ManualLootItem, ManualSessionStatistics, SavedSession, ScarabSlot, ScarabPreset, RegexSet, ExclusionPreset, LeagueCloseouts } from '../types';
+import { MapData, SessionSettings, LootItem, ManualLootItem, ManualSessionStatistics, ManualRunTimer, SavedSession, ScarabSlot, ScarabPreset, RegexSet, ExclusionPreset, LeagueCloseouts } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { tryFetchDivinePrice, sanitizeExclusionTerms } from '../utils/priceUtils';
 import { confirmedLeagueSync, getCurrentLeague, normalizeLeagueOverride, setLeagueOverrideValue } from '../utils/league';
@@ -24,6 +24,20 @@ import {
   setManualStatisticsInfoDismissed as setManualStatisticsInfoDismissedValue,
   type ManualStatisticField,
 } from '../utils/manualStatistics';
+import {
+  EMPTY_MANUAL_RUN_TIMER,
+  finishManualRunTimer as finishManualRunTimerValue,
+  heartbeatManualRunTimer as heartbeatManualRunTimerValue,
+  normalizeManualRunTimer,
+  pauseManualRunTimer as pauseManualRunTimerValue,
+  startManualRunTimer as startManualRunTimerValue,
+} from '../utils/manualRunTimer';
+import {
+  DEFAULT_OVERLAY_PREFERENCES,
+  normalizeOverlayPreferences,
+  type OverlayPreferences,
+  type OverlayShortcutStatus,
+} from '../../../shared/overlay';
 
 /** Closed legacy-browser-store schema ceiling for the WP14 extraction path. */
 export { LEGACY_STORE_VERSION } from '../../../shared/sessionMigration';
@@ -44,9 +58,6 @@ let repositoryActions: SessionRepositoryActions | null = null;
 export function configureSessionRepositoryActions(actions: SessionRepositoryActions | null): void {
   repositoryActions = actions;
 }
-
-// WP4.2: divine price older than this is refreshed on the next init.
-const DIVINE_PRICE_STALE_MS = 30 * 60_000;
 
 // Exported for useSessionStore.migrate.test.ts — not for component use.
 export const DEFAULT_SETTINGS: SessionSettings = {
@@ -231,6 +242,8 @@ export interface SessionState {
   baselineTotal: number;
   manualLootItems: ManualLootItem[];
   manualStatistics: ManualSessionStatistics;
+  manualRunTimer: ManualRunTimer;
+  manualTimerRecoveryMs: number | null;
   settings: SessionSettings;
   // v16: user-scoped, survive loadSession/newSession untouched
   discordTag: string;   // used to highlight own strategies in the browser
@@ -277,9 +290,9 @@ export interface SessionState {
   sessionNonce: number; // bumps on every newSession() so the UI can detect a fresh session even when activeSessionId stays null (unsaved -> unsaved)
   scarabPresets: ScarabPreset[];
   sessionNotes: string;
-  // Epoch ms of the last SUCCESSFUL divine-price fetch. Top-level (not in
-  // settings): staleness is a fact about the fetch, not about the session.
-  // Additive — persist's shallow merge fills it with 0 for old stores.
+  // Epoch ms of the last successful divine-price fetch. Top-level legacy/user
+  // preference metadata retained for repository compatibility and quote
+  // provenance; an authored session price is never auto-refreshed by age.
   divinePriceFetchedAt: number;
   investmentNeutralization: number; // amount added back to lootGain from auto-detected investment losses
   investmentDismissed: boolean;      // true when user dismissed the detection banner without neutralising
@@ -291,6 +304,10 @@ export interface SessionState {
   // Named exclusion presets for rotation (Sad 2026-07-09). User-scoped,
   // top-level + additive — persist's shallow merge defaults [] (no migration).
   exclusionPresets: ExclusionPreset[];
+  overlayPreferences: OverlayPreferences;
+  setOverlayPreferences: (patch: Partial<OverlayPreferences>) => void;
+  overlayShortcutStatus: OverlayShortcutStatus | null;
+  setOverlayShortcutStatus: (status: OverlayShortcutStatus | null) => void;
   // Loaded strategy preview
   loadedStrategyInfo: {
     authorName: string; mapCount: number;
@@ -339,6 +356,13 @@ export interface SessionState {
   addManualMercenaryCount: (archetype: string, amount: number) => void;
   setManualMercenaryCount: (archetype: string, count: number | null) => void;
   clearManualStatistics: () => void;
+  startManualTimer: () => void;
+  pauseManualTimer: () => void;
+  finishManualTimer: () => void;
+  resetManualTimer: () => void;
+  heartbeatManualTimer: () => void;
+  setManualTimerElapsed: (milliseconds: number) => void;
+  resolveManualTimerRecovery: (includeGap: boolean) => void;
   // initDivinePrice: cooldown-gated by default. Pass { force: true } to bypass
   // the 60s cooldown — used by the manual refresh button in InvestmentModule.
   // HISTORICAL-SESSION PROTECTION (rollover plan Phase 1.5, 2026-07-11): a
@@ -348,8 +372,7 @@ export interface SessionState {
   // { repriceLoaded: true }, and even then leagueName stays untouched
   // (league is session provenance, never a side effect of a price quote).
   initDivinePrice: (opts?: { force?: boolean; repriceLoaded?: boolean }) => Promise<void>;
-  /** Manual divine-price entry — sets the price AND marks it fresh so the
-   *  30-min staleness auto-refresh doesn't overwrite a hand-typed value. */
+  /** Manual divine-price entry updates this session's price snapshot. */
   setDivinePriceManual: (v: number) => void;
   saveAsNewSession: (name: string) => void;
   updateCurrentSession: () => void;
@@ -404,6 +427,8 @@ export function mergePersistedSessionState(
     ...currentState,
     ...persisted,
     manualStatistics: normalizeLocalManualStatistics(persisted.manualStatistics),
+    manualRunTimer: normalizeManualRunTimer(persisted.manualRunTimer),
+    overlayPreferences: normalizeOverlayPreferences(persisted.overlayPreferences),
     isWatching: false,
   };
 }
@@ -411,6 +436,7 @@ export function mergePersistedSessionState(
 export const useSessionStore = create<SessionStoreState>()(
     (set, get) => ({
       maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, manualLootItems: [], manualStatistics: {},
+      manualRunTimer: { ...EMPTY_MANUAL_RUN_TIMER }, manualTimerRecoveryMs: null,
       settings: { ...DEFAULT_SETTINGS },
       discordTag: DEFAULT_DISCORD_TAG, regexSets: [...DEFAULT_REGEX_SETS],
       leagueOverride: null,
@@ -423,6 +449,8 @@ export const useSessionStore = create<SessionStoreState>()(
       activeSessionId: null, activeSessionName: null, scarabPresets: [], sessionNonce: 0,
       divinePriceFetchedAt: 0,
       sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, onboardingDismissed: false, loadedStrategyInfo: null, defaultExclusionPreset: [], exclusionPresets: [],
+      overlayPreferences: { ...DEFAULT_OVERLAY_PREFERENCES, counterIds: [...DEFAULT_OVERLAY_PREFERENCES.counterIds] },
+      overlayShortcutStatus: null,
       repositoryStatus: 'dormant', repositoryError: null, repositorySessions: [], repositorySizeBytes: 0,
       currentGeneration: null, preferencesGeneration: null, layoutGeneration: null,
       saveStatus: 'idle', saveError: null, sessionLifecycle: 'live', liveSessionId: null,
@@ -438,7 +466,7 @@ export const useSessionStore = create<SessionStoreState>()(
       },
       clearSession: () => {
         repositoryActions?.checkpointBeforeDestructive();
-        set({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, manualLootItems: [], manualStatistics: {} });
+        set({ maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, manualLootItems: [], manualStatistics: {}, manualRunTimer: { ...EMPTY_MANUAL_RUN_TIMER }, manualTimerRecoveryMs: null });
       },
       dismissActivationCheckpointNotice: () => set({ activationCheckpointNotice: null }),
       toggleWatch: () => set((s) => (
@@ -552,14 +580,51 @@ export const useSessionStore = create<SessionStoreState>()(
           ...(s.manualStatistics.beastInfoDismissed ? { beastInfoDismissed: true } : {}),
         },
       })),
+      startManualTimer: () => set((s) => s.sessionLifecycle === 'live'
+        ? { manualRunTimer: startManualRunTimerValue(s.manualRunTimer), manualTimerRecoveryMs: null }
+        : {}),
+      pauseManualTimer: () => set((s) => ({
+        manualRunTimer: pauseManualRunTimerValue(s.manualRunTimer),
+      })),
+      finishManualTimer: () => set((s) => s.sessionLifecycle === 'live'
+        ? { manualRunTimer: finishManualRunTimerValue(s.manualRunTimer), manualTimerRecoveryMs: null }
+        : {}),
+      resetManualTimer: () => set({
+        manualRunTimer: { ...EMPTY_MANUAL_RUN_TIMER },
+        manualTimerRecoveryMs: null,
+      }),
+      heartbeatManualTimer: () => set((s) => ({
+        manualRunTimer: heartbeatManualRunTimerValue(s.manualRunTimer),
+      })),
+      setManualTimerElapsed: (milliseconds) => {
+        if (!Number.isSafeInteger(milliseconds) || milliseconds < 0) {
+          throw new TypeError('Manual timer duration must be a non-negative whole number of milliseconds');
+        }
+        set({
+          manualRunTimer: {
+            accumulatedMs: milliseconds,
+            runningSince: null,
+            lastHeartbeatAt: null,
+            finishedAt: null,
+          },
+          manualTimerRecoveryMs: null,
+        });
+      },
+      resolveManualTimerRecovery: (includeGap) => set((s) => {
+        const gap = s.manualTimerRecoveryMs ?? 0;
+        return {
+          manualRunTimer: includeGap && gap > 0
+            ? { ...s.manualRunTimer, accumulatedMs: s.manualRunTimer.accumulatedMs + gap }
+            : s.manualRunTimer,
+          manualTimerRecoveryMs: null,
+        };
+      }),
 
       initDivinePrice: async (opts = {}) => {
-        // WP4.2: staleness-based refresh. The old guard only fetched when the
-        // price was 0 or the legacy default 200, so an already-set price never
-        // auto-refreshed — even days later. Now: fetch when the price is
-        // unset/legacy OR the last successful fetch is older than 30 min.
-        // `force` (manual refresh button) always fetches.
-        const { settings: st, divinePriceFetchedAt, activeSessionId, sessionLifecycle } = get();
+        // Divine price is a session snapshot. Automatically seed only an unset
+        // or legacy-default session; once authored, it stays fixed regardless
+        // of age. `force` is an explicit refresh/override action.
+        const { settings: st, activeSessionId, sessionLifecycle } = get();
         const requestedSessionId = activeSessionId;
         const requestedLifecycle = sessionLifecycle;
         // Historical-session guard (Phase 1.5): a loaded saved session is
@@ -578,8 +643,7 @@ export const useSessionStore = create<SessionStoreState>()(
         const league = await getCurrentLeague();
         const leagueChanged = st.leagueName.trim() !== '' && st.leagueName !== league;
         const isUnset = st.divinePrice === 0 || st.divinePrice === 200;
-        const isStale = Date.now() - divinePriceFetchedAt > DIVINE_PRICE_STALE_MS;
-        if (!opts.force && !leagueChanged && !isUnset && !isStale) return;
+        if (!opts.force && !leagueChanged && !isUnset) return;
         // Price is cooldown-gated unless explicitly forced or the league
         // changed. League detection has its own in-memory cache and falls back
         // to CURRENT_LEAGUE on failure.
@@ -619,9 +683,9 @@ export const useSessionStore = create<SessionStoreState>()(
           const writeChoice = canResolve && pendingVal !== null;
           const doSeed = canResolve && pendingVal === null && s.pendingAtlasBonusSeed;
           return {
-            // Timestamp advances only on a successful price fetch, so failures
-            // stay "stale" and the next init retries (bounded by the 60s cooldown
-            // in tryFetchDivinePrice).
+            // Timestamp advances only on a successful price fetch. An unset
+            // session retries initialization later, bounded by priceUtils'
+            // cooldown; an already-authored price is never age-refreshed.
             ...(applyPrice ? { divinePriceFetchedAt: Date.now() } : {}),
             ...(writeChoice || doSeed ? { pendingAtlasBonusSeed: false } : {}),
             ...(writeChoice ? { pendingAtlasBonusValue: null } : {}),
@@ -654,19 +718,19 @@ export const useSessionStore = create<SessionStoreState>()(
           return;
         }
         flushActiveSessionAutoSave();
-        const { maps, lootItems, baselineItems, baselineTotal, manualLootItems, manualStatistics, settings, sessionNotes, investmentNeutralization, investmentDismissed } = get();
+        const { maps, lootItems, baselineItems, baselineTotal, manualLootItems, manualStatistics, manualRunTimer, settings, sessionNotes, investmentNeutralization, investmentDismissed } = get();
         const id = new Date().toISOString();
         set((s) => ({
-          savedSessions: { ...s.savedSessions, [id]: { id, name, createdAt: id, maps: maps.map(stripRawText), lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, manualLootItems: [...manualLootItems], manualStatistics: cloneManualStatistics(manualStatistics), settings: { ...settings }, notes: sessionNotes, investmentNeutralization, investmentDismissed } },
+          savedSessions: { ...s.savedSessions, [id]: { id, name, createdAt: id, maps: maps.map(stripRawText), lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, manualLootItems: [...manualLootItems], manualStatistics: cloneManualStatistics(manualStatistics), manualRunTimer: normalizeManualRunTimer(manualRunTimer), settings: { ...settings }, notes: sessionNotes, investmentNeutralization, investmentDismissed } },
           activeSessionId: id, activeSessionName: name,
         }));
       },
       updateCurrentSession: () => {
         if (get().repositoryStatus === 'ready') return;
-        const { maps, lootItems, baselineItems, baselineTotal, manualLootItems, manualStatistics, settings, sessionNotes, investmentNeutralization, investmentDismissed, activeSessionId, activeSessionName, savedSessions } = get();
+        const { maps, lootItems, baselineItems, baselineTotal, manualLootItems, manualStatistics, manualRunTimer, settings, sessionNotes, investmentNeutralization, investmentDismissed, activeSessionId, activeSessionName, savedSessions } = get();
         if (!activeSessionId || !savedSessions[activeSessionId]) return;
         set((s) => ({
-          savedSessions: { ...s.savedSessions, [activeSessionId]: { ...s.savedSessions[activeSessionId], name: activeSessionName ?? s.savedSessions[activeSessionId].name, maps: maps.map(stripRawText), lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, manualLootItems: [...manualLootItems], manualStatistics: cloneManualStatistics(manualStatistics), settings: { ...settings }, notes: sessionNotes, investmentNeutralization, investmentDismissed } },
+          savedSessions: { ...s.savedSessions, [activeSessionId]: { ...s.savedSessions[activeSessionId], name: activeSessionName ?? s.savedSessions[activeSessionId].name, maps: maps.map(stripRawText), lootItems: [...lootItems], baselineItems: [...baselineItems], baselineTotal, manualLootItems: [...manualLootItems], manualStatistics: cloneManualStatistics(manualStatistics), manualRunTimer: normalizeManualRunTimer(manualRunTimer), settings: { ...settings }, notes: sessionNotes, investmentNeutralization, investmentDismissed } },
         }));
       },
       loadSession: (id) => {
@@ -703,7 +767,7 @@ export const useSessionStore = create<SessionStoreState>()(
         });
         // A loaded historical session keeps its OWN atlasBonus snapshot; no
         // per-league seeding applies, so clear any pending seed / held choice.
-        set({ maps, lootItems: [...session.lootItems], baselineItems: [...(session.baselineItems ?? [])], baselineTotal: session.baselineTotal ?? 0, manualLootItems: [...(session.manualLootItems ?? [])], manualStatistics: normalizeLocalManualStatistics(session.manualStatistics), settings: { ...DEFAULT_SETTINGS, ...session.settings }, sessionNotes: session.notes ?? '', investmentNeutralization: session.investmentNeutralization ?? 0, investmentDismissed: session.investmentDismissed ?? false, activeSessionId: id, activeSessionName: session.name, isWatching: false, pendingAtlasBonusSeed: false, pendingAtlasBonusValue: null, loadedStrategyInfo: null, sessionLifecycle: 'historical', liveSessionId: null });
+        set({ maps, lootItems: [...session.lootItems], baselineItems: [...(session.baselineItems ?? [])], baselineTotal: session.baselineTotal ?? 0, manualLootItems: [...(session.manualLootItems ?? [])], manualStatistics: normalizeLocalManualStatistics(session.manualStatistics), manualRunTimer: normalizeManualRunTimer(session.manualRunTimer), manualTimerRecoveryMs: null, settings: { ...DEFAULT_SETTINGS, ...session.settings }, sessionNotes: session.notes ?? '', investmentNeutralization: session.investmentNeutralization ?? 0, investmentDismissed: session.investmentDismissed ?? false, activeSessionId: id, activeSessionName: session.name, isWatching: false, pendingAtlasBonusSeed: false, pendingAtlasBonusValue: null, loadedStrategyInfo: null, sessionLifecycle: 'historical', liveSessionId: null });
       },
       deleteSession: (id) =>
         get().repositoryStatus === 'ready' && repositoryActions
@@ -735,6 +799,8 @@ export const useSessionStore = create<SessionStoreState>()(
           baselineTotal: 0,
           manualLootItems: [],
           manualStatistics: {},
+          manualRunTimer: { ...EMPTY_MANUAL_RUN_TIMER },
+          manualTimerRecoveryMs: null,
           sessionNotes: '',
           investmentNeutralization: 0,
           investmentDismissed: false,
@@ -918,6 +984,10 @@ export const useSessionStore = create<SessionStoreState>()(
       },
       deleteExclusionPreset: (id) =>
         set((s) => ({ exclusionPresets: s.exclusionPresets.filter((p) => p.id !== id) })),
+      setOverlayPreferences: (patch) => set((s) => ({
+        overlayPreferences: normalizeOverlayPreferences({ ...s.overlayPreferences, ...patch }),
+      })),
+      setOverlayShortcutStatus: (status) => set({ overlayShortcutStatus: status }),
       setSessionNotes: (notes) => set({ sessionNotes: notes }),
       setInvestmentNeutralization: (v) => set({ investmentNeutralization: v }),
       setInvestmentDismissed: (v: boolean) => set({ investmentDismissed: v }),
@@ -939,6 +1009,7 @@ export const useSessionStore = create<SessionStoreState>()(
             toAdd[session.id] = {
               ...session,
               manualStatistics: normalizeLocalManualStatistics(session.manualStatistics),
+              manualRunTimer: normalizeManualRunTimer(session.manualRunTimer),
               settings: settings as SavedSession['settings'],
             };
           }

@@ -18,6 +18,8 @@ import type {
 import type { SavedSession } from '../types';
 import { confirmedLeagueSync, getCurrentLeague, setLeagueOverrideValue } from '../utils/league';
 import { isWorkingPayloadMeaningful, isWorkingSessionMeaningful } from '../utils/workingSession';
+import { recoverManualRunTimer } from '../utils/manualRunTimer';
+import { normalizeOverlayPreferences } from '../../../shared/overlay';
 import {
   DEFAULT_SETTINGS,
   configureSessionRepositoryActions,
@@ -240,14 +242,27 @@ function applyPreferences(preferences: JsonObject): Partial<SessionState> {
       ? preferences.defaultExclusionPreset as string[] : [],
     exclusionPresets: Array.isArray(preferences.exclusionPresets)
       ? preferences.exclusionPresets as unknown as SessionState['exclusionPresets'] : [],
+    overlayPreferences: normalizeOverlayPreferences(preferences.overlayPreferences),
     divinePriceFetchedAt: typeof preferences.lastDivineFetchAt === 'number'
       ? preferences.lastDivineFetchAt : 0,
   };
 }
 
 function applyPayload(data: LoadData, sessions: RepositorySessionSummary[]): Partial<SessionState> {
+  const decoded = decodeSessionPayload(data.payload, DEFAULT_SETTINGS);
+  const recoveredTimer = recoverManualRunTimer(decoded.manualRunTimer);
+  if (recoveredTimer.recoverableMs !== null) {
+    queueMicrotask(() => {
+      if (useSessionStore.getState().repositoryStatus === 'ready' &&
+          useSessionStore.getState().manualTimerRecoveryMs !== null) {
+        queueSessionSave(true);
+      }
+    });
+  }
   return {
-    ...decodeSessionPayload(data.payload, DEFAULT_SETTINGS),
+    ...decoded,
+    manualRunTimer: recoveredTimer.timer,
+    manualTimerRecoveryMs: recoveredTimer.recoverableMs,
     activeSessionId: data.target.kind === 'session' ? data.target.sessionId : null,
     activeSessionName: summaryName(sessions, data.target),
     currentGeneration: data.generation,
@@ -283,6 +298,7 @@ function preferencePayload(state = useSessionStore.getState()): JsonObject {
     onboardingDismissed: state.onboardingDismissed,
     defaultExclusionPreset: state.defaultExclusionPreset,
     exclusionPresets: state.exclusionPresets,
+    overlayPreferences: state.overlayPreferences,
     lastDivineFetchAt: state.divinePriceFetchedAt,
     lastSeenChangelogVersion,
   });
@@ -705,6 +721,7 @@ export function shouldSuspendForConfirmedLeague(
 }
 
 export async function loadNamed(id: string): Promise<void> {
+  useSessionStore.getState().pauseManualTimer();
   await flushRepositoryNow();
   const target = { kind: 'session', sessionId: id } as const;
   const inspected = await repositoryClient().request({ operation: 'load', target, mode: 'inspect' });
@@ -765,6 +782,7 @@ export function forkPayloadIntoLeague(
 }
 
 export async function forkCurrentToConfirmedLeague(name: string): Promise<void> {
+  useSessionStore.getState().pauseManualTimer();
   await flushRepositoryNow();
   const confirmed = confirmedLeagueSync();
   if (!confirmed) throw new Error('The current league has not been confirmed yet.');
@@ -829,6 +847,7 @@ function freshWorkingPayload(): JsonObject {
     baselineTotal: 0,
     manualLootItems: [],
     manualStatistics: {},
+    manualRunTimer: { accumulatedMs: 0, runningSince: null, lastHeartbeatAt: null, finishedAt: null },
     settings: {
       ...DEFAULT_SETTINGS,
       leagueName: known ?? '',
@@ -843,6 +862,7 @@ function freshWorkingPayload(): JsonObject {
 }
 
 export async function startWorking(replaceExisting = false): Promise<void> {
+  useSessionStore.getState().pauseManualTimer();
   await flushRepositoryNow();
   const workingTarget = { kind: 'working' } as const;
   if (!replaceExisting && repositoryWorkflow?.activeTarget.kind === 'working' &&
@@ -977,7 +997,8 @@ function installStoreSubscription(): void {
     if (sessionChanged) {
       const discrete = state.maps !== previous.maps || state.lootItems !== previous.lootItems ||
         state.baselineItems !== previous.baselineItems || state.baselineTotal !== previous.baselineTotal ||
-        state.manualLootItems !== previous.manualLootItems || state.manualStatistics !== previous.manualStatistics;
+        state.manualLootItems !== previous.manualLootItems || state.manualStatistics !== previous.manualStatistics ||
+        state.manualRunTimer !== previous.manualRunTimer;
       queueSessionSave(discrete);
     }
     const preferencesChanged =
@@ -988,6 +1009,7 @@ function installStoreSubscription(): void {
       state.onboardingDismissed !== previous.onboardingDismissed ||
       state.defaultExclusionPreset !== previous.defaultExclusionPreset ||
       state.exclusionPresets !== previous.exclusionPresets ||
+      state.overlayPreferences !== previous.overlayPreferences ||
       state.divinePriceFetchedAt !== previous.divinePriceFetchedAt;
     if (preferencesChanged) queuePreferenceSave();
     const requestedLeagueSuspension = previous.sessionLifecycle === 'live' && state.sessionLifecycle === 'historical';
@@ -1139,9 +1161,12 @@ function installFlushBridge(): void {
       });
       return;
     }
-    const flush = (): Promise<void> => useSessionStore.getState().saveStatus === 'failed'
-      ? retryRepositorySave()
-      : flushRepositoryNow();
+    const flush = (): Promise<void> => {
+      useSessionStore.getState().pauseManualTimer();
+      return useSessionStore.getState().saveStatus === 'failed'
+        ? retryRepositorySave()
+        : flushRepositoryNow();
+    };
     const pendingBootstrap = repositoryBootstrapPromise;
     void (pendingBootstrap ? pendingBootstrap.then(flush) : flush()).then(() => {
       window.api.completeSessionRepositoryFlush({ requestId: request.requestId, ok: true });
@@ -1346,6 +1371,7 @@ export async function loadRepositorySessionForInspection(id: string): Promise<Sa
     baselineTotal: payload.baselineTotal,
     manualLootItems: payload.manualLootItems,
     manualStatistics: payload.manualStatistics,
+    manualRunTimer: payload.manualRunTimer,
     settings: payload.settings,
     notes: payload.sessionNotes,
     investmentNeutralization: payload.investmentNeutralization,

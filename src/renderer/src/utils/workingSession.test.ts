@@ -7,6 +7,7 @@ import {
   resolveSessionSelectionIntent,
   type WorkingSessionCandidate,
 } from './workingSession';
+import { EMPTY_MANUAL_RUN_TIMER } from './manualRunTimer';
 
 const candidate = (patch: Partial<WorkingSessionCandidate> = {}): WorkingSessionCandidate => ({
   activeSessionId: null,
@@ -16,6 +17,7 @@ const candidate = (patch: Partial<WorkingSessionCandidate> = {}): WorkingSession
   baselineTotal: 0,
   manualLootItems: [],
   manualStatistics: {},
+  manualRunTimer: { ...EMPTY_MANUAL_RUN_TIMER },
   sessionNotes: '',
   investmentNeutralization: 0,
   investmentDismissed: false,
@@ -92,6 +94,7 @@ describe('isWorkingSessionMeaningful', () => {
     ['strategy preview', { loadedStrategyInfo: { authorName: 'Sad' } }],
     ['investment correction', { investmentNeutralization: 10 }],
     ['manual statistics', { manualStatistics: { starfallCraters: 0 } }],
+    ['manual timer', { manualRunTimer: { ...EMPTY_MANUAL_RUN_TIMER, accumulatedMs: 1 } }],
     ['dismissed investment warning', { investmentDismissed: true }],
   ])('guards meaningful %s work', (_label, patch) => {
     expect(isWorkingSessionMeaningful(candidate(patch as Partial<WorkingSessionCandidate>), DEFAULT_SETTINGS)).toBe(true);
@@ -136,6 +139,7 @@ describe('isWorkingPayloadMeaningful', () => {
       baselineTotal: 0,
       manualLootItems: [],
       manualStatistics: {},
+      manualRunTimer: {},
       settings: {
         ...DEFAULT_SETTINGS,
         leagueName: 'Allflame',
@@ -163,5 +167,6 @@ describe('isWorkingPayloadMeaningful', () => {
     expect(isWorkingPayloadMeaningful({
       manualStatistics: { futureStatistic: 1 },
     }, DEFAULT_SETTINGS)).toBe(true);
+    expect(isWorkingPayloadMeaningful({ manualRunTimer: 'not-an-object' }, DEFAULT_SETTINGS)).toBe(true);
   });
 });

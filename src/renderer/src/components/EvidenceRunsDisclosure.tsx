@@ -11,7 +11,11 @@ import {
 } from '@mantine/core';
 import { IconChevronDown, IconChevronRight } from '@tabler/icons-react';
 import { useState } from 'react';
-import { fetchEvidenceRuns, type PublicEvidenceRun } from '../utils/evidenceApi';
+import {
+  evidenceRunDivPerHour,
+  fetchEvidenceRuns,
+  type PublicEvidenceRun,
+} from '../utils/evidenceApi';
 import { fcSep, f1 } from '../utils/parseDiscordExport';
 import { formatActiveTime } from '../utils/timeEstimate';
 import { COLOR, FONT } from '../utils/uiTokens';
@@ -34,6 +38,7 @@ const RunRow = ({ run }: { run: PublicEvidenceRun }) => {
   const [costsOpen, setCostsOpen] = useState(false);
   const [lootOpen, setLootOpen] = useState(false);
   const costs = run.cost_breakdown;
+  const divPerHour = evidenceRunDivPerHour(run);
   const hasLineItems = !!costs?.chisel || (costs?.scarabs?.length ?? 0) > 0
     || !!costs?.delirium || !!costs?.astrolabe;
   return (
@@ -131,6 +136,9 @@ const RunRow = ({ run }: { run: PublicEvidenceRun }) => {
         <Badge size="sm" variant="light" color="blue">{run.map_count} maps</Badge>
         <Text size="xs" fw={700} style={{ color: COLOR.warning, fontVariantNumeric: 'tabular-nums' }}>
           {run.div_per_map != null ? `${run.div_per_map.toFixed(3)}d/map` : '--'}
+        </Text>
+        <Text size="xs" fw={700} style={{ color: COLOR.warning, fontVariantNumeric: 'tabular-nums' }}>
+          {divPerHour != null ? `${divPerHour.toFixed(2)}d/h` : '-- d/h'}
         </Text>
       </Stack>
     </Group>

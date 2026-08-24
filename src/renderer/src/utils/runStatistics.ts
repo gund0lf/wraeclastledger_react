@@ -127,6 +127,8 @@ export interface GlobalRunStatistics {
   svalinnDenominatorComplete: boolean;
   atlasAnomalies: AggregatedAtlasAnomaly[];
   anomalyTotal: number;
+  anomalyMapCount: number;
+  anomalySessionCount: number;
   mercenaries: AggregatedMercenary[];
   mercenaryTotal: number;
   mercenaryMapCount: number;
@@ -199,6 +201,8 @@ export function aggregateRunStatisticsSessions(
   let mapCount = 0;
   let svalinnCraterCount = 0;
   let svalinnDenominatorComplete = true;
+  let anomalyMapCount = 0;
+  let anomalySessionCount = 0;
   let mercenaryTotal = 0;
   let mercenaryMapCount = 0;
   let mercenarySessionCount = 0;
@@ -224,7 +228,12 @@ export function aggregateRunStatisticsSessions(
       }
     }
 
-    for (const row of session.manualStatistics.atlasAnomalies ?? []) {
+    const atlasAnomalies = session.manualStatistics.atlasAnomalies ?? [];
+    if (atlasAnomalies.length > 0) {
+      anomalyMapCount += session.mapCount;
+      anomalySessionCount += 1;
+    }
+    for (const row of atlasAnomalies) {
       const aggregate = anomalyRows.get(row.name) ?? { count: 0, mapCount: 0, sessionCount: 0 };
       aggregate.count += row.count;
       aggregate.mapCount += session.mapCount;
@@ -288,6 +297,8 @@ export function aggregateRunStatisticsSessions(
     svalinnDenominatorComplete,
     atlasAnomalies,
     anomalyTotal: atlasAnomalies.reduce((sum, row) => sum + row.count, 0),
+    anomalyMapCount,
+    anomalySessionCount,
     mercenaries,
     mercenaryTotal,
     mercenaryMapCount,

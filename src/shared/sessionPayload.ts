@@ -12,6 +12,7 @@ export const SESSION_PAYLOAD_KEYS = [
   'baselineTotal',
   'manualLootItems',
   'manualStatistics',
+  'manualRunTimer',
   'settings',
   'sessionNotes',
   'investmentNeutralization',
@@ -29,6 +30,7 @@ export const SESSION_PAYLOAD_PORTABLE_KEY_BY_PAYLOAD_KEY = {
   baselineTotal: 'baselineTotal',
   manualLootItems: 'manualLootItems',
   manualStatistics: 'manualStatistics',
+  manualRunTimer: 'manualRunTimer',
   settings: 'settings',
   sessionNotes: 'notes',
   investmentNeutralization: 'investmentNeutralization',
@@ -63,6 +65,7 @@ export function sessionPayloadFromPortableFields(portable: JsonObject): JsonObje
       ? portable.baselineTotal : 0,
     manualLootItems: Array.isArray(portable.manualLootItems) ? portable.manualLootItems : [],
     manualStatistics: isPlainObject(portable.manualStatistics) ? portable.manualStatistics : {},
+    manualRunTimer: isPlainObject(portable.manualRunTimer) ? portable.manualRunTimer : {},
     settings: isPlainObject(portable.settings) ? portable.settings : {},
     sessionNotes: typeof portable.notes === 'string' ? portable.notes : '',
     investmentNeutralization: typeof portable.investmentNeutralization === 'number' &&
@@ -83,6 +86,7 @@ export function portableFieldsFromSessionPayload(payload: JsonObject): PortableS
       ? payload.baselineTotal : 0,
     manualLootItems: Array.isArray(payload.manualLootItems) ? payload.manualLootItems : [],
     manualStatistics: isPlainObject(payload.manualStatistics) ? payload.manualStatistics : {},
+    manualRunTimer: isPlainObject(payload.manualRunTimer) ? payload.manualRunTimer : {},
     settings: isPlainObject(payload.settings) ? payload.settings : {},
     notes: typeof payload.sessionNotes === 'string' ? payload.sessionNotes : '',
     investmentNeutralization: typeof payload.investmentNeutralization === 'number' &&

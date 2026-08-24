@@ -24,6 +24,7 @@ export const FIELD_OWNERSHIP = {
   baselineTotal: 'session-payload',
   manualLootItems: 'session-payload',
   manualStatistics: 'session-payload',
+  manualRunTimer: 'session-payload',
   settings: 'session-payload',
   sessionNotes: 'session-payload',
   investmentNeutralization: 'session-payload',
@@ -41,6 +42,8 @@ export const FIELD_OWNERSHIP = {
   saveError: 'runtime-derived',
   activationCheckpointNotice: 'runtime-derived',
   historyStoragePressure: 'runtime-derived',
+  manualTimerRecoveryMs: 'runtime-derived',
+  overlayShortcutStatus: 'runtime-derived',
   sessionLifecycle: 'bootstrap-workflow',
   liveSessionId: 'bootstrap-workflow',
 
@@ -55,6 +58,7 @@ export const FIELD_OWNERSHIP = {
   defaultExclusionPreset: 'user-preference-cache',
   exclusionPresets: 'user-preference-cache',
   divinePriceFetchedAt: 'user-preference-cache',
+  overlayPreferences: 'user-preference-cache',
 
   pendingAtlasBonusSeed: 'bootstrap-workflow',
   pendingAtlasBonusValue: 'bootstrap-workflow',

@@ -9,6 +9,7 @@ import { buildDiscordExport } from '../utils/discordExport';
 import { encodeDiscordShareWire } from '../utils/discordShareWire';
 import { parseTimeInput } from '../utils/sessionTime';
 import { computeTimeEstimate, formatActiveTime } from '../utils/timeEstimate';
+import { manualRunTimerElapsed } from '../utils/manualRunTimer';
 import { ALL_TYPE_TAGS, STRATEGY_API_URL, type Strategy } from '../utils/strategyConstants';
 import { parseDiscordExport } from '../utils/parseDiscordExport';
 import { missingShareFields } from '../utils/shareCompleteness';
@@ -38,10 +39,10 @@ interface Props {
 export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   const {
     maps, settings, lootItems, baselineItems, baselineTotal, manualLootItems,
-    investmentNeutralization, discordTag, setDiscordTag, updateAdvSetting, updateSetting,
+    manualRunTimer, investmentNeutralization, discordTag, setDiscordTag, updateAdvSetting, updateSetting,
   } = useSessionKeys(
     'maps', 'settings', 'lootItems', 'baselineItems', 'baselineTotal', 'manualLootItems',
-    'investmentNeutralization', 'discordTag', 'setDiscordTag', 'updateAdvSetting', 'updateSetting',
+    'manualRunTimer', 'investmentNeutralization', 'discordTag', 'setDiscordTag', 'updateAdvSetting', 'updateSetting',
   );
 
   // Versioning client half: a session carrying an update target shares as an
@@ -144,6 +145,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   // Canonical wire value (minutes) derived from the flexible input; null when
   // empty or unparseable.
   const sessionMinutes = parseTimeInput(timeText);
+  const manualTimerMs = manualRunTimerElapsed(manualRunTimer);
   const activeManifest = getManifest();
   const timeCaption = timeText.trim() === ''
     ? 'Empty — time will not be shared'
@@ -538,9 +540,21 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
         </Stack>
         <Stack gap={2}>
           <TextInput size="xs" label="Session time (optional)"
-            description="Prefilled with your estimated ACTIVE mapping time (breaks excluded) when available — adjust, or clear to not share it"
+            description="Prefilled from clipboard-derived active time when available. Adjust it, clear it, or explicitly use the manual timer."
             placeholder="e.g. 245 or 4h"
             value={timeText} onChange={(e) => setTimeText(e.currentTarget.value)} />
+          {manualTimerMs > 0 && (
+            <Group justify="space-between" gap="xs" wrap="wrap">
+              <Text size="xs" c="dimmed">Manual timer: {formatActiveTime(manualTimerMs)}</Text>
+              <Button
+                size="compact-xs"
+                variant="subtle"
+                onClick={() => setTimeText(String(Math.max(1, Math.round(manualTimerMs / 60_000))))}
+              >
+                Use manual timer
+              </Button>
+            </Group>
+          )}
           <Text size="xs" c={timeText.trim() !== '' && sessionMinutes == null ? 'orange' : 'dimmed'} style={{ fontSize: FONT.small }}>
             {timeCaption}
           </Text>

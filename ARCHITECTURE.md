@@ -192,6 +192,18 @@ notices can be dismissed per saved session without becoming authored statistic
 data. Neither source is inferred from clipboard text or enters the community
 strategy wire.
 
+The same local surface owns an optional per-session manual stopwatch. Its
+accumulated interval, running transition, bounded heartbeat, and conservative
+interruption recovery are part of the exact session payload; ordinary close,
+suspend, lock, and live-target changes pause it before the relevant transition.
+Clipboard-derived map timestamps remain the automatic Share-time source and
+manual time is substituted only by an explicit user action. A separate
+frameless always-on-top companion window may display the timer and selected raw
+counters, but it never opens a second repository runtime: the main renderer
+relays a bounded snapshot and receives bounded actions over IPC. Overlay layout,
+mode, opacity, lock/click-through state, selected counters, and optional global
+accelerators are repository preferences rather than session evidence.
+
 Delirium map enchants are additive `MapData` fields. Their reward array preserves
 clipboard order and duplicates and survives saved-session round trips. Shares
 carry only a bounded aggregate: sampled-map count, Delirium-level distribution,

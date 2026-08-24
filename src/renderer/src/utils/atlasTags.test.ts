@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { deriveAtlasDetectedTags } from './atlasTags';
+import {
+  deriveAtlasDetectedTags,
+  MIN_ATLAS_ENCOUNTER_CHANCE_FOR_TAG,
+} from './atlasTags';
 
 describe('deriveAtlasDetectedTags', () => {
   it('excludes mechanics disabled by Atlas block nodes', () => {
@@ -31,5 +34,59 @@ describe('deriveAtlasDetectedTags', () => {
     expect(deriveAtlasDetectedTags([
       { title: 'Legion', stats: ['YOUR MAPS HAVE NO CHANCE TO CONTAIN LEGION ENCOUNTERS'] },
     ])).toEqual([]);
+  });
+
+  it('recognizes current-league headings and maps Mercenaries to Trarthus', () => {
+    expect(deriveAtlasDetectedTags([
+      { title: 'Bestiary', stats: ['Your Maps have +100% chance to contain Einhar'] },
+      { title: 'Mercenaries', stats: ['Your Maps contain an additional Mercenary'] },
+      { title: 'Settlers of Kalguur', stats: ['Your Maps have +102% chance to contain Ore Deposits'] },
+    ])).toEqual(['bestiary', 'trarthus', 'kalguur']);
+  });
+
+  it('does not infer Bestiary from a disabled Atlas group', () => {
+    expect(deriveAtlasDetectedTags([
+      { title: 'Bestiary', stats: ['Your Maps have no chance to contain Einhar'] },
+    ])).toEqual([]);
+  });
+
+  it('does not infer Kalguur from a disabled Atlas group', () => {
+    expect(deriveAtlasDetectedTags([
+      { title: 'Settlers of Kalguur', stats: ['Your Maps have no chance to contain Ore Deposits'] },
+    ])).toEqual([]);
+  });
+
+  it('discards low encounter-chance-only pathing but retains meaningful investment', () => {
+    expect(deriveAtlasDetectedTags([
+      {
+        title: 'Betrayal',
+        stats: [
+          'Your Maps have +8% chance to contain Jun',
+          'Scarabs dropped in your Maps have 8% increased chance to be Betrayal Scarabs',
+        ],
+      },
+      {
+        title: 'Legion',
+        stats: [
+          `Your Maps have +${MIN_ATLAS_ENCOUNTER_CHANCE_FOR_TAG - 1}% chance to contain a Legion Encounter`,
+          `Scarabs dropped in your Maps have ${MIN_ATLAS_ENCOUNTER_CHANCE_FOR_TAG - 1}% increased chance to be Legion Scarabs`,
+        ],
+      },
+      {
+        title: 'Harvest',
+        stats: [
+          'Your Maps have +8% chance to contain The Sacred Grove',
+          'Scarabs dropped in your Maps have 8% increased chance to be Harvest Scarabs',
+          'Harvest Crops in your Maps have 10% increased chance to contain a Tier 4 Plant',
+        ],
+      },
+      {
+        title: 'Heist',
+        stats: [
+          `Your Maps have +${MIN_ATLAS_ENCOUNTER_CHANCE_FOR_TAG}% chance to contain a Smuggler's Cache`,
+          `Scarabs dropped in your Maps have ${MIN_ATLAS_ENCOUNTER_CHANCE_FOR_TAG}% increased chance to be Heist Scarabs`,
+        ],
+      },
+    ])).toEqual(['harvest', 'heist']);
   });
 });

@@ -508,15 +508,15 @@ describe('strategy evidence wire markers', () => {
 });
 
 describe('Allflame strategy taxonomy tags', () => {
-  it('round-trips Mercenaries and Trarthus through the Discord wire', () => {
+  it('round-trips Bestiary and the single Trarthus mechanic tag through the Discord wire', () => {
     const exported = buildDiscordExport({
       maps: [{ quantity: 80, rarity: 60, packSize: 40, moreCurrency: 100, moreScarabs: 0 }],
       settings: settings({ leagueName: 'Allflame' }),
       lootItems: [], baselineTotal: 0, investmentNeutralization: 0,
-      shareTags: ['mercenaries', 'trarthus'],
+      shareTags: ['bestiary', 'trarthus'],
     });
-    expect(exported).toContain('**Tags:** mercenaries, trarthus');
-    expect(parseDiscordExport(exported)?.typeTags).toEqual(['mercenaries', 'trarthus']);
+    expect(exported).toContain('**Tags:** bestiary, trarthus');
+    expect(parseDiscordExport(exported)?.typeTags).toEqual(['bestiary', 'trarthus']);
   });
 });
 

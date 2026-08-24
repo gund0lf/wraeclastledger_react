@@ -163,10 +163,10 @@ if (!response.ok) fail(`Trade stats request failed: HTTP ${response.status}`);
 const payload = await response.json();
 const entries = payload.result?.find((group) => group.id === 'explicit')?.entries;
 if (!Array.isArray(entries) || entries.length === 0) fail('Trade stats response has no explicit entries');
-const implicitEntries = payload.result?.find((group) => group.id === 'implicit')?.entries;
-if (!Array.isArray(implicitEntries) || implicitEntries.length === 0) {
-  fail('Trade stats response has no implicit entries');
-}
+const allEntries = payload.result
+  ?.filter((group) => !group.id.includes('2'))
+  .flatMap((group) => group.entries ?? []);
+if (!Array.isArray(allEntries) || allEntries.length === 0) fail('Trade stats response has no entries');
 
 const { resolved, unavailable } = resolvePatterns(definitions, entries);
 const ownersByStatId = new Map();
@@ -214,7 +214,7 @@ if (unavailable.length > 0) {
 const unavailableSpecialMapStats = [];
 const resolvedSpecialMapStats = [];
 for (const definition of specialMapDefinitions) {
-  const matches = implicitEntries.filter((entry) => normalize(entry.text) === normalize(definition.text));
+  const matches = allEntries.filter((entry) => normalize(entry.text) === normalize(definition.text));
   if (matches.length !== 1) {
     unavailableSpecialMapStats.push({ ...definition, actualCount: matches.length });
   } else {
@@ -222,13 +222,13 @@ for (const definition of specialMapDefinitions) {
   }
 }
 console.log(
-  `Resolved ${resolvedSpecialMapStats.length}/${specialMapDefinitions.length} special-map implicits.`,
+  `Resolved ${resolvedSpecialMapStats.length}/${specialMapDefinitions.length} special-map stats.`,
 );
 for (const definition of resolvedSpecialMapStats) {
   console.log(`  ${definition.statId}: ${definition.text}`);
 }
 if (unavailableSpecialMapStats.length > 0) {
-  console.error(`Unavailable or ambiguous special-map implicits (${unavailableSpecialMapStats.length}):`);
+  console.error(`Unavailable or ambiguous special-map stats (${unavailableSpecialMapStats.length}):`);
   for (const definition of unavailableSpecialMapStats) {
     console.error(`  ${definition.key}: expected 1, found ${definition.actualCount}`);
   }

@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, clipboard, dialog } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, clipboard, dialog, globalShortcut, powerMonitor, screen } from 'electron'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { copyFile, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'path'
@@ -22,9 +22,10 @@ import {
 import {
   buildDeliriumTradeStatFilter,
   SPECIAL_MAP_STAT_TEXT,
-  resolveEightModSpecialStatIds,
+  resolveOrdinaryMapSpecialStatIds,
   resolveSpecialMapTradeStats,
   tradeItemTypeForMapType,
+  usesOrdinaryMapSpecialExclusions,
 } from '../shared/tradeMapFilters'
 import { FileSessionRepository } from './sessionRepository'
 import { createSessionRepositoryAdapter } from './sessionRepositoryAdapter'
@@ -36,6 +37,14 @@ import {
   type RendererFlushResult,
   type RepositoryQuitReason,
 } from './sessionRepositoryClose'
+import {
+  normalizeOverlayPreferences,
+  type OverlayAction,
+  type OverlayBounds,
+  type OverlayPreferences,
+  type OverlayShortcutStatus,
+  type OverlaySnapshot,
+} from '../shared/overlay'
 
 // The installed build and `npm run dev` used to share one Chromium profile.
 // Their file:// and localhost origins could then touch the same LevelDB while
@@ -158,7 +167,10 @@ async function continueQuit(reason: RepositoryQuitReason, mainWindow: BrowserWin
       releaseLock: () => sessionRepository.releaseLock(),
       unregister: unregisterSessionRepositoryIpc,
       prepareFinalAction: () => { quitBypass = true },
-      closeWindow: () => mainWindow.close(),
+      closeWindow: () => {
+        if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.destroy()
+        mainWindow.close()
+      },
       quitApp: () => app.quit(),
       installUpdate: () => autoUpdater.quitAndInstall(false, true),
       // A stale lock is recoverable on the next launch and must not trap the
@@ -177,9 +189,171 @@ async function continueQuit(reason: RepositoryQuitReason, mainWindow: BrowserWin
 let clipboardInterval: NodeJS.Timeout | null = null;
 let lastClipboardText = '';
 let watchWindow: BrowserWindow | null = null;
+let mainWindowRef: BrowserWindow | null = null;
+let overlayWindow: BrowserWindow | null = null;
+let overlayBoundsTimer: NodeJS.Timeout | null = null;
+let lastOverlaySnapshot: OverlaySnapshot | null = null;
+const overlayShortcutRegistrations = new Set<string>();
 let clipboardBridgeProcess: ChildProcessWithoutNullStreams | null = null;
 let clipboardBridgeGeneration = 0;
 let clipboardBridgeStatus: ClipboardBridgeStatus = { state: 'idle' };
+
+function sendOverlayAction(action: OverlayAction): void {
+  const win = mainWindowRef;
+  if (win && !win.isDestroyed()) win.webContents.send('overlay:action', action);
+}
+
+function unregisterOverlayShortcuts(): void {
+  for (const accelerator of overlayShortcutRegistrations) {
+    globalShortcut.unregister(accelerator);
+  }
+  overlayShortcutRegistrations.clear();
+}
+
+function registerOverlayShortcuts(preferences: OverlayPreferences): OverlayShortcutStatus {
+  unregisterOverlayShortcuts();
+  const register = (
+    accelerator: string,
+    action: OverlayAction,
+  ): { accelerator: string; registered: boolean; error: string | null } | null => {
+    if (!accelerator) return null;
+    try {
+      const registered = globalShortcut.register(accelerator, () => sendOverlayAction(action));
+      if (registered) overlayShortcutRegistrations.add(accelerator);
+      return {
+        accelerator,
+        registered,
+        error: registered ? null : 'Unavailable or already registered by another application',
+      };
+    } catch (error) {
+      return {
+        accelerator,
+        registered: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  };
+  const counters: OverlayShortcutStatus['counters'] = {};
+  for (const counterId of preferences.counterIds) {
+    const result = register(preferences.counterShortcuts[counterId] ?? '', {
+      type: 'counter-delta', counterId, delta: 1,
+    });
+    if (result) counters[counterId] = result;
+  }
+  return {
+    timer: register(preferences.timerShortcut, { type: 'timer-toggle' }),
+    counters,
+  };
+}
+
+function visibleOverlayBounds(preferences: OverlayPreferences): OverlayBounds {
+  const fallback = { width: 290, height: preferences.mode === 'both' ? 250 : 155 };
+  const requested = preferences.bounds ?? {
+    ...fallback,
+    x: screen.getPrimaryDisplay().workArea.x + 24,
+    y: screen.getPrimaryDisplay().workArea.y + 80,
+  };
+  const display = screen.getDisplayMatching(requested);
+  const width = Math.min(display.workArea.width, Math.max(220, requested.width));
+  const height = Math.min(display.workArea.height, Math.max(90, requested.height));
+  return {
+    width,
+    height,
+    x: Math.min(display.workArea.x + display.workArea.width - 40,
+      Math.max(display.workArea.x - width + 40, requested.x)),
+    y: Math.min(display.workArea.y + display.workArea.height - 40,
+      Math.max(display.workArea.y, requested.y)),
+  };
+}
+
+function publishOverlayBounds(): void {
+  if (!overlayWindow || overlayWindow.isDestroyed() || !mainWindowRef || mainWindowRef.isDestroyed()) return;
+  const bounds = overlayWindow.getBounds();
+  mainWindowRef.webContents.send('overlay:bounds', bounds satisfies OverlayBounds);
+}
+
+function createOverlayWindow(preferences: OverlayPreferences): BrowserWindow {
+  const bounds = visibleOverlayBounds(preferences);
+  const win = new BrowserWindow({
+    ...bounds,
+    title: 'WraeclastLedger Overlay',
+    frame: false,
+    transparent: true,
+    show: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    autoHideMenuBar: true,
+    hasShadow: true,
+    resizable: !preferences.locked,
+    movable: !preferences.locked,
+    icon,
+    webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: false },
+  });
+  win.setAlwaysOnTop(true, 'screen-saver');
+  win.setOpacity(preferences.opacity);
+  win.setIgnoreMouseEvents(preferences.clickThrough, { forward: true });
+  win.on('ready-to-show', () => win.showInactive());
+  win.webContents.on('did-finish-load', () => {
+    if (lastOverlaySnapshot && !win.isDestroyed()) {
+      win.webContents.send('overlay:snapshot', lastOverlaySnapshot);
+    }
+  });
+  win.on('page-title-updated', (event) => event.preventDefault());
+  const scheduleBounds = (): void => {
+    if (overlayBoundsTimer) clearTimeout(overlayBoundsTimer);
+    overlayBoundsTimer = setTimeout(() => {
+      overlayBoundsTimer = null;
+      publishOverlayBounds();
+    }, 250);
+  };
+  win.on('move', scheduleBounds);
+  win.on('resize', scheduleBounds);
+  win.on('closed', () => {
+    overlayWindow = null;
+    if (overlayBoundsTimer) clearTimeout(overlayBoundsTimer);
+    overlayBoundsTimer = null;
+  });
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    const url = new URL(process.env['ELECTRON_RENDERER_URL']);
+    url.searchParams.set('overlay', '1');
+    void win.loadURL(url.toString());
+  } else {
+    void win.loadFile(join(__dirname, '../renderer/index.html'), { query: { overlay: '1' } });
+  }
+  return win;
+}
+
+function syncOverlayWindow(rawPreferences: unknown): OverlayShortcutStatus {
+  const preferences = normalizeOverlayPreferences(rawPreferences);
+  const shortcutStatus = registerOverlayShortcuts(preferences);
+  if (!preferences.visible) {
+    if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.destroy();
+    overlayWindow = null;
+    return shortcutStatus;
+  }
+  if (!overlayWindow || overlayWindow.isDestroyed()) overlayWindow = createOverlayWindow(preferences);
+  overlayWindow.setOpacity(preferences.opacity);
+  overlayWindow.setMovable(!preferences.locked);
+  overlayWindow.setResizable(!preferences.locked);
+  overlayWindow.setIgnoreMouseEvents(preferences.clickThrough, { forward: true });
+  const desiredBounds = visibleOverlayBounds(preferences);
+  const currentBounds = overlayWindow.getBounds();
+  if (currentBounds.x !== desiredBounds.x || currentBounds.y !== desiredBounds.y ||
+      currentBounds.width !== desiredBounds.width || currentBounds.height !== desiredBounds.height) {
+    overlayWindow.setBounds(desiredBounds);
+  }
+  return shortcutStatus;
+}
+
+ipcMain.handle('overlay:sync-preferences', (_event, preferences: unknown) =>
+  syncOverlayWindow(preferences));
+ipcMain.on('overlay:snapshot', (_event, snapshot: OverlaySnapshot) => {
+  lastOverlaySnapshot = snapshot;
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.webContents.send('overlay:snapshot', snapshot);
+  }
+});
+ipcMain.on('overlay:action', (_event, action: OverlayAction) => sendOverlayAction(action));
 
 function publishClipboardBridgeStatus(status: ClipboardBridgeStatus): void {
   clipboardBridgeStatus = status;
@@ -517,7 +691,9 @@ async function ensureStatsLoaded(): Promise<void> {
       }
       const data = await res.json() as { result: { id: string; entries: { id: string; text: string }[] }[] };
       const explicitEntries = data.result.find((group) => group.id === 'explicit')?.entries ?? [];
-      const allEntries = data.result.flatMap((group) => group.entries);
+      const allEntries = data.result
+        .filter((group) => !group.id.includes('2'))
+        .flatMap((group) => group.entries);
       for (const group of data.result) {
         if (group.id.includes('2')) continue;
         for (const entry of group.entries) {
@@ -625,12 +801,12 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
   if (empowered && STATS_CACHE.has('empowered'))
     statsArray.push({ type: 'and', filters: [{ id: STATS_CACHE.get('empowered')! }] });
 
-  if (mapType === '8mod') {
-    const specialMapStats = resolveEightModSpecialStatIds(SPECIAL_MAP_STAT_IDS);
+  if (usesOrdinaryMapSpecialExclusions(mapType)) {
+    const specialMapStats = resolveOrdinaryMapSpecialStatIds(SPECIAL_MAP_STAT_IDS);
     if (specialMapStats.missing.length > 0) {
       return {
         url: null,
-        error: `8-mod special-map exclusions unavailable: ${specialMapStats.missing
+        error: `${mapType === '8mod' ? '8-mod' : 'Regular'} special-map exclusions unavailable: ${specialMapStats.missing
           .map((key) => SPECIAL_MAP_STAT_TEXT[key])
           .join(', ')}`,
       };
@@ -639,6 +815,9 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
       type: 'not',
       filters: specialMapStats.ids.map((id) => ({ id })),
     });
+  }
+
+  if (mapType === '8mod') {
     statsArray.push({ type: 'and', filters: [{ id: 'pseudo.pseudo_number_of_affix_mods', value: { min: 8 } }] });
   }
 
@@ -888,6 +1067,7 @@ function createWindow(): void {
     icon,
     webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: false, webviewTag: true }
   });
+  mainWindowRef = mainWindow;
 
   mainWindow.on('ready-to-show', () => mainWindow.show());
   mainWindow.on('page-title-updated', (e) => e.preventDefault());
@@ -912,7 +1092,11 @@ function createWindow(): void {
   // 'clipboard:set-watch' when the Capture toggle changes (WP13).
   watchWindow = mainWindow;
 
-  mainWindow.on('closed', () => { setClipboardWatch(false); watchWindow = null; });
+  mainWindow.on('closed', () => {
+    setClipboardWatch(false);
+    watchWindow = null;
+    mainWindowRef = null;
+  });
 
   ensureStatsLoaded().catch(() => {});
 
@@ -926,7 +1110,7 @@ if (!hasSingleInstanceLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    const mainWindow = BrowserWindow.getAllWindows()[0];
+    const mainWindow = mainWindowRef;
     if (!mainWindow) return;
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.show();
@@ -937,6 +1121,8 @@ if (!hasSingleInstanceLock) {
     electronApp.setAppUserModelId('com.wraeclastledger.app');
     app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window));
     createWindow();
+    powerMonitor.on('suspend', () => sendOverlayAction({ type: 'timer-pause' }));
+    powerMonitor.on('lock-screen', () => sendOverlayAction({ type: 'timer-pause' }));
     ipcMain.on('ping', () => console.log('pong'));
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   });
@@ -944,6 +1130,7 @@ if (!hasSingleInstanceLock) {
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
   app.on('before-quit', (event) => {
     stopProtonClipboardBridge()
+    unregisterOverlayShortcuts()
     if (quitBypass) return
     const mainWindow = watchWindow
     if (!mainWindow || mainWindow.isDestroyed()) return

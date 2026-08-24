@@ -25,6 +25,7 @@ import {
   type SessionStoreState as SessionState,
 } from '../store/useSessionStore';
 import { normalizeLocalManualStatistics } from '../utils/manualStatistics';
+import { normalizeManualRunTimer } from '../utils/manualRunTimer';
 
 export class LegacyMigrationSourceError extends Error {
   constructor(message: string) {
@@ -180,6 +181,10 @@ function normalizePayload(
     baselineTotal: finiteNumber(source.baselineTotal, 0, `${label}.baselineTotal`),
     manualLootItems: requireArray(source.manualLootItems ?? [], `${label}.manualLootItems`),
     manualStatistics: requireObject(manualStatistics, `${label}.manualStatistics`),
+    manualRunTimer: requireObject(
+      normalizeManualRunTimer(source.manualRunTimer),
+      `${label}.manualRunTimer`,
+    ),
     settings: quotedSettings(source.settings, options.quoteTimestamp, `${label}.settings`),
     sessionNotes: typeof source.sessionNotes === 'string'
       ? source.sessionNotes
@@ -264,6 +269,7 @@ function currentSource(state: SessionState): Record<string, unknown> {
     baselineTotal: state.baselineTotal,
     manualLootItems: state.manualLootItems,
     manualStatistics: state.manualStatistics,
+    manualRunTimer: state.manualRunTimer,
     settings: state.settings,
     sessionNotes: state.sessionNotes,
     investmentNeutralization: state.investmentNeutralization,

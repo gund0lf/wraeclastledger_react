@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { deriveShareTags } from './shareTags';
+import { ALL_TYPE_TAGS, MAP_TYPE_LABELS, TAG_OPTIONS, TAG_SHORT } from './strategyConstants';
 
 const normalMap = {
   isOriginator: false,
@@ -8,6 +9,18 @@ const normalMap = {
 };
 
 describe('deriveShareTags', () => {
+  it('offers one Trarthus taxonomy value instead of a duplicate Mercenaries tag', () => {
+    expect(ALL_TYPE_TAGS).toContain('bestiary');
+    expect(ALL_TYPE_TAGS).toContain('trarthus');
+    expect(ALL_TYPE_TAGS).not.toContain('mercenaries');
+  });
+
+  it('explains that the Regular map-family tag includes corrupted 8-mod maps', () => {
+    expect(TAG_OPTIONS.find((option) => option.value === 'regular')?.label).toBe('Regular');
+    expect(TAG_SHORT.regular).toBeUndefined();
+    expect(MAP_TYPE_LABELS.regular).toContain('including corrupted 8-mod');
+  });
+
   it('merges direct setup, Atlas, subtype, and exact Astrolabe evidence', () => {
     expect(deriveShareTags({
       scarabs: [
@@ -52,5 +65,35 @@ describe('deriveShareTags', () => {
       atlasDetectedTags: [],
       advAstrolabeType: '',
     }, [{ ...normalMap, deliriousPct: 100 }])).toEqual(['regular', 'delirium']);
+  });
+
+  it('infers the selectable Bestiary tag from exact Bestiary scarabs', () => {
+    const tags = deriveShareTags({
+      scarabs: [{ name: 'Bestiary Scarab of the Herd', cost: 2 }],
+      atlasDetectedTags: [],
+      advAstrolabeType: '',
+    }, [normalMap]);
+
+    expect(tags).toEqual(['regular', 'bestiary']);
+    expect(tags.every((tag) => ALL_TYPE_TAGS.includes(tag))).toBe(true);
+  });
+
+  it('uses one Trarthus taxonomy tag for Trarthan scarabs', () => {
+    const tags = deriveShareTags({
+      scarabs: [{ name: 'Trarthan Scarab of Infamy', cost: 18 }],
+      atlasDetectedTags: [],
+      advAstrolabeType: '',
+    }, [normalMap]);
+
+    expect(tags).toEqual(['regular', 'trarthus']);
+    expect(tags.every((tag) => ALL_TYPE_TAGS.includes(tag))).toBe(true);
+  });
+
+  it('keeps a direct mechanic scarab authoritative when Atlas pathing is below threshold', () => {
+    expect(deriveShareTags({
+      scarabs: [{ name: 'Betrayal Scarab', cost: 1 }],
+      atlasDetectedTags: [],
+      advAstrolabeType: '',
+    }, [normalMap])).toEqual(['regular', 'betrayal']);
   });
 });

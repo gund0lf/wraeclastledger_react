@@ -10,15 +10,19 @@ type ShareTagMap = Pick<
   'isOriginator' | 'isEmpoweredMirage' | 'isNightmare' | 'rawText' | 'deliriousPct'
 >;
 
-const SCARAB_TAG_KEYWORDS: ReadonlyArray<readonly [string, string]> = [
-  ['delirium', 'delirium'], ['legion', 'legion'], ['breach', 'breach'],
-  ['harvest', 'harvest'], ['expedition', 'expedition'], ['ritual', 'ritual'],
-  ['abyss', 'abyss'], ['blight', 'blight'], ['beyond', 'beyond'],
-  ['incursion', 'incursion'], ['betrayal', 'betrayal'], ['essence', 'essence'],
-  ['divination', 'divination'], ['harbinger', 'harbinger'], ['titanic', 'titanic'],
-  ['torment', 'torment'], ['ultimatum', 'ultimatum'], ['kalguuran', 'kalguur'],
-  ['heist', 'heist'], ['metamorph', 'metamorph'], ['ambush', 'ambush'],
-  ['cartography', 'cartography'], ['mercenar', 'mercenaries'], ['trarth', 'trarthus'],
+const SCARAB_TAG_KEYWORDS: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['delirium', ['delirium']], ['legion', ['legion']], ['breach', ['breach']],
+  ['harvest', ['harvest']], ['expedition', ['expedition']], ['ritual', ['ritual']],
+  ['abyss', ['abyss']], ['blight', ['blight']], ['beyond', ['beyond']],
+  ['incursion', ['incursion']], ['betrayal', ['betrayal']], ['bestiary', ['bestiary']],
+  ['essence', ['essence']], ['divination', ['divination']], ['harbinger', ['harbinger']],
+  ['titanic', ['titanic']], ['torment', ['torment']], ['ultimatum', ['ultimatum']],
+  ['kalguuran', ['kalguur']], ['heist', ['heist']], ['metamorph', ['metamorph']],
+  ['ambush', ['ambush']], ['cartography', ['cartography']],
+  ['mercenar', ['trarthus']],
+  // Mercenaries is the encounter name; Trarthus is the one strategy taxonomy
+  // label shared by direct Mercenary names and the Trarthan scarab family.
+  ['trarth', ['trarthus']],
 ];
 
 function mapSubtypeTag(maps: readonly ShareTagMap[]): string | null {
@@ -70,7 +74,7 @@ export function deriveShareTags(
     .join(' ');
   const scarabTags = SCARAB_TAG_KEYWORDS
     .filter(([keyword]) => scarabNames.includes(keyword))
-    .map(([, tag]) => tag);
+    .flatMap(([, tags]) => tags);
   const tags = Array.from(new Set([...scarabTags, ...(settings.atlasDetectedTags ?? [])]));
 
   const subtype = mapSubtypeTag(maps);

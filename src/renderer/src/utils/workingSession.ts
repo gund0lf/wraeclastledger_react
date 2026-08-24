@@ -1,6 +1,7 @@
 import type {
   LootItem,
   ManualLootItem,
+  ManualRunTimer,
   ManualSessionStatistics,
   MapData,
   SessionSettings,
@@ -13,6 +14,7 @@ import {
   normalizeLocalManualStatistics,
   sanitizeManualStatistics,
 } from './manualStatistics';
+import { normalizeManualRunTimer, sanitizeManualRunTimer } from './manualRunTimer';
 
 export interface WorkingSessionCandidate {
   activeSessionId: string | null;
@@ -22,6 +24,7 @@ export interface WorkingSessionCandidate {
   baselineTotal: number;
   manualLootItems: ManualLootItem[];
   manualStatistics: ManualSessionStatistics;
+  manualRunTimer: ManualRunTimer;
   sessionNotes: string;
   investmentNeutralization: number;
   investmentDismissed: boolean;
@@ -59,6 +62,7 @@ function assertClassifierHandlesSessionPayloadKey(key: SessionPayloadKey): void 
     case 'baselineTotal':
     case 'manualLootItems':
     case 'manualStatistics':
+    case 'manualRunTimer':
     case 'settings':
     case 'sessionNotes':
     case 'investmentNeutralization':
@@ -148,6 +152,8 @@ export function isWorkingSessionMeaningful(
   ) return true;
   if (state.baselineTotal !== 0 || state.sessionNotes.trim() !== '') return true;
   if (hasManualStatistics(state.manualStatistics)) return true;
+  if (state.manualRunTimer.accumulatedMs > 0 || state.manualRunTimer.runningSince !== null ||
+      state.manualRunTimer.finishedAt !== null) return true;
   if (state.investmentNeutralization !== 0 || state.investmentDismissed) return true;
   if (state.loadedStrategyInfo !== null) return true;
   if ((state.settings.atlasPoints ?? 0) > 0) return true;
@@ -188,6 +194,8 @@ export function isWorkingPayloadMeaningful(
       typeof payload.investmentNeutralization !== 'number') return true;
   if (payload.investmentDismissed !== undefined && typeof payload.investmentDismissed !== 'boolean') return true;
   if (payload.manualStatistics !== undefined && !isPlainObject(payload.manualStatistics)) return true;
+  if (payload.manualRunTimer !== undefined && !isPlainObject(payload.manualRunTimer)) return true;
+  if (payload.manualRunTimer !== undefined && sanitizeManualRunTimer(payload.manualRunTimer) === null) return true;
   if (payload.settings !== undefined && !isPlainObject(payload.settings)) return true;
   if (payload.strategySourceContext !== undefined && payload.strategySourceContext !== null &&
       !isPlainObject(payload.strategySourceContext)) return true;
@@ -216,6 +224,7 @@ export function isWorkingPayloadMeaningful(
     manualLootItems: Array.isArray(payload.manualLootItems)
       ? payload.manualLootItems as unknown as ManualLootItem[] : [],
     manualStatistics: normalizeLocalManualStatistics(manualStatisticsInput),
+    manualRunTimer: normalizeManualRunTimer(payload.manualRunTimer),
     settings: {
       ...defaults,
       ...settingsInput as Partial<SessionSettings>,

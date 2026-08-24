@@ -27,6 +27,12 @@ import { GettingStartedCard } from '../components/GettingStartedCard';
 import { CollapsibleSection as Section } from '../components/ui/CollapsibleSection';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { isCrossLeagueSession } from '../utils/historicalSession';
+import {
+  manualLootEntryValue,
+  manualLootTotalAfterQuantityChange,
+  manualLootTotalFromEntry,
+  type ManualLootValueMode,
+} from '../utils/manualLootValue';
 
 // Smart page size: show INITIAL rows, user can load more in STEP increments
 const INITIAL_ROWS = 25;
@@ -169,6 +175,7 @@ export const DashboardModule = () => {
   const [dragOver, setDragOver] = useState(false); // CSV drag-and-drop highlight
   const [editingManualId, setEditingManualId] = useState<string | null>(null);
   const [manualDraft, setManualDraft] = useState<ManualLootDraft>(EMPTY_MANUAL_LOOT);
+  const [manualValueMode, setManualValueMode] = useState<ManualLootValueMode>('total');
 
   const hasBaseline = baselineItems.length > 0 || baselineTotal > 0;
   const hasCurrent  = lootItems.length > 0;
@@ -235,6 +242,7 @@ export const DashboardModule = () => {
   const startAddManual = () => {
     setEditingManualId(null);
     setManualDraft(EMPTY_MANUAL_LOOT);
+    setManualValueMode('total');
     openManual();
   };
   const startEditManual = (item: ManualLootItem) => {
@@ -246,6 +254,7 @@ export const DashboardModule = () => {
       category: item.category,
       note: item.note,
     });
+    setManualValueMode('total');
     openManual();
   };
   const saveManual = () => {
@@ -383,6 +392,7 @@ export const DashboardModule = () => {
         closeManual();
         setEditingManualId(null);
         setManualDraft(EMPTY_MANUAL_LOOT);
+        setManualValueMode('total');
       }} title="Custom loot additions" size="lg">
         <Stack gap="sm">
           <Alert color="yellow" variant="light" title="Supplemental and always disclosed">
@@ -427,6 +437,7 @@ export const DashboardModule = () => {
                         if (editingManualId === item.id) {
                           setEditingManualId(null);
                           setManualDraft(EMPTY_MANUAL_LOOT);
+                          setManualValueMode('total');
                         }
                       }}>
                       <IconTrash size={14} />
@@ -445,13 +456,54 @@ export const DashboardModule = () => {
               const name = event.currentTarget.value;
               setManualDraft((draft) => ({ ...draft, name }));
             }} />
+          <SegmentedControl
+            size="xs"
+            fullWidth
+            aria-label="Custom loot value entry mode"
+            value={manualValueMode}
+            data={[
+              { value: 'total', label: 'Enter total value' },
+              { value: 'perItem', label: 'Enter value per item' },
+            ]}
+            onChange={(value) => setManualValueMode(value as ManualLootValueMode)}
+          />
           <SimpleGrid cols={2} spacing="sm">
             <NumberInput label="Quantity" min={1} step={1} allowDecimal={false}
               value={manualDraft.quantity}
-              onChange={(value) => setManualDraft((draft) => ({ ...draft, quantity: Number(value) || 1 }))} />
-            <NumberInput label="Total value (chaos)" min={0} decimalScale={1}
-              value={manualDraft.total}
-              onChange={(value) => setManualDraft((draft) => ({ ...draft, total: Number(value) || 0 }))} />
+              onChange={(value) => setManualDraft((draft) => {
+                const quantity = Math.max(1, Math.round(Number(value) || 1));
+                return {
+                  ...draft,
+                  quantity,
+                  total: manualLootTotalAfterQuantityChange(
+                    draft.total,
+                    draft.quantity,
+                    quantity,
+                    manualValueMode,
+                  ),
+                };
+              })} />
+            <NumberInput
+              label={manualValueMode === 'perItem' ? 'Value per item (chaos)' : 'Total value (chaos)'}
+              description={manualValueMode === 'perItem'
+                ? `Saved total: ${fcSep(manualDraft.total, false, 1)}`
+                : undefined}
+              min={0}
+              decimalScale={1}
+              value={manualLootEntryValue(
+                manualDraft.total,
+                manualDraft.quantity,
+                manualValueMode,
+              )}
+              onChange={(value) => setManualDraft((draft) => ({
+                ...draft,
+                total: manualLootTotalFromEntry(
+                  Number(value) || 0,
+                  draft.quantity,
+                  manualValueMode,
+                ),
+              }))}
+            />
           </SimpleGrid>
           <Select label="Category" data={ITEM_CATEGORIES} value={manualDraft.category}
             description="League is for named league-mechanic items such as Astrolabes, Allflames, Omens, tattoos, fossils and resonators. Other is the honest catch-all when no specific category fits."
@@ -471,6 +523,7 @@ export const DashboardModule = () => {
                 <Button variant="subtle" color="gray" onClick={() => {
                   setEditingManualId(null);
                   setManualDraft(EMPTY_MANUAL_LOOT);
+                  setManualValueMode('total');
                 }}>Cancel edit</Button>
               )}
               <Button leftSection={<IconPlus size={14} />} onClick={saveManual}
@@ -551,7 +604,7 @@ export const DashboardModule = () => {
             {!profit.hasReturn && <Text size="xs" c="dimmed" fs="italic" pt={2}>No return CSV — loot not in profit</Text>}
             {pace && (
               <Group justify="space-between" py={3} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                <Tooltip multiline w={280} label={`Measures the gaps between maps captured as you play: copy one before running it, then copy the next after finishing (${pace.countedGaps} gaps counted; ${pace.excludedGaps} break-like gaps excluded). Pasting an old batch cannot reconstruct playtime. Needs 5+ captured maps. Rough local estimate — never shared.`}>
+                <Tooltip multiline w={280} label={`Measures the gaps between maps captured as you play: copy one before running it, then copy the next after finishing (${pace.countedGaps} gaps counted; ${pace.excludedGaps} break-like gaps excluded). Needs 5+ captured maps. This remains the automatic Share-time default; pre-imported runs can explicitly choose the manual timer instead.`}>
                   <Text size="sm" c="dimmed" style={{ cursor: 'help' }}>Pace (estimate)</Text>
                 </Tooltip>
                 <Group gap={4} align="baseline">

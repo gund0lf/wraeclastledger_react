@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import ReactDOM from 'react-dom/client'
 import { Alert, Button, Center, Group, Loader, MantineProvider, Stack, Text } from '@mantine/core'
 import App from './App'
+import OverlayApp from './OverlayApp'
 import { appTheme } from './utils/uiTokens'
 // Import Mantine core styles
 import '@mantine/core/styles.css'
@@ -84,7 +85,9 @@ function BootstrapGate(): React.JSX.Element {
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <MantineProvider theme={appTheme} defaultColorScheme="dark">
-      <BootstrapGate />
+      {new URLSearchParams(window.location.search).get('overlay') === '1'
+        ? <OverlayApp />
+        : <BootstrapGate />}
     </MantineProvider>
   </React.StrictMode>
 )

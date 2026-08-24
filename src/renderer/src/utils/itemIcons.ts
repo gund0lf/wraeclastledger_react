@@ -145,13 +145,30 @@ const GENERIC: Record<string, string> = {};
 // with reconstructed slugs retained only as a compatibility fallback).
 const divCardSet = new Set<string>();
 
+// Deliberate collective labels for manually summed loot. These aliases only
+// reuse an already-reviewed category representative; they never choose an
+// arbitrary exact item by fuzzy matching. Ambiguous buckets such as Currency,
+// Fragments, Scarabs, or Uniques intentionally keep the neutral category glyph.
+const GENERIC_COLLECTION_KEYS: Readonly<Record<string, string>> = {
+  talisman: 'talisman',
+  talismans: 'talisman',
+  'divination cards': 'div_card',
+  beasts: 'beast',
+  maps: 'map',
+  gems: 'gem',
+  astrolabes: 'astrolabe',
+};
+
 function pickGeneric(name: string): string | undefined {
   const n = norm(name);
 
   // WealthyExile decorates Blueprints as "Blueprint: Bunker - 1/3". The
   // explicit whole-word identity is trustworthy even though the numeric
   // suffix alone is not (it is also used for gems).
-  if (/\bblueprint\b/.test(n)) return GENERIC_BLUEPRINT;
+  if (/\bblueprints?\b/.test(n)) return GENERIC_BLUEPRINT;
+
+  const collectionKey = GENERIC_COLLECTION_KEYS[n];
+  if (collectionKey && GENERIC[collectionKey]) return GENERIC[collectionKey];
 
   // Divination cards by common naming ("The X", "A X")
   if (GENERIC.div_card) {
@@ -375,6 +392,7 @@ async function buildCache(challenge: string): Promise<void> {
     'Craicic Croaker', 'Wild Hellion Alpha', 'Craicic Chimeral',
     'Saqawal, First of the Sky', 'Farrul, First of the Plains',
   ], 'beast');
+  seed(['Croaker Talisman', 'Great Maw Talisman'], 'talisman');
   seed(['Chaos Orb'], 'chaos_orb');
   seed(['Orb of Alchemy', 'Orb of Annulment', 'Orb of Scouring'], 'misc_orb');
 

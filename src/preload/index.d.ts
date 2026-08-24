@@ -1,6 +1,13 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type { AtlasStatsReadResult } from '../shared/atlasStats'
 import type { ClipboardBridgeStatus } from '../shared/protonClipboardBridge'
+import type {
+  OverlayAction,
+  OverlayBounds,
+  OverlayPreferences,
+  OverlayShortcutStatus,
+  OverlaySnapshot,
+} from '../shared/overlay'
 import type { SessionRepositoryBridge } from './sessionRepositoryBridge'
 
 type TradeParams = {
@@ -25,6 +32,12 @@ declare global {
       sessionRepository: SessionRepositoryBridge
       onSessionRepositoryFlushRequest: (callback: (request: RepositoryFlushRequest) => void) => () => void
       completeSessionRepositoryFlush: (result: RepositoryFlushResult) => void
+      syncOverlayPreferences: (preferences: OverlayPreferences) => Promise<OverlayShortcutStatus>
+      publishOverlaySnapshot: (snapshot: OverlaySnapshot) => void
+      onOverlaySnapshot: (callback: (snapshot: OverlaySnapshot) => void) => () => void
+      sendOverlayAction: (action: OverlayAction) => void
+      onOverlayAction: (callback: (action: OverlayAction) => void) => () => void
+      onOverlayBounds: (callback: (bounds: OverlayBounds) => void) => () => void
       onClipboardCapture:  (callback: (text: string) => void) => void
       removeClipboardListener: () => void
       onClipboardBridgeStatus: (callback: (status: ClipboardBridgeStatus) => void) => () => void

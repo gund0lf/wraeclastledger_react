@@ -23,6 +23,7 @@ describe('WP14 session payload codec', () => {
       baselineTotal: 17,
       manualLootItems: [],
       manualStatistics: { wildwoodEncounters: 3 },
+      manualRunTimer: { accumulatedMs: 90_000, runningSince: null, lastHeartbeatAt: null, finishedAt: null },
       settings: { ...DEFAULT_SETTINGS, divinePrice: 211 },
       sessionNotes: 'codec note',
       investmentNeutralization: 29,
@@ -43,6 +44,7 @@ describe('WP14 session payload codec', () => {
     expect(decodeSessionPayload(encoded, DEFAULT_SETTINGS)).toMatchObject({
       baselineTotal: 17,
       manualStatistics: { wildwoodEncounters: 3 },
+      manualRunTimer: { accumulatedMs: 90_000, runningSince: null, lastHeartbeatAt: null, finishedAt: null },
       settings: { divinePrice: 211 },
       sessionNotes: 'codec note',
       investmentNeutralization: 29,
@@ -59,6 +61,7 @@ describe('WP14 session payload codec', () => {
       baselineTotal: 101,
       manualLootItems: [{ marker: 'manual-loot' }],
       manualStatistics: { marker: 'manual-statistics' },
+      manualRunTimer: { accumulatedMs: 123, runningSince: null, lastHeartbeatAt: null, finishedAt: null },
       settings: { marker: 'settings' },
       sessionNotes: 'portable note',
       investmentNeutralization: 202,

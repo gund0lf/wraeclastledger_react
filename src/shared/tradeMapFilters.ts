@@ -1,14 +1,21 @@
 /**
- * Exact live Trade-stat labels for special map implicits.
- *
- * The 8-mod search represents ordinary maps, so it excludes all three. Keep
- * the labels centralized: main resolves the live stat ids, while tests pin the
- * intended policy without hardcoding ids that GGG may change.
+ * Exact live Trade-stat labels that distinguish special map families from
+ * ordinary maps. The conversion pseudos are the stable visible signature of
+ * Valdo maps; their live ids are still resolved by exact text like the three
+ * influence implicits so vocabulary drift fails closed instead of silently
+ * broadening a search.
  */
 export const SPECIAL_MAP_STAT_TEXT = {
   originator: "Area is Influenced by the Originator's Memories",
   shaperInfluence: 'Area is influenced by The Shaper',
   elderInfluence: 'Area is influenced by The Elder',
+  shaperConversion: '#% chance for dropped Maps to convert to Shaper Maps',
+  elderConversion: '#% chance for dropped Maps to convert to Elder Maps',
+  conquerorConversion: '#% chance for dropped Maps to convert to Conqueror Maps',
+  uniqueConversion: '#% chance for dropped Maps to convert to Unique Maps',
+  scarabConversion: '#% chance for dropped Maps to convert to Scarabs',
+  mavenInvitationConversion: '#% chance for dropped Maps to convert to Maven Invitations',
+  atlasMemoryConversion: '#% chance for dropped Maps to convert to Atlas Memories',
 } as const;
 
 export type SpecialMapStatKey = keyof typeof SPECIAL_MAP_STAT_TEXT;
@@ -18,17 +25,24 @@ export interface SpecialMapTradeStatEntry {
   text: string;
 }
 
-export const EIGHT_MOD_EXCLUDED_SPECIAL_STATS: readonly SpecialMapStatKey[] = [
+export const ORDINARY_MAP_EXCLUDED_SPECIAL_STATS: readonly SpecialMapStatKey[] = [
   'originator',
   'shaperInfluence',
   'elderInfluence',
+  'shaperConversion',
+  'elderConversion',
+  'conquerorConversion',
+  'uniqueConversion',
+  'scarabConversion',
+  'mavenInvitationConversion',
+  'atlasMemoryConversion',
 ];
 
 const normalizeTradeStatText = (text: string): string =>
   text.replace(/\[[^|\]]+\|([^\]]+)\]/g, '$1').toLocaleLowerCase('en-US');
 
 /**
- * Resolve special-map implicits by exact normalized Trade text. Each contract
+ * Resolve special-map stats by exact normalized Trade text. Each contract
  * must match exactly once; missing or ambiguous definitions stay unavailable
  * so callers can fail closed visibly.
  */
@@ -56,7 +70,7 @@ export function resolveSpecialMapTradeStats(
   return { resolved, unavailable };
 }
 
-export function resolveEightModSpecialStatIds(
+export function resolveOrdinaryMapSpecialStatIds(
   resolvedStats: ReadonlyMap<string, string>,
 ): {
   ids: string[];
@@ -64,12 +78,16 @@ export function resolveEightModSpecialStatIds(
 } {
   const ids: string[] = [];
   const missing: SpecialMapStatKey[] = [];
-  for (const key of EIGHT_MOD_EXCLUDED_SPECIAL_STATS) {
+  for (const key of ORDINARY_MAP_EXCLUDED_SPECIAL_STATS) {
     const id = resolvedStats.get(key);
     if (id) ids.push(id);
     else missing.push(key);
   }
   return { ids: [...new Set(ids)], missing };
+}
+
+export function usesOrdinaryMapSpecialExclusions(mapType: string): boolean {
+  return mapType === 'regular' || mapType === '8mod';
 }
 
 export type DeliriumTradeStatFilter = {

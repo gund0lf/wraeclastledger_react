@@ -10,6 +10,22 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.82',
+    date: '2026-08-24',
+    changes: [
+      'Regular and 8-mod Trade searches now exclude Originator-, Shaper-, Elder-, and Valdo-family maps. Valdo detection uses all seven exact live map-conversion stats, while Any remains intentionally broad and Nightmare/Originator keep their dedicated searches.',
+      'Atlas Tree imports now accept valid Path of Pathing allocation hashes ending in one or two padding characters, while misplaced or excessive padding remains rejected.',
+      'Share Strategy now opens directly from Sessions even when Strategy Browser has not been opened or is absent from the current panel layout.',
+      'Historical evidence runs now show an independent div/hour value derived from each run\'s own net profit, Divine snapshot, and reported active time.',
+      'Custom loot labels such as Talismans and Blueprints now reuse reviewed generic artwork. Other unambiguous summed labels—Divination Cards, Beasts, Maps, Gems, and Astrolabes—also get a representative icon, while ambiguous buckets keep their neutral category glyph. Custom additions can now be valued as either a total or per item, with the app showing and storing one canonical total.',
+      'Run Statistics gained an optional per-session stopwatch and a small draggable always-on-top Timer/Counters companion window. Timer transitions and bounded heartbeats are saved with the session, interrupted runs recover conservatively, overlay controls can be locked or made click-through, and optional user-managed global shortcuts report registration conflicts. Clipboard-derived time remains Share\'s automatic default; recorded manual time is used only when explicitly selected.',
+      'Collapsed Run Statistics headers now show denominator-aware encounter summaries for Kalguuran and Wildwood and percentages for Anomalies and Mercenaries. Overlay counter rows use fixed control columns and keep their resize scrolling without exposing Chromium\'s transient scrollbar, so long names, changing values, and bottom-row button holds stay visually stable.',
+      'Divine prices are session snapshots again: a fresh or unset session receives an initial quote, then keeps it regardless of age until you explicitly refresh, reprice, change the league context, or type another value.',
+      'Strategy tags now include Bestiary and infer it from Bestiary scarabs or meaningful Bestiary Atlas investment. Trarthan scarabs and Mercenaries Atlas groups share one Trarthus tag, while Settlers of Kalguur Atlas allocations now correctly infer Kalguur. Blocked groups and sub-50% encounter-chance-only travel allocation are excluded; direct scarabs and groups with other mechanic investment remain authoritative.',
+      'The Regular map-family tag tooltip now explicitly clarifies that it can include corrupted 8-mod maps; the Mod column remains the separate roll-count signal.',
+    ],
+  },
+  {
     version: '1.0.81',
     date: '2026-08-23',
     changes: [

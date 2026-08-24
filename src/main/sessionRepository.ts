@@ -438,6 +438,9 @@ function checkpointChangeDetails(
   if (!valuesEqual(beforePayload.manualStatistics, afterPayload.manualStatistics)) {
     add('Run statistics', 'Previous values', 'Updated values');
   }
+  if (!valuesEqual(beforePayload.manualRunTimer, afterPayload.manualRunTimer)) {
+    add('Manual run timer', 'Previous time', 'Updated time');
+  }
 
   const remainingSettings = new Set([...Object.keys(beforeSettings), ...Object.keys(afterSettings)]);
   for (const key of [...remainingSettings].sort()) {
@@ -2064,6 +2067,7 @@ export class FileSessionRepository implements SessionRepositoryPort {
         baselineTotal: typeof raw.baselineTotal === 'number' && Number.isFinite(raw.baselineTotal) ? raw.baselineTotal : 0,
         manualLootItems: Array.isArray(raw.manualLootItems) ? cloneJson(raw.manualLootItems) : [],
         manualStatistics: isPlainObject(raw.manualStatistics) ? cloneJson(raw.manualStatistics) as JsonObject : {},
+        manualRunTimer: isPlainObject(raw.manualRunTimer) ? cloneJson(raw.manualRunTimer) as JsonObject : {},
         settings: isPlainObject(raw.settings) ? cloneJson(raw.settings) as JsonObject : (() => { throw new Error('settings must be an object'); })(),
         notes: typeof raw.notes === 'string' ? raw.notes : '',
         investmentNeutralization: typeof raw.investmentNeutralization === 'number' && Number.isFinite(raw.investmentNeutralization)

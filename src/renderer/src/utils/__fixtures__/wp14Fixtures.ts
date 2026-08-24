@@ -50,7 +50,8 @@ const stateDefaults = (): Record<string, unknown> => {
     'repositoryStatus', 'repositoryError', 'repositorySessions', 'repositorySizeBytes',
     'currentGeneration', 'preferencesGeneration', 'layoutGeneration', 'saveStatus',
     'saveError', 'sessionLifecycle', 'liveSessionId', 'activationCheckpointNotice',
-    'historyStoragePressure',
+    'historyStoragePressure', 'manualRunTimer', 'manualTimerRecoveryMs',
+    'overlayPreferences', 'overlayShortcutStatus',
   ]) delete state[key];
   return state;
 };

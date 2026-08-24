@@ -260,7 +260,7 @@ export const SessionLogModule = () => {
                         No maps logged yet — turn on Capture above, then press Ctrl+C on a map in-game to log it here.
                       </Text>
                       <Text size="xs" c="dimmed" ta="center">
-                        For Pace estimates, copy each map before running it; copy the next after finishing. Pasting an old batch cannot reconstruct playtime.
+                        For Pace estimates, copy each map before running it; copy the next after finishing. Pre-imported batches can use the optional manual timer in Run Statistics.
                       </Text>
                       <Text size="xs" c="dimmed" ta="center">
                         PoE 3.29 Ctrl+C records the exact explicit-mod count automatically. Ctrl+Alt+C remains supported.

@@ -23,6 +23,7 @@ import { useDisclosure } from '@mantine/hooks';
 import { IconChevronDown, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { ModuleHeader } from '../components/ui/ModuleHeader';
+import { RunTimerPanel } from '../components/RunTimerPanel';
 import { useSessionKeys } from '../store/useSessionStore';
 import { useRepositorySessions } from '../repository/useRepositorySessions';
 import {
@@ -61,6 +62,12 @@ const validPositiveInteger = (value: number | string): value is number =>
 
 const formatPercent = (value: number | null): string =>
   value === null ? 'rate unavailable' : `${value.toFixed(1)}%`;
+
+const formatCollapsedRate = (
+  count: number,
+  denominator: number,
+  label: string,
+): string => `${count.toLocaleString()} ${label} · ${formatPercent(observedRatePercent(count, denominator))}`;
 
 const formatDecimal = (value: number): string => value.toLocaleString(undefined, {
   minimumFractionDigits: 0,
@@ -201,6 +208,7 @@ export const RunStatisticsModule = () => {
   const anomalyTotal = isGlobal
     ? globalStatistics.anomalyTotal
     : totalAtlasAnomalies(manualStatistics);
+  const anomalyMapCount = isGlobal ? globalStatistics.anomalyMapCount : mapCount;
   const sessionMercenaryRows = useMemo(() => [...(manualStatistics.mercenaries ?? [])].sort(
     (left, right) => left.archetype.localeCompare(right.archetype),
   ), [manualStatistics.mercenaries]);
@@ -236,6 +244,22 @@ export const RunStatisticsModule = () => {
   const hasStatistics = hasManualStatistics(manualStatistics);
   const canAddAnomaly = anomalyName !== null && validPositiveInteger(anomalyAmount);
   const canAddMercenary = mercenaryArchetype !== null && validPositiveInteger(mercenaryAmount);
+  const starfallMetric = globalStatistics.counters.starfallCraters;
+  const starfallReported = isGlobal
+    ? starfallMetric.sessionCount > 0
+    : manualStatistics.starfallCraters !== undefined;
+  const starfallCount = isGlobal
+    ? starfallMetric.count
+    : manualStatistics.starfallCraters ?? 0;
+  const starfallMapCount = isGlobal ? starfallMetric.mapCount : mapCount;
+  const wildwoodMetric = globalStatistics.counters.wildwoodEncounters;
+  const wildwoodReported = isGlobal
+    ? wildwoodMetric.sessionCount > 0
+    : manualStatistics.wildwoodEncounters !== undefined;
+  const wildwoodCount = isGlobal
+    ? wildwoodMetric.count
+    : manualStatistics.wildwoodEncounters ?? 0;
+  const wildwoodMapCount = isGlobal ? wildwoodMetric.mapCount : mapCount;
 
   const addAnomaly = (): void => {
     if (!anomalyName || !validPositiveInteger(anomalyAmount)) return;
@@ -337,6 +361,8 @@ export const RunStatisticsModule = () => {
 
       <ScrollArea style={{ flex: 1 }} type="auto" offsetScrollbars>
         <Stack gap="md" pr="xs">
+          <RunTimerPanel />
+
           {!manualStatistics.infoDismissed && (
             <Alert
               color="blue"
@@ -382,6 +408,17 @@ export const RunStatisticsModule = () => {
             id="kalguuran"
             title="Kalguuran"
             description="Record Starfall Craters and Svalinn drops from The Black Knight."
+            badge={(
+              <Badge size="sm" variant="light" color="yellow" style={{ flexShrink: 0 }}>
+                {starfallReported
+                  ? formatCollapsedRate(
+                    starfallCount,
+                    starfallMapCount,
+                    starfallCount === 1 ? 'Crater' : 'Craters',
+                  )
+                  : 'Not recorded'}
+              </Badge>
+            )}
             opened={openSections.kalguuran}
             onToggle={toggleSection}
           >
@@ -441,6 +478,13 @@ export const RunStatisticsModule = () => {
             id="wildwood"
             title="Wildwood"
             description="Observed Wildwood encounters as a percentage of maps."
+            badge={(
+              <Badge size="sm" variant="light" color="green" style={{ flexShrink: 0 }}>
+                {wildwoodReported
+                  ? formatCollapsedRate(wildwoodCount, wildwoodMapCount, 'Total')
+                  : 'Not recorded'}
+              </Badge>
+            )}
             opened={openSections.wildwood}
             onToggle={toggleSection}
           >
@@ -482,8 +526,8 @@ export const RunStatisticsModule = () => {
             title="Anomalies"
             description="Each named Atlas anomaly shown as an observed percentage of maps."
             badge={(
-              <Badge size="sm" variant="light" color="violet">
-                {anomalyTotal.toLocaleString()} total
+              <Badge size="sm" variant="light" color="violet" style={{ flexShrink: 0 }}>
+                {formatCollapsedRate(anomalyTotal, anomalyMapCount, 'Total')}
               </Badge>
             )}
             opened={openSections.anomalies}
@@ -695,8 +739,8 @@ export const RunStatisticsModule = () => {
             title="Mercenaries"
             description="Track only the archetypes you care about; the remainder is shown as Other."
             badge={(
-              <Badge size="sm" variant="light" color="blue">
-                {mercenaryTotal.toLocaleString()} tracked
+              <Badge size="sm" variant="light" color="blue" style={{ flexShrink: 0 }}>
+                {formatCollapsedRate(mercenaryTotal, mercenaryMapCount, 'Tracked')}
               </Badge>
             )}
             opened={openSections.mercenaries}

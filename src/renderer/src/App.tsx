@@ -15,6 +15,7 @@ import { migrateDefaultSetupSidebarJson, migratePersistedLayout } from './utils/
 import { MaximizedPanelProvider } from './layout/MaximizedPanelProvider';
 import { maximizedPanelComponent, setupSidebarCollapsed } from './layout/panelLayoutState';
 import { retryRepositorySave, saveRepositoryLayout } from './repository/sessionRepositoryRuntime';
+import { OverlayController } from './components/OverlayController';
 
 // APP_VERSION imported from UpdateBanner.tsx — single source of truth
 // window.electron and window.api are declared in src/preload/index.d.ts — no redeclaration needed here.
@@ -151,6 +152,7 @@ function App({ initialLayoutRawValue }: { initialLayoutRawValue: string | null }
 
   return (
     <Box style={{ width: '100vw', height: '100vh', background: '#1A1B1E', display: 'flex', flexDirection: 'column' }}>
+      <OverlayController />
       {/* Toolbar */}
       <Box style={{
         height: 30, background: '#141517', borderBottom: '1px solid #2C2E33',

@@ -2,6 +2,13 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { AtlasStatsReadResult } from '../shared/atlasStats'
 import type { ClipboardBridgeStatus } from '../shared/protonClipboardBridge'
+import type {
+  OverlayAction,
+  OverlayBounds,
+  OverlayPreferences,
+  OverlayShortcutStatus,
+  OverlaySnapshot,
+} from '../shared/overlay'
 import { createSessionRepositoryBridge } from './sessionRepositoryBridge'
 
 type TradeParams = {
@@ -29,6 +36,27 @@ const api = {
   },
   completeSessionRepositoryFlush: (result: RepositoryFlushResult): void => {
     ipcRenderer.send('session-repository:flush-result', result)
+  },
+  syncOverlayPreferences: (preferences: OverlayPreferences): Promise<OverlayShortcutStatus> =>
+    ipcRenderer.invoke('overlay:sync-preferences', preferences),
+  publishOverlaySnapshot: (snapshot: OverlaySnapshot): void => {
+    ipcRenderer.send('overlay:snapshot', snapshot)
+  },
+  onOverlaySnapshot: (callback: (snapshot: OverlaySnapshot) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, snapshot: OverlaySnapshot): void => callback(snapshot)
+    ipcRenderer.on('overlay:snapshot', listener)
+    return () => ipcRenderer.removeListener('overlay:snapshot', listener)
+  },
+  sendOverlayAction: (action: OverlayAction): void => { ipcRenderer.send('overlay:action', action) },
+  onOverlayAction: (callback: (action: OverlayAction) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, action: OverlayAction): void => callback(action)
+    ipcRenderer.on('overlay:action', listener)
+    return () => ipcRenderer.removeListener('overlay:action', listener)
+  },
+  onOverlayBounds: (callback: (bounds: OverlayBounds) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, bounds: OverlayBounds): void => callback(bounds)
+    ipcRenderer.on('overlay:bounds', listener)
+    return () => ipcRenderer.removeListener('overlay:bounds', listener)
   },
   onClipboardCapture: (callback: (text: string) => void): void => {
     ipcRenderer.on('on-clipboard-capture', (_event, text) => callback(text))

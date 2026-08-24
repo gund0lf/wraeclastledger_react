@@ -26,7 +26,7 @@ export function isPathofpathingTreeUrl(value: string): boolean {
     && /(?:^|-)atlas(?:-|$)/i.test(version);
   return safeVersion
     && allocation.length >= 16
-    && /^[a-z0-9_-]+$/i.test(allocation);
+    && /^[a-z0-9_-]+={0,2}$/i.test(allocation);
 }
 
 /** A session replacement also changes atlasTreeUrl, but that change is already

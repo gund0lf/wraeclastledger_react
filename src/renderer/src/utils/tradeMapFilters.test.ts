@@ -1,34 +1,67 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildDeliriumTradeStatFilter,
-  EIGHT_MOD_EXCLUDED_SPECIAL_STATS,
+  ORDINARY_MAP_EXCLUDED_SPECIAL_STATS,
   SPECIAL_MAP_STAT_TEXT,
-  resolveEightModSpecialStatIds,
+  resolveOrdinaryMapSpecialStatIds,
   resolveSpecialMapTradeStats,
   tradeItemTypeForMapType,
+  usesOrdinaryMapSpecialExclusions,
 } from '../../../shared/tradeMapFilters';
 
-describe('8-mod special-map exclusions', () => {
-  it('pins Originator, Shaper, and Elder as the ordinary-map exclusion policy', () => {
-    expect(EIGHT_MOD_EXCLUDED_SPECIAL_STATS).toEqual([
+describe('ordinary-map special-map exclusions', () => {
+  it('pins influence and Valdo conversion stats as the ordinary-map exclusion policy', () => {
+    expect(ORDINARY_MAP_EXCLUDED_SPECIAL_STATS).toEqual([
       'originator',
       'shaperInfluence',
       'elderInfluence',
+      'shaperConversion',
+      'elderConversion',
+      'conquerorConversion',
+      'uniqueConversion',
+      'scarabConversion',
+      'mavenInvitationConversion',
+      'atlasMemoryConversion',
     ]);
     expect(SPECIAL_MAP_STAT_TEXT).toEqual({
       originator: "Area is Influenced by the Originator's Memories",
       shaperInfluence: 'Area is influenced by The Shaper',
       elderInfluence: 'Area is influenced by The Elder',
+      shaperConversion: '#% chance for dropped Maps to convert to Shaper Maps',
+      elderConversion: '#% chance for dropped Maps to convert to Elder Maps',
+      conquerorConversion: '#% chance for dropped Maps to convert to Conqueror Maps',
+      uniqueConversion: '#% chance for dropped Maps to convert to Unique Maps',
+      scarabConversion: '#% chance for dropped Maps to convert to Scarabs',
+      mavenInvitationConversion: '#% chance for dropped Maps to convert to Maven Invitations',
+      atlasMemoryConversion: '#% chance for dropped Maps to convert to Atlas Memories',
     });
   });
 
   it('returns every resolved stat id in policy order', () => {
-    expect(resolveEightModSpecialStatIds(new Map([
+    expect(resolveOrdinaryMapSpecialStatIds(new Map([
       ['originator', 'implicit.originator'],
       ['shaperInfluence', 'implicit.influence|1'],
       ['elderInfluence', 'implicit.influence|2'],
+      ['shaperConversion', 'pseudo.convert-shaper'],
+      ['elderConversion', 'pseudo.convert-elder'],
+      ['conquerorConversion', 'pseudo.convert-conqueror'],
+      ['uniqueConversion', 'pseudo.convert-unique'],
+      ['scarabConversion', 'pseudo.convert-scarab'],
+      ['mavenInvitationConversion', 'pseudo.convert-maven'],
+      ['atlasMemoryConversion', 'pseudo.convert-memory'],
     ]))).toEqual({
-      ids: ['implicit.originator', 'implicit.influence|1', 'implicit.influence|2'],
+      ids: [
+        'implicit.originator',
+        'implicit.influence|1',
+        'implicit.influence|2',
+        'pseudo.convert-shaper',
+        'pseudo.convert-elder',
+        'pseudo.convert-conqueror',
+        'pseudo.convert-unique',
+        'pseudo.convert-scarab',
+        'pseudo.convert-maven',
+        'pseudo.convert-memory',
+      ],
       missing: [],
     });
   });
@@ -51,12 +84,22 @@ describe('8-mod special-map exclusions', () => {
         id: 'implicit.elder',
         text: 'Area is influenced by The Elder',
       },
+      ...Object.entries(SPECIAL_MAP_STAT_TEXT)
+        .filter(([key]) => key.endsWith('Conversion'))
+        .map(([key, text]) => ({ id: `pseudo.${key}`, text })),
     ]);
 
     expect([...result.resolved]).toEqual([
       ['originator', 'implicit.originator'],
       ['shaperInfluence', 'implicit.shaper'],
       ['elderInfluence', 'implicit.elder'],
+      ['shaperConversion', 'pseudo.shaperConversion'],
+      ['elderConversion', 'pseudo.elderConversion'],
+      ['conquerorConversion', 'pseudo.conquerorConversion'],
+      ['uniqueConversion', 'pseudo.uniqueConversion'],
+      ['scarabConversion', 'pseudo.scarabConversion'],
+      ['mavenInvitationConversion', 'pseudo.mavenInvitationConversion'],
+      ['atlasMemoryConversion', 'pseudo.atlasMemoryConversion'],
     ]);
     expect(result.unavailable).toEqual([]);
   });
@@ -67,6 +110,9 @@ describe('8-mod special-map exclusions', () => {
       { id: 'implicit.shaper-a', text: SPECIAL_MAP_STAT_TEXT.shaperInfluence },
       { id: 'implicit.shaper-b', text: SPECIAL_MAP_STAT_TEXT.shaperInfluence },
       { id: 'implicit.elder', text: SPECIAL_MAP_STAT_TEXT.elderInfluence },
+      ...Object.entries(SPECIAL_MAP_STAT_TEXT)
+        .filter(([key]) => key.endsWith('Conversion'))
+        .map(([key, text]) => ({ id: `pseudo.${key}`, text })),
     ]);
 
     expect(result.resolved.has('shaperInfluence')).toBe(false);
@@ -76,13 +122,21 @@ describe('8-mod special-map exclusions', () => {
     });
   });
 
-  it('reports missing implicits so 8-mod search can fail closed', () => {
-    expect(resolveEightModSpecialStatIds(new Map([
+  it('reports missing stats so ordinary-map searches can fail closed', () => {
+    expect(resolveOrdinaryMapSpecialStatIds(new Map([
       ['originator', 'implicit.originator'],
     ]))).toEqual({
       ids: ['implicit.originator'],
-      missing: ['shaperInfluence', 'elderInfluence'],
+      missing: ORDINARY_MAP_EXCLUDED_SPECIAL_STATS.slice(1),
     });
+  });
+
+  it('applies the policy to Regular and 8-mod searches only', () => {
+    expect(usesOrdinaryMapSpecialExclusions('regular')).toBe(true);
+    expect(usesOrdinaryMapSpecialExclusions('8mod')).toBe(true);
+    expect(usesOrdinaryMapSpecialExclusions('any')).toBe(false);
+    expect(usesOrdinaryMapSpecialExclusions('nightmare')).toBe(false);
+    expect(usesOrdinaryMapSpecialExclusions('originator')).toBe(false);
   });
 });
 

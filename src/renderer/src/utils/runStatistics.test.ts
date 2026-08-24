@@ -132,6 +132,9 @@ describe('derived run statistics', () => {
       { name: 'The Court of Chaos', count: 3, mapCount: 20, sessionCount: 1 },
       { name: 'The Manor Foyer', count: 3, mapCount: 30, sessionCount: 2 },
     ]);
+    expect(aggregate.anomalyTotal).toBe(6);
+    expect(aggregate.anomalyMapCount).toBe(30);
+    expect(aggregate.anomalySessionCount).toBe(2);
     expect(aggregate.mercenaryTotal).toBe(5);
     expect(aggregate.mercenaryMapCount).toBe(30);
     expect(aggregate.untrackedMercenaryMaps).toBe(25);

@@ -53,6 +53,22 @@ export interface EvidencePresentation {
   timedRunCount: number;
 }
 
+export function evidenceRunDivPerHour(
+  run: Pick<PublicEvidenceRun, 'net_profit' | 'divine_price' | 'session_minutes'>,
+): number | null {
+  if (
+    run.net_profit == null
+    || !Number.isFinite(run.net_profit)
+    || run.divine_price == null
+    || !Number.isFinite(run.divine_price)
+    || run.divine_price <= 0
+    || run.session_minutes == null
+    || !Number.isFinite(run.session_minutes)
+    || run.session_minutes <= 0
+  ) return null;
+  return (run.net_profit / run.divine_price) / (run.session_minutes / 60);
+}
+
 /**
  * The single client-side presentation rule for strategy evidence aggregates.
  * The server owns pooling; this helper only selects the already-materialized

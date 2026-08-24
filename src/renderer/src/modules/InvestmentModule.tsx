@@ -163,15 +163,14 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
   const gemSellTotal    = settings.advGemCount * settings.advGemSellPrice;
   const gemNetPL        = gemSellTotal - gemBuyTotal;
 
-  // Auto-init on mount. The unset/legacy-200/30-min-staleness guard lives in
-  // the store (WP4.2); the 60s cooldown in tryFetchDivinePrice prevents remount
-  // retry storms when poe.ninja is unreachable.
+  // Auto-seed an unset/legacy-default session on mount. Once set, Divine price
+  // is a session snapshot and changes only through explicit refresh/override.
+  // priceUtils' cooldown prevents retry storms while an unset seed is offline.
   useEffect(() => {
     initDivinePrice();
   }, []);
 
-  // Re-fetch when a new session is started (activeSessionId transitions to null)
-  // so the price stays fresh without requiring a manual refresh.
+  // Seed each new session's independent price snapshot.
   useEffect(() => {
     if (sessionLifecycle !== 'live') return;
     let active = true;

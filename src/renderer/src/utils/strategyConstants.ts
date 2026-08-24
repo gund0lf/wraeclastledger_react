@@ -108,6 +108,7 @@ export const TAG_OPTIONS = [
   { value: 'beyond',      label: 'Beyond' },
   { value: 'incursion',   label: 'Incursion' },
   { value: 'betrayal',    label: 'Betrayal' },
+  { value: 'bestiary',    label: 'Bestiary' },
   { value: 'essence',     label: 'Essence' },
   { value: 'divination',  label: 'Divination' },
   { value: 'ultimatum',   label: 'Ultimatum' },
@@ -115,7 +116,6 @@ export const TAG_OPTIONS = [
   { value: 'heist',       label: 'Heist' },
   { value: 'ambush',      label: 'Ambush' },
   { value: 'cartography', label: 'Cartography' },
-  { value: 'mercenaries', label: 'Mercenaries' },
   { value: 'trarthus',    label: 'Trarthus' },
   { value: 'boss-rush',   label: 'Boss Rush' },
   { value: 'mirage-rush', label: 'Mirage Rush' },
@@ -142,11 +142,11 @@ export const TAG_COLORS: Record<string, string> = {
   'empowered-originator': 'grape', nightmare: 'red', mixed: 'dark',
   delirium: 'grape', legion: 'yellow', breach: 'violet', harvest: 'green',
   expedition: 'orange', ritual: 'red', abyss: 'dark', blight: 'lime',
-  beyond: 'pink', incursion: 'cyan', betrayal: 'indigo', essence: 'teal',
+  beyond: 'pink', incursion: 'cyan', betrayal: 'indigo', bestiary: 'red', essence: 'teal',
   divination: 'blue', harbinger: 'gray', titanic: 'orange', torment: 'dark',
   ultimatum: 'red', kalguur: 'yellow', heist: 'dark', metamorph: 'grape',
   ambush: 'cyan', cartography: 'gray', 'boss-rush': 'red', 'mirage-rush': 'violet',
-  mercenaries: 'orange', trarthus: 'teal',
+  trarthus: 'teal',
   eater: 'blue', exarch: 'red',
   'astrolabe': 'teal', 'astrolabe-templar': 'teal', 'astrolabe-deceptive': 'grape', 'astrolabe-enshrouded': 'grape',
   'astrolabe-timeless': 'yellow', 'astrolabe-grasping': 'violet', 'astrolabe-nameless': 'red',
@@ -161,7 +161,7 @@ export const MAP_TYPE_TAGS = new Set([
 ]);
 
 export const MAP_TYPE_LABELS: Record<string, string> = {
-  regular:               'Regular T16 maps (no enchant, no implicit)',
+  regular:               'Ordinary map family (including corrupted 8-mod); not Originator, Empowered Mirage, or Nightmare',
   originator:            "Originator's Memories implicit (+1 Tier beyond T16)",
   empowered:             'Empowered Mirage enchant (covers entire map)',
   'empowered-originator':'Empowered Mirage enchant + Originator\'s Memories',

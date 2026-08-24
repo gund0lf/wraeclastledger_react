@@ -254,6 +254,7 @@ describe('itemIcons resolve()', () => {
     const { resolve } = await getItemIcons();
     expect(resolve('Blueprint: Bunker - 1/3')).toBe(GENERIC_BLUEPRINT);
     expect(resolve('Unpriced Blueprint')).toBe(GENERIC_BLUEPRINT);
+    expect(resolve('Blueprints')).toBe(GENERIC_BLUEPRINT);
     expect(resolve('Architects Hand')).toBeUndefined();
   });
 
@@ -273,6 +274,20 @@ describe('itemIcons resolve()', () => {
     const { resolve } = await getItemIcons();
     expect(resolve('Croaker Talisman')).toBe(CROAKER_TALISMAN_URL);
     expect(resolve('Great Maw Talisman')).toBe(GREAT_MAW_TALISMAN_URL);
+    expect(resolve('Talisman')).toBe(CROAKER_TALISMAN_URL);
+    expect(resolve('Talismans')).toBe(CROAKER_TALISMAN_URL);
+  });
+
+  it('uses reviewed representatives for unambiguous manually summed labels', async () => {
+    const { resolve } = await getItemIcons();
+    expect(resolve('Divination Cards')).toContain('Divination');
+    expect(resolve('Beasts')).toBe(BEAST_URL);
+    expect(resolve('Maps')).toBe(ALLFLAME16_URL);
+    expect(resolve('Gems')).toBe(GEM_URL);
+    expect(resolve('Astrolabes')).toBe(ASTROLABE_URL);
+    expect(resolve('Currency')).toBeUndefined();
+    expect(resolve('Fragments')).toBeUndefined();
+    expect(resolve('Uniques')).toBeUndefined();
   });
 
   it('resolves the bounded current poe.ninja identity feeds used by loot rows', async () => {

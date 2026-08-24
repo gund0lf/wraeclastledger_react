@@ -6,6 +6,7 @@ import {
 import { assertJsonValue, type JsonObject, type JsonValue } from '../../../shared/sessionRecord';
 import type { SessionSettings } from '../types';
 import { normalizeLocalManualStatistics } from '../utils/manualStatistics';
+import { normalizeManualRunTimer } from '../utils/manualRunTimer';
 import type { SessionState } from '../store/useSessionStore';
 
 export type SessionPayloadSource = Pick<
@@ -16,6 +17,7 @@ export type SessionPayloadSource = Pick<
   | 'baselineTotal'
   | 'manualLootItems'
   | 'manualStatistics'
+  | 'manualRunTimer'
   | 'settings'
   | 'sessionNotes'
   | 'investmentNeutralization'
@@ -32,6 +34,7 @@ export const SESSION_PAYLOAD_STATE_KEY_BY_PAYLOAD_KEY = {
   baselineTotal: 'baselineTotal',
   manualLootItems: 'manualLootItems',
   manualStatistics: 'manualStatistics',
+  manualRunTimer: 'manualRunTimer',
   settings: 'settings',
   sessionNotes: 'sessionNotes',
   investmentNeutralization: 'investmentNeutralization',
@@ -97,6 +100,7 @@ export function decodeSessionPayload(
     manualLootItems: Array.isArray(payload.manualLootItems)
       ? payload.manualLootItems as unknown as SessionState['manualLootItems'] : [],
     manualStatistics: normalizeLocalManualStatistics(payload.manualStatistics),
+    manualRunTimer: normalizeManualRunTimer(payload.manualRunTimer),
     settings: { ...defaultSettings, ...settings },
     sessionNotes: typeof payload.sessionNotes === 'string' ? payload.sessionNotes : '',
     investmentNeutralization: typeof payload.investmentNeutralization === 'number'

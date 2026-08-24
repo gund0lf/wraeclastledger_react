@@ -23,10 +23,22 @@ describe('Path of Pathing URL validation', () => {
     expect(isPathofpathingTreeUrl(
       'https://pathofpathing.com/?v=3.28.0-atlas-league#AAAABgAADAsAJMFG',
     )).toBe(true);
+    expect(isPathofpathingTreeUrl(
+      'https://pathofpathing.com/?v=3.29.0-atlas#AAAABgAANi8GBJgGhgeICUoKQBZYGuYhayHcJ4oq0SuGK7ozSTQMNL5GPkgiTwtQF1KiWjRgZ219cXV5nnzFgoqZOKj0tvi4drzQwabExsVW2a3ZuOYS7IztFO1Z8WH1qPa3_Ob98FbmV62PXJCT6t3-13F1AAA=',
+    )).toBe(true);
+    expect(isPathofpathingTreeUrl(
+      'https://pathofpathing.com/?v=3.29.0-atlas#AAAABgAADAsAJMFG==',
+    )).toBe(true);
     expect(isPathofpathingTreeUrl('https://pathofpathing.com')).toBe(false);
     expect(isPathofpathingTreeUrl('https://pathofpathing.com/?v=3.29.0-atlas')).toBe(false);
     expect(isPathofpathingTreeUrl('https://pathofpathing.com/?v=3.29.0#AAAABgAAAgEAcXVxdQAA')).toBe(false);
     expect(isPathofpathingTreeUrl('https://pathofpathing.com/?v=3.29.0-atlas#AAAA')).toBe(false);
+    expect(isPathofpathingTreeUrl(
+      'https://pathofpathing.com/?v=3.29.0-atlas#AAAABgAA=AsAJMFG',
+    )).toBe(false);
+    expect(isPathofpathingTreeUrl(
+      'https://pathofpathing.com/?v=3.29.0-atlas#AAAABgAADAsAJMFG===',
+    )).toBe(false);
   });
 });
 

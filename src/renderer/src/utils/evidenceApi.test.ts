@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { evidencePresentation, fetchEvidenceRuns } from './evidenceApi';
+import { evidencePresentation, evidenceRunDivPerHour, fetchEvidenceRuns } from './evidenceApi';
 import type { Strategy } from './strategyConstants';
 
 function jsonResponse(value: unknown, status = 200): Response {
@@ -59,6 +59,32 @@ describe('evidence API client', () => {
 });
 
 describe('evidence presentation', () => {
+  it('derives each evidence run rate from that run\'s own profit, price, and time', () => {
+    expect(evidenceRunDivPerHour({
+      net_profit: 4_000,
+      divine_price: 200,
+      session_minutes: 150,
+    })).toBe(8);
+    expect(evidenceRunDivPerHour({
+      net_profit: -1_000,
+      divine_price: 200,
+      session_minutes: 60,
+    })).toBe(-5);
+  });
+
+  it('does not invent a per-run rate without valid authored inputs', () => {
+    expect(evidenceRunDivPerHour({
+      net_profit: 4_000,
+      divine_price: null,
+      session_minutes: 150,
+    })).toBeNull();
+    expect(evidenceRunDivPerHour({
+      net_profit: 4_000,
+      divine_price: 200,
+      session_minutes: 0,
+    })).toBeNull();
+  });
+
   it('uses historical pooled aggregates and timed runs only', () => {
     const strategy = {
       evidence_run_count: 3,
