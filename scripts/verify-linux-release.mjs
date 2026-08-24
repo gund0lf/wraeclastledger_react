@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { missingLinuxWindowingMarkers } from './linux-windowing-evidence.mjs';
 
 function fail(message) {
   console.error(`[linux-release] ${message}`);
@@ -41,12 +42,19 @@ const appImageName = `WraeclastLedger-${version}-x86_64.AppImage`;
 const appImagePath = join('dist', appImageName);
 const metadataPath = join('dist', 'latest-linux.yml');
 const packagedUpdaterConfigPath = join('dist', 'packaged-app-update.yml');
+const packagedAppPath = join('dist', 'packaged-app.asar');
 const packagedClipboardHelperPath = join('dist', 'packaged-wl-proton-clipboard.exe');
 const packagedDesktopPath = join('dist', expectedDesktopName);
 
 const appImageBytes = requireFile(appImagePath, 50 * 1024 * 1024);
 requireFile(metadataPath, 100);
 requireFile(packagedUpdaterConfigPath, 20);
+requireFile(packagedAppPath, 1024 * 1024);
+const packagedApp = readFileSync(packagedAppPath, 'utf8');
+for (const marker of missingLinuxWindowingMarkers(packagedApp)) {
+  fail(`packaged app is missing Linux overlay marker: ${marker}`);
+}
+rmSync(packagedAppPath);
 const desktopLauncherBytes = requireFile(packagedDesktopPath, 100);
 const clipboardHelperBytes = requireFile(packagedClipboardHelperPath, 10 * 1024);
 const clipboardHelperHeader = readFileSync(packagedClipboardHelperPath).subarray(0, 2).toString('ascii');
@@ -95,6 +103,7 @@ const evidence = {
   embeddedBlockMapBytes,
   updateMetadata: basename(metadataPath),
   packagedUpdateChannel: packagedChannel ?? 'latest',
+  linuxWindowing: { ozonePlatform: 'x11', nonActivatingToolbar: true, visibleOnAllWorkspaces: true },
   desktopLauncher: {
     name: basename(packagedDesktopPath),
     bytes: desktopLauncherBytes,

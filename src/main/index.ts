@@ -46,6 +46,12 @@ import {
   type OverlaySnapshot,
 } from '../shared/overlay'
 
+// Electron does not support always-on-top windows on native Wayland, and its
+// documented positioning/focus limitations also make a draggable companion
+// overlay unreliable there. Use XWayland for the Linux app so the advertised
+// overlay contract works while the surrounding desktop session remains Wayland.
+if (process.platform === 'linux') app.commandLine.appendSwitch('ozone-platform', 'x11')
+
 // The installed build and `npm run dev` used to share one Chromium profile.
 // Their file:// and localhost origins could then touch the same LevelDB while
 // both processes were running. Isolate development before Chromium storage is
@@ -274,6 +280,7 @@ function publishOverlayBounds(): void {
 
 function createOverlayWindow(preferences: OverlayPreferences): BrowserWindow {
   const bounds = visibleOverlayBounds(preferences);
+  const linuxOverlay = process.platform === 'linux';
   const win = new BrowserWindow({
     ...bounds,
     title: 'WraeclastLedger Overlay',
@@ -281,7 +288,10 @@ function createOverlayWindow(preferences: OverlayPreferences): BrowserWindow {
     transparent: true,
     show: false,
     alwaysOnTop: true,
+    focusable: !linuxOverlay,
+    fullscreenable: false,
     skipTaskbar: true,
+    type: linuxOverlay ? 'toolbar' : undefined,
     autoHideMenuBar: true,
     hasShadow: true,
     resizable: !preferences.locked,
@@ -290,6 +300,7 @@ function createOverlayWindow(preferences: OverlayPreferences): BrowserWindow {
     webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: false },
   });
   win.setAlwaysOnTop(true, 'screen-saver');
+  if (linuxOverlay) win.setVisibleOnAllWorkspaces(true);
   win.setOpacity(preferences.opacity);
   win.setIgnoreMouseEvents(preferences.clickThrough, { forward: true });
   win.on('ready-to-show', () => win.showInactive());

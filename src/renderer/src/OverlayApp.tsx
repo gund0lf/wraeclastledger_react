@@ -52,7 +52,12 @@ export default function OverlayApp() {
       }}
     >
       <Stack gap="xs" h="100%">
-        <Group justify="space-between" wrap="nowrap" gap={4} style={dragStyle}>
+        <Group
+          justify="space-between"
+          wrap="nowrap"
+          gap={4}
+          style={snapshot.preferences.locked ? noDragStyle : dragStyle}
+        >
           <Box style={{ minWidth: 0 }}>
             <Text size="xs" fw={700} truncate>{snapshot.sessionLabel}</Text>
             <Text style={{ color: COLOR.textFaint, fontSize: FONT.tiny }}>
@@ -60,12 +65,14 @@ export default function OverlayApp() {
             </Text>
           </Box>
           <Group gap={2} wrap="nowrap" style={noDragStyle}>
-            <Tooltip label={snapshot.preferences.locked ? 'Unlock position' : 'Lock position'}>
+            <Tooltip label={snapshot.preferences.locked ? 'Unlock position and size' : 'Lock position and size'}>
               <ActionIcon
                 size="sm"
                 variant="subtle"
                 color="gray"
-                aria-label={snapshot.preferences.locked ? 'Unlock overlay position' : 'Lock overlay position'}
+                aria-label={snapshot.preferences.locked
+                  ? 'Unlock overlay position and size'
+                  : 'Lock overlay position and size'}
                 onClick={() => window.api.sendOverlayAction({ type: 'toggle-lock' })}
               >
                 {snapshot.preferences.locked ? <IconLock size={14} /> : <IconLockOpen size={14} />}

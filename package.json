@@ -1,6 +1,6 @@
 {
   "name": "WraeclastLedger",
-  "version": "1.0.82",
+  "version": "1.0.83",
   "description": "WraeclastLedger",
   "license": "PolyForm-Noncommercial-1.0.0",
   "main": "./out/main/index.js",
@@ -20,7 +20,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "test": "vitest run && node --test scripts/cargo-query.test.mjs",
+    "test": "vitest run && node --test scripts/cargo-query.test.mjs scripts/linux-windowing-evidence.test.mjs",
     "test:watch": "vitest",
     "game-data:generate": "node scripts/gen-manifest-json.mjs",
     "trade-stats:check": "node scripts/check-tradestats.mjs",

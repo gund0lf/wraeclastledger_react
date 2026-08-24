@@ -13,8 +13,10 @@
 A desktop companion app for Path of Exile map farming. Copy a map tooltip in game (Ctrl+C), and it logs the map — IIQ, IIR, pack size, tier, mods. From there it tracks session profit, generates stash-highlight regex, and builds pre-filled trade searches.
 
 Available as a Windows installer and x86_64 Linux AppImage. The Linux capture
-and update path is validated on CachyOS with KDE Wayland and Steam Proton; other
-distributions and desktop environments are currently best-effort until tested.
+and update path is validated on CachyOS with KDE Wayland and Steam Proton. The
+AppImage uses XWayland inside a Wayland desktop so Electron can keep the optional
+Timer/Counters window above Path of Exile; other distributions and desktop
+environments are currently best-effort until tested.
 
 [**Download the latest release**](https://github.com/gund0lf/wraeclastledger_react/releases/latest)
 Free for personal use — see LICENSE

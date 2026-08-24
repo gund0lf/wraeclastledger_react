@@ -273,6 +273,7 @@ export function RunTimerPanel() {
           <Group grow align="start">
             <Switch
               label="Lock position and size"
+              description="Disables both header dragging and edge resizing."
               checked={overlayPreferences.locked}
               onChange={(event) => setOverlayPreferences({ locked: event.currentTarget.checked })}
             />

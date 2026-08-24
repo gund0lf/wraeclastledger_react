@@ -89,6 +89,12 @@ jobs:
             exit 1
           fi
           cp "$PACKAGED_CONFIG" dist/packaged-app-update.yml
+          PACKAGED_ASAR="$(find dist/squashfs-root -type f -path '*/resources/app.asar' -print -quit)"
+          if [[ -z "$PACKAGED_ASAR" ]]; then
+            echo "The AppImage does not contain resources/app.asar" >&2
+            exit 1
+          fi
+          cp "$PACKAGED_ASAR" dist/packaged-app.asar
           PACKAGED_HELPER="$(find dist/squashfs-root -type f -path '*/resources/linux/wl-proton-clipboard.exe' -print -quit)"
           if [[ -z "$PACKAGED_HELPER" ]]; then
             echo "The AppImage does not contain the Proton clipboard helper" >&2

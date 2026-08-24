@@ -2,7 +2,9 @@
 
 Linux support uses an x86_64 AppImage. Its automatic map capture runs a small
 bundled Windows helper inside Path of Exile's Proton prefix, avoiding the delayed
-Wine-to-Wayland desktop clipboard surface.
+Wine-to-Wayland desktop clipboard surface. The Electron UI deliberately uses
+XWayland within Wayland sessions: native Wayland does not support Electron's
+always-on-top contract, while the optional Timer/Counters companion requires it.
 
 ## Proven canary
 
@@ -188,6 +190,11 @@ chmod +x WraeclastLedger-*-x86_64.AppImage
 7. A saved session and layout survive quit/relaunch.
 8. A same-channel update downloads, restarts into the newer version, retains
    data, and captures another map. This is green for beta.1 to beta.2.
+9. Show the Timer/Counters overlay, then focus Path of Exile. The overlay remains
+   visible above the game without taking keyboard focus. Its timer and +/-
+   controls still work. Lock position and size prevents both header dragging and
+   edge resizing; unlocking restores them. Verify this once in windowed or
+   borderless mode and once in the mode normally used for play.
 
 ## Current limits
 
