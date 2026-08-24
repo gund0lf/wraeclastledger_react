@@ -50,6 +50,46 @@ export interface ManualAtlasAnomalyCount {
   count: number;
 }
 
+export type RunStatisticsSetupCategory =
+  | 'kalguuran'
+  | 'wildwood'
+  | 'anomalies'
+  | 'beasts'
+  | 'mercenaries';
+
+export type RunStatisticsSetupCaptureSource = 'manual-entry' | 'loot-snapshots';
+
+/** Durable, normalized setup evidence captured when a category first gains an
+ * observed result. It intentionally stores only setup identity, not prices or
+ * a claimed per-map boundary. */
+export interface RunStatisticsSetupContext {
+  schemaVersion: 1;
+  modelRevision: 'allflame-v1';
+  captureSource: RunStatisticsSetupCaptureSource;
+  leagueName: string;
+  atlasSource: 'path-of-pathing' | 'unavailable';
+  /** Exact safe Atlas view associated with the successful Show stats read.
+   * Null means no authoritative Atlas evidence was available at capture time. */
+  atlasTreeUrl: string | null;
+  atlasDetectedTags: string[];
+  scarabNames: string[];
+  bestiaryAtlasSetup?: BestiaryAtlasSetup;
+  mercenaryAtlasSetup?: MercenaryAtlasSetup;
+}
+
+export interface RunStatisticsSetupAttribution {
+  contexts: RunStatisticsSetupContext[];
+  /** The category already contained results before setup capture existed. */
+  legacyUnattributed?: true;
+  /** More distinct contexts were observed than the bounded local record keeps. */
+  overflowed?: true;
+}
+
+export type RunStatisticsSetupProvenance = Partial<Record<
+  RunStatisticsSetupCategory,
+  RunStatisticsSetupAttribution
+>>;
+
 /** Optional, explicitly author-entered session outcomes. Missing scalar keys
  * mean "not reported"; an explicit zero is a real authored report. */
 export interface ManualSessionStatistics {
@@ -63,6 +103,10 @@ export interface ManualSessionStatistics {
   wildwoodEncounters?: number;
   atlasAnomalies?: ManualAtlasAnomalyCount[];
   mercenaries?: ManualMercenaryCount[];
+  /** Per-category setup/source capture. It is local session evidence and is
+   * ignored by hasManualStatistics so provenance alone does not make a fresh
+   * working session authored content. */
+  setupProvenance?: RunStatisticsSetupProvenance;
 }
 
 /** Explicit active-play stopwatch for bulk-import workflows. Display time is

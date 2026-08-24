@@ -4,9 +4,12 @@ import {
   MERCENARY_ARCHETYPES,
   addManualAtlasAnomalyCount,
   addManualMercenaryCount,
+  buildRunStatisticsSetupContext,
+  clearRunStatisticsSetupCategory,
   hasManualStatistics,
   mercenaryProfile,
   normalizeLocalManualStatistics,
+  recordRunStatisticsSetupContext,
   sanitizeManualStatistics,
   setBeastStatisticsInfoDismissed,
   setManualAtlasAnomalyCount,
@@ -15,6 +18,32 @@ import {
   setManualStatisticsInfoDismissed,
   totalMercenaryEncounters,
 } from './manualStatistics';
+import type { SessionSettings } from '../types';
+
+const setupSettings = (scarabNames: string[] = []): SessionSettings => ({
+  leagueName: 'Allflame',
+  atlasTreeUrl: 'https://pathofpathing.com/?v=3.29.0-atlas#AAAABgAAQzIQBJgJ',
+  atlasDetectedTags: ['trarthus', 'bestiary', 'trarthus'],
+  scarabs: scarabNames.map((name) => ({ name, cost: 99 })),
+  bestiaryAtlasSetup: {
+    additionalEinharChancePct: 104,
+    additionalRedChancePct: 25,
+    additionalYellowBeasts: 2,
+    yellowToRedChancePct: 15,
+    pairChancePct: 8,
+    capturedBeastCopyChancePct: 0,
+  },
+  mercenaryAtlasSetup: {
+    additionalEncounterChancePct: 90,
+    lessStrengthAlignedChancePct: 75,
+    lessDexterityAlignedChancePct: 50,
+    lessIntelligenceAlignedChancePct: 25,
+    increasedAzadiChancePct: 100,
+    increasedKeitaChancePct: 0,
+    increasedCyaxanChancePct: 0,
+    increasedInfamousChancePct: 50,
+  },
+} as SessionSettings);
 
 describe('manual session statistics', () => {
   it('keeps unreported separate from an explicit zero', () => {
@@ -109,5 +138,96 @@ describe('manual session statistics', () => {
         { archetype: 'Kineticist', house: 'Keita', count: 3 },
       ],
     })).toEqual({ mercenaries: [{ archetype: 'Kineticist', count: 5 }] });
+  });
+
+  it('captures normalized durable setup/source evidence without prices or slot order', () => {
+    const context = buildRunStatisticsSetupContext(setupSettings([
+      ' Trarthan Scarab of Infamy ',
+      'Bestiary Scarab of the Herd',
+      'Bestiary Scarab of the Herd',
+    ]), 'manual-entry');
+    expect(context).toMatchObject({
+      schemaVersion: 1,
+      modelRevision: 'allflame-v1',
+      captureSource: 'manual-entry',
+      leagueName: 'Allflame',
+      atlasSource: 'path-of-pathing',
+      atlasTreeUrl: 'https://pathofpathing.com/?v=3.29.0-atlas#AAAABgAAQzIQBJgJ',
+      atlasDetectedTags: ['bestiary', 'trarthus'],
+      scarabNames: [
+        'Bestiary Scarab of the Herd',
+        'Bestiary Scarab of the Herd',
+        'Trarthan Scarab of Infamy',
+      ],
+    });
+    expect(JSON.stringify(context)).not.toContain('99');
+  });
+
+  it('keeps Atlas setup unavailable when no safe source URL proves the scrape identity', () => {
+    const settings = setupSettings(['Bestiary Scarab']);
+    settings.atlasTreeUrl = 'https://example.com/not-the-atlas';
+    expect(buildRunStatisticsSetupContext(settings, 'manual-entry')).toMatchObject({
+      atlasSource: 'unavailable',
+      atlasTreeUrl: null,
+    });
+  });
+
+  it('retains distinct setup contexts and marks older unattributed results honestly', () => {
+    const legacy = { mercenaries: [{ archetype: 'Kineticist', count: 1 }] };
+    const captured = recordRunStatisticsSetupContext(
+      legacy,
+      'mercenaries',
+      setupSettings(['Trarthan Scarab']),
+      'manual-entry',
+      true,
+    );
+    const mixed = recordRunStatisticsSetupContext(
+      captured,
+      'mercenaries',
+      setupSettings(['Trarthan Scarab of Infamy']),
+      'manual-entry',
+      true,
+    );
+    expect(mixed.setupProvenance?.mercenaries).toMatchObject({
+      legacyUnattributed: true,
+    });
+    expect(mixed.setupProvenance?.mercenaries?.contexts).toHaveLength(2);
+    expect(hasManualStatistics({ setupProvenance: mixed.setupProvenance })).toBe(false);
+    expect(sanitizeManualStatistics(mixed)).toEqual(mixed);
+  });
+
+  it('clears one provenance category without disturbing another', () => {
+    const withManual = recordRunStatisticsSetupContext(
+      { starfallCraters: 1 },
+      'kalguuran',
+      setupSettings(),
+      'manual-entry',
+      false,
+    );
+    const withBeasts = recordRunStatisticsSetupContext(
+      withManual,
+      'beasts',
+      setupSettings(['Bestiary Scarab']),
+      'loot-snapshots',
+      false,
+    );
+    const cleared = clearRunStatisticsSetupCategory(withBeasts, 'kalguuran');
+    expect(cleared.setupProvenance?.kalguuran).toBeUndefined();
+    expect(cleared.setupProvenance?.beasts?.contexts).toHaveLength(1);
+  });
+
+  it('rejects malformed setup provenance instead of applying it as current truth', () => {
+    expect(sanitizeManualStatistics({
+      starfallCraters: 1,
+      setupProvenance: {
+        kalguuran: {
+          contexts: [{
+            ...buildRunStatisticsSetupContext(setupSettings(), 'manual-entry'),
+            atlasSource: 'path-of-pathing',
+            bestiaryAtlasSetup: undefined,
+          }],
+        },
+      },
+    })).toBeNull();
   });
 });

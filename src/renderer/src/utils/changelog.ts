@@ -15,6 +15,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     changes: [
       'On Linux, the Timer/Counters companion now stays above Path of Exile by using Electron through XWayland, because native Wayland does not support Electron always-on-top windows. Lock position and size now also disables the overlay header\'s drag region, fixing Linux where the native movable flag is unsupported.',
       'Strategy Browser Maps is now sortable from both the dropdown and the Maps column header. It sorts the same total shown in each row, including the combined map count for strategies with multiple evidence runs.',
+      'Run Statistics now keeps bounded per-category setup provenance with each session: exact safe Path of Pathing source, derived Atlas inputs, scarab identities, capture source, league, and model revision. Expanded sections separate Observed, Setup context, Model / normalization, and Data quality; legacy, mixed, overflowed, or unavailable setup evidence stays visible but disables modeling instead of applying the session\'s final setup retroactively. Bestiary records both Baseline and Return import contexts and documents retained-capture and Menagerie-capacity assumptions.',
     ],
   },
   {

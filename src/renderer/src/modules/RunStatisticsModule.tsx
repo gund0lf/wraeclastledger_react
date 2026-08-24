@@ -24,6 +24,12 @@ import { IconChevronDown, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { ModuleHeader } from '../components/ui/ModuleHeader';
 import { RunTimerPanel } from '../components/RunTimerPanel';
+import type {
+  RunStatisticsSetupAttribution,
+  RunStatisticsSetupCategory,
+  RunStatisticsSetupContext,
+  ScarabSlot,
+} from '../types';
 import { useSessionKeys } from '../store/useSessionStore';
 import { useRepositorySessions } from '../repository/useRepositorySessions';
 import {
@@ -73,6 +79,134 @@ const formatDecimal = (value: number): string => value.toLocaleString(undefined,
   minimumFractionDigits: 0,
   maximumFractionDigits: 2,
 });
+
+const setupScarabSlots = (context: RunStatisticsSetupContext): ScarabSlot[] =>
+  context.scarabNames.map((name) => ({ name, cost: 0 }));
+
+const atlasSourceIdentity = (url: string | null): string => {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    const version = parsed.searchParams.get('v');
+    const allocation = parsed.hash.slice(1);
+    const allocationLabel = allocation.length > 0
+      ? `${allocation.slice(0, 8)}${allocation.length > 8 ? '…' : ''}`
+      : 'no allocation hash';
+    return ` · ${version ?? 'unknown version'} · tree ${allocationLabel}`;
+  } catch {
+    return '';
+  }
+};
+
+const modelEligibleContext = (
+  attribution: RunStatisticsSetupAttribution | undefined,
+): RunStatisticsSetupContext | null => (
+  attribution
+  && !attribution.legacyUnattributed
+  && !attribution.overflowed
+  && attribution.contexts.length === 1
+    ? attribution.contexts[0]
+    : null
+);
+
+interface SetupContextBlockProps {
+  attribution?: RunStatisticsSetupAttribution;
+  category: RunStatisticsSetupCategory;
+  hasObservedResult: boolean;
+  isGlobal: boolean;
+}
+
+const SetupContextBlock = ({
+  attribution,
+  category,
+  hasObservedResult,
+  isGlobal,
+}: SetupContextBlockProps) => {
+  const contexts = attribution?.contexts ?? [];
+  const sourceLabel = category === 'beasts'
+    ? 'Baseline/Return CSV imports'
+    : 'authored counter updates that add observations';
+  return (
+    <>
+      <Text size="xs" fw={700} mt="sm" mb={4}>Setup context</Text>
+      <Paper withBorder p="xs">
+        {isGlobal ? (
+          <Text size="xs" c="dimmed">
+            Setup evidence remains attached to each individual session. This combined view does not
+            merge distinct Atlas/scarab configurations into one implied setup.
+          </Text>
+        ) : contexts.length === 0 ? (
+          <Text size="xs" c="dimmed">
+            {hasObservedResult
+              ? 'Unattributed legacy result. The current/final session setup is deliberately not applied retroactively.'
+              : `No recorded setup yet. Atlas/scarab context will be captured from ${sourceLabel}.`}
+          </Text>
+        ) : (
+          <Stack gap={4}>
+            {contexts.map((context, index) => (
+              <Box key={`${context.modelRevision}-${index}`}>
+                <Text size="xs" fw={600}>
+                  {contexts.length > 1 ? `Recorded setup ${index + 1}` : 'Recorded setup'} · {context.leagueName}
+                </Text>
+                <Text size="xs" c="dimmed" title={context.atlasTreeUrl ?? undefined}>
+                  Atlas: {context.atlasSource === 'path-of-pathing'
+                    ? `Path of Pathing Show stats${atlasSourceIdentity(context.atlasTreeUrl)}`
+                    : 'not captured'}
+                  {context.atlasDetectedTags.length > 0
+                    ? ` · ${context.atlasDetectedTags.join(', ')}`
+                    : ''}
+                </Text>
+                <Text size="xs" c="dimmed">
+                  Scarabs: {context.scarabNames.length > 0
+                    ? context.scarabNames.join(' · ')
+                    : 'none occupied'}
+                  {' · '}source {context.captureSource === 'loot-snapshots'
+                    ? 'loot snapshots'
+                    : 'manual entry'}
+                  {' · '}model {context.modelRevision}
+                </Text>
+              </Box>
+            ))}
+          </Stack>
+        )}
+      </Paper>
+    </>
+  );
+};
+
+const DataQualityBlock = ({
+  attribution,
+  category,
+  hasObservedResult,
+  isGlobal,
+}: SetupContextBlockProps) => {
+  const contexts = attribution?.contexts ?? [];
+  const sourceLabel = category === 'beasts'
+    ? 'Baseline/Return CSV imports'
+    : 'authored counter updates that add observations';
+  return (
+    <>
+      <Text size="xs" fw={700} mt="sm" mb={4}>Data quality</Text>
+      <Paper withBorder p="xs">
+        <Text size="xs" c="dimmed">
+          {isGlobal
+            ? 'Observed totals use only explicitly reporting sessions. Setup differences are not normalized or presented as causal.'
+            : attribution?.overflowed
+              ? 'More setup changes were observed than the bounded record retains. Model and normalization are disabled.'
+              : attribution?.legacyUnattributed
+                ? 'Some results predate setup capture. Current settings are not substituted; model and normalization are disabled.'
+                : contexts.length > 1
+                  ? `${contexts.length} setup contexts were recorded. The total and Map Log denominator cannot be split between them, so model and normalization are disabled.`
+                  : contexts.length === 1
+                    ? `One setup was captured from ${sourceLabel}. The full Map Log remains the denominator; this is setup provenance, not a per-map timing boundary.`
+                    : hasObservedResult
+                      ? 'No historical setup evidence exists for this result. Only the observed value is shown.'
+                      : 'No observed result has been reported for this category.'}
+        </Text>
+      </Paper>
+    </>
+  );
+};
 
 type StatisticsSectionId = 'kalguuran' | 'wildwood' | 'anomalies' | 'beasts' | 'mercenaries';
 type StatisticsView = 'session' | 'all';
@@ -131,7 +265,6 @@ const StatisticsSection = ({
 export const RunStatisticsModule = () => {
   const {
     maps,
-    settings,
     baselineItems,
     lootItems,
     manualStatistics,
@@ -147,7 +280,6 @@ export const RunStatisticsModule = () => {
     clearManualStatistics,
   } = useSessionKeys(
     'maps',
-    'settings',
     'baselineItems',
     'lootItems',
     'manualStatistics',
@@ -229,15 +361,28 @@ export const RunStatisticsModule = () => {
   const beastGains = isGlobal ? globalStatistics.beastGains : sessionBeastGains;
   const beastMapCount = isGlobal ? globalStatistics.beastMapCount : mapCount;
   const beastTotal = totalValuableBeastGains(beastGains);
+  const kalguuranSetup = manualStatistics.setupProvenance?.kalguuran;
+  const wildwoodSetup = manualStatistics.setupProvenance?.wildwood;
+  const anomalySetup = manualStatistics.setupProvenance?.anomalies;
+  const beastSetup = manualStatistics.setupProvenance?.beasts;
+  const mercenarySetup = manualStatistics.setupProvenance?.mercenaries;
+  const beastSetupContext = modelEligibleContext(beastSetup);
+  const mercenarySetupContext = modelEligibleContext(mercenarySetup);
   const beastModel = useMemo(() => (
-    settings.bestiaryAtlasSetup
-      ? buildBestiaryRateModel(settings.bestiaryAtlasSetup, settings.scarabs)
+    beastSetupContext?.bestiaryAtlasSetup
+      ? buildBestiaryRateModel(
+        beastSetupContext.bestiaryAtlasSetup,
+        setupScarabSlots(beastSetupContext),
+      )
       : null
-  ), [settings.bestiaryAtlasSetup, settings.scarabs]);
+  ), [beastSetupContext]);
   const mercenaryScarabSetup = useMemo(
-    () => deriveMercenaryScarabSetup(settings.scarabs),
-    [settings.scarabs],
+    () => deriveMercenaryScarabSetup(
+      mercenarySetupContext ? setupScarabSlots(mercenarySetupContext) : [],
+    ),
+    [mercenarySetupContext],
   );
+  const mercenaryAtlasSetup = mercenarySetupContext?.mercenaryAtlasSetup;
   const hasLootSnapshots = isGlobal
     ? globalStatistics.beastSessionCount > 0
     : baselineItems.length > 0 && lootItems.length > 0;
@@ -422,6 +567,7 @@ export const RunStatisticsModule = () => {
             opened={openSections.kalguuran}
             onToggle={toggleSection}
           >
+            <Text size="xs" fw={700} mb={4}>Observed</Text>
             <Paper withBorder p="xs">
               <Text size="xs" fw={600}>Starfall Crater</Text>
               <Text size="xs" c="dimmed" mb="xs">
@@ -470,6 +616,25 @@ export const RunStatisticsModule = () => {
                 })}
               </Box>
             </Paper>
+            <SetupContextBlock
+              attribution={kalguuranSetup}
+              category="kalguuran"
+              hasObservedResult={starfallReported || (!isGlobal && manualStatistics.svalinnDrops !== undefined)}
+              isGlobal={isGlobal}
+            />
+            <Text size="xs" fw={700} mt="sm" mb={4}>Model / normalization</Text>
+            <Paper withBorder p="xs">
+              <Text size="xs" c="dimmed">
+                Observed Crater rate uses the Map Log and Svalinn uses recorded Craters. No Atlas or
+                scarab adjustment is applied in this first setup-aware slice.
+              </Text>
+            </Paper>
+            <DataQualityBlock
+              attribution={kalguuranSetup}
+              category="kalguuran"
+              hasObservedResult={starfallReported || (!isGlobal && manualStatistics.svalinnDrops !== undefined)}
+              isGlobal={isGlobal}
+            />
           </StatisticsSection>
 
           <Divider />
@@ -488,6 +653,7 @@ export const RunStatisticsModule = () => {
             opened={openSections.wildwood}
             onToggle={toggleSection}
           >
+            <Text size="xs" fw={700} mb={4}>Observed</Text>
             {isGlobal ? (
               <Paper withBorder p="xs">
                 <Text size="xs" fw={600}>Wildwood encounters</Text>
@@ -517,6 +683,25 @@ export const RunStatisticsModule = () => {
                 }}
               />
             )}
+            <SetupContextBlock
+              attribution={wildwoodSetup}
+              category="wildwood"
+              hasObservedResult={wildwoodReported}
+              isGlobal={isGlobal}
+            />
+            <Text size="xs" fw={700} mt="sm" mb={4}>Model / normalization</Text>
+            <Paper withBorder p="xs">
+              <Text size="xs" c="dimmed">
+                No spawn-rate adjustment is made. Scarab of Wisps pre-empowers monsters with wisps;
+                it is retained as setup context, not treated as proven extra Wildwood chance.
+              </Text>
+            </Paper>
+            <DataQualityBlock
+              attribution={wildwoodSetup}
+              category="wildwood"
+              hasObservedResult={wildwoodReported}
+              isGlobal={isGlobal}
+            />
           </StatisticsSection>
 
           <Divider />
@@ -533,6 +718,7 @@ export const RunStatisticsModule = () => {
             opened={openSections.anomalies}
             onToggle={toggleSection}
           >
+            <Text size="xs" fw={700} mb={4}>Observed</Text>
             {!isGlobal && (
               <Box
                 style={{
@@ -626,6 +812,25 @@ export const RunStatisticsModule = () => {
                 {isGlobal ? 'No Atlas anomalies recorded across sessions.' : 'No Atlas anomalies recorded yet.'}
               </Text>
             )}
+            <SetupContextBlock
+              attribution={anomalySetup}
+              category="anomalies"
+              hasObservedResult={anomalyRows.length > 0}
+              isGlobal={isGlobal}
+            />
+            <Text size="xs" fw={700} mt="sm" mb={4}>Model / normalization</Text>
+            <Paper withBorder p="xs">
+              <Text size="xs" c="dimmed">
+                Each anomaly remains a direct observed rate. Map modifiers and Risk-scarab setup are
+                not normalized or claimed to cause the result; stable cohorts come later.
+              </Text>
+            </Paper>
+            <DataQualityBlock
+              attribution={anomalySetup}
+              category="anomalies"
+              hasObservedResult={anomalyRows.length > 0}
+              isGlobal={isGlobal}
+            />
           </StatisticsSection>
 
           <Divider />
@@ -642,7 +847,8 @@ export const RunStatisticsModule = () => {
             opened={openSections.beasts}
             onToggle={toggleSection}
           >
-            {isGlobal ? (
+            <Text size="xs" fw={700} mb={4}>Observed</Text>
+            {isGlobal && (
               <Paper withBorder p="xs" mb="xs">
                 <Text size="xs" fw={600}>Combined observed gains</Text>
                 <Text size="xs" c="dimmed">
@@ -652,69 +858,28 @@ export const RunStatisticsModule = () => {
                   Session view because Atlas and scarab configurations can differ between runs.
                 </Text>
               </Paper>
-            ) : beastModel ? (
-              <Paper withBorder p="xs" mb="xs">
-                <Text size="xs" fw={600}>Bestiary model input</Text>
-                <Text size="xs" c="dimmed">
-                  {beastModel.herdCount} Herd · {beastModel.duplicatesCapturedBeasts ? 'Duplicating' : 'no Duplicating'}
-                  {' · '}Einhar guaranteed by {beastModel.einharGuaranteedBy === 'atlas' ? 'Atlas chance' : 'Bestiary Scarab'}
-                  {' · '}{formatDecimal(beastModel.expectedBaseRedRollsPerMap)} expected base red rolls/map
-                  {' · '}×{formatDecimal(beastModel.capturedQuantityMultiplier)} capture quantity
-                </Text>
-                <Text size="xs" c="dimmed">
-                  Atlas classification and rarity biases remain part of this observed setup. They are not
-                  reversed because their exact archetype weights are not published.
-                </Text>
-              </Paper>
-            ) : !manualStatistics.beastInfoDismissed ? (
-              <Alert
-                color="yellow"
-                variant="light"
-                mb="xs"
-                withCloseButton
-                closeButtonLabel="Dismiss Bestiary model information for this session"
-                onClose={() => setBeastStatisticsInfoDismissed(true)}
-              >
-                <Text size="xs">
-                  A setup estimate needs current Atlas stats and guaranteed Einhar (+100% Atlas chance or a
-                  Bestiary Scarab). Raw captured quantities remain available; no base encounter chance is assumed.
-                </Text>
-              </Alert>
-            ) : null}
+            )}
 
             {beastGains.length > 0 ? (
               <Stack gap={6}>
-                {beastGains.map((gain) => {
-                  const estimate = !isGlobal && beastModel
-                    ? estimateBestiaryEncounter(gain.gainedQuantity, mapCount, beastModel)
-                    : null;
-                  return (
-                    <Paper key={gain.name} withBorder p="xs">
-                      <Group justify="space-between" wrap="nowrap" gap="xs">
-                        <Box style={{ minWidth: 0 }}>
-                          <Text size="xs" fw={600} truncate>{gain.name}</Text>
-                          <Text size="xs" c="dimmed">
-                            {isGlobal
-                              ? `${gain.gainedQuantity.toLocaleString()} combined positive net gain`
-                              : `${gain.baselineQuantity.toLocaleString()} → ${gain.returnQuantity.toLocaleString()}`}
-                            {beastMapCount > 0 && ` · ${formatDecimal(gain.gainedQuantity / beastMapCount)} captured/map`}
-                          </Text>
-                          {estimate && (
-                            <Text size="xs" c="dimmed">
-                              Estimated chance per map: {estimate.estimatedChancePerMapPct.toFixed(1)}%
-                              {' · '}{formatDecimal(estimate.estimatedBaseSightingsPerMap)} base sightings/map
-                              {' · '}{formatDecimal(estimate.estimatedBaseSightings)} total
-                              {estimate.saturated && ' · model saturated'}
-                            </Text>
-                          )}
-                        </Box>
-                        <Badge size="sm" variant="light" color="orange">
-                          +{gain.gainedQuantity.toLocaleString()}
-                        </Badge>
-                      </Group>
-                    </Paper>
-                  );
-                })}
+                {beastGains.map((gain) => (
+                  <Paper key={gain.name} withBorder p="xs">
+                    <Group justify="space-between" wrap="nowrap" gap="xs">
+                      <Box style={{ minWidth: 0 }}>
+                        <Text size="xs" fw={600} truncate>{gain.name}</Text>
+                        <Text size="xs" c="dimmed">
+                          {isGlobal
+                            ? `${gain.gainedQuantity.toLocaleString()} combined positive net gain`
+                            : `${gain.baselineQuantity.toLocaleString()} → ${gain.returnQuantity.toLocaleString()}`}
+                          {beastMapCount > 0 && ` · ${formatDecimal(gain.gainedQuantity / beastMapCount)} captured/map`}
+                        </Text>
+                      </Box>
+                      <Badge size="sm" variant="light" color="orange">
+                        +{gain.gainedQuantity.toLocaleString()}
+                      </Badge>
+                    </Group>
+                  </Paper>
+                ))}
               </Stack>
             ) : (
               <Text size="xs" c="dimmed" ta="center" py="md">
@@ -726,10 +891,80 @@ export const RunStatisticsModule = () => {
               </Text>
             )}
             <Text size="xs" c="dimmed" mt="xs">
-              {isGlobal
-                ? 'Each run contributes only its positive Baseline-to-Return quantity delta; price changes and exclusions do not affect these totals.'
-                : 'Estimated chance assumes independent red-beast rolls and that captured beasts stayed in the Return snapshot. It is a model, not a directly observed per-map outcome.'}
+              Each run contributes only its positive Baseline-to-Return quantity delta; price changes
+              and exclusions do not affect these totals.
             </Text>
+
+            <SetupContextBlock
+              attribution={beastSetup}
+              category="beasts"
+              hasObservedResult={hasLootSnapshots}
+              isGlobal={isGlobal}
+            />
+            <Text size="xs" fw={700} mt="sm" mb={4}>Model / normalization</Text>
+            {isGlobal ? (
+              <Paper withBorder p="xs">
+                <Text size="xs" c="dimmed">
+                  No cross-session Bestiary model is calculated because each run can have a different
+                  Atlas tree, scarabs, and capture multiplier.
+                </Text>
+              </Paper>
+            ) : beastModel ? (
+              <Paper withBorder p="xs">
+                <Text size="xs" fw={600}>Bestiary model input</Text>
+                <Text size="xs" c="dimmed">
+                  {beastModel.herdCount} Herd · {beastModel.duplicatesCapturedBeasts ? 'Duplicating' : 'no Duplicating'}
+                  {' · '}Einhar guaranteed by {beastModel.einharGuaranteedBy === 'atlas' ? 'Atlas chance' : 'Bestiary Scarab'}
+                  {' · '}{formatDecimal(beastModel.expectedBaseRedRollsPerMap)} expected base red rolls/map
+                  {' · '}×{formatDecimal(beastModel.capturedQuantityMultiplier)} capture quantity
+                </Text>
+                <Text size="xs" c="dimmed">
+                  Estimated chance assumes independent red-beast rolls, retained captures, and enough
+                  Menagerie capacity. Atlas rarity/classification bias remains un-reversed because exact
+                  archetype weights are not published. This is model {beastSetupContext?.modelRevision},
+                  not a directly observed per-map outcome.
+                </Text>
+                {beastGains.length > 0 && (
+                  <Stack gap={4} mt="xs">
+                    {beastGains.map((gain) => {
+                      const estimate = estimateBestiaryEncounter(
+                        gain.gainedQuantity,
+                        mapCount,
+                        beastModel,
+                      );
+                      return estimate ? (
+                        <Text key={gain.name} size="xs" c="dimmed">
+                          {gain.name}: {estimate.estimatedChancePerMapPct.toFixed(1)}% estimated chance/map
+                          {' · '}{formatDecimal(estimate.estimatedBaseSightingsPerMap)} base sightings/map
+                          {' · '}{formatDecimal(estimate.estimatedBaseSightings)} total
+                          {estimate.saturated && ' · model saturated'}
+                        </Text>
+                      ) : null;
+                    })}
+                  </Stack>
+                )}
+              </Paper>
+            ) : !manualStatistics.beastInfoDismissed ? (
+              <Alert
+                color="yellow"
+                variant="light"
+                withCloseButton
+                closeButtonLabel="Dismiss Bestiary model information for this session"
+                onClose={() => setBeastStatisticsInfoDismissed(true)}
+              >
+                <Text size="xs">
+                  A setup estimate requires one fully attributed setup with Path of Pathing stats and
+                  guaranteed Einhar (+100% Atlas chance or a Bestiary Scarab). Raw gains remain visible;
+                  mixed, legacy, or unavailable setup evidence is never replaced by current settings.
+                </Text>
+              </Alert>
+            ) : null}
+            <DataQualityBlock
+              attribution={beastSetup}
+              category="beasts"
+              hasObservedResult={hasLootSnapshots}
+              isGlobal={isGlobal}
+            />
           </StatisticsSection>
 
           <Divider />
@@ -746,8 +981,8 @@ export const RunStatisticsModule = () => {
             opened={openSections.mercenaries}
             onToggle={toggleSection}
           >
-
-            {isGlobal ? (
+            <Text size="xs" fw={700} mb={4}>Observed</Text>
+            {isGlobal && (
               <Paper withBorder p="xs" mb="xs">
                 <Text size="xs" fw={600}>Combined tracked archetypes</Text>
                 <Text size="xs" c="dimmed">
@@ -756,37 +991,6 @@ export const RunStatisticsModule = () => {
                   {' · '}{globalStatistics.mercenaryMapCount.toLocaleString()} tracked maps. Per-run Atlas
                   and scarab context stays in Session view.
                 </Text>
-              </Paper>
-            ) : (
-              <Paper withBorder p="xs" mb="xs">
-              <Text size="xs" fw={600}>Mercenary setup context</Text>
-              <Text size="xs" c="dimmed">
-                {mercenaryScarabSetup.infamy
-                  ? `Trarthan Scarab of Infamy: encountered Mercenaries are Infamous and accompanied by ${mercenaryScarabSetup.additionalWildMercenaries} Wild Mercenaries.`
-                  : settings.mercenaryAtlasSetup
-                    ? `Atlas: +${settings.mercenaryAtlasSetup.increasedInfamousChancePct}% increased Infamous chance (relative; base rate unknown).`
-                    : 'Read Atlas Tree stats to show attribute, House, and Infamous targeting context.'}
-              </Text>
-              {mercenaryScarabSetup.infamy
-                && settings.mercenaryAtlasSetup
-                && settings.mercenaryAtlasSetup.increasedInfamousChancePct > 0 && (
-                <Text size="xs" c="dimmed">
-                  The Atlas also has +{settings.mercenaryAtlasSetup.increasedInfamousChancePct}% increased
-                  Infamous chance, but that relative modifier is superseded by the scarab&apos;s guarantee.
-                </Text>
-              )}
-              {mercenaryScarabSetup.forcesEncounter ? (
-                <Text size="xs" c="dimmed">
-                  Trarthan Scarab guarantees a Mercenary encounter.
-                </Text>
-              ) : settings.mercenaryAtlasSetup && settings.mercenaryAtlasSetup.additionalEncounterChancePct > 0 && (
-                <Text size="xs" c="dimmed">
-                  Atlas grants +{settings.mercenaryAtlasSetup.additionalEncounterChancePct}% encounter chance
-                  {settings.mercenaryAtlasSetup.additionalEncounterChancePct >= 100
-                    ? ' (guaranteed after the cap).'
-                    : ' (flat addition; base chance is not assumed here).'}
-                </Text>
-              )}
               </Paper>
             )}
 
@@ -830,92 +1034,156 @@ export const RunStatisticsModule = () => {
                 </Button>
               </Box>
             )}
-          {mercenaryRows.length > 0 ? (
-            <Stack gap={6}>
-              {mercenaryRows.map((row) => {
-                const profile = mercenaryProfile(row.archetype);
-                const targeting = !isGlobal && settings.mercenaryAtlasSetup
-                  ? deriveMercenaryTargetingImpact(row.archetype, settings.mercenaryAtlasSetup)
-                  : null;
-                const profileText = targeting?.profile
-                  ?? (profile
+            {mercenaryRows.length > 0 ? (
+              <Stack gap={6}>
+                {mercenaryRows.map((row) => {
+                  const profile = mercenaryProfile(row.archetype);
+                  const profileText = profile
                     ? `${profile.attributes.join(' / ')} · House ${profile.house}${profile.house === 'Bardiya' ? ' · no Atlas boost' : ''}`
-                    : 'Target profile unavailable');
-                return (
-                  <Paper key={row.archetype} withBorder p="xs">
-                    <Group justify="space-between" wrap="wrap" gap="xs">
-                      <Box style={{ flex: 1, minWidth: 220 }}>
-                        <Text size="xs" fw={600}>{row.archetype}</Text>
-                        <Text size="xs" c="dimmed">
-                          {row.count.toLocaleString()} / {row.mapCount.toLocaleString()} tracked maps
-                          {' · '}{formatPercent(observedRatePercent(row.count, row.mapCount))}
-                          {' · '}{formatPercent(observedRatePercent(row.count, mercenaryTotal))} of tracked
-                          {isGlobal && ` · ${row.sessionCount.toLocaleString()} ${row.sessionCount === 1 ? 'session' : 'sessions'}`}
-                        </Text>
-                        <Text size="xs" c="dimmed">{profileText}</Text>
-                        {targeting && targeting.penalties.length > 0 && (
-                          <Text size="xs" c="red">Tree penalty: {targeting.penalties.join(', ')}</Text>
+                    : 'Target profile unavailable';
+                  return (
+                    <Paper key={row.archetype} withBorder p="xs">
+                      <Group justify="space-between" wrap="wrap" gap="xs">
+                        <Box style={{ flex: 1, minWidth: 220 }}>
+                          <Text size="xs" fw={600}>{row.archetype}</Text>
+                          <Text size="xs" c="dimmed">
+                            {row.count.toLocaleString()} / {row.mapCount.toLocaleString()} tracked maps
+                            {' · '}{formatPercent(observedRatePercent(row.count, row.mapCount))}
+                            {' · '}{formatPercent(observedRatePercent(row.count, mercenaryTotal))} of tracked
+                            {isGlobal && ` · ${row.sessionCount.toLocaleString()} ${row.sessionCount === 1 ? 'session' : 'sessions'}`}
+                          </Text>
+                          <Text size="xs" c="dimmed">{profileText}</Text>
+                        </Box>
+                        {!isGlobal && (
+                          <Group gap={4} wrap="nowrap">
+                            <NumberInput
+                              size="xs"
+                              aria-label={`${row.archetype} encounter count`}
+                              value={row.count}
+                              min={1}
+                              step={1}
+                              allowDecimal={false}
+                              allowNegative={false}
+                              thousandSeparator=","
+                              style={{ width: 95 }}
+                              onChange={(next) => {
+                                if (validPositiveInteger(next)) {
+                                  setManualMercenaryCount(row.archetype, next);
+                                }
+                              }}
+                            />
+                            <Tooltip label={`Remove ${row.archetype}`}>
+                              <ActionIcon
+                                size="md"
+                                variant="subtle"
+                                color="red"
+                                aria-label={`Remove ${row.archetype}`}
+                                onClick={() => setManualMercenaryCount(row.archetype, null)}
+                              >
+                                <IconTrash size={15} />
+                              </ActionIcon>
+                            </Tooltip>
+                          </Group>
                         )}
-                      </Box>
-                      {!isGlobal && (
-                        <Group gap={4} wrap="nowrap">
-                          <NumberInput
-                            size="xs"
-                            aria-label={`${row.archetype} encounter count`}
-                            value={row.count}
-                            min={1}
-                            step={1}
-                            allowDecimal={false}
-                            allowNegative={false}
-                            thousandSeparator=","
-                            style={{ width: 95 }}
-                            onChange={(next) => {
-                              if (validPositiveInteger(next)) {
-                                setManualMercenaryCount(row.archetype, next);
-                              }
-                            }}
-                          />
-                          <Tooltip label={`Remove ${row.archetype}`}>
-                            <ActionIcon
-                              size="md"
-                              variant="subtle"
-                              color="red"
-                              aria-label={`Remove ${row.archetype}`}
-                              onClick={() => setManualMercenaryCount(row.archetype, null)}
-                            >
-                              <IconTrash size={15} />
-                            </ActionIcon>
-                          </Tooltip>
-                        </Group>
-                      )}
-                    </Group>
-                  </Paper>
-                );
-              })}
+                      </Group>
+                    </Paper>
+                  );
+                })}
 
-              {mercenaryMapCount > 0 && (
-                <Paper withBorder p="xs">
-                  <Text size="xs" fw={600}>Other / untracked remainder</Text>
-                  <Text size="xs" c="dimmed">
-                    {untrackedMercenaryMaps.toLocaleString()} / {mercenaryMapCount.toLocaleString()} tracked maps
-                    {' · '}{formatPercent(observedRatePercent(untrackedMercenaryMaps, mercenaryMapCount))}
-                  </Text>
-                  {((!isGlobal && mercenaryScarabSetup.infamy) || mercenaryTotal > mercenaryMapCount) && (
+                {mercenaryMapCount > 0 && (
+                  <Paper withBorder p="xs">
+                    <Text size="xs" fw={600}>Other / untracked remainder</Text>
                     <Text size="xs" c="dimmed">
-                      Approximation only: extra or overlapping Mercenaries mean aggregate counts cannot prove
-                      exactly how many maps contained none of the tracked archetypes.
+                      {untrackedMercenaryMaps.toLocaleString()} / {mercenaryMapCount.toLocaleString()} tracked maps
+                      {' · '}{formatPercent(observedRatePercent(untrackedMercenaryMaps, mercenaryMapCount))}
                     </Text>
-                  )}
-                </Paper>
-              )}
-            </Stack>
-          ) : (
-            <Text size="xs" c="dimmed" ta="center" py="md">
-              {isGlobal
-                ? 'No Mercenary archetypes recorded across sessions.'
-                : 'No tracked Mercenary archetypes yet. Maps without a tracked row remain Other.'}
-            </Text>
-          )}
+                    {((!isGlobal && mercenaryScarabSetup.infamy) || mercenaryTotal > mercenaryMapCount) && (
+                      <Text size="xs" c="dimmed">
+                        Approximation only: extra or overlapping Mercenaries mean aggregate counts cannot prove
+                        exactly how many maps contained none of the tracked archetypes.
+                      </Text>
+                    )}
+                  </Paper>
+                )}
+              </Stack>
+            ) : (
+              <Text size="xs" c="dimmed" ta="center" py="md">
+                {isGlobal
+                  ? 'No Mercenary archetypes recorded across sessions.'
+                  : 'No tracked Mercenary archetypes yet. Maps without a tracked row remain Other.'}
+              </Text>
+            )}
+            <SetupContextBlock
+              attribution={mercenarySetup}
+              category="mercenaries"
+              hasObservedResult={mercenaryRows.length > 0}
+              isGlobal={isGlobal}
+            />
+            <Text size="xs" fw={700} mt="sm" mb={4}>Model / normalization</Text>
+            {isGlobal ? (
+              <Paper withBorder p="xs">
+                <Text size="xs" c="dimmed">
+                  Combined archetype rates are not normalized across different attribute suppression,
+                  House bias, encounter chance, or Trarthan scarab setups.
+                </Text>
+              </Paper>
+            ) : mercenarySetupContext && mercenaryAtlasSetup ? (
+              <Paper withBorder p="xs">
+                <Text size="xs" fw={600}>Recorded Mercenary setup</Text>
+                <Text size="xs" c="dimmed">
+                  {mercenaryScarabSetup.infamy
+                    ? `Trarthan Scarab of Infamy guarantees Infamous encounters and adds ${mercenaryScarabSetup.additionalWildMercenaries} Wild Mercenaries.`
+                    : `Atlas Infamous modifier: +${mercenaryAtlasSetup.increasedInfamousChancePct}% increased (relative; base rate unknown).`}
+                </Text>
+                {mercenaryScarabSetup.infamy
+                  && mercenaryAtlasSetup.increasedInfamousChancePct > 0 && (
+                  <Text size="xs" c="dimmed">
+                    The Atlas&apos;s +{mercenaryAtlasSetup.increasedInfamousChancePct}% relative modifier is
+                    superseded by the recorded scarab guarantee.
+                  </Text>
+                )}
+                <Text size="xs" c="dimmed">
+                  {mercenaryScarabSetup.forcesEncounter
+                    ? 'Trarthan Scarab guarantees a Mercenary encounter.'
+                    : mercenaryAtlasSetup.additionalEncounterChancePct > 0
+                      ? `Atlas grants +${mercenaryAtlasSetup.additionalEncounterChancePct}% encounter chance${mercenaryAtlasSetup.additionalEncounterChancePct >= 100 ? ' (guaranteed after the cap).' : ' (flat addition; base chance is not assumed).'}`
+                      : 'No recorded encounter guarantee or additional Atlas encounter chance.'}
+                </Text>
+                {mercenaryRows.length > 0 && (
+                  <Stack gap={4} mt="xs">
+                    {mercenaryRows.map((row) => {
+                      const targeting = deriveMercenaryTargetingImpact(
+                        row.archetype,
+                        mercenaryAtlasSetup,
+                      );
+                      return targeting ? (
+                        <Box key={row.archetype}>
+                          <Text size="xs" c="dimmed">{row.archetype}: {targeting.profile}</Text>
+                          {targeting.penalties.length > 0 && (
+                            <Text size="xs" c="red">
+                              Recorded tree penalty: {targeting.penalties.join(', ')}
+                            </Text>
+                          )}
+                        </Box>
+                      ) : null;
+                    })}
+                  </Stack>
+                )}
+              </Paper>
+            ) : (
+              <Paper withBorder p="xs">
+                <Text size="xs" c="dimmed">
+                  Descriptive targeting requires one fully attributed setup with Path of Pathing stats.
+                  Mixed, legacy, and unavailable setup evidence is not replaced by current settings.
+                </Text>
+              </Paper>
+            )}
+            <DataQualityBlock
+              attribution={mercenarySetup}
+              category="mercenaries"
+              hasObservedResult={mercenaryRows.length > 0}
+              isGlobal={isGlobal}
+            />
           </StatisticsSection>
         </Stack>
       </ScrollArea>

@@ -105,7 +105,7 @@ describe('WP10 auto-save', () => {
     useSessionStore.getState().addManualMercenaryCount('Kineticist', 2);
     vi.advanceTimersByTime(DEBOUNCE);
 
-    expect(useSessionStore.getState().savedSessions[id].manualStatistics).toEqual({
+    expect(useSessionStore.getState().savedSessions[id].manualStatistics).toMatchObject({
       infoDismissed: true,
       beastInfoDismissed: true,
       starfallCraters: 0,
@@ -113,11 +113,14 @@ describe('WP10 auto-save', () => {
       atlasAnomalies: [{ name: 'The Manor Foyer', count: 3 }],
       mercenaries: [{ archetype: 'Kineticist', count: 2 }],
     });
+    expect(Object.keys(
+      useSessionStore.getState().savedSessions[id].manualStatistics?.setupProvenance ?? {},
+    ).sort()).toEqual(['anomalies', 'kalguuran', 'mercenaries']);
 
     useSessionStore.getState().newSession();
     expect(useSessionStore.getState().manualStatistics).toEqual({});
     useSessionStore.getState().loadSession(id);
-    expect(useSessionStore.getState().manualStatistics).toEqual({
+    expect(useSessionStore.getState().manualStatistics).toMatchObject({
       infoDismissed: true,
       beastInfoDismissed: true,
       starfallCraters: 0,
@@ -136,6 +139,97 @@ describe('WP10 auto-save', () => {
       infoDismissed: true,
       beastInfoDismissed: true,
     });
+  });
+
+  it('records setup changes on later counter increases instead of applying the final setup retroactively', () => {
+    useSessionStore.getState().setManualStatistic('starfallCraters', 1);
+    useSessionStore.getState().updateScarab(0, 'name', 'Kalguuran Scarab');
+    useSessionStore.getState().setManualStatistic('starfallCraters', 2);
+
+    const attribution = useSessionStore.getState().manualStatistics.setupProvenance?.kalguuran;
+    expect(attribution?.legacyUnattributed).toBeUndefined();
+    expect(attribution?.contexts).toHaveLength(2);
+    expect(attribution?.contexts[0].scarabNames).toEqual([]);
+    expect(attribution?.contexts[1].scarabNames).toEqual(['Kalguuran Scarab']);
+
+    useSessionStore.getState().setManualStatistic('starfallCraters', 1);
+    expect(useSessionStore.getState().manualStatistics.setupProvenance?.kalguuran?.contexts)
+      .toHaveLength(2);
+  });
+
+  it('captures Bestiary setup when loot snapshots first become complete and clears it with loot', () => {
+    const baseline = [{
+      id: 'baseline', name: 'Fenumal Plagued Arachnid', tab: 'Beasts',
+      quantity: '0', price: '10', total: 0, excluded: false,
+    }];
+    const returned = [{
+      id: 'return', name: 'Fenumal Plagued Arachnid', tab: 'Beasts',
+      quantity: '2', price: '10', total: 20, excluded: false,
+    }];
+    useSessionStore.getState().updateScarab(0, 'name', 'Bestiary Scarab');
+    useSessionStore.getState().setBaselineItems(baseline);
+    useSessionStore.getState().setLootItems(returned);
+
+    expect(useSessionStore.getState().manualStatistics.setupProvenance?.beasts)
+      .toMatchObject({
+        contexts: [{
+          captureSource: 'loot-snapshots',
+          scarabNames: ['Bestiary Scarab'],
+        }],
+      });
+    expect(useSessionStore.getState().manualStatistics.setupProvenance?.beasts?.contexts)
+      .toHaveLength(1);
+
+    useSessionStore.getState().clearManualStatistics();
+    expect(useSessionStore.getState().manualStatistics.setupProvenance?.beasts?.contexts)
+      .toHaveLength(1);
+    useSessionStore.getState().clearLoot();
+    expect(useSessionStore.getState().manualStatistics.setupProvenance).toBeUndefined();
+  });
+
+  it('captures both ends of a Bestiary snapshot run when setup changes between them', () => {
+    const baseline = [{
+      id: 'baseline', name: 'Fenumal Plagued Arachnid', tab: 'Beasts',
+      quantity: '0', price: '10', total: 0, excluded: false,
+    }];
+    const returned = [{
+      id: 'return', name: 'Fenumal Plagued Arachnid', tab: 'Beasts',
+      quantity: '2', price: '10', total: 20, excluded: false,
+    }];
+    useSessionStore.getState().updateScarab(0, 'name', 'Bestiary Scarab');
+    useSessionStore.getState().setBaselineItems(baseline);
+    useSessionStore.getState().updateScarab(1, 'name', 'Bestiary Scarab of the Herd');
+    useSessionStore.getState().setLootItems(returned);
+
+    const contexts = useSessionStore.getState().manualStatistics
+      .setupProvenance?.beasts?.contexts;
+    expect(contexts).toHaveLength(2);
+    expect(contexts?.[0].scarabNames).toEqual(['Bestiary Scarab']);
+    expect(contexts?.[1].scarabNames).toEqual([
+      'Bestiary Scarab',
+      'Bestiary Scarab of the Herd',
+    ]);
+  });
+
+  it('drops category setup provenance when its final authored observation is removed', () => {
+    useSessionStore.getState().setManualStatistic('starfallCraters', 1);
+    useSessionStore.getState().setManualStatistic('svalinnDrops', 1);
+    useSessionStore.getState().setManualStatistic('starfallCraters', null);
+    expect(useSessionStore.getState().manualStatistics.setupProvenance?.kalguuran)
+      .toBeDefined();
+    useSessionStore.getState().setManualStatistic('svalinnDrops', null);
+    expect(useSessionStore.getState().manualStatistics.setupProvenance?.kalguuran)
+      .toBeUndefined();
+
+    useSessionStore.getState().addManualAtlasAnomalyCount('The Court of Chaos', 1);
+    useSessionStore.getState().setManualAtlasAnomalyCount('The Court of Chaos', null);
+    expect(useSessionStore.getState().manualStatistics.setupProvenance?.anomalies)
+      .toBeUndefined();
+
+    useSessionStore.getState().addManualMercenaryCount('Kineticist', 1);
+    useSessionStore.getState().setManualMercenaryCount('Kineticist', null);
+    expect(useSessionStore.getState().manualStatistics.setupProvenance?.mercenaries)
+      .toBeUndefined();
   });
 
   it('snapshots Atlas-derived rate inputs and invalidates them when the tree URL changes', () => {

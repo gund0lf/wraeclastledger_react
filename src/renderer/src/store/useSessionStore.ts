@@ -15,8 +15,11 @@ import type {
 import {
   addManualAtlasAnomalyCount as addManualAtlasAnomalyCountValue,
   addManualMercenaryCount as addManualMercenaryCountValue,
+  categoryHasRunStatisticsObservation,
+  clearRunStatisticsSetupCategory,
   cloneManualStatistics,
   normalizeLocalManualStatistics,
+  recordRunStatisticsSetupContext,
   setManualMercenaryCount as setManualMercenaryCountValue,
   setManualAtlasAnomalyCount as setManualAtlasAnomalyCountValue,
   setManualStatistic as setManualStatisticValue,
@@ -518,13 +521,47 @@ export const useSessionStore = create<SessionStoreState>()(
         const processed = gemName
           ? items.map((i) => ({ ...i, excluded: i.excluded || i.name.toLowerCase().includes(gemName) }))
           : items;
-        set({ lootItems: processed });
+        set((s) => {
+          const hadCompleteSnapshots = s.baselineItems.length > 0 && s.lootItems.length > 0;
+          let manualStatistics = s.manualStatistics;
+          if (processed.length > 0) {
+            manualStatistics = recordRunStatisticsSetupContext(
+              manualStatistics,
+              'beasts',
+              s.settings,
+              'loot-snapshots',
+              hadCompleteSnapshots,
+            );
+          } else if (s.baselineItems.length === 0) {
+            manualStatistics = clearRunStatisticsSetupCategory(manualStatistics, 'beasts');
+          }
+          return {
+            lootItems: processed,
+            manualStatistics,
+          };
+        });
       },
       setBaselineItems: (items) => {
         repositoryActions?.checkpointBeforeDestructive();
-        set({
-          baselineItems: items,
-          baselineTotal: items.reduce((a, b) => a + b.total, 0),
+        set((s) => {
+          const hadCompleteSnapshots = s.baselineItems.length > 0 && s.lootItems.length > 0;
+          let manualStatistics = s.manualStatistics;
+          if (items.length > 0) {
+            manualStatistics = recordRunStatisticsSetupContext(
+              manualStatistics,
+              'beasts',
+              s.settings,
+              'loot-snapshots',
+              hadCompleteSnapshots,
+            );
+          } else if (s.lootItems.length === 0) {
+            manualStatistics = clearRunStatisticsSetupCategory(manualStatistics, 'beasts');
+          }
+          return {
+            baselineItems: items,
+            baselineTotal: items.reduce((a, b) => a + b.total, 0),
+            manualStatistics,
+          };
         });
       },
       setBaselineTotal: (total) => set({ baselineTotal: total }),
@@ -538,10 +575,35 @@ export const useSessionStore = create<SessionStoreState>()(
         set((s) => ({ manualLootItems: s.manualLootItems.filter((entry) => entry.id !== id) })),
       clearLoot: () => {
         repositoryActions?.checkpointBeforeDestructive();
-        set({ lootItems: [], baselineItems: [], baselineTotal: 0, manualLootItems: [] });
+        set((s) => ({
+          lootItems: [],
+          baselineItems: [],
+          baselineTotal: 0,
+          manualLootItems: [],
+          manualStatistics: clearRunStatisticsSetupCategory(s.manualStatistics, 'beasts'),
+        }));
       },
       setManualStatistic: (field, value) =>
-        set((s) => ({ manualStatistics: setManualStatisticValue(s.manualStatistics, field, value) })),
+        set((s) => {
+          const previous = s.manualStatistics[field];
+          const category = field === 'wildwoodEncounters' ? 'wildwood' : 'kalguuran';
+          const next = setManualStatisticValue(s.manualStatistics, field, value);
+          const addsObservation = value !== null && (previous === undefined || value > previous);
+          if (!categoryHasRunStatisticsObservation(next, category)) {
+            return { manualStatistics: clearRunStatisticsSetupCategory(next, category) };
+          }
+          return {
+            manualStatistics: addsObservation
+              ? recordRunStatisticsSetupContext(
+                next,
+                category,
+                s.settings,
+                'manual-entry',
+                categoryHasRunStatisticsObservation(s.manualStatistics, category),
+              )
+              : next,
+          };
+        }),
       setRunStatisticsInfoDismissed: (dismissed) =>
         set((s) => ({
           manualStatistics: setManualStatisticsInfoDismissedValue(s.manualStatistics, dismissed),
@@ -551,33 +613,92 @@ export const useSessionStore = create<SessionStoreState>()(
           manualStatistics: setBeastStatisticsInfoDismissedValue(s.manualStatistics, dismissed),
         })),
       addManualAtlasAnomalyCount: (name, amount) =>
-        set((s) => ({
-          manualStatistics: addManualAtlasAnomalyCountValue(s.manualStatistics, name, amount),
-        })),
+        set((s) => {
+          const next = addManualAtlasAnomalyCountValue(s.manualStatistics, name, amount);
+          return {
+            manualStatistics: recordRunStatisticsSetupContext(
+              next,
+              'anomalies',
+              s.settings,
+              'manual-entry',
+              categoryHasRunStatisticsObservation(s.manualStatistics, 'anomalies'),
+            ),
+          };
+        }),
       setManualAtlasAnomalyCount: (name, count) =>
-        set((s) => ({
-          manualStatistics: setManualAtlasAnomalyCountValue(s.manualStatistics, name, count),
-        })),
+        set((s) => {
+          const previous = s.manualStatistics.atlasAnomalies
+            ?.find((row) => row.name === name)?.count;
+          const next = setManualAtlasAnomalyCountValue(s.manualStatistics, name, count);
+          const addsObservation = count !== null && (previous === undefined || count > previous);
+          if (!categoryHasRunStatisticsObservation(next, 'anomalies')) {
+            return {
+              manualStatistics: clearRunStatisticsSetupCategory(next, 'anomalies'),
+            };
+          }
+          return {
+            manualStatistics: addsObservation
+              ? recordRunStatisticsSetupContext(
+                next,
+                'anomalies',
+                s.settings,
+                'manual-entry',
+                categoryHasRunStatisticsObservation(s.manualStatistics, 'anomalies'),
+              )
+              : next,
+          };
+        }),
       addManualMercenaryCount: (archetype, amount) =>
-        set((s) => ({
-          manualStatistics: addManualMercenaryCountValue(
+        set((s) => {
+          const next = addManualMercenaryCountValue(
             s.manualStatistics,
             archetype,
             amount,
-          ),
-        })),
+          );
+          return {
+            manualStatistics: recordRunStatisticsSetupContext(
+              next,
+              'mercenaries',
+              s.settings,
+              'manual-entry',
+              categoryHasRunStatisticsObservation(s.manualStatistics, 'mercenaries'),
+            ),
+          };
+        }),
       setManualMercenaryCount: (archetype, count) =>
-        set((s) => ({
-          manualStatistics: setManualMercenaryCountValue(
+        set((s) => {
+          const previous = s.manualStatistics.mercenaries
+            ?.find((row) => row.archetype === archetype)?.count;
+          const next = setManualMercenaryCountValue(
             s.manualStatistics,
             archetype,
             count,
-          ),
-        })),
+          );
+          const addsObservation = count !== null && (previous === undefined || count > previous);
+          if (!categoryHasRunStatisticsObservation(next, 'mercenaries')) {
+            return {
+              manualStatistics: clearRunStatisticsSetupCategory(next, 'mercenaries'),
+            };
+          }
+          return {
+            manualStatistics: addsObservation
+              ? recordRunStatisticsSetupContext(
+                next,
+                'mercenaries',
+                s.settings,
+                'manual-entry',
+                categoryHasRunStatisticsObservation(s.manualStatistics, 'mercenaries'),
+              )
+              : next,
+          };
+        }),
       clearManualStatistics: () => set((s) => ({
         manualStatistics: {
           ...(s.manualStatistics.infoDismissed ? { infoDismissed: true } : {}),
           ...(s.manualStatistics.beastInfoDismissed ? { beastInfoDismissed: true } : {}),
+          ...(s.manualStatistics.setupProvenance?.beasts
+            ? { setupProvenance: { beasts: s.manualStatistics.setupProvenance.beasts } }
+            : {}),
         },
       })),
       startManualTimer: () => set((s) => s.sessionLifecycle === 'live'

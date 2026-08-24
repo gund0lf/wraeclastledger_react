@@ -22,7 +22,23 @@ describe('WP14 session payload codec', () => {
       baselineItems: [],
       baselineTotal: 17,
       manualLootItems: [],
-      manualStatistics: { wildwoodEncounters: 3 },
+      manualStatistics: {
+        wildwoodEncounters: 3,
+        setupProvenance: {
+          wildwood: {
+            contexts: [{
+              schemaVersion: 1,
+              modelRevision: 'allflame-v1',
+              captureSource: 'manual-entry',
+              leagueName: 'Allflame',
+              atlasSource: 'unavailable',
+              atlasTreeUrl: null,
+              atlasDetectedTags: [],
+              scarabNames: ['Scarab of Wisps'],
+            }],
+          },
+        },
+      },
       manualRunTimer: { accumulatedMs: 90_000, runningSince: null, lastHeartbeatAt: null, finishedAt: null },
       settings: { ...DEFAULT_SETTINGS, divinePrice: 211 },
       sessionNotes: 'codec note',
@@ -43,7 +59,23 @@ describe('WP14 session payload codec', () => {
       .toBe(SESSION_PAYLOAD_KEYS.length);
     expect(decodeSessionPayload(encoded, DEFAULT_SETTINGS)).toMatchObject({
       baselineTotal: 17,
-      manualStatistics: { wildwoodEncounters: 3 },
+      manualStatistics: {
+        wildwoodEncounters: 3,
+        setupProvenance: {
+          wildwood: {
+            contexts: [{
+              schemaVersion: 1,
+              modelRevision: 'allflame-v1',
+              captureSource: 'manual-entry',
+              leagueName: 'Allflame',
+              atlasSource: 'unavailable',
+              atlasTreeUrl: null,
+              atlasDetectedTags: [],
+              scarabNames: ['Scarab of Wisps'],
+            }],
+          },
+        },
+      },
       manualRunTimer: { accumulatedMs: 90_000, runningSince: null, lastHeartbeatAt: null, finishedAt: null },
       settings: { divinePrice: 211 },
       sessionNotes: 'codec note',

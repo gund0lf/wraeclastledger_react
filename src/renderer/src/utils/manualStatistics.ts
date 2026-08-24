@@ -2,7 +2,14 @@ import type {
   ManualAtlasAnomalyCount,
   ManualMercenaryCount,
   ManualSessionStatistics,
+  RunStatisticsSetupAttribution,
+  RunStatisticsSetupCaptureSource,
+  RunStatisticsSetupCategory,
+  RunStatisticsSetupContext,
+  RunStatisticsSetupProvenance,
+  SessionSettings,
 } from '../types';
+import { isPathofpathingUrl } from './atlasUrl';
 
 export const MANUAL_STATISTIC_FIELDS = [
   'starfallCraters',
@@ -145,6 +152,17 @@ export function mercenaryProfile(archetype: string): MercenaryProfile | null {
 const MAX_SAFE_COUNT = Number.MAX_SAFE_INTEGER;
 const MERCENARY_ROW_LIMIT = 200;
 const ANOMALY_ROW_LIMIT = 50;
+const SETUP_CONTEXT_LIMIT = 8;
+const SETUP_SCARAB_LIMIT = 10;
+const SETUP_ATLAS_TAG_LIMIT = 40;
+
+export const RUN_STATISTICS_SETUP_CATEGORIES = [
+  'kalguuran',
+  'wildwood',
+  'anomalies',
+  'beasts',
+  'mercenaries',
+] as const satisfies readonly RunStatisticsSetupCategory[];
 
 const own = (value: object, key: PropertyKey): boolean =>
   Object.prototype.hasOwnProperty.call(value, key);
@@ -166,6 +184,256 @@ const inlineText = (value: unknown, maximum: number): string | null => {
   const normalized = value.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
   return normalized.length > 0 && normalized.length <= maximum ? normalized : null;
 };
+
+const validAtlasSetupValue = (value: unknown): value is number =>
+  typeof value === 'number'
+  && Number.isSafeInteger(value)
+  && value >= 0
+  && value <= 10_000;
+
+const BESTIARY_ATLAS_SETUP_KEYS = [
+  'additionalEinharChancePct',
+  'additionalRedChancePct',
+  'additionalYellowBeasts',
+  'yellowToRedChancePct',
+  'pairChancePct',
+  'capturedBeastCopyChancePct',
+] as const;
+
+const MERCENARY_ATLAS_SETUP_KEYS = [
+  'additionalEncounterChancePct',
+  'lessStrengthAlignedChancePct',
+  'lessDexterityAlignedChancePct',
+  'lessIntelligenceAlignedChancePct',
+  'increasedAzadiChancePct',
+  'increasedKeitaChancePct',
+  'increasedCyaxanChancePct',
+  'increasedInfamousChancePct',
+] as const;
+
+const sanitizeAtlasSetup = <Key extends string>(
+  value: unknown,
+  keys: readonly Key[],
+): Record<Key, number> | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const input = value as Record<string, unknown>;
+  const result = {} as Record<Key, number>;
+  for (const key of keys) {
+    if (!validAtlasSetupValue(input[key])) return null;
+    result[key] = input[key];
+  }
+  return result;
+};
+
+const sanitizeInlineList = (
+  value: unknown,
+  maximumItems: number,
+  maximumLength: number,
+  deduplicate: boolean,
+): string[] | null => {
+  if (!Array.isArray(value) || value.length > maximumItems) return null;
+  const result: string[] = [];
+  for (const candidate of value) {
+    const normalized = inlineText(candidate, maximumLength);
+    if (!normalized) return null;
+    if (!deduplicate || !result.includes(normalized)) result.push(normalized);
+  }
+  return result.sort((left, right) => left.localeCompare(right));
+};
+
+const sanitizeSetupContext = (value: unknown): RunStatisticsSetupContext | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const input = value as Record<string, unknown>;
+  if (input.schemaVersion !== 1 || input.modelRevision !== 'allflame-v1') return null;
+  if (input.captureSource !== 'manual-entry' && input.captureSource !== 'loot-snapshots') return null;
+  if (input.atlasSource !== 'path-of-pathing' && input.atlasSource !== 'unavailable') return null;
+  const leagueName = inlineText(input.leagueName, 80);
+  const atlasTreeUrl = input.atlasTreeUrl === null
+    ? null
+    : inlineText(input.atlasTreeUrl, 4096);
+  const atlasDetectedTags = sanitizeInlineList(
+    input.atlasDetectedTags,
+    SETUP_ATLAS_TAG_LIMIT,
+    50,
+    true,
+  );
+  const scarabNames = sanitizeInlineList(input.scarabNames, SETUP_SCARAB_LIMIT, 120, false);
+  if (!leagueName || !atlasDetectedTags || !scarabNames) return null;
+
+  const result: RunStatisticsSetupContext = {
+    schemaVersion: 1,
+    modelRevision: 'allflame-v1',
+    captureSource: input.captureSource,
+    leagueName,
+    atlasSource: input.atlasSource,
+    atlasTreeUrl,
+    atlasDetectedTags,
+    scarabNames,
+  };
+  if (input.atlasSource === 'path-of-pathing') {
+    if (!atlasTreeUrl || !isPathofpathingUrl(atlasTreeUrl)) return null;
+    const bestiary = sanitizeAtlasSetup(input.bestiaryAtlasSetup, BESTIARY_ATLAS_SETUP_KEYS);
+    const mercenary = sanitizeAtlasSetup(input.mercenaryAtlasSetup, MERCENARY_ATLAS_SETUP_KEYS);
+    if (!bestiary || !mercenary) return null;
+    result.bestiaryAtlasSetup = bestiary;
+    result.mercenaryAtlasSetup = mercenary;
+  } else if (atlasTreeUrl !== null
+      || own(input, 'bestiaryAtlasSetup')
+      || own(input, 'mercenaryAtlasSetup')) {
+    return null;
+  }
+  return result;
+};
+
+export function runStatisticsSetupFingerprint(context: RunStatisticsSetupContext): string {
+  return JSON.stringify(context);
+}
+
+const sanitizeSetupProvenance = (value: unknown): RunStatisticsSetupProvenance | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const input = value as Record<string, unknown>;
+  if (Object.keys(input).some((key) => !RUN_STATISTICS_SETUP_CATEGORIES.includes(
+    key as RunStatisticsSetupCategory,
+  ))) return null;
+  const result: RunStatisticsSetupProvenance = {};
+  for (const category of RUN_STATISTICS_SETUP_CATEGORIES) {
+    if (!own(input, category)) continue;
+    const candidate = input[category];
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+    const record = candidate as Record<string, unknown>;
+    if (!Array.isArray(record.contexts) || record.contexts.length === 0 ||
+        record.contexts.length > SETUP_CONTEXT_LIMIT) return null;
+    if (own(record, 'legacyUnattributed') && typeof record.legacyUnattributed !== 'boolean') return null;
+    if (own(record, 'overflowed') && typeof record.overflowed !== 'boolean') return null;
+    const contexts: RunStatisticsSetupContext[] = [];
+    const fingerprints = new Set<string>();
+    for (const rawContext of record.contexts) {
+      const context = sanitizeSetupContext(rawContext);
+      if (!context) return null;
+      const fingerprint = runStatisticsSetupFingerprint(context);
+      if (!fingerprints.has(fingerprint)) {
+        fingerprints.add(fingerprint);
+        contexts.push(context);
+      }
+    }
+    if (contexts.length === 0) return null;
+    result[category] = {
+      contexts,
+      ...(record.legacyUnattributed ? { legacyUnattributed: true } : {}),
+      ...(record.overflowed ? { overflowed: true } : {}),
+    };
+  }
+  return Object.keys(result).length > 0 ? result : null;
+};
+
+export function buildRunStatisticsSetupContext(
+  settings: SessionSettings,
+  captureSource: RunStatisticsSetupCaptureSource,
+): RunStatisticsSetupContext {
+  const atlasTreeUrl = inlineText(settings.atlasTreeUrl, 4096);
+  const hasAtlasStats = settings.bestiaryAtlasSetup !== undefined
+    && settings.mercenaryAtlasSetup !== undefined
+    && atlasTreeUrl !== null
+    && isPathofpathingUrl(atlasTreeUrl);
+  return {
+    schemaVersion: 1,
+    modelRevision: 'allflame-v1',
+    captureSource,
+    leagueName: inlineText(settings.leagueName, 80) ?? 'Unknown league',
+    atlasSource: hasAtlasStats ? 'path-of-pathing' : 'unavailable',
+    atlasTreeUrl: hasAtlasStats ? atlasTreeUrl : null,
+    atlasDetectedTags: [...new Set(settings.atlasDetectedTags
+      .map((tag) => inlineText(tag, 50))
+      .filter((tag): tag is string => tag !== null))]
+      .slice(0, SETUP_ATLAS_TAG_LIMIT)
+      .sort((left, right) => left.localeCompare(right)),
+    scarabNames: settings.scarabs
+      .map((scarab) => inlineText(scarab.name, 120))
+      .filter((name): name is string => name !== null)
+      .slice(0, SETUP_SCARAB_LIMIT)
+      .sort((left, right) => left.localeCompare(right)),
+    ...(hasAtlasStats
+      ? {
+        bestiaryAtlasSetup: { ...settings.bestiaryAtlasSetup! },
+        mercenaryAtlasSetup: { ...settings.mercenaryAtlasSetup! },
+      }
+      : {}),
+  };
+}
+
+export function categoryHasRunStatisticsObservation(
+  value: ManualSessionStatistics,
+  category: RunStatisticsSetupCategory,
+): boolean {
+  switch (category) {
+    case 'kalguuran':
+      return own(value, 'starfallCraters') || own(value, 'svalinnDrops');
+    case 'wildwood':
+      return own(value, 'wildwoodEncounters');
+    case 'anomalies':
+      return (value.atlasAnomalies?.length ?? 0) > 0;
+    case 'mercenaries':
+      return (value.mercenaries?.length ?? 0) > 0;
+    case 'beasts':
+      return false;
+    default: {
+      const unhandled: never = category;
+      return unhandled;
+    }
+  }
+}
+
+export function recordRunStatisticsSetupContext(
+  current: ManualSessionStatistics,
+  category: RunStatisticsSetupCategory,
+  settings: SessionSettings,
+  captureSource: RunStatisticsSetupCaptureSource,
+  hadObservationBeforeCapture: boolean,
+): ManualSessionStatistics {
+  const context = buildRunStatisticsSetupContext(settings, captureSource);
+  const previous = current.setupProvenance?.[category];
+  const contexts = previous?.contexts.map((entry) => ({
+    ...entry,
+    atlasDetectedTags: [...entry.atlasDetectedTags],
+    scarabNames: [...entry.scarabNames],
+    ...(entry.bestiaryAtlasSetup ? { bestiaryAtlasSetup: { ...entry.bestiaryAtlasSetup } } : {}),
+    ...(entry.mercenaryAtlasSetup ? { mercenaryAtlasSetup: { ...entry.mercenaryAtlasSetup } } : {}),
+  })) ?? [];
+  const fingerprint = runStatisticsSetupFingerprint(context);
+  const alreadyCaptured = contexts.some((entry) => runStatisticsSetupFingerprint(entry) === fingerprint);
+  let overflowed = previous?.overflowed;
+  if (!alreadyCaptured) {
+    if (contexts.length < SETUP_CONTEXT_LIMIT) contexts.push(context);
+    else overflowed = true;
+  }
+  const attribution: RunStatisticsSetupAttribution = {
+    contexts,
+    ...((previous?.legacyUnattributed || (!previous && hadObservationBeforeCapture))
+      ? { legacyUnattributed: true as const }
+      : {}),
+    ...(overflowed ? { overflowed: true as const } : {}),
+  };
+  return {
+    ...current,
+    setupProvenance: {
+      ...(current.setupProvenance ?? {}),
+      [category]: attribution,
+    },
+  };
+}
+
+export function clearRunStatisticsSetupCategory(
+  current: ManualSessionStatistics,
+  category: RunStatisticsSetupCategory,
+): ManualSessionStatistics {
+  if (!current.setupProvenance?.[category]) return current;
+  const setupProvenance = { ...current.setupProvenance };
+  delete setupProvenance[category];
+  const next = { ...current };
+  if (Object.keys(setupProvenance).length > 0) next.setupProvenance = setupProvenance;
+  else delete next.setupProvenance;
+  return next;
+}
 
 /** Strict saved/imported-data validator. Returns null for malformed or empty input. */
 export function sanitizeManualStatistics(value: unknown): ManualSessionStatistics | null {
@@ -232,7 +500,14 @@ export function sanitizeManualStatistics(value: unknown): ManualSessionStatistic
     if (mercenaries.length > 0) result.mercenaries = mercenaries;
   }
 
+  if (own(input, 'setupProvenance')) {
+    const setupProvenance = sanitizeSetupProvenance(input.setupProvenance);
+    if (!setupProvenance) return null;
+    result.setupProvenance = setupProvenance;
+  }
+
   return hasManualStatistics(result) || result.infoDismissed || result.beastInfoDismissed
+    || result.setupProvenance
     ? result
     : null;
 }
@@ -262,6 +537,24 @@ export function cloneManualStatistics(value: ManualSessionStatistics): ManualSes
   }
   if (value.mercenaries) {
     result.mercenaries = value.mercenaries.map((row) => ({ ...row }));
+  }
+  if (value.setupProvenance) {
+    result.setupProvenance = Object.fromEntries(Object.entries(value.setupProvenance).map(
+      ([category, attribution]) => [category, attribution && {
+        ...attribution,
+        contexts: attribution.contexts.map((context) => ({
+          ...context,
+          atlasDetectedTags: [...context.atlasDetectedTags],
+          scarabNames: [...context.scarabNames],
+          ...(context.bestiaryAtlasSetup
+            ? { bestiaryAtlasSetup: { ...context.bestiaryAtlasSetup } }
+            : {}),
+          ...(context.mercenaryAtlasSetup
+            ? { mercenaryAtlasSetup: { ...context.mercenaryAtlasSetup } }
+            : {}),
+        })),
+      }],
+    )) as RunStatisticsSetupProvenance;
   }
   return result;
 }

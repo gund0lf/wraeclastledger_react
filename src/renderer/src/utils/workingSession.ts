@@ -87,13 +87,16 @@ const MANUAL_STATISTICS_KEYS = new Set<string>([
   'beastInfoDismissed',
   'atlasAnomalies',
   'mercenaries',
+  'setupProvenance',
 ]);
 
 function isEmptyManualStatisticsInput(value: JsonObject): boolean {
   return Object.entries(value).every(([key, candidate]) =>
     ((key === 'infoDismissed' || key === 'beastInfoDismissed') && candidate === false)
     || ((key === 'atlasAnomalies' || key === 'mercenaries')
-      && Array.isArray(candidate) && candidate.length === 0));
+      && Array.isArray(candidate) && candidate.length === 0)
+    || (key === 'setupProvenance' && isPlainObject(candidate)
+      && Object.keys(candidate).length === 0));
 }
 
 function isAutoManagedSettingWellFormed(key: keyof SessionSettings, value: unknown): boolean {
