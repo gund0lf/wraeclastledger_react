@@ -10,21 +10,36 @@ import { COLOR, FONT } from '../utils/uiTokens';
 import { SectionLabel } from './ui/SectionLabel';
 import { LootCategoryIcon, LootCategoryGlyph } from './ui/LootCategoryIcon';
 import { PoeItemIcon } from './ui/PoeItemIcon';
+import { divineEquivalent } from '../utils/currencyDisplay';
 
-export const LootEvidenceSummary = ({ summary }: { summary: LootSummary }) => {
+export const LootEvidenceSummary = ({
+  summary,
+  divinePrice,
+}: {
+  summary: LootSummary;
+  /** The exact authored snapshot for this run. Pooled summaries deliberately
+   * omit it because their rows can span several historical Divine prices. */
+  divinePrice?: number | null;
+}) => {
   const [rowsOpen, setRowsOpen] = useState(false);
   const categoryTotal = summary.categories.reduce((sum, entry) => sum + entry.value, 0) || 1;
   const manualRows = summary.rows.filter((row) => row.source === 'manual');
   const valuationRows = summary.rows.filter((row) => row.valuation !== undefined);
   const omittedRows = summary.omittedCsvRows + summary.omittedManualRows;
   const omittedValue = summary.omittedCsvValue + summary.omittedManualValue;
+  const reportedReturnDivines = divineEquivalent(summary.reportedReturn, divinePrice);
 
   return (
     <Stack gap={8}>
       <Group justify="space-between" align="center">
         <Group gap={5}>
           <SectionLabel>Loot breakdown</SectionLabel>
-          <Text size="lg" fw={800} c="teal">{fcSep(summary.reportedReturn)}</Text>
+          <Group gap={5} align="baseline" wrap="wrap">
+            <Text size="lg" fw={800} c="teal">{fcSep(summary.reportedReturn)}</Text>
+            {reportedReturnDivines != null && (
+              <Text size="xs" fw={700} c="dimmed">({reportedReturnDivines.toFixed(1)}d)</Text>
+            )}
+          </Group>
         </Group>
         <Group gap={5} wrap="wrap" justify="flex-end">
           <Badge size="xs" color="teal" variant="light">Top {summary.rows.length}</Badge>
@@ -91,7 +106,9 @@ export const LootEvidenceSummary = ({ summary }: { summary: LootSummary }) => {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {summary.rows.map((row, index) => (
+              {summary.rows.map((row, index) => {
+                const rowDivines = divineEquivalent(row.value, divinePrice, 1);
+                return (
                 <Table.Tr key={`${row.source}-${row.name}-${index}`}>
                   <Table.Td>
                     <Group gap={6} wrap="nowrap">
@@ -124,9 +141,17 @@ export const LootEvidenceSummary = ({ summary }: { summary: LootSummary }) => {
                         : row.quantity}
                     </Text>
                   </Table.Td>
-                  <Table.Td ta="right"><Text size="xs" fw={700} c="teal">{fcSep(row.value)}</Text></Table.Td>
+                  <Table.Td ta="right">
+                    <Text size="xs" fw={700} c="teal" style={{ whiteSpace: 'nowrap' }}>
+                      {fcSep(row.value)}
+                      {rowDivines != null && (
+                        <Text span c="dimmed" style={{ fontSize: FONT.label }}> ({rowDivines.toFixed(2)}d)</Text>
+                      )}
+                    </Text>
+                  </Table.Td>
                 </Table.Tr>
-              ))}
+                );
+              })}
             </Table.Tbody>
           </Table>
           {omittedRows > 0 && (

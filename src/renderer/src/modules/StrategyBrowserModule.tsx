@@ -38,9 +38,19 @@ import {
   nameWorking,
   startWorking,
 } from '../repository/sessionRepositoryRuntime';
+import {
+  hasSameStrategyDetailVersion,
+  mergeRefreshedStrategyPage,
+} from '../utils/strategyRefresh';
 
 // API base (incl. the VITE_STRATEGY_API_URL dev override) moved to
 // strategyConstants.STRATEGY_API_URL — shared with the game-data loader.
+
+async function fetchStrategyDetail(apiUrl: string, strategyId: string): Promise<Strategy> {
+  const response = await fetch(`${apiUrl}/strategies/${encodeURIComponent(strategyId)}`);
+  if (!response.ok) throw new Error(`Server returned ${response.status}`);
+  return response.json() as Promise<Strategy>;
+}
 
 // ─── Main module ───────────────────────────────────────────────────────────────
 export const StrategyBrowserModule = () => {
@@ -100,6 +110,10 @@ export const StrategyBrowserModule = () => {
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
   const strategyViewportRef = useRef<HTMLDivElement>(null);
   const strategyListScrollTopRef = useRef(0);
+  const strategiesRef = useRef<Strategy[]>([]);
+  const expandedStrategyIdRef = useRef<string | null>(null);
+  strategiesRef.current = strategies;
+  expandedStrategyIdRef.current = expandedStrategyId;
   const LIMIT = 20;
 
   const setStrategyExpanded = (strategyId: string, expanded: boolean) => {
@@ -110,11 +124,7 @@ export const StrategyBrowserModule = () => {
       const summary = strategies.find((strategy) => strategy.id === strategyId);
       if (summary && !summary.raw_export) {
         setDetailLoadingId(strategyId);
-        void fetch(`${apiUrl}/strategies/${encodeURIComponent(strategyId)}`)
-          .then((response) => {
-            if (!response.ok) throw new Error(`Server returned ${response.status}`);
-            return response.json() as Promise<Strategy>;
-          })
+        void fetchStrategyDetail(apiUrl, strategyId)
           .then((detail) => {
             setStrategies((current) => current.map((strategy) => (
               strategy.id === strategyId ? { ...strategy, ...detail } : strategy
@@ -476,7 +486,30 @@ export const StrategyBrowserModule = () => {
       const res  = await fetch(`${apiUrl}/strategies?${params}`);
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const data: ApiResponse = await res.json();
-      setStrategies(newOffset === 0 ? data.strategies : (prev) => [...prev, ...data.strategies]);
+      let refreshedStrategies = data.strategies;
+      const expandedId = expandedStrategyIdRef.current;
+      if (newOffset === 0 && expandedId) {
+        const currentExpanded = strategiesRef.current.find((strategy) => strategy.id === expandedId);
+        const refreshedExpanded = refreshedStrategies.find((strategy) => strategy.id === expandedId);
+        if (
+          currentExpanded?.raw_export
+          && refreshedExpanded
+          && !hasSameStrategyDetailVersion(currentExpanded, refreshedExpanded)
+        ) {
+          setDetailLoadingId(expandedId);
+          try {
+            const detail = await fetchStrategyDetail(apiUrl, expandedId);
+            refreshedStrategies = refreshedStrategies.map((strategy) => (
+              strategy.id === expandedId ? { ...strategy, ...detail } : strategy
+            ));
+          } finally {
+            setDetailLoadingId((current) => current === expandedId ? null : current);
+          }
+        }
+      }
+      setStrategies(newOffset === 0
+        ? (current) => mergeRefreshedStrategyPage(current, refreshedStrategies)
+        : (current) => [...current, ...refreshedStrategies]);
       setTotal(data.total); setOffset(newOffset);
     } catch (err: any) { setError(err.message ?? 'Could not reach the strategy server.'); }
     finally { setLoading(false); }

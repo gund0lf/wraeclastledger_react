@@ -34,9 +34,9 @@ import { CHISEL_TYPES } from '../utils/constants';
 import './StrategyCard.css';
 
 const EconomicTile = ({
-  label, value, color,
+  label, primaryValue, secondaryValue, color,
 }: {
-  label: string; value: string; color?: string;
+  label: string; primaryValue: string; secondaryValue?: string | null; color?: string;
 }) => (
   <div className="strategy-card-economic-tile" style={{
     minWidth: 0, padding: '10px 12px', borderRadius: 7,
@@ -44,9 +44,16 @@ const EconomicTile = ({
     display: 'flex', flexDirection: 'column',
   }}>
     <SectionLabel>{label}</SectionLabel>
-    <Text fw={800} ta="center" style={{ fontSize: FONT.xl, color, fontVariantNumeric: 'tabular-nums', margin: 'auto 0' }}>
-      {value}
-    </Text>
+    <Group justify="center" gap={5} wrap="wrap" style={{ margin: 'auto 0', lineHeight: 1.15 }}>
+      <Text span fw={800} ta="center" style={{ fontSize: FONT.xl, color, fontVariantNumeric: 'tabular-nums' }}>
+        {primaryValue}
+      </Text>
+      {secondaryValue && (
+        <Text span fw={700} ta="center" style={{ fontSize: FONT.md, color, fontVariantNumeric: 'tabular-nums', opacity: 0.78 }}>
+          ({secondaryValue})
+        </Text>
+      )}
+    </Group>
   </div>
 );
 
@@ -228,8 +235,8 @@ export const StrategyCard = ({
   // Disposable comparison-lab controls. These intentionally remain component-
   // local: the branch must not create a preference or repository contract for
   // a design decision that has not been made yet.
-  const [labLayout, setLabLayout] = useState<StrategyLabLayout>('traceur-focus');
-  const [labSkin, setLabSkin] = useState<StrategyLabSkin>('native');
+  const [labLayout, setLabLayout] = useState<StrategyLabLayout>('feedback-triptych');
+  const [labSkin, setLabSkin] = useState<StrategyLabSkin>('refined');
   const usesFullWidthRegex = labLayout === 'feedback-triptych' || labLayout === 'feedback-compact';
   const open = expanded ?? internalOpen;
   const setOpen = (next: boolean) => {
@@ -273,7 +280,10 @@ export const StrategyCard = ({
     mapCount: displayMapCount,
     isPooled,
     divPerMap: div,
+    profitPerMapChaos,
     costPerMap,
+    costPerMapDivines,
+    totalInvestDivines,
     historicalProfitDivines,
     divPerHour,
     timedRunCount,
@@ -450,7 +460,7 @@ export const StrategyCard = ({
           <Tooltip
             label={`Observed explicit-mod average across ${observedModSampleSize} exact maps. Strategy bucket remains ${strategy.map_type ?? 'unclassified'}; Browser 6/8 filtering is unchanged.`}
             withArrow multiline w={250}>
-            <Text size="xs" c="dimmed" style={{ width: browserCols.mod, flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>
+            <Text size="xs" fw={600} c="gray.5" style={{ width: browserCols.mod, flexShrink: 0, fontSize: FONT.body, cursor: 'help', fontVariantNumeric: 'tabular-nums' }}>
               {modDisplay}
             </Text>
           </Tooltip>
@@ -458,43 +468,43 @@ export const StrategyCard = ({
           <Tooltip
             label={`No complete observed-mod sample is available. Showing the published ${strategy.map_type ?? 'unclassified'} setup bucket instead; observed averages require exact advanced-format data for every map in the run.`}
             withArrow multiline w={270}>
-            <Text size="xs" c="dimmed" style={{ width: browserCols.mod, flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>{modDisplay}</Text>
+            <Text size="xs" fw={600} c="gray.5" style={{ width: browserCols.mod, flexShrink: 0, fontSize: FONT.body, cursor: 'help', fontVariantNumeric: 'tabular-nums' }}>{modDisplay}</Text>
           </Tooltip>
         )}
         <Tooltip
           disabled={!isPooled || displayMapCount == null}
           label={`${evidenceRunCount} independently submitted runs, ${displayMapCount} maps total. Aggregate profit uses each run's historical divine-price snapshot.`}
           withArrow multiline w={260}>
-          <Stack gap={0} align="center" style={{ width: browserCols.maps, flexShrink: 0, cursor: isPooled ? 'help' : undefined }}>
-            <Text size="xs" c="dimmed" style={{ lineHeight: 1 }}>{displayMapCount != null ? displayMapCount : '—'}</Text>
+          <Group gap={2} justify="center" wrap="nowrap" style={{ width: browserCols.maps, flexShrink: 0, cursor: isPooled ? 'help' : undefined }}>
+            <Text size="xs" fw={600} c="gray.4" style={{ fontSize: FONT.body, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{displayMapCount != null ? displayMapCount : '—'}</Text>
             {isPooled && (
-              <Text c="blue" style={{ fontSize: FONT.micro, lineHeight: 1.1, whiteSpace: 'nowrap' }}>
-                {evidenceRunCount} runs
+              <Text c="blue" style={{ fontSize: FONT.micro, lineHeight: 1, whiteSpace: 'nowrap' }}>
+                {evidenceRunCount}r
               </Text>
             )}
-          </Stack>
+          </Group>
         </Tooltip>
-        <Text size="xs" c="dimmed" style={{ width: browserCols.cost, flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+        <Text size="xs" fw={600} c="gray.4" style={{ width: browserCols.cost, flexShrink: 0, fontSize: FONT.body, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {costPerMap != null ? fcSep(costPerMap) : '—'}
         </Text>
-        <Text size="xs" c="dimmed" style={{ width: browserCols.invest, flexShrink: 0, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+        <Text size="xs" fw={600} c="gray.3" style={{ width: browserCols.invest, flexShrink: 0, fontSize: FONT.body, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {fc(strategy.total_invest)}
           {!isPooled && strategy.total_invest != null && strategy.divine_price != null && strategy.divine_price > 0 && (
-            <Text span style={{ color: COLOR.dim, fontSize: FONT.label }}> ({(strategy.total_invest / strategy.divine_price).toFixed(1)}d)</Text>
+            <Text span style={{ color: COLOR.textFaint, fontSize: FONT.small }}> ({(strategy.total_invest / strategy.divine_price).toFixed(1)}d)</Text>
           )}
         </Text>
-        <Text size="xs" fw={600} style={{ width: browserCols.profit, flexShrink: 0, fontVariantNumeric: 'tabular-nums', color: profitColor, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+        <Text size="xs" fw={700} style={{ width: browserCols.profit, flexShrink: 0, fontSize: FONT.body, fontVariantNumeric: 'tabular-nums', color: profitColor, whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {fc(strategy.net_profit, true)}
           {strategy.net_profit != null && historicalProfitDivines != null && (
-            <Text span style={{ color: COLOR.dim, fontSize: FONT.label }}> ({strategy.net_profit >= 0 ? '+' : ''}{historicalProfitDivines.toFixed(1)}d)</Text>
+            <Text span style={{ color: COLOR.textFaint, fontSize: FONT.small }}> ({strategy.net_profit >= 0 ? '+' : ''}{historicalProfitDivines.toFixed(1)}d)</Text>
           )}
         </Text>
         <Group gap={2} style={{ width: browserCols.score, flexShrink: 0 }} align="center">
           {score >= 0 ? <IconThumbUp size={10} style={{ color: scoreColor }} /> : <IconThumbDown size={10} style={{ color: scoreColor }} />}
-          <Text size="xs" style={{ color: scoreColor, fontVariantNumeric: 'tabular-nums' }}>{score > 0 ? `+${score}` : score}</Text>
+          <Text size="xs" fw={600} style={{ color: scoreColor, fontSize: FONT.small, fontVariantNumeric: 'tabular-nums' }}>{score > 0 ? `+${score}` : score}</Text>
         </Group>
         <Tooltip label={divPerHour != null ? (isPooled ? `Historical timed evidence only — ${timedRunCount}/${evidenceRunCount} runs reported active time` : 'Optional author-reported context — selectable as a sort, but never the default ranking; div/map stays primary') : 'No session time shared — div/h unavailable'} withArrow multiline w={250}>
-          <Text size="xs" c="dimmed" style={{ width: browserCols.dph, textAlign: 'right', flexShrink: 0, fontVariantNumeric: 'tabular-nums', cursor: 'help' }}>
+          <Text size="xs" fw={600} c="gray.4" style={{ width: browserCols.dph, textAlign: 'right', flexShrink: 0, fontSize: FONT.body, fontVariantNumeric: 'tabular-nums', cursor: 'help' }}>
             {divPerHour != null ? `${divPerHour.toFixed(1)}` : '—'}
           </Text>
         </Tooltip>
@@ -557,7 +567,7 @@ export const StrategyCard = ({
                 {strategy.strategy_name || `${strategy.discord_username}'s strategy`}
               </Text>
               {strategy.type_tag && (
-                <Group gap={4} wrap="wrap">
+                <Group className="strategy-card-hero-tags" gap={4} wrap="wrap">
                   {strategy.type_tag.split(',').map((t) => t.trim()).filter(Boolean).map((t) => (
                     <Badge key={t} size="sm" color={TAG_COLORS[t] ?? 'gray'} variant="light">{t}</Badge>
                   ))}
@@ -609,15 +619,40 @@ export const StrategyCard = ({
           </div>
 
           <div className="strategy-card-economics" style={{ marginBottom: 14 }}>
-            <EconomicTile label={isPooled ? 'Historical Net' : 'Net Profit'} value={strategy.net_profit != null ? `${fcSep(strategy.net_profit, true)}${historicalProfitDivines != null ? ` (${strategy.net_profit >= 0 ? '+' : ''}${historicalProfitDivines.toFixed(1)}d)` : ''}` : '—'} color={profitColor} />
-            <EconomicTile label="Profit/map" value={div != null ? `${div.toFixed(3)}d` : '—'} color={divColor} />
-            <EconomicTile label="Total investment" value={strategy.total_invest != null ? `${fcSep(strategy.total_invest)}${!isPooled && strategy.divine_price ? ` (${(strategy.total_invest / strategy.divine_price).toFixed(1)}d)` : ''}` : '—'} color={COLOR.textSoft} />
-            <EconomicTile label="Cost/map" value={costPerMap != null ? `${f1(costPerMap)}c` : '—'} color={COLOR.warning} />
+            <EconomicTile
+              label={isPooled ? 'Historical Net' : 'Net Profit'}
+              primaryValue={fcSep(strategy.net_profit, true)}
+              secondaryValue={historicalProfitDivines != null
+                ? `${strategy.net_profit != null && strategy.net_profit >= 0 ? '+' : ''}${historicalProfitDivines.toFixed(1)}d`
+                : null}
+              color={profitColor}
+            />
+            <EconomicTile
+              label="Total investment"
+              primaryValue={fcSep(strategy.total_invest)}
+              secondaryValue={totalInvestDivines != null ? `${totalInvestDivines.toFixed(1)}d` : null}
+              color={COLOR.textSoft}
+            />
+            <EconomicTile
+              label="Profit / map"
+              primaryValue={profitPerMapChaos != null ? fcSep(profitPerMapChaos, true, 1) : '—'}
+              secondaryValue={div != null ? `${div.toFixed(3)}d` : null}
+              color={divColor}
+            />
+            <EconomicTile
+              label="Cost / map"
+              primaryValue={costPerMap != null ? fcSep(costPerMap, false, 1) : '—'}
+              secondaryValue={costPerMapDivines != null ? `${costPerMapDivines.toFixed(3)}d` : null}
+              color={COLOR.warning}
+            />
           </div>
 
           {lootSummary && (
             <div className="strategy-card-loot-panel" style={{ padding: 8, marginBottom: 12, background: COLOR.surfaceInfoBg, border: `1px solid ${COLOR.surfaceInfoBorder}`, borderRadius: 6 }}>
-              <LootEvidenceSummary summary={lootSummary} />
+              <LootEvidenceSummary
+                summary={lootSummary}
+                divinePrice={isPooled ? null : strategy.divine_price}
+              />
             </div>
           )}
 

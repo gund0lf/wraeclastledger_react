@@ -47,7 +47,10 @@ export interface EvidencePresentation {
   mapCount: number | null;
   isPooled: boolean;
   divPerMap: number | null;
+  profitPerMapChaos: number | null;
   costPerMap: number | null;
+  costPerMapDivines: number | null;
+  totalInvestDivines: number | null;
   historicalProfitDivines: number | null;
   divPerHour: number | null;
   timedRunCount: number;
@@ -90,6 +93,24 @@ export function evidencePresentation(strategy: Strategy): EvidencePresentation {
   const costPerMap = strategy.total_invest != null && mapCount != null && mapCount > 0
     ? strategy.total_invest / mapCount
     : strategy.per_map_cost ?? null;
+  const profitPerMapChaos = strategy.net_profit != null && mapCount != null && mapCount > 0
+    ? strategy.net_profit / mapCount
+    : null;
+  // A pooled strategy contains several authored divine-price snapshots. The
+  // server exposes historical profit divines, but not historical investment
+  // divines, so applying one run's price to the aggregate would be dishonest.
+  const totalInvestDivines = !isPooled
+    && strategy.total_invest != null
+    && strategy.divine_price != null
+    && strategy.divine_price > 0
+    ? strategy.total_invest / strategy.divine_price
+    : null;
+  const costPerMapDivines = !isPooled
+    && costPerMap != null
+    && strategy.divine_price != null
+    && strategy.divine_price > 0
+    ? costPerMap / strategy.divine_price
+    : null;
   const historicalProfitDivines = isPooled
     ? strategy.historical_total_divines ?? null
     : strategy.net_profit != null && strategy.divine_price != null && strategy.divine_price > 0
@@ -114,7 +135,10 @@ export function evidencePresentation(strategy: Strategy): EvidencePresentation {
     mapCount,
     isPooled,
     divPerMap,
+    profitPerMapChaos,
     costPerMap,
+    costPerMapDivines,
+    totalInvestDivines,
     historicalProfitDivines,
     divPerHour,
     timedRunCount: strategy.timed_run_count ?? 0,

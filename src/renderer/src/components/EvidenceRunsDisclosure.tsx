@@ -126,7 +126,7 @@ const RunRow = ({ run }: { run: PublicEvidenceRun }) => {
             </UnstyledButton>
             <Collapse in={lootOpen}>
               <div style={{ paddingTop: 4 }}>
-                <LootEvidenceSummary summary={run.loot_summary} />
+                <LootEvidenceSummary summary={run.loot_summary} divinePrice={run.divine_price} />
               </div>
             </Collapse>
           </>
