@@ -14,7 +14,7 @@ import {
   activeScarabNames, activeDeliriumOrbList, activeAstrolabeList, activeChiselTypes,
   mechanicStatus, isMechanicActive, entityLifecycleStatus, selectableScarabOptions,
   selectableDeliriumOrbList, selectableAstrolabeList, shouldShowMechanicInput,
-  preserveHistoricalSelection,
+  preserveHistoricalSelection, selectableChiselList,
 } from './gameData';
 import { SCARAB_LIST, DELIRIUM_ORB_LIST, ASTROLABE_LIST, CHISEL_TYPES, CHISEL_SELECT_DATA } from './constants';
 
@@ -39,7 +39,7 @@ describe('bundled manifest invariants', () => {
     expect(getGameDataStatus().revision).toBe(BUNDLED_MANIFEST.revision);
   });
 
-  it('carries the revision-3 entity counts (129 scarabs / 17 deli / 11 astrolabes / 6 chisels)', () => {
+  it('carries the revision-4 entity counts (129 scarabs / 17 deli / 11 astrolabes / 6 chisels)', () => {
     expect(BUNDLED_MANIFEST.scarabs).toHaveLength(129);
     expect(BUNDLED_MANIFEST.deliriumOrbs).toHaveLength(17);
     expect(BUNDLED_MANIFEST.astrolabes).toHaveLength(11);
@@ -50,6 +50,7 @@ describe('bundled manifest invariants', () => {
     const scarab = (name: string) => BUNDLED_MANIFEST.scarabs.find((e) => e.name === name);
     const deli = (name: string) => BUNDLED_MANIFEST.deliriumOrbs.find((e) => e.name === name);
     const astro = (name: string) => BUNDLED_MANIFEST.astrolabes.find((e) => e.name === name);
+    const chisel = (name: string) => BUNDLED_MANIFEST.chisels.find((e) => e.name === name);
 
     expect(scarab('Abyss Scarab of Edifice')).toMatchObject({
       status: 'renamed', aliasOf: 'abyss-scarab-of-crystals',
@@ -84,9 +85,10 @@ describe('bundled manifest invariants', () => {
       status: 'renamed', aliasOf: 'deceptive-astrolabe',
     });
     expect(astro('Deceptive Astrolabe')?.status).toBe('active');
+    expect(chisel('Cartographer')).toMatchObject({ status: 'removed' });
   });
 
-  it('offers only current/reworked revision-3 products in new-input pickers', () => {
+  it('offers only current/reworked revision-4 products in new-input pickers', () => {
     const scarabs = selectableScarabOptions();
     expect(scarabs).toContainEqual({
       value: 'Abyss Scarab of Crystals', label: 'Abyss Scarab of Crystals',
@@ -106,6 +108,12 @@ describe('bundled manifest invariants', () => {
     const astrolabes = selectableAstrolabeList();
     expect(astrolabes.some((e) => e.value === 'Deceptive Astrolabe')).toBe(true);
     expect(astrolabes.some((e) => e.value === 'Enshrouded Astrolabe')).toBe(false);
+
+    const chisels = selectableChiselList();
+    expect(chisels.some((e) => e.value === 'Cartographer')).toBe(false);
+    expect(preserveHistoricalSelection(chisels, 'Cartographer')).toContainEqual({
+      value: 'Cartographer', label: 'Cartographer — Historical',
+    });
 
     expect(preserveHistoricalSelection(astrolabes, 'Enshrouded Astrolabe')).toContainEqual({
       value: 'Enshrouded Astrolabe', label: 'Enshrouded Astrolabe — Historical',
@@ -193,7 +201,7 @@ describe('legacy constants are 1:1 derived views (migration lock)', () => {
 
   it('CHISEL_TYPES keeps stored keys + math fields; CHISEL_SELECT_DATA keeps the None row', () => {
     expect(Object.keys(CHISEL_TYPES)).toEqual(
-      ['Cartographer', 'Avarice', 'Procurement', 'Proliferation', 'Scarabs', 'Divination']);
+      ['Avarice', 'Procurement', 'Proliferation', 'Scarabs', 'Divination']);
     expect(CHISEL_TYPES['Avarice']).toEqual({ label: 'Avarice — +50% more Currency', statKey: 'moreCurrency', bonusAt20: 50 });
     expect(CHISEL_SELECT_DATA[0]).toEqual({ value: '', label: '— None —' });
   });
@@ -394,7 +402,7 @@ describe('derived view helpers (call-time, revision-aware)', () => {
 });
 
 describe('mechanic flags (step 5, §5.3)', () => {
-  it('bundled revision 3 keeps live mechanics active and explicitly removes split input', () => {
+  it('bundled revision 4 keeps live mechanics active and explicitly removes split input', () => {
     expect(mechanicStatus('scarabs')).toBe('active');
     expect(mechanicStatus('delirium')).toBe('active');
     expect(mechanicStatus('astrolabe')).toBe('active');

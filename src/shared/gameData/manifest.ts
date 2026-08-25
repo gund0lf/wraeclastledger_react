@@ -1,5 +1,5 @@
 /**
- * BUNDLED game-data manifest — revision 3 (patch 3.29 / Curse of the
+ * BUNDLED game-data manifest — revision 4 (patch 3.29 / Curse of the
  * Allflame). Revision 1 remains immutable as the published Mirage-era floor.
  *
  * SOURCE + PROVENANCE: revision 1 was generated 2026-07-06 (session 12) 1:1
@@ -11,6 +11,8 @@
  * Revision 3 corrects live Allflame availability from the actual in-game item
  * list on 2026-07-29: Obscured Delirium Orb and all four Harbinger scarabs are
  * unavailable. A Faustus catalogue entry alone is not existence evidence.
+ * Revision 4 classifies Cartographer's Chisel as challenge-league unavailable;
+ * Standard/history remains readable, but fresh challenge input must not offer it.
  *
  * DATA NOTE (found at migration): the old SCARAB_LIST header claimed
  * "111 droppable scarabs verified for 3.28" but the array actually contained
@@ -37,7 +39,7 @@
 import { GameDataManifest } from './types';
 
 export const BUNDLED_MANIFEST: GameDataManifest = {
-  revision: 3,
+  revision: 4,
   schemaVersion: 1,
   contextKey: 'poe1-challenge',
   patchVersion: '3.29',
@@ -244,7 +246,7 @@ export const BUNDLED_MANIFEST: GameDataManifest = {
   { id: 'timeless-astrolabe', name: "Timeless Astrolabe", label: "Timeless (Legion)", status: 'active' },
   ],
   chisels: [
-  { id: 'chisel-cartographer', name: 'Cartographer', label: "Cartographer — +10% Quantity", status: 'active', statKey: 'quantity', bonusAt20: 10 },
+  { id: 'chisel-cartographer', name: 'Cartographer', label: "Cartographer — +10% Quantity", status: 'removed', note: 'Unavailable in current challenge leagues; existing Standard items and historical strategies remain readable.', statKey: 'quantity', bonusAt20: 10 },
   { id: 'chisel-avarice', name: 'Avarice', label: "Avarice — +50% more Currency", status: 'active', statKey: 'moreCurrency', bonusAt20: 50 },
   { id: 'chisel-procurement', name: 'Procurement', label: "Procurement — +40% Rarity", status: 'active', statKey: 'rarity', bonusAt20: 40 },
   { id: 'chisel-proliferation', name: 'Proliferation', label: "Proliferation — +10% Pack Size", status: 'active', statKey: 'packSize', bonusAt20: 10 },

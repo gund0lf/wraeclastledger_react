@@ -163,3 +163,34 @@ export async function fetchEvidenceRuns(
   if (!response.ok) throw new Error(`Server returned ${response.status}`);
   return response.json() as Promise<EvidenceRunsResponse>;
 }
+
+/**
+ * Loads the complete current evidence set for a strategy. Strategy cards use
+ * this only while expanded so pooled setup values can be reconstructed from
+ * every authored run instead of silently falling back to the latest run.
+ */
+export async function fetchAllEvidenceRuns(
+  strategyId: string,
+  fetcher: Fetcher = fetch,
+  apiUrl = STRATEGY_API_URL,
+  maxRuns = 1_000,
+): Promise<PublicEvidenceRun[]> {
+  const runs: PublicEvidenceRun[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | null = null;
+
+  do {
+    const page = await fetchEvidenceRuns(strategyId, cursor, fetcher, apiUrl, 50);
+    runs.push(...page.runs);
+    if (runs.length > maxRuns) {
+      throw new Error(`Evidence exceeds the ${maxRuns}-run display limit`);
+    }
+    cursor = page.next_cursor;
+    if (cursor) {
+      if (seenCursors.has(cursor)) throw new Error('Evidence pagination repeated a cursor');
+      seenCursors.add(cursor);
+    }
+  } while (cursor);
+
+  return runs;
+}

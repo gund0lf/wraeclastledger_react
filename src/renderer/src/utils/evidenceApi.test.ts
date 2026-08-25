@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { evidencePresentation, evidenceRunDivPerHour, fetchEvidenceRuns } from './evidenceApi';
+import {
+  evidencePresentation,
+  evidenceRunDivPerHour,
+  fetchAllEvidenceRuns,
+  fetchEvidenceRuns,
+} from './evidenceApi';
 import type { Strategy } from './strategyConstants';
 
 function jsonResponse(value: unknown, status = 200): Response {
@@ -55,6 +60,39 @@ describe('evidence API client', () => {
     const fetcher = vi.fn(async () => jsonResponse({ error: 'nope' }, 503));
     await expect(fetchEvidenceRuns('id', null, fetcher, 'https://example.test'))
       .rejects.toThrow('Server returned 503');
+  });
+
+  it('loads every evidence page for pooled setup reconstruction', async () => {
+    const fetcher = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      return jsonResponse(href.includes('cursor=next')
+        ? {
+            strategy_id: 'id', revision: 2,
+            runs: [{ ordinal: 2, map_count: 40 }], next_cursor: null,
+          }
+        : {
+            strategy_id: 'id', revision: 2,
+            runs: [{ ordinal: 1, map_count: 20 }], next_cursor: 'next',
+          });
+    });
+
+    await expect(fetchAllEvidenceRuns(
+      'id', fetcher as typeof fetch, 'https://example.test',
+    )).resolves.toEqual([
+      { ordinal: 1, map_count: 20 },
+      { ordinal: 2, map_count: 40 },
+    ]);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails closed when evidence pagination repeats a cursor', async () => {
+    const fetcher = vi.fn(async () => jsonResponse({
+      strategy_id: 'id', revision: 2, runs: [], next_cursor: 'same',
+    }));
+
+    await expect(fetchAllEvidenceRuns(
+      'id', fetcher as typeof fetch, 'https://example.test',
+    )).rejects.toThrow('repeated a cursor');
   });
 });
 

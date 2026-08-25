@@ -65,7 +65,7 @@
 .strategy-card-lower-grid {
   display: grid;
   grid-template-columns: minmax(410px, 1.15fr) minmax(230px, 0.75fr) minmax(360px, 1.4fr);
-  grid-template-rows: minmax(28px, auto) auto auto auto auto auto auto;
+  grid-template-rows: auto auto auto auto auto auto;
   gap: 10px;
   align-items: stretch;
   margin-top: 10px;
@@ -73,17 +73,17 @@
 
 .strategy-card-lower-panel {
   grid-column: 1;
-  grid-row: 1 / 6;
+  grid-row: 1 / 5;
 }
 
 .strategy-card-cost-panel {
   grid-column: 2;
-  grid-row: 1 / 6;
+  grid-row: 1 / 5;
 }
 
 .strategy-card-map-panel {
   grid-column: 3;
-  grid-row: 1 / 6;
+  grid-row: 1 / 5;
 }
 
 .strategy-card-setup-scarabs,
@@ -95,10 +95,10 @@
   margin-inline: 10px;
 }
 
-.strategy-card-setup-scarabs { grid-row: 2; }
-.strategy-card-setup-chisel { grid-row: 3; }
-.strategy-card-setup-deli { grid-row: 4; }
-.strategy-card-setup-astro { grid-row: 5; }
+.strategy-card-setup-scarabs { grid-row: 1; }
+.strategy-card-setup-chisel { grid-row: 2; }
+.strategy-card-setup-deli { grid-row: 3; }
+.strategy-card-setup-astro { grid-row: 4; }
 .strategy-card-setup-deli {
   margin-bottom: 0;
 }
@@ -106,8 +106,8 @@
 
 .strategy-card-supporting-note,
 .strategy-card-supporting-evidence { grid-column: 1 / -1; }
-.strategy-card-supporting-note { grid-row: 6; }
-.strategy-card-supporting-evidence { grid-row: 7; }
+.strategy-card-supporting-note { grid-row: 5; }
+.strategy-card-supporting-evidence { grid-row: 6; }
 
 .strategy-card-map-stats {
   display: grid;
@@ -578,7 +578,7 @@
 
   .strategy-card-map-panel {
     grid-column: 1 / -1;
-    grid-row: 8;
+    grid-row: 7;
   }
 
   .strategy-card-expanded[data-lab-layout='traceur-spread'] .strategy-card-map-stats {
@@ -604,10 +604,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .strategy-card-cost-panel { grid-column: 1; grid-row: 6; }
-  .strategy-card-map-panel { grid-column: 1; grid-row: 7; }
-  .strategy-card-supporting-note { grid-row: 8; }
-  .strategy-card-supporting-evidence { grid-row: 9; }
+  .strategy-card-cost-panel { grid-column: 1; grid-row: 5; }
+  .strategy-card-map-panel { grid-column: 1; grid-row: 6; }
+  .strategy-card-supporting-note { grid-row: 7; }
+  .strategy-card-supporting-evidence { grid-row: 8; }
 
   .strategy-card-setup-scarabs,
   .strategy-card-setup-astro,

@@ -2,7 +2,7 @@ import {
   Text, Group, Stack, Badge, ActionIcon, Tooltip, Button,
   Collapse, Select, SegmentedControl,
 } from '@mantine/core';
-import { useState, useMemo, useRef, useLayoutEffect } from 'react';
+import { useState, useMemo, useRef, useLayoutEffect, useEffect } from 'react';
 import {
   IconChevronDown, IconChevronRight,
   IconThumbUp, IconThumbDown, IconExternalLink, IconUsers, IconAlertTriangle,
@@ -26,7 +26,11 @@ import { StatTile } from './ui/StatTile';
 import { RegexLine } from './ui/RegexLine';
 import { EvidenceRunsDisclosure } from './EvidenceRunsDisclosure';
 import { LootEvidenceSummary } from './LootEvidenceSummary';
-import { evidencePresentation } from '../utils/evidenceApi';
+import { evidencePresentation, fetchAllEvidenceRuns } from '../utils/evidenceApi';
+import {
+  aggregateEvidenceSetupCosts,
+  type PooledEvidenceCostBreakdown,
+} from '../utils/evidenceCosts';
 import { COLOR, FONT } from '../utils/uiTokens';
 import { formatRelativeAge, latestStrategyActivity } from '../utils/relativeTime';
 import { computePublishedSetupCostBreakdown } from '../utils/strategySetupCosts';
@@ -288,6 +292,34 @@ export const StrategyCard = ({
     divPerHour,
     timedRunCount,
   } = evidencePresentation(strategy);
+  const [pooledSetupCosts, setPooledSetupCosts] = useState<PooledEvidenceCostBreakdown | null>(null);
+  const [pooledSetupState, setPooledSetupState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  useEffect(() => {
+    setPooledSetupCosts(null);
+    if (!open || frozen || !isPooled) {
+      setPooledSetupState('idle');
+      return undefined;
+    }
+
+    let cancelled = false;
+    setPooledSetupState('loading');
+    void fetchAllEvidenceRuns(strategy.id)
+      .then((runs) => {
+        if (cancelled) return;
+        const aggregate = aggregateEvidenceSetupCosts(runs);
+        if (!aggregate) throw new Error('Evidence has no usable setup costs');
+        setPooledSetupCosts(aggregate);
+        setPooledSetupState('ready');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPooledSetupState('error');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [frozen, isPooled, open, strategy.current_revision, strategy.id]);
   const divColor    = div != null ? (div >= 8 ? COLOR.profit : div >= 4 ? COLOR.accent : div >= 1 ? COLOR.warning : COLOR.textFaint) : COLOR.textFaint;
   const score       = strategy.score ?? 0;
   const scoreColor  = score > 0 ? COLOR.profit : score < 0 ? COLOR.loss : COLOR.dim;
@@ -324,6 +356,59 @@ export const StrategyCard = ({
   const deliOrbName = parsedExport?.deliOrbType
     ? deliOrbItemName(parsedExport.deliOrbType)
     : null;
+  const pooledValueLabel = (value: number): string => (
+    `${fcSep(value, false, value < 1 ? 2 : 1)} avg`
+  );
+  const displayedTotalInvestDivines = pooledSetupCosts
+    ? pooledSetupCosts.totalInvestDivines
+    : totalInvestDivines;
+  const displayedCostPerMapDivines = pooledSetupCosts
+    ? pooledSetupCosts.costPerMapDivines
+    : costPerMapDivines;
+  const setupScarabItems = pooledSetupCosts
+    ? pooledSetupCosts.scarabItems.map((item) => ({
+        name: item.name,
+        value: pooledValueLabel(item.perMap),
+      }))
+    : (strategy.scarabs ?? []).map((scarab) => ({
+        name: scarab.name,
+        value: scarab.cost > 0 ? `${scarab.cost}c` : null,
+      }));
+  const setupChiselItems = pooledSetupCosts
+    ? pooledSetupCosts.chiselItems.map((item) => ({
+        name: /chisel$/i.test(item.name) ? item.name : chiselItemName(item.name) ?? item.name,
+        value: pooledValueLabel(item.perMap),
+      }))
+    : chiselName
+      ? [{
+          name: chiselName,
+          value: chiselCostPerMap > 0 ? `${chiselCostPerMap}c/map` : 'Configured',
+        }]
+      : [];
+  const setupDeliriumItems = pooledSetupCosts
+    ? pooledSetupCosts.deliriumItems.map((item) => ({
+        name: deliOrbItemName(item.name) ?? item.name,
+        value: pooledValueLabel(item.perMap),
+      }))
+    : parsedExport?.deliOrbType
+      ? [{
+          name: deliOrbName ?? `${parsedExport.deliOrbType} Delirium Orb`,
+          value: `${parsedExport.deliOrbQty}x/map${parsedExport.deliOrbPrice > 0 ? ` · ${parsedExport.deliOrbPrice}c ea` : ''}`,
+        }]
+      : [];
+  const setupAstrolabeItems = pooledSetupCosts
+    ? pooledSetupCosts.astrolabeItems.map((item) => ({
+        name: /astrolabe$/i.test(item.name) ? item.name : `${item.name} Astrolabe`,
+        value: pooledValueLabel(item.perMap),
+      }))
+    : parsedExport?.astroType
+      ? [{
+          name: parsedExport.astroType,
+          value: parsedExport.astroCount > 0 || parsedExport.astroPrice > 0
+            ? `${parsedExport.astroCount > 0 ? `${parsedExport.astroCount}x` : ''}${parsedExport.astroCount > 0 && parsedExport.astroPrice > 0 ? ' · ' : ''}${parsedExport.astroPrice > 0 ? `${parsedExport.astroPrice}c ea` : ''}`
+            : null,
+        }]
+      : [];
   const observedDelirium = parsedExport?.observedDelirium ?? null;
   const observedDeliriumLevel = observedDelirium?.levelCounts.length === 1
     ? observedDelirium.levelCounts[0].percentage
@@ -357,6 +442,10 @@ export const StrategyCard = ({
   const compat = checkStrategyCompat(strategy);
   const compatColor = compat.level === 'removed' ? 'red' : 'yellow';
   const compatTip = compat.issues.map((i) => i.detail).join('\n');
+  const chiselCompatIssue = compat.issues.find(
+    (issue) => issue.kind === 'chisel' && issue.storedName === strategy.chisel?.trim(),
+  );
+  const chiselRemoved = chiselCompatIssue?.level === 'removed';
 
   const strategyActions = (
     <Group className="strategy-card-actions" gap="xs" wrap="wrap">
@@ -505,12 +594,17 @@ export const StrategyCard = ({
         <Text size="xs" fw={600} c="gray.4" style={{ width: browserCols.cost, flexShrink: 0, fontSize: FONT.body, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {costPerMap != null ? fcSep(costPerMap) : '—'}
         </Text>
-        <Text size="xs" fw={600} c="gray.3" style={{ width: browserCols.invest, flexShrink: 0, fontSize: FONT.body, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-          {fc(strategy.total_invest)}
-          {!isPooled && strategy.total_invest != null && strategy.divine_price != null && strategy.divine_price > 0 && (
-            <Text span style={{ color: COLOR.textFaint, fontSize: FONT.small }}> ({(strategy.total_invest / strategy.divine_price).toFixed(1)}d)</Text>
-          )}
-        </Text>
+        <Tooltip
+          disabled={!isPooled}
+          label="Pooled runs may use different authored Divine-price snapshots. Expand the strategy for the exact historical Divine total."
+          withArrow multiline w={270}>
+          <Text size="xs" fw={600} c="gray.3" style={{ width: browserCols.invest, flexShrink: 0, fontSize: FONT.body, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', cursor: isPooled ? 'help' : undefined }}>
+            {fc(strategy.total_invest)}
+            {!isPooled && strategy.total_invest != null && strategy.divine_price != null && strategy.divine_price > 0 && (
+              <Text span style={{ color: COLOR.textFaint, fontSize: FONT.small }}> ({(strategy.total_invest / strategy.divine_price).toFixed(1)}d)</Text>
+            )}
+          </Text>
+        </Tooltip>
         <Text size="xs" fw={700} style={{ width: browserCols.profit, flexShrink: 0, fontSize: FONT.body, fontVariantNumeric: 'tabular-nums', color: profitColor, whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {fc(strategy.net_profit, true)}
           {strategy.net_profit != null && historicalProfitDivines != null && (
@@ -648,7 +742,7 @@ export const StrategyCard = ({
             <EconomicTile
               label="Total investment"
               primaryValue={fcSep(strategy.total_invest)}
-              secondaryValue={totalInvestDivines != null ? `${totalInvestDivines.toFixed(1)}d` : null}
+              secondaryValue={displayedTotalInvestDivines != null ? `${displayedTotalInvestDivines.toFixed(1)}d` : null}
               color={COLOR.textSoft}
             />
             <EconomicTile
@@ -660,7 +754,7 @@ export const StrategyCard = ({
             <EconomicTile
               label="Cost / map"
               primaryValue={costPerMap != null ? fcSep(costPerMap, false, 1) : '—'}
-              secondaryValue={costPerMapDivines != null ? `${costPerMapDivines.toFixed(3)}d` : null}
+              secondaryValue={displayedCostPerMapDivines != null ? `${displayedCostPerMapDivines.toFixed(3)}d` : null}
               color={COLOR.warning}
             />
           </div>
@@ -685,16 +779,51 @@ export const StrategyCard = ({
           )}
 
           <div className="strategy-card-lower-grid">
-            <Stack gap={8} className="strategy-card-lower-panel"
-              style={{ background: COLOR.surfaceSectionBg, border: `1px solid ${COLOR.border}`, borderRadius: 6, padding: 10 }}>
-              <SectionLabel>Strategy setup</SectionLabel>
-            </Stack>
+            <div className="strategy-card-lower-panel"
+              style={{ background: COLOR.surfaceSectionBg, border: `1px solid ${COLOR.border}`, borderRadius: 6, padding: 10 }} />
 
           {(() => {
             // Breakdown of the existing ALL-IN per-map figure. The current
             // share itemizes every setup cost except the base-map and rolling
             // buckets, so only that exact remainder stays combined.
-            if (isPooled || costPerMap == null || costPerMap <= 0) return null;
+            if (costPerMap == null || costPerMap <= 0) return null;
+            if (isPooled) {
+              const breakdown = pooledSetupCosts ?? setupCostBreakdown;
+              const pooledChiselLabel = pooledSetupCosts?.chiselItems.length === 1
+                ? pooledSetupCosts.chiselItems[0].name
+                : chiselName ?? 'Chisels';
+              const pooledDeliriumLabel = pooledSetupCosts?.deliriumItems.length === 1
+                ? deliOrbItemName(pooledSetupCosts.deliriumItems[0].name)
+                : deliOrbName ?? 'Delirium Orbs';
+              const pooledAstrolabeLabel = pooledSetupCosts?.astrolabeItems.length === 1
+                ? pooledSetupCosts.astrolabeItems[0].name
+                : parsedExport?.astroType ?? 'Astrolabes';
+              return (
+                <div className="strategy-card-cost-panel"
+                  style={{ background: COLOR.surfaceSectionBg, border: `1px solid ${COLOR.border}`, borderRadius: 6, padding: 10 }}>
+                  <SectionLabel mb={3}>Historical cost breakdown / map</SectionLabel>
+                  <Stack gap={6} className="strategy-card-cost-list">
+                    {breakdown.baseAndRolling > 0 && <Group gap="md" justify="space-between" wrap="nowrap"><Text size="xs" c="dimmed">Base map + rolling costs</Text><Text size="xs">{fcSep(breakdown.baseAndRolling, false, 1)}</Text></Group>}
+                    {breakdown.chisel > 0 && <Group gap="md" justify="space-between" wrap="nowrap"><Text size="xs" c="dimmed">{pooledChiselLabel}</Text><Text size="xs">{fcSep(breakdown.chisel, false, 1)}</Text></Group>}
+                    {breakdown.scarabs > 0 && <Group gap="md" justify="space-between" wrap="nowrap"><Text size="xs" c="dimmed">Scarabs</Text><Text size="xs">{fcSep(breakdown.scarabs, false, 1)}</Text></Group>}
+                    {breakdown.deliriumOrbs > 0 && <Group gap="md" justify="space-between" wrap="nowrap"><Text size="xs" c="dimmed">{pooledDeliriumLabel}</Text><Text size="xs">{fcSep(breakdown.deliriumOrbs, false, 1)}</Text></Group>}
+                    {breakdown.astrolabe > 0 && <Group gap="md" justify="space-between" wrap="nowrap"><Text size="xs" c="dimmed">{pooledAstrolabeLabel}</Text><Text size="xs">{fcSep(breakdown.astrolabe, false, 1)}</Text></Group>}
+                    <Group gap="md" justify="space-between" wrap="nowrap" pt={5}
+                      style={{ borderTop: `1px solid ${COLOR.border}` }}>
+                      <Text size="xs" c="dimmed">Map-weighted all-in</Text>
+                      <Text size="xs" fw={700} c="yellow">{fcSep(breakdown.allIn || costPerMap, false, 1)}</Text>
+                    </Group>
+                    <Text size="xs" c="dimmed" style={{ lineHeight: 1.4 }}>
+                      {pooledSetupState === 'ready' && pooledSetupCosts
+                        ? `${pooledSetupCosts.runCount} runs · ${pooledSetupCosts.mapCount} maps · map-weighted authored costs. Exact run prices remain under Evidence runs.`
+                        : pooledSetupState === 'loading'
+                          ? 'Loading map-weighted evidence. Published setup values remain visible in the meantime.'
+                          : 'Historical evidence is unavailable. Showing the published setup values without removing them.'}
+                    </Text>
+                  </Stack>
+                </div>
+              );
+            }
             // The existing share contract does not transmit baseMapCost or
             // rollingSessionTotal as independent fields. Keep only their
             // remainder combined instead of inventing a historical split.
@@ -711,7 +840,16 @@ export const StrategyCard = ({
                       </Group>
                     </Tooltip>
                   )}
-                  {chiselCostPerMap > 0 && <Group gap="md" justify="space-between" wrap="nowrap"><Text size="xs" c="dimmed">{chiselName ?? 'Chisel'}</Text><Text size="xs">{fcSep(chiselCostPerMap, false, 1)}</Text></Group>}
+                  {chiselCostPerMap > 0 && (
+                    <Tooltip label={chiselCompatIssue?.detail ?? chiselName ?? 'Chisel'} withArrow multiline w={290}>
+                      <Group gap="md" justify="space-between" wrap="nowrap" style={chiselRemoved ? { cursor: 'help' } : undefined}>
+                        <Text size="xs" c={chiselRemoved ? 'red' : 'dimmed'}>
+                          {chiselName ?? 'Chisel'}{chiselRemoved ? ' (historical)' : ''}
+                        </Text>
+                        <Text size="xs">{fcSep(chiselCostPerMap, false, 1)}</Text>
+                      </Group>
+                    </Tooltip>
+                  )}
                   {setupCostBreakdown.scarabs > 0 && <Group gap="md" justify="space-between" wrap="nowrap"><Text size="xs" c="dimmed">Scarabs</Text><Text size="xs">{fcSep(setupCostBreakdown.scarabs, false, 1)}</Text></Group>}
                   {setupCostBreakdown.deliriumOrbs > 0 && <Group gap="md" justify="space-between" wrap="nowrap"><Text size="xs" c="dimmed">{deliOrbName ?? 'Delirium Orbs'}</Text><Text size="xs">{fcSep(setupCostBreakdown.deliriumOrbs, false, 1)}</Text></Group>}
                   {setupCostBreakdown.astrolabe > 0 && <Group gap="md" justify="space-between" wrap="nowrap"><Text size="xs" c="dimmed">{parsedExport?.astroType ?? 'Astrolabe'}</Text><Text size="xs">{fcSep(setupCostBreakdown.astrolabe, false, 1)}</Text></Group>}
@@ -721,57 +859,64 @@ export const StrategyCard = ({
             );
           })()}
 
-          {parsedExport?.deliOrbType && (
+          {setupDeliriumItems.length > 0 && (
             <Stack gap={3} className="strategy-card-setup-deli">
               <SectionLabel>Delirium Orbs</SectionLabel>
-              <Group gap={6} wrap="nowrap" className="strategy-card-setup-item">
-                <PoeItemIcon name={deliOrbName} size={20} category="orb" />
-                <Text size="xs" c="grape" fw={600} style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
-                  {deliOrbName ?? `${parsedExport.deliOrbType} Delirium Orb`}
-                </Text>
-                {!isPooled && (
-                  <Text size="xs" c="dimmed" style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
-                    {parsedExport.deliOrbQty}x/map
-                    {parsedExport.deliOrbPrice > 0 ? ` · ${parsedExport.deliOrbPrice}c ea` : ''}
+              {setupDeliriumItems.map((item) => (
+                <Group key={item.name} gap={6} wrap="nowrap" className="strategy-card-setup-item">
+                  <PoeItemIcon name={item.name} size={20} category="orb" />
+                  <Text size="xs" c="grape" fw={600} style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
+                    {item.name}
                   </Text>
-                )}
-              </Group>
+                  <Text size="xs" c="dimmed" style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                    {item.value}
+                  </Text>
+                </Group>
+              ))}
             </Stack>
           )}
 
-          {chiselName && (
+          {setupChiselItems.length > 0 && (
             <Stack gap={2} className="strategy-card-setup-chisel">
               <SectionLabel>Chisel</SectionLabel>
-              <Group gap={6} wrap="nowrap" className="strategy-card-setup-item">
-                <PoeItemIcon name={chiselName} size={20} category="chisel" />
-                <Text size="xs" c="yellow" fw={600} style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
-                  {chiselName}
-                </Text>
-                {!isPooled && (
-                  <Text size="xs" c="dimmed" style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
-                    {chiselCostPerMap > 0 ? `${chiselCostPerMap}c/map` : 'Configured'}
-                  </Text>
-                )}
-              </Group>
+              {setupChiselItems.map((item) => {
+                const removed = chiselRemoved || item.name === "Cartographer's Chisel";
+                return (
+                  <Tooltip key={item.name} label={removed ? chiselCompatIssue?.detail ?? `${item.name} is retained as historical evidence but is not selectable for new strategies.` : item.name} withArrow multiline w={290}>
+                    <Group gap={6} wrap="nowrap" className="strategy-card-setup-item"
+                      style={removed ? { cursor: 'help', opacity: 0.72 } : undefined}>
+                      <PoeItemIcon name={item.name} size={20} category="chisel" />
+                      <Text size="xs" c={removed ? 'red' : 'yellow'} fw={600}
+                        style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', textDecoration: removed ? 'line-through' : undefined }}>
+                        {item.name}
+                      </Text>
+                      {removed && <Badge size="xs" color="red" variant="light">Historical</Badge>}
+                      <Text size="xs" c="dimmed" style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                        {item.value}
+                      </Text>
+                    </Group>
+                  </Tooltip>
+                );
+              })}
             </Stack>
           )}
 
-          {parsedExport?.astroType && (
+          {setupAstrolabeItems.length > 0 && (
             <Stack gap={2} className="strategy-card-setup-astro">
               <SectionLabel>Astrolabe</SectionLabel>
-              <Group gap={6} wrap="nowrap" className="strategy-card-setup-item">
-                <PoeItemIcon name={parsedExport.astroType} size={20} category="astrolabe" />
-                <Text size="xs" c="teal" fw={600} style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
-                  {parsedExport.astroType}
-                </Text>
-                {!isPooled && (parsedExport.astroCount > 0 || parsedExport.astroPrice > 0) && (
-                  <Text size="xs" c="dimmed" style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
-                    {parsedExport.astroCount > 0 ? `${parsedExport.astroCount}x` : ''}
-                    {parsedExport.astroCount > 0 && parsedExport.astroPrice > 0 ? ' · ' : ''}
-                    {parsedExport.astroPrice > 0 ? `${parsedExport.astroPrice}c ea` : ''}
+              {setupAstrolabeItems.map((item) => (
+                <Group key={item.name} gap={6} wrap="nowrap" className="strategy-card-setup-item">
+                  <PoeItemIcon name={item.name} size={20} category="astrolabe" />
+                  <Text size="xs" c="teal" fw={600} style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
+                    {item.name}
                   </Text>
-                )}
-              </Group>
+                  {item.value && (
+                  <Text size="xs" c="dimmed" style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                      {item.value}
+                  </Text>
+                  )}
+                </Group>
+              ))}
             </Stack>
           )}
 
@@ -782,15 +927,15 @@ export const StrategyCard = ({
             </div>
           )}
 
-          {strategy.scarabs && strategy.scarabs.length > 0 && (
+          {setupScarabItems.length > 0 && (
             <Stack gap={2} className="strategy-card-setup-scarabs">
               <Tooltip
-                label="Setup scarabs. For pooled strategies, authored prices are preserved per run under Evidence runs."
+                label="Setup scarabs. Pooled values are map-weighted across authored evidence; exact prices remain under Evidence runs."
                 withArrow disabled={!isPooled}>
                 <SectionLabel style={isPooled ? { cursor: 'help' } : undefined}>Scarabs</SectionLabel>
               </Tooltip>
               <Stack gap={2} className="strategy-card-scarab-list">
-                {strategy.scarabs.map((s, i) => {
+                {setupScarabItems.map((s, i) => {
                   // Per-scarab compat cue (step 4). Match the precomputed issue
                   // by stored name so we don't resolve twice.
                   const issue = compat.issues.find((c) => c.kind === 'scarab' && c.storedName === s.name.trim());
@@ -806,10 +951,10 @@ export const StrategyCard = ({
                           style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', lineHeight: 1.35 }}>
                           {s.name}
                         </Text>
-                        {!isPooled && s.cost > 0 && (
+                        {s.value && (
                           <Text size="xs" c={scarabColor} fw={600}
                             style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
-                            {s.cost}c
+                            {s.value}
                           </Text>
                         )}
                       </Group>
