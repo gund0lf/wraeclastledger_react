@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { evidencePresentation, evidenceRunDivPerHour, fetchEvidenceRuns } from './evidenceApi';
+import {
+  evidencePresentation,
+  evidenceRunDivPerHour,
+  fetchAllEvidenceRuns,
+  fetchEvidenceRuns,
+} from './evidenceApi';
 import type { Strategy } from './strategyConstants';
 
 function jsonResponse(value: unknown, status = 200): Response {
@@ -56,6 +61,39 @@ describe('evidence API client', () => {
     await expect(fetchEvidenceRuns('id', null, fetcher, 'https://example.test'))
       .rejects.toThrow('Server returned 503');
   });
+
+  it('loads every evidence page for pooled setup reconstruction', async () => {
+    const fetcher = vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      return jsonResponse(href.includes('cursor=next')
+        ? {
+            strategy_id: 'id', revision: 2,
+            runs: [{ ordinal: 2, map_count: 40 }], next_cursor: null,
+          }
+        : {
+            strategy_id: 'id', revision: 2,
+            runs: [{ ordinal: 1, map_count: 20 }], next_cursor: 'next',
+          });
+    });
+
+    await expect(fetchAllEvidenceRuns(
+      'id', fetcher as typeof fetch, 'https://example.test',
+    )).resolves.toEqual([
+      { ordinal: 1, map_count: 20 },
+      { ordinal: 2, map_count: 40 },
+    ]);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails closed when evidence pagination repeats a cursor', async () => {
+    const fetcher = vi.fn(async () => jsonResponse({
+      strategy_id: 'id', revision: 2, runs: [], next_cursor: 'same',
+    }));
+
+    await expect(fetchAllEvidenceRuns(
+      'id', fetcher as typeof fetch, 'https://example.test',
+    )).rejects.toThrow('repeated a cursor');
+  });
 });
 
 describe('evidence presentation', () => {
@@ -96,6 +134,7 @@ describe('evidence presentation', () => {
       net_profit: 10_000,
       divine_price: 200,
       historical_total_divines: 112.5,
+      historical_total_invest_divines: 4.5,
       timed_run_count: 2,
       timed_session_minutes: 300,
       timed_total_divines: 20,
@@ -107,7 +146,10 @@ describe('evidence presentation', () => {
       mapCount: 90,
       isPooled: true,
       divPerMap: 1.25,
+      profitPerMapChaos: 10000 / 90,
       costPerMap: 10,
+      costPerMapDivines: null,
+      totalInvestDivines: 4.5,
       historicalProfitDivines: 112.5,
       divPerHour: 4,
       timedRunCount: 2,
@@ -129,7 +171,10 @@ describe('evidence presentation', () => {
       mapCount: 20,
       isPooled: false,
       divPerMap: 1,
+      profitPerMapChaos: 100,
       costPerMap: 20,
+      costPerMapDivines: 0.2,
+      totalInvestDivines: 4,
       historicalProfitDivines: 20,
       divPerHour: 10,
       timedRunCount: 0,

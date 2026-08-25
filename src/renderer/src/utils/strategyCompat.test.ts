@@ -1,7 +1,7 @@
 /**
  * strategyCompat.test.ts — strategy-vs-manifest compatibility (rollover step 4).
  *
- * Revision 2 contains real lifecycle changes. The bundled cases distinguish
+ * Bundled revisions contain real lifecycle changes. The bundled cases distinguish
  * unchanged products from those changes; synthetic cases isolate every
  * compatibility level and atlas-version behavior.
  */
@@ -69,10 +69,19 @@ describe('compat on the bundled manifest', () => {
   it('a strategy of unchanged scarabs + chisel is ok', () => {
     const r = checkStrategyCompat(strat({
       scarabs: [{ name: 'Abyss Scarab of Descending', cost: 5 }, { name: 'Titanic Scarab', cost: 10 }],
-      chisel: 'Cartographer',
+      chisel: 'Avarice',
     }));
     expect(r.level).toBe('ok');
     expect(r.issues).toHaveLength(0);
+  });
+
+  it('keeps a historical Cartographer chisel readable but flags it as removed', () => {
+    const r = checkStrategyCompat(strat({ chisel: 'Cartographer' }));
+    expect(r.level).toBe('removed');
+    expect(r.issues[0]).toMatchObject({
+      kind: 'chisel', storedName: 'Cartographer', level: 'removed',
+    });
+    expect(r.issues[0].detail).toContain('historical strategies remain readable');
   });
 
   it('an unknown scarab name is treated as compatible (under-warn)', () => {

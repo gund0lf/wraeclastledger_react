@@ -84,7 +84,7 @@ function checkName(
   if (!entity) return null;
   if (entity.status === 'removed') {
     return { kind, storedName: trimmed, level: 'removed',
-      detail: `${trimmed} no longer exists in ${getManifest().patchVersion}` };
+      detail: entity.note ? `${trimmed}: ${entity.note}` : `${trimmed} no longer exists in ${getManifest().patchVersion}` };
   }
   // Genuine rename: resolved to a DIFFERENT current name. The name-differs guard
   // also swallows the dangling-aliasOf edge case (resolver returns the renamed

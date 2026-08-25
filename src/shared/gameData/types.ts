@@ -29,7 +29,7 @@ export interface GameEntity {
   status: EntityStatus;
   /** For status 'renamed': the surviving entity's id. */
   aliasOf?: string;
-  /** For status 'reworked': short human note shown in "what changed" surfaces. */
+  /** Short lifecycle note shown in "what changed" and historical surfaces. */
   note?: string;
   /** Optional icon pin for removed items (poe.ninja drops them from feeds). */
   iconUrl?: string;

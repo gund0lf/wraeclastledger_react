@@ -1,0 +1,301 @@
+.strategy-card-expanded {
+  container-type: inline-size;
+  background:
+    radial-gradient(circle at 50% -30%, rgba(77, 171, 247, 0.12), transparent 40%),
+    linear-gradient(180deg, rgba(20, 24, 29, 0.98), rgba(14, 17, 21, 0.98));
+}
+
+.strategy-card-header {
+  transition: border-color 120ms ease;
+  border-color: rgba(116, 192, 252, 0.18) !important;
+}
+
+.strategy-card-hero {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(300px, 1.35fr) minmax(240px, 1fr);
+  gap: 24px;
+  align-items: center;
+}
+
+.strategy-card-hero-identity {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  align-items: center;
+  width: 100%;
+  max-width: 980px;
+  min-width: 0;
+  text-align: center;
+}
+
+.strategy-card-hero-identity > :first-child {
+  font-family: Georgia, 'Times New Roman', serif;
+  letter-spacing: 0.01em;
+}
+
+.strategy-card-hero-tags {
+  justify-content: center;
+  width: 100%;
+}
+
+.strategy-card-hero-meta {
+  display: contents;
+}
+
+.strategy-card-hero-attribution {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  align-items: flex-start;
+  min-width: 0;
+  text-align: left;
+}
+
+.strategy-card-hero-facts {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  align-items: flex-end;
+  min-width: 0;
+  text-align: right;
+}
+
+.strategy-card-economics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.strategy-card-economic-tile {
+  min-width: 0;
+  min-height: 72px;
+}
+
+.strategy-card-economic-tile,
+.strategy-card-lower-panel,
+.strategy-card-cost-panel,
+.strategy-card-map-panel,
+.strategy-card-supporting-note,
+.strategy-card-regex-wide {
+  background: rgba(28, 33, 39, 0.96) !important;
+  border-color: rgba(116, 192, 252, 0.24) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.015);
+}
+
+.strategy-card-loot-panel {
+  background: rgba(20, 42, 55, 0.94) !important;
+  border-color: rgba(77, 171, 247, 0.55) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.strategy-card-loot-panel .loot-evidence-category {
+  background: rgba(17, 25, 32, 0.92);
+  border: 1px solid rgba(116, 192, 252, 0.16);
+}
+
+.strategy-card-runs-panel {
+  border-color: rgba(116, 192, 252, 0.18) !important;
+}
+
+.strategy-card-lower-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 1.2fr) minmax(235px, 0.72fr) minmax(410px, 1.28fr);
+  grid-template-rows: repeat(8, auto);
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.strategy-card-lower-panel {
+  grid-column: 1;
+  grid-row: 1 / 5;
+  min-width: 0;
+}
+
+.strategy-card-cost-panel {
+  grid-column: 2;
+  grid-row: 1 / 5;
+  min-width: 0;
+}
+
+.strategy-card-map-panel {
+  grid-column: 3;
+  grid-row: 1 / 5;
+  min-width: 0;
+}
+
+.strategy-card-setup-scarabs,
+.strategy-card-setup-chisel,
+.strategy-card-setup-deli,
+.strategy-card-setup-astro {
+  grid-column: 1;
+  z-index: 1;
+  min-width: 0;
+  margin-inline: 10px;
+}
+
+.strategy-card-setup-scarabs {
+  grid-row: 1;
+  margin-top: 10px;
+}
+
+.strategy-card-setup-chisel {
+  grid-row: 2;
+}
+
+.strategy-card-setup-deli {
+  grid-row: 3;
+}
+
+.strategy-card-setup-astro {
+  grid-row: 4;
+  margin-bottom: 10px;
+}
+
+.strategy-card-scarab-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 8px;
+  max-width: none;
+}
+
+.strategy-card-setup-item {
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.strategy-card-cost-list {
+  min-width: 0;
+}
+
+.strategy-card-map-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+  gap: 8px;
+}
+
+.strategy-card-supporting-note,
+.strategy-card-supporting-evidence {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.strategy-card-supporting-note {
+  grid-row: 5;
+  text-align: center;
+}
+
+.strategy-card-supporting-evidence {
+  grid-row: 6;
+}
+
+.strategy-card-regex-wide {
+  margin-top: 10px;
+}
+
+.strategy-card-expanded > .strategy-card-actions {
+  justify-content: center;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(116, 192, 252, 0.18);
+}
+
+.strategy-card-loot-panel .loot-evidence-categories {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
+  gap: 6px;
+}
+
+.strategy-card-loot-panel .loot-evidence-category {
+  min-height: 78px;
+}
+
+@container (max-width: 1100px) {
+  .strategy-card-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .strategy-card-hero-identity,
+  .strategy-card-hero-attribution,
+  .strategy-card-hero-facts {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: stretch;
+    align-items: center;
+    text-align: center;
+  }
+
+  .strategy-card-hero-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .strategy-card-lower-grid {
+    grid-template-columns: minmax(330px, 1.2fr) minmax(250px, 0.8fr);
+  }
+
+  .strategy-card-map-panel {
+    grid-column: 1 / -1;
+    grid-row: 7;
+  }
+
+  .strategy-card-scarab-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container (max-width: 760px) {
+  .strategy-card-economics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .strategy-card-lower-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .strategy-card-lower-panel,
+  .strategy-card-setup-scarabs,
+  .strategy-card-setup-chisel,
+  .strategy-card-setup-deli,
+  .strategy-card-setup-astro,
+  .strategy-card-cost-panel,
+  .strategy-card-map-panel,
+  .strategy-card-supporting-note,
+  .strategy-card-supporting-evidence {
+    grid-column: 1;
+  }
+
+  .strategy-card-cost-panel {
+    grid-row: 5;
+  }
+
+  .strategy-card-map-panel {
+    grid-row: 6;
+  }
+
+  .strategy-card-supporting-note {
+    grid-row: 7;
+  }
+
+  .strategy-card-supporting-evidence {
+    grid-row: 8;
+  }
+}
+
+@container (max-width: 520px) {
+  .strategy-card-economics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .strategy-card-map-stats {
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  }
+
+  .strategy-card-expanded > .strategy-card-actions {
+    justify-content: center;
+  }
+}

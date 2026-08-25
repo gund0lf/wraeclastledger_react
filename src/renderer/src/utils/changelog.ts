@@ -10,6 +10,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.85',
+    date: '2026-08-26',
+    changes: [
+      'Strategy Browser now opens one focused strategy at a time in a refined responsive card. The four headline values use the approved Net profit, Total investment, Profit/map, and Cost/map order; titles and mechanic tags stay balanced across narrow and wide panel layouts, setup values are easier to scan, and collapsed multi-run labels no longer collide with adjacent rows.',
+      'Automatic Strategy Browser refreshes now preserve already-loaded detail while its revision is unchanged and fetch fresh detail when a strategy or evidence pool changes, preventing setup and cost values from disappearing until the card is reopened.',
+      'Currency presentation now adds contextual Divine equivalents to large loot totals and item rows while retaining Chaos as the primary exact value. Dashboard loot values are right-aligned, single-run cards show compatible Chaos and Divine context, and pooled strategies use each evidence run\'s own recorded Divine snapshot for exact total-investment conversion instead of applying one historical price to the whole pool.',
+      'Multi-run strategy cards retain real setup data: scarab, chisel, Delirium Orb, Astrolabe, and cost rows are reconstructed as map-weighted historical averages from every evidence run, while the expanded Evidence runs section keeps each run\'s authored prices and full-width loot breakdown readable.',
+      'Cartographer\'s Chisel is no longer offered for new challenge-league input. Existing Standard items, saved sessions, and historical strategies remain readable.',
+    ],
+  },
+  {
     version: '1.0.84',
     date: '2026-08-25',
     changes: [

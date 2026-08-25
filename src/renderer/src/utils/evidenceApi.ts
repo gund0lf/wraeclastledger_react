@@ -47,7 +47,10 @@ export interface EvidencePresentation {
   mapCount: number | null;
   isPooled: boolean;
   divPerMap: number | null;
+  profitPerMapChaos: number | null;
   costPerMap: number | null;
+  costPerMapDivines: number | null;
+  totalInvestDivines: number | null;
   historicalProfitDivines: number | null;
   divPerHour: number | null;
   timedRunCount: number;
@@ -90,6 +93,26 @@ export function evidencePresentation(strategy: Strategy): EvidencePresentation {
   const costPerMap = strategy.total_invest != null && mapCount != null && mapCount > 0
     ? strategy.total_invest / mapCount
     : strategy.per_map_cost ?? null;
+  const profitPerMapChaos = strategy.net_profit != null && mapCount != null && mapCount > 0
+    ? strategy.net_profit / mapCount
+    : null;
+  // Pooled investment divines are materialized server-side from each run's
+  // authored investment and Divine snapshot. Never apply one run's price to
+  // the aggregate, and never display a partial pooled conversion.
+  const singleRunTotalInvestDivines = strategy.total_invest != null
+    && strategy.divine_price != null
+    && strategy.divine_price > 0
+    ? strategy.total_invest / strategy.divine_price
+    : null;
+  const totalInvestDivines = isPooled
+    ? strategy.historical_total_invest_divines ?? null
+    : singleRunTotalInvestDivines;
+  const costPerMapDivines = !isPooled
+    && costPerMap != null
+    && strategy.divine_price != null
+    && strategy.divine_price > 0
+    ? costPerMap / strategy.divine_price
+    : null;
   const historicalProfitDivines = isPooled
     ? strategy.historical_total_divines ?? null
     : strategy.net_profit != null && strategy.divine_price != null && strategy.divine_price > 0
@@ -114,7 +137,10 @@ export function evidencePresentation(strategy: Strategy): EvidencePresentation {
     mapCount,
     isPooled,
     divPerMap,
+    profitPerMapChaos,
     costPerMap,
+    costPerMapDivines,
+    totalInvestDivines,
     historicalProfitDivines,
     divPerHour,
     timedRunCount: strategy.timed_run_count ?? 0,
@@ -138,4 +164,35 @@ export async function fetchEvidenceRuns(
   );
   if (!response.ok) throw new Error(`Server returned ${response.status}`);
   return response.json() as Promise<EvidenceRunsResponse>;
+}
+
+/**
+ * Loads the complete current evidence set for a strategy. Strategy cards use
+ * this only while expanded so pooled setup values can be reconstructed from
+ * every authored run instead of silently falling back to the latest run.
+ */
+export async function fetchAllEvidenceRuns(
+  strategyId: string,
+  fetcher: Fetcher = fetch,
+  apiUrl = STRATEGY_API_URL,
+  maxRuns = 1_000,
+): Promise<PublicEvidenceRun[]> {
+  const runs: PublicEvidenceRun[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | null = null;
+
+  do {
+    const page = await fetchEvidenceRuns(strategyId, cursor, fetcher, apiUrl, 50);
+    runs.push(...page.runs);
+    if (runs.length > maxRuns) {
+      throw new Error(`Evidence exceeds the ${maxRuns}-run display limit`);
+    }
+    cursor = page.next_cursor;
+    if (cursor) {
+      if (seenCursors.has(cursor)) throw new Error('Evidence pagination repeated a cursor');
+      seenCursors.add(cursor);
+    }
+  } while (cursor);
+
+  return runs;
 }

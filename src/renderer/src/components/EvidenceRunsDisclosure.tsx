@@ -49,7 +49,7 @@ const RunRow = ({ run }: { run: PublicEvidenceRun }) => {
     background: COLOR.bgInset,
   }}>
     <Group justify="space-between" align="flex-start" gap="xs" wrap="nowrap">
-      <Stack gap={1} style={{ minWidth: 0 }}>
+      <Stack gap={1} style={{ minWidth: 0, flex: 1 }}>
         <Group gap={5} wrap="wrap">
           <Text size="xs" fw={700}>Run {run.ordinal}</Text>
           <Text size="xs" c="dimmed">{formatTimestamp(run.run_started_at)}</Text>
@@ -92,7 +92,7 @@ const RunRow = ({ run }: { run: PublicEvidenceRun }) => {
                 <Text size="xs" c="dimmed" td="underline">Run costs</Text>
               </Group>
             </UnstyledButton>
-            <Collapse in={costsOpen}>
+            <Collapse in={costsOpen} style={{ width: '100%' }}>
               <Stack gap={1} pl={15}>
                 {costs.chisel && <Text size="xs" c="dimmed">Chisel: {costs.chisel.name} — {f1(costs.chisel.priceEach)}c/map</Text>}
                 {costs.scarabs.map((scarab, index) => (
@@ -124,9 +124,9 @@ const RunRow = ({ run }: { run: PublicEvidenceRun }) => {
                 </Text>
               </Group>
             </UnstyledButton>
-            <Collapse in={lootOpen}>
-              <div style={{ paddingTop: 4 }}>
-                <LootEvidenceSummary summary={run.loot_summary} />
+            <Collapse in={lootOpen} style={{ width: '100%' }}>
+              <div style={{ paddingTop: 4, width: '100%' }}>
+                <LootEvidenceSummary summary={run.loot_summary} divinePrice={run.divine_price} />
               </div>
             </Collapse>
           </>

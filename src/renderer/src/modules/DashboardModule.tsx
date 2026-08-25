@@ -27,6 +27,7 @@ import { GettingStartedCard } from '../components/GettingStartedCard';
 import { CollapsibleSection as Section } from '../components/ui/CollapsibleSection';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { isCrossLeagueSession } from '../utils/historicalSession';
+import { divineEquivalent } from '../utils/currencyDisplay';
 import {
   manualLootEntryValue,
   manualLootTotalAfterQuantityChange,
@@ -821,18 +822,28 @@ export const DashboardModule = () => {
                             <Table.Th style={{ width: 24 }}></Table.Th>
                             <Table.Th>Item</Table.Th>
                             <Table.Th>Qty</Table.Th>
-                            <Table.Th>Value</Table.Th>
+                            <Table.Th ta="right">Value</Table.Th>
                           </Table.Tr>
                         </Table.Thead>
                         <Table.Tbody>
-                          {filteredItems.slice(0, visibleListRows).map((item) => (
+                          {filteredItems.slice(0, visibleListRows).map((item) => {
+                            const itemDivines = divineEquivalent(item.total, divPrice, 1);
+                            return (
                             <Table.Tr key={item.id} style={{ opacity: item.excluded ? 0.4 : 1 }}>
                               <Table.Td><Checkbox checked={!item.excluded} onChange={() => toggleLootItemExcluded(item.id)} size="xs" /></Table.Td>
                               <Table.Td><Group gap={6} wrap="nowrap"><ResolvedLootIcon name={item.name} tab={item.tab} resolver={resolver} loading={iconsLoading} /><Text size="xs" lineClamp={1}>{item.name}</Text></Group></Table.Td>
                               <Table.Td><Text size="xs">{item.quantity}</Text></Table.Td>
-                              <Table.Td><Text size="xs" fw={600} c={item.excluded ? 'dimmed' : 'teal'}>{fcSep(item.total, false, 1)}</Text></Table.Td>
+                              <Table.Td ta="right">
+                                <Text size="xs" fw={600} c={item.excluded ? 'dimmed' : 'teal'} ta="right" style={{ whiteSpace: 'nowrap' }}>
+                                  {fcSep(item.total, false, 1)}
+                                  {itemDivines != null && (
+                                    <Text span c="dimmed" style={{ fontSize: FONT.label }}> ({itemDivines.toFixed(2)}d)</Text>
+                                  )}
+                                </Text>
+                              </Table.Td>
                             </Table.Tr>
-                          ))}
+                            );
+                          })}
                         </Table.Tbody>
                       </Table>
                       {visibleListRows < filteredItems.length && (
@@ -871,15 +882,25 @@ export const DashboardModule = () => {
                       size="xs" fullWidth style={{ flexShrink: 0 }} />
                     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
                       <Table stickyHeader>
-                        <Table.Thead><Table.Tr><Table.Th>Item</Table.Th><Table.Th>Qty</Table.Th><Table.Th>{diffTab === 'gains' ? 'Gained' : 'Reduced'}</Table.Th></Table.Tr></Table.Thead>
+                        <Table.Thead><Table.Tr><Table.Th>Item</Table.Th><Table.Th>Qty</Table.Th><Table.Th ta="right">{diffTab === 'gains' ? 'Gained' : 'Reduced'}</Table.Th></Table.Tr></Table.Thead>
                         <Table.Tbody>
-                          {activeDiff.slice(0, visibleDiffRows).map((r) => (
+                          {activeDiff.slice(0, visibleDiffRows).map((r) => {
+                            const deltaDivines = divineEquivalent(r.delta, divPrice, 1);
+                            return (
                             <Table.Tr key={r.name}>
                               <Table.Td><Group gap={6} wrap="nowrap"><ResolvedLootIcon name={r.name} tab={r.tab} resolver={resolver} loading={iconsLoading} /><Text size="xs" lineClamp={1}>{r.name}</Text></Group></Table.Td>
                               <Table.Td><Text size="xs" c="dimmed">{r.baseQty} → {r.currQty}</Text></Table.Td>
-                              <Table.Td><Text size="xs" fw={600} c={r.delta > 0 ? 'green' : 'red'}>{fcSep(r.delta, true, 1)}</Text></Table.Td>
+                              <Table.Td ta="right">
+                                <Text size="xs" fw={600} c={r.delta > 0 ? 'green' : 'red'} ta="right" style={{ whiteSpace: 'nowrap' }}>
+                                  {fcSep(r.delta, true, 1)}
+                                  {deltaDivines != null && (
+                                    <Text span c="dimmed" style={{ fontSize: FONT.label }}> ({deltaDivines.toFixed(2)}d)</Text>
+                                  )}
+                                </Text>
+                              </Table.Td>
                             </Table.Tr>
-                          ))}
+                            );
+                          })}
                         </Table.Tbody>
                       </Table>
                       {visibleDiffRows < activeDiff.length && (
