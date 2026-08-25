@@ -475,14 +475,32 @@ export const StrategyCard = ({
           disabled={!isPooled || displayMapCount == null}
           label={`${evidenceRunCount} independently submitted runs, ${displayMapCount} maps total. Aggregate profit uses each run's historical divine-price snapshot.`}
           withArrow multiline w={260}>
-          <Group gap={2} justify="center" wrap="nowrap" style={{ width: browserCols.maps, flexShrink: 0, cursor: isPooled ? 'help' : undefined }}>
+          <div style={{
+            width: browserCols.maps,
+            alignSelf: 'stretch',
+            flexShrink: 0,
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: isPooled ? 'help' : undefined,
+          }}>
             <Text size="xs" fw={600} c="gray.4" style={{ fontSize: FONT.body, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{displayMapCount != null ? displayMapCount : '—'}</Text>
             {isPooled && (
-              <Text c="blue" style={{ fontSize: FONT.micro, lineHeight: 1, whiteSpace: 'nowrap' }}>
-                {evidenceRunCount}r
+              <Text c="blue" style={{
+                position: 'absolute',
+                left: '50%',
+                top: 'calc(50% + 6px)',
+                transform: 'translateX(-50%)',
+                fontSize: FONT.micro,
+                lineHeight: 1,
+                whiteSpace: 'nowrap',
+                pointerEvents: 'none',
+              }}>
+                {evidenceRunCount} {evidenceRunCount === 1 ? 'run' : 'runs'}
               </Text>
             )}
-          </Group>
+          </div>
         </Tooltip>
         <Text size="xs" fw={600} c="gray.4" style={{ width: browserCols.cost, flexShrink: 0, fontSize: FONT.body, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {costPerMap != null ? fcSep(costPerMap) : '—'}
