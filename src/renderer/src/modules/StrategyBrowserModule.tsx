@@ -20,6 +20,7 @@ import {
 } from '../utils/strategyConstants';
 import { StrategyCard } from '../components/StrategyCard';
 import { ModuleHeader } from '../components/ui/ModuleHeader';
+import { SectionLabel } from '../components/ui/SectionLabel';
 import { ShareModal } from '../components/ShareModal';
 import { ImportModal } from '../components/ImportModal';
 import { PersonalRetrospectives } from '../components/PersonalRetrospectives';
@@ -95,7 +96,46 @@ export const StrategyBrowserModule = () => {
   const [period,     setPeriod]     = useState('all');
   const [hideGroup,  setHideGroup]  = useState(false);
   const [browserView, setBrowserView] = useState<'live' | 'retrospectives'>('live');
+  const [expandedStrategyId, setExpandedStrategyId] = useState<string | null>(null);
+  const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
+  const strategyViewportRef = useRef<HTMLDivElement>(null);
+  const strategyListScrollTopRef = useRef(0);
   const LIMIT = 20;
+
+  const setStrategyExpanded = (strategyId: string, expanded: boolean) => {
+    if (expanded) {
+      strategyListScrollTopRef.current = strategyViewportRef.current?.scrollTop ?? 0;
+      setExpandedStrategyId(strategyId);
+      requestAnimationFrame(() => strategyViewportRef.current?.scrollTo({ top: 0 }));
+      const summary = strategies.find((strategy) => strategy.id === strategyId);
+      if (summary && !summary.raw_export) {
+        setDetailLoadingId(strategyId);
+        void fetch(`${apiUrl}/strategies/${encodeURIComponent(strategyId)}`)
+          .then((response) => {
+            if (!response.ok) throw new Error(`Server returned ${response.status}`);
+            return response.json() as Promise<Strategy>;
+          })
+          .then((detail) => {
+            setStrategies((current) => current.map((strategy) => (
+              strategy.id === strategyId ? { ...strategy, ...detail } : strategy
+            )));
+          })
+          .catch((detailError: unknown) => {
+            setError(detailError instanceof Error
+              ? `Could not load full strategy details: ${detailError.message}`
+              : 'Could not load full strategy details.');
+          })
+          .finally(() => setDetailLoadingId((current) => (
+            current === strategyId ? null : current
+          )));
+      }
+      return;
+    }
+    setExpandedStrategyId(null);
+    requestAnimationFrame(() => strategyViewportRef.current?.scrollTo({
+      top: strategyListScrollTopRef.current,
+    }));
+  };
 
   const requestCurrentAtlasApply = (
     url: string,
@@ -554,8 +594,8 @@ export const StrategyBrowserModule = () => {
       <Card shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ display: 'flex', flexDirection: 'column', minWidth: browserMinContentWidth }}>
         {/* session-16: "Strategy Browser" title dropped (redundant with the
             tab label); the count badge anchors the left. */}
+        <div style={{ flexShrink: 0, padding: '2px 2px 10px' }}>
         <ModuleHeader
-          mb="sm"
           title={
             <Group gap="xs" wrap="nowrap">
               <SegmentedControl
@@ -589,13 +629,14 @@ export const StrategyBrowserModule = () => {
             </Group> : undefined
           }
         />
+        </div>
 
         {browserView === 'live' ? (
           <>
-        <Paper withBorder radius="sm" p="xs" mb="xs" style={{ flexShrink: 0 }}>
+        <Paper withBorder radius="md" p="sm" mb="sm" style={{ flexShrink: 0 }}>
           <Group gap="md" wrap="nowrap" align="flex-end">
             <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-              <Text size="xs" c="dimmed" fw={600}>Filters</Text>
+              <SectionLabel>Filters</SectionLabel>
               <Group gap="xs" wrap="nowrap">
                 <MultiSelect size="xs" placeholder="Any type" clearable style={{ flex: 1 }}
                   data={ALL_TYPE_TAGS.map((t) => ({ value: t, label: t.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') }))}
@@ -612,7 +653,7 @@ export const StrategyBrowserModule = () => {
               </Group>
             </Stack>
             <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-              <Text size="xs" c="dimmed" fw={600}>Sort and visibility</Text>
+              <SectionLabel>Sort and visibility</SectionLabel>
               <Group gap="xs" wrap="nowrap">
                 <Select size="xs" style={{ flex: 1 }}
                   data={SORT_OPTIONS}
@@ -628,12 +669,12 @@ export const StrategyBrowserModule = () => {
           </Group>
         </Paper>
 
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-        <div style={{
+        <div ref={strategyViewportRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 6, border: `1px solid ${COLOR.border}`, borderRadius: 6 }}>
+        {!expandedStrategyId && <div style={{
           display: 'grid', gridTemplateColumns: browserGridTemplate,
           columnGap: BROWSER_ROW_GAP, alignItems: 'center', marginBottom: 3,
           padding: `2px ${BROWSER_ROW_PAD_X}px`, position: 'sticky', top: 0,
-          zIndex: 2, background: COLOR.bgPanel,
+          zIndex: 2, background: 'var(--mantine-color-dark-6)', borderBottom: `1px solid ${COLOR.border}`,
         }}>
           <div style={{ width: browserCols.chevron, flexShrink: 0 }} />
           <Text size="xs" c="dimmed" style={{ width: browserCols.author, flexShrink: 0, fontSize: FONT.small }}>Author</Text>
@@ -679,7 +720,7 @@ export const StrategyBrowserModule = () => {
             <UnstyledButton onClick={() => handleHeaderSort('div_per_map')} aria-pressed={sortBy === 'div_per_map'}
               style={{ width: browserCols.dpm, textAlign: 'right', flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Profit/map{sortArrow('div_per_map')}</UnstyledButton>
           </Tooltip>
-        </div>
+        </div>}
 
         {loadedMsg && <Alert color="teal" variant="light" p="xs" mb={6} style={{ flexShrink: 0 }}><Text size="xs">{loadedMsg}</Text></Alert>}
         {error     && <Alert color="red"  variant="light" p="xs" mb={6} style={{ flexShrink: 0 }}><Text size="xs">{error}</Text></Alert>}
@@ -690,9 +731,10 @@ export const StrategyBrowserModule = () => {
               <Text size="xs" c="dimmed">Use the Share button to post your first session.</Text>
             </Stack>
           )}
-          <Stack gap={3}>
+          <Stack gap={expandedStrategyId ? 0 : 'xs'}>
             {strategies
               .filter((s) => {
+                if (expandedStrategyId) return s.id === expandedStrategyId;
                 if (!hideGroup) return true;
                 const grp = s.is_group_play || (s.raw_export ? /Party Play:\s*Yes/i.test(s.raw_export) : false);
                 return !grp;
@@ -700,14 +742,17 @@ export const StrategyBrowserModule = () => {
               .map((s) => <StrategyCard key={s.id} strategy={s} onLoadBuild={handleLoadBuild}
                 onContinueStrategy={openContinueCandidate}
                 discordTag={discordTag} maximized={isMaximized}
-                showPublishedActivity={isSetupSidebarCollapsed} />)}
+                showPublishedActivity={isSetupSidebarCollapsed}
+                detailLoading={detailLoadingId === s.id}
+                expanded={expandedStrategyId === s.id}
+                onExpandedChange={(expanded) => setStrategyExpanded(s.id, expanded)} />)}
           </Stack>
-          {hasMore && !loading && (
+          {!expandedStrategyId && hasMore && !loading && (
             <Button variant="subtle" size="xs" fullWidth mt={8} onClick={() => fetchStrategies(offset + LIMIT)}>
               Load more ({total - offset - LIMIT} remaining)
             </Button>
           )}
-          {loading && <Group justify="center" mt={12}><Loader size="sm" /></Group>}
+          {!expandedStrategyId && loading && <Group justify="center" mt={12}><Loader size="sm" /></Group>}
         </div>
 
         <Text size="xs" c="dimmed" ta="center" mt={6} style={{ flexShrink: 0 }}>

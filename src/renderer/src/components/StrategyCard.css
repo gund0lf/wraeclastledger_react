@@ -1,0 +1,439 @@
+.strategy-card-expanded {
+  --lab-gap: 12px;
+  --lab-panel-radius: 6px;
+  container-type: inline-size;
+  background:
+    radial-gradient(circle at 50% -30%, rgba(34, 139, 230, 0.055), transparent 38%),
+    transparent;
+}
+
+.strategy-card-lab-toolbar {
+  margin: -6px 0 14px;
+  padding: 8px 10px;
+  border: 1px dashed rgba(77, 171, 247, 0.45);
+  border-radius: 6px;
+  background: rgba(34, 139, 230, 0.06);
+}
+
+.strategy-card-header {
+  transition: border-color 120ms ease;
+}
+
+.strategy-card-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+}
+
+.strategy-card-hero-meta {
+  align-items: flex-end;
+  text-align: right;
+}
+
+.strategy-card-actions {
+  margin-top: 10px;
+}
+
+.strategy-card-expanded > .strategy-card-actions {
+  justify-content: center;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--mantine-color-dark-4);
+}
+
+.strategy-card-economics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.strategy-card-economics > * {
+  min-height: 84px;
+}
+
+.strategy-card-lower-grid {
+  display: grid;
+  grid-template-columns: minmax(410px, 1.15fr) minmax(230px, 0.75fr) minmax(360px, 1.4fr);
+  grid-template-rows: minmax(28px, auto) auto auto auto auto auto auto;
+  gap: 10px;
+  align-items: stretch;
+  margin-top: 10px;
+}
+
+.strategy-card-lower-panel {
+  grid-column: 1;
+  grid-row: 1 / 6;
+}
+
+.strategy-card-cost-panel {
+  grid-column: 2;
+  grid-row: 1 / 6;
+}
+
+.strategy-card-map-panel {
+  grid-column: 3;
+  grid-row: 1 / 6;
+}
+
+.strategy-card-setup-scarabs,
+.strategy-card-setup-astro,
+.strategy-card-setup-chisel,
+.strategy-card-setup-deli {
+  grid-column: 1;
+  z-index: 1;
+  margin-inline: 10px;
+}
+
+.strategy-card-setup-scarabs { grid-row: 2; }
+.strategy-card-setup-chisel { grid-row: 3; }
+.strategy-card-setup-deli { grid-row: 4; }
+.strategy-card-setup-astro { grid-row: 5; }
+.strategy-card-setup-deli {
+  margin-bottom: 0;
+}
+.strategy-card-setup-astro { margin-bottom: 10px; }
+
+.strategy-card-supporting-note,
+.strategy-card-supporting-evidence { grid-column: 1 / -1; }
+.strategy-card-supporting-note { grid-row: 6; }
+.strategy-card-supporting-evidence { grid-row: 7; }
+
+.strategy-card-map-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+  gap: 8px;
+}
+
+.strategy-card-scarab-list {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 8px;
+  max-width: 680px;
+}
+
+.strategy-card-setup-item {
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Layouts 1-3 retain the centered editorial top from the first mockups. */
+.strategy-card-expanded:is(
+  [data-lab-layout='balanced-wide'],
+  [data-lab-layout='quiet-wide'],
+  [data-lab-layout='loot-led-wide']
+) .strategy-card-hero {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  justify-items: center;
+  text-align: center;
+}
+
+.strategy-card-expanded:not([data-lab-layout='pr']) .strategy-card-scarab-list {
+  max-width: none;
+}
+
+.strategy-card-expanded:is(
+  [data-lab-layout='balanced-wide'],
+  [data-lab-layout='quiet-wide'],
+  [data-lab-layout='loot-led-wide']
+) .strategy-card-hero-identity {
+  align-items: center;
+  max-width: 980px;
+}
+
+.strategy-card-expanded:is(
+  [data-lab-layout='balanced-wide'],
+  [data-lab-layout='quiet-wide'],
+  [data-lab-layout='loot-led-wide']
+) .strategy-card-hero-meta {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  align-items: center;
+  justify-content: center;
+  gap: 3px 22px;
+  text-align: center;
+}
+
+/* Layouts 4-8 use the favored wide run-sheet heading. */
+.strategy-card-expanded:is(
+  [data-lab-layout='wide-run-sheet'],
+  [data-lab-layout='traceur-hybrid'],
+  [data-lab-layout='traceur-focus'],
+  [data-lab-layout='traceur-centered'],
+  [data-lab-layout='traceur-spread']
+) .strategy-card-hero {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.48fr);
+  gap: 32px;
+}
+
+.strategy-card-expanded:is(
+  [data-lab-layout='wide-run-sheet'],
+  [data-lab-layout='traceur-hybrid'],
+  [data-lab-layout='traceur-focus'],
+  [data-lab-layout='traceur-centered'],
+  [data-lab-layout='traceur-spread']
+) .strategy-card-economics > * { min-height: 72px; }
+
+/* 1 · Balanced wide: strongly structured, dashboard-like lower row. */
+.strategy-card-expanded[data-lab-layout='balanced-wide'] .strategy-card-lower-grid {
+  grid-template-columns: minmax(300px, 1.25fr) minmax(220px, 0.75fr) minmax(410px, 1.55fr);
+  gap: 14px;
+}
+
+.strategy-card-expanded[data-lab-layout='balanced-wide'] .strategy-card-economic-tile,
+.strategy-card-expanded[data-lab-layout='balanced-wide'] :is(.strategy-card-lower-panel, .strategy-card-cost-panel, .strategy-card-map-panel) {
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.025);
+}
+
+/* 2 · Quiet wide: maximum calm, faint dividers, minimal panel chrome. */
+.strategy-card-expanded[data-lab-layout='quiet-wide'] { --lab-gap: 22px; }
+
+.strategy-card-expanded[data-lab-layout='quiet-wide'] .strategy-card-economic-tile,
+.strategy-card-expanded[data-lab-layout='quiet-wide'] :is(.strategy-card-lower-panel, .strategy-card-cost-panel, .strategy-card-map-panel) {
+  background: transparent !important;
+  border-color: rgba(134, 142, 150, 0.18) !important;
+  border-radius: 2px !important;
+}
+
+.strategy-card-expanded[data-lab-layout='quiet-wide'] .strategy-card-lower-grid {
+  grid-template-columns: minmax(300px, 1fr) minmax(220px, 0.72fr) minmax(430px, 1.55fr);
+}
+
+/* 3 · Loot-led wide: discovery first, then a deliberately compact run sheet. */
+.strategy-card-expanded[data-lab-layout='loot-led-wide'] .strategy-card-loot-panel {
+  padding: 14px !important;
+  border-color: rgba(32, 201, 151, 0.42) !important;
+  box-shadow: 0 0 24px rgba(32, 201, 151, 0.045);
+}
+
+.strategy-card-expanded[data-lab-layout='loot-led-wide'] .loot-evidence-category { min-height: 86px; }
+
+.strategy-card-expanded[data-lab-layout='loot-led-wide'] .strategy-card-lower-grid {
+  grid-template-columns: minmax(290px, 1.15fr) minmax(210px, 0.68fr) minmax(430px, 1.65fr);
+}
+
+/* 4 · Wide run sheet: alternate top with a dense, disciplined lower row. */
+.strategy-card-expanded[data-lab-layout='wide-run-sheet'] .strategy-card-economic-tile {
+  background: transparent !important;
+  border-width: 0 0 1px !important;
+  border-radius: 0 !important;
+}
+
+.strategy-card-expanded[data-lab-layout='wide-run-sheet'] .strategy-card-lower-grid {
+  grid-template-columns: minmax(300px, 1.18fr) minmax(220px, 0.78fr) minmax(420px, 1.45fr);
+}
+
+/* 5 · Traceur hybrid: card hierarchy above, broad three-column setup below. */
+.strategy-card-expanded[data-lab-layout='traceur-hybrid'] .strategy-card-lower-grid {
+  grid-template-columns: minmax(330px, 1.3fr) minmax(230px, 0.82fr) minmax(420px, 1.48fr);
+  gap: 10px;
+}
+.strategy-card-expanded[data-lab-layout='traceur-hybrid'] .strategy-card-map-stats {
+  grid-template-columns: repeat(2, minmax(115px, 1fr));
+}
+
+/* 6 · Traceur focus: closest to the favored live-app screenshot. */
+.strategy-card-expanded[data-lab-layout='traceur-focus'] .strategy-card-header {
+  margin-bottom: 8px !important;
+  padding-bottom: 10px !important;
+}
+
+.strategy-card-expanded[data-lab-layout='traceur-focus'] .strategy-card-economic-tile {
+  background: transparent !important;
+  border-color: transparent !important;
+  border-radius: 0 !important;
+}
+
+.strategy-card-expanded[data-lab-layout='traceur-focus'] .strategy-card-loot-panel {
+  box-shadow: inset 0 0 0 1px rgba(77, 171, 247, 0.08);
+}
+
+.strategy-card-expanded[data-lab-layout='traceur-focus'] .strategy-card-lower-grid {
+  grid-template-columns: minmax(530px, 1.4fr) minmax(230px, 0.65fr) minmax(360px, 1fr);
+  gap: 8px;
+}
+.strategy-card-expanded[data-lab-layout='traceur-focus'] .strategy-card-map-stats {
+  grid-template-columns: repeat(4, minmax(85px, 1fr));
+}
+
+/* 7 · Traceur centered: run-sheet body with a centered identity line. */
+.strategy-card-expanded[data-lab-layout='traceur-centered'] .strategy-card-hero {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  text-align: center;
+}
+.strategy-card-expanded[data-lab-layout='traceur-centered'] .strategy-card-hero-identity { align-items: center; }
+.strategy-card-expanded[data-lab-layout='traceur-centered'] .strategy-card-hero-meta {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  justify-content: center;
+  gap: 3px 22px;
+  text-align: center;
+}
+.strategy-card-expanded[data-lab-layout='traceur-centered'] .strategy-card-lower-grid {
+  grid-template-columns: minmax(320px, 1.22fr) minmax(230px, 0.82fr) minmax(400px, 1.35fr);
+}
+
+/* 8 · Traceur spread: uses every available pixel in a maximized browser. */
+.strategy-card-expanded[data-lab-layout='traceur-spread'] { --lab-gap: 16px; }
+.strategy-card-expanded[data-lab-layout='traceur-spread'] .strategy-card-header { padding-inline: 10px; }
+.strategy-card-expanded[data-lab-layout='traceur-spread'] .strategy-card-economics { gap: 16px; }
+.strategy-card-expanded[data-lab-layout='traceur-spread'] .strategy-card-economic-tile {
+  background: transparent !important;
+  border-width: 0 0 1px !important;
+  border-radius: 0 !important;
+}
+.strategy-card-expanded[data-lab-layout='traceur-spread'] .strategy-card-lower-grid {
+  grid-template-columns: minmax(360px, 1.35fr) minmax(230px, 0.7fr) minmax(500px, 1.8fr);
+}
+.strategy-card-expanded[data-lab-layout='traceur-spread'] .strategy-card-map-stats {
+  grid-template-columns: repeat(4, minmax(105px, 1fr));
+}
+
+/* Mockup-faithful skin: same live data/components, alternate visual language. */
+.strategy-card-expanded[data-lab-skin='mockup'] {
+  --lab-panel-radius: 3px;
+  color: #d9e2ec;
+  background:
+    radial-gradient(circle at 50% -25%, rgba(46, 112, 153, 0.18), transparent 34%),
+    linear-gradient(180deg, rgba(10, 17, 25, 0.96), rgba(8, 13, 19, 0.98));
+}
+
+.strategy-card-expanded[data-lab-skin='mockup'] .strategy-card-lab-toolbar {
+  border-color: rgba(93, 171, 213, 0.46);
+  background: rgba(16, 39, 53, 0.72);
+}
+
+.strategy-card-expanded[data-lab-skin='mockup'] .strategy-card-hero-identity > :first-child {
+  font-family: Georgia, 'Times New Roman', serif;
+  letter-spacing: 0.015em;
+}
+
+.strategy-card-expanded[data-lab-skin='mockup'] .strategy-card-header {
+  border-color: rgba(115, 146, 164, 0.24) !important;
+}
+
+.strategy-card-expanded[data-lab-skin='mockup'] .strategy-card-economic-tile,
+.strategy-card-expanded[data-lab-skin='mockup'] :is(
+  .strategy-card-lower-panel,
+  .strategy-card-cost-panel,
+  .strategy-card-map-panel,
+  .strategy-card-supporting-note
+) {
+  background: rgba(13, 24, 34, 0.76) !important;
+  border-color: rgba(86, 123, 145, 0.3) !important;
+  border-radius: var(--lab-panel-radius) !important;
+}
+
+.strategy-card-expanded[data-lab-skin='mockup'] .strategy-card-loot-panel {
+  background: rgba(10, 34, 48, 0.84) !important;
+  border-color: rgba(43, 131, 174, 0.55) !important;
+  border-radius: var(--lab-panel-radius) !important;
+}
+
+.strategy-card-expanded[data-lab-skin='mockup'] .loot-evidence-category {
+  background: rgba(7, 18, 26, 0.76) !important;
+  border: 1px solid rgba(85, 116, 133, 0.18);
+  border-radius: 2px !important;
+}
+
+.strategy-card-expanded[data-lab-skin='mockup'] .strategy-card-runs-panel {
+  background: rgba(5, 12, 18, 0.8) !important;
+  border-color: rgba(86, 123, 145, 0.24) !important;
+  border-radius: 2px !important;
+}
+
+.strategy-card-expanded[data-lab-skin='mockup'] .strategy-card-setup-item { border-radius: 2px; }
+.strategy-card-expanded[data-lab-skin='mockup'] > .strategy-card-actions {
+  border-color: rgba(86, 123, 145, 0.28);
+}
+
+@container (max-width: 1100px) {
+  .strategy-card-expanded .strategy-card-hero,
+  .strategy-card-expanded:is(
+    [data-lab-layout='wide-run-sheet'],
+    [data-lab-layout='traceur-hybrid'],
+    [data-lab-layout='traceur-focus'],
+    [data-lab-layout='traceur-centered'],
+    [data-lab-layout='traceur-spread']
+  ) .strategy-card-hero { grid-template-columns: minmax(0, 1fr); }
+
+  .strategy-card-expanded .strategy-card-hero-meta {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .strategy-card-expanded:is(
+    [data-lab-layout='balanced-wide'],
+    [data-lab-layout='quiet-wide'],
+    [data-lab-layout='loot-led-wide'],
+    [data-lab-layout='traceur-centered']
+  ) .strategy-card-hero-meta {
+    align-items: center;
+    text-align: center;
+  }
+
+  .strategy-card-lower-grid,
+  .strategy-card-expanded[data-lab-layout] .strategy-card-lower-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .strategy-card-scarab-list { grid-template-columns: minmax(0, 1fr); }
+
+  .strategy-card-map-panel {
+    grid-column: 1 / -1;
+    grid-row: 8;
+  }
+
+  .strategy-card-expanded[data-lab-layout='traceur-spread'] .strategy-card-map-stats {
+    grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  }
+}
+
+@container (max-width: 760px) {
+  .strategy-card-economics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  .strategy-card-expanded:is(
+    [data-lab-layout='balanced-wide'],
+    [data-lab-layout='quiet-wide'],
+    [data-lab-layout='loot-led-wide'],
+    [data-lab-layout='traceur-centered']
+  ) .strategy-card-hero-meta {
+    display: flex;
+    align-items: center;
+  }
+
+  .strategy-card-lower-grid,
+  .strategy-card-expanded[data-lab-layout] .strategy-card-lower-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .strategy-card-cost-panel { grid-column: 1; grid-row: 6; }
+  .strategy-card-map-panel { grid-column: 1; grid-row: 7; }
+  .strategy-card-supporting-note { grid-row: 8; }
+  .strategy-card-supporting-evidence { grid-row: 9; }
+
+  .strategy-card-setup-scarabs,
+  .strategy-card-setup-astro,
+  .strategy-card-setup-chisel,
+  .strategy-card-setup-deli { margin-inline: 10px; }
+}
+
+@container (max-width: 520px) {
+  .strategy-card-lab-toolbar :is(.mantine-Select-root, .mantine-SegmentedControl-root) {
+    width: 100% !important;
+  }
+  .strategy-card-economics { grid-template-columns: minmax(0, 1fr); }
+  .strategy-card-map-stats { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); }
+  .strategy-card-expanded > .strategy-card-actions { justify-content: center; }
+}
+
+.loot-evidence-categories {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
+  gap: 6px;
+}
+
+.loot-evidence-category { min-height: 78px; }
