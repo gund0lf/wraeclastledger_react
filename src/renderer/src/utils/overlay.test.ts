@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_OVERLAY_COUNTER_IDS,
+  OVERLAY_PLACEMENT_REVISION,
   normalizeOverlayBoundsInteraction,
   normalizeOverlayPreferences,
 } from '../../../shared/overlay';
@@ -27,9 +28,14 @@ describe('overlay preferences', () => {
       clickThrough: true,
       timerShortcut: 'CommandOrControl+Shift+T',
       bounds: { x: 20, y: 30, width: 220, height: 900 },
+      placementRevision: 1,
     });
     expect(normalized.counterIds).toHaveLength(8);
     expect(normalized.counterShortcuts['stat:starfallCraters']).toBe('Ctrl+1');
+    expect(normalizeOverlayPreferences(null).placementRevision)
+      .toBe(OVERLAY_PLACEMENT_REVISION);
+    expect(normalizeOverlayPreferences({ placementRevision: 99 }).placementRevision)
+      .toBe(OVERLAY_PLACEMENT_REVISION);
   });
 
   it('accepts only bounded move and resize pointer interactions', () => {

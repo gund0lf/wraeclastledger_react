@@ -94,6 +94,7 @@ export default function OverlayApp() {
         overflow: 'hidden',
         background: COLOR.bgPanel,
         borderColor: snapshot.timer.running ? COLOR.accentStrong : COLOR.border,
+        opacity: window.api.usesManagedOverlayBounds ? snapshot.preferences.opacity : undefined,
       }}
     >
       <Stack gap="xs" h="100%">

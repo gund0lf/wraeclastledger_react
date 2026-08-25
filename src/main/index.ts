@@ -260,10 +260,14 @@ function registerOverlayShortcuts(preferences: OverlayPreferences): OverlayShort
 
 function visibleOverlayBounds(preferences: OverlayPreferences): OverlayBounds {
   const fallback = { width: 290, height: preferences.mode === 'both' ? 250 : 155 };
+  const mainBounds = mainWindowRef && !mainWindowRef.isDestroyed()
+    ? mainWindowRef.getBounds()
+    : screen.getPrimaryDisplay().workArea;
+  const initialDisplay = screen.getDisplayMatching(mainBounds);
   const requested = preferences.bounds ?? {
     ...fallback,
-    x: screen.getPrimaryDisplay().workArea.x + 24,
-    y: screen.getPrimaryDisplay().workArea.y + 80,
+    x: initialDisplay.workArea.x + initialDisplay.workArea.width - fallback.width - 24,
+    y: initialDisplay.workArea.y + 80,
   };
   const display = screen.getDisplayMatching(requested);
   const width = Math.min(display.workArea.width, Math.max(220, requested.width));

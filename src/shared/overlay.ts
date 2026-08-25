@@ -17,6 +17,7 @@ export interface OverlayPreferences {
   timerShortcut: string;
   counterShortcuts: Record<string, string>;
   bounds: OverlayBounds | null;
+  placementRevision: number;
 }
 
 export interface OverlayCounterSnapshot {
@@ -35,7 +36,7 @@ export interface OverlaySnapshot {
     capturedAt: number;
   };
   counters: OverlayCounterSnapshot[];
-  preferences: Pick<OverlayPreferences, 'mode' | 'locked' | 'clickThrough'>;
+  preferences: Pick<OverlayPreferences, 'mode' | 'opacity' | 'locked' | 'clickThrough'>;
 }
 
 export type OverlayAction =
@@ -66,6 +67,8 @@ export const DEFAULT_OVERLAY_COUNTER_IDS = [
   'stat:wildwoodEncounters',
 ] as const;
 
+export const OVERLAY_PLACEMENT_REVISION = 2;
+
 export const DEFAULT_OVERLAY_PREFERENCES: OverlayPreferences = {
   visible: false,
   mode: 'both',
@@ -76,6 +79,7 @@ export const DEFAULT_OVERLAY_PREFERENCES: OverlayPreferences = {
   timerShortcut: '',
   counterShortcuts: {},
   bounds: null,
+  placementRevision: OVERLAY_PLACEMENT_REVISION,
 };
 
 const boundedNumber = (value: unknown, minimum: number, maximum: number): number | null =>
@@ -131,5 +135,9 @@ export function normalizeOverlayPreferences(value: unknown): OverlayPreferences 
     counterShortcuts,
     bounds: x !== null && y !== null && width !== null && height !== null
       ? { x, y, width, height } : null,
+    placementRevision: typeof input.placementRevision === 'number' &&
+      Number.isInteger(input.placementRevision)
+      ? Math.min(OVERLAY_PLACEMENT_REVISION, Math.max(1, input.placementRevision))
+      : 1,
   };
 }

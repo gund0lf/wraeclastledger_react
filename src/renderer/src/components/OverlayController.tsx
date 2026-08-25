@@ -1,5 +1,9 @@
 import { useEffect } from 'react';
-import type { OverlayAction, OverlaySnapshot } from '../../../shared/overlay';
+import {
+  OVERLAY_PLACEMENT_REVISION,
+  type OverlayAction,
+  type OverlaySnapshot,
+} from '../../../shared/overlay';
 import { useSessionStore, type SessionStoreState } from '../store/useSessionStore';
 import { manualRunTimerElapsed } from '../utils/manualRunTimer';
 import { overlayCounterSnapshot, parseOverlayCounterId } from '../utils/overlayCounters';
@@ -20,6 +24,7 @@ function publishSnapshot(state: SessionStoreState): void {
       .filter((entry) => entry !== null),
     preferences: {
       mode: state.overlayPreferences.mode,
+      opacity: state.overlayPreferences.opacity,
       locked: state.overlayPreferences.locked,
       clickThrough: state.overlayPreferences.clickThrough,
     },
@@ -67,6 +72,13 @@ function applyOverlayAction(action: OverlayAction): void {
 
 export function OverlayController(): null {
   useEffect(() => {
+    const initialPreferences = useSessionStore.getState().overlayPreferences;
+    if (initialPreferences.placementRevision < OVERLAY_PLACEMENT_REVISION) {
+      useSessionStore.getState().setOverlayPreferences({
+        ...(window.api.usesManagedOverlayBounds ? { bounds: null } : {}),
+        placementRevision: OVERLAY_PLACEMENT_REVISION,
+      });
+    }
     let lastPreferences = useSessionStore.getState().overlayPreferences;
     const syncPreferences = (): void => {
       const current = useSessionStore.getState().overlayPreferences;

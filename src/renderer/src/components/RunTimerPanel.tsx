@@ -265,8 +265,8 @@ export function RunTimerPanel() {
               max={100}
               step={5}
               label={(value) => `${value}%`}
-              defaultValue={Math.round(overlayPreferences.opacity * 100)}
-              onChangeEnd={(value) => setOverlayPreferences({ opacity: value / 100 })}
+              value={Math.round(overlayPreferences.opacity * 100)}
+              onChange={(value) => setOverlayPreferences({ opacity: value / 100 })}
             />
           </div>
 
