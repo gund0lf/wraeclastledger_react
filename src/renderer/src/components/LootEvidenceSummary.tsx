@@ -20,11 +20,13 @@ export const LootEvidenceSummary = ({ summary }: { summary: LootSummary }) => {
   const omittedValue = summary.omittedCsvValue + summary.omittedManualValue;
 
   return (
-    <Stack gap={5} mb={8} p={8}
-      style={{ background: COLOR.bgSunken, border: `1px solid ${COLOR.border}`, borderRadius: 6 }}>
+    <Stack gap={8}>
       <Group justify="space-between" align="center">
         <Group gap={5}>
-          <SectionLabel>Loot evidence</SectionLabel>
+          <SectionLabel>Loot breakdown</SectionLabel>
+          <Text size="lg" fw={800} c="teal">{fcSep(summary.reportedReturn)}</Text>
+        </Group>
+        <Group gap={5} wrap="wrap" justify="flex-end">
           <Badge size="xs" color="teal" variant="light">Top {summary.rows.length}</Badge>
           {manualRows.length > 0 && (
             <Tooltip label="Author-valued drops that were not present or correctly priced in the Return CSV" withArrow>
@@ -41,30 +43,36 @@ export const LootEvidenceSummary = ({ summary }: { summary: LootSummary }) => {
             </Tooltip>
           )}
         </Group>
-        <Text size="xs" fw={700} c="teal">{fcSep(summary.reportedReturn)}</Text>
       </Group>
 
-      <Group gap={5} wrap="wrap">
-        {summary.categories.map((entry) => (
-          <Tooltip key={entry.category}
-            label={`${entry.category}: ${fcSep(entry.value)} (${((entry.value / categoryTotal) * 100).toFixed(0)}%)`}
-            withArrow>
-            <Group gap={4} wrap="nowrap" px={5} py={3}
-              style={{ background: COLOR.bgInset, border: `1px solid ${COLOR.borderDeep}`, borderRadius: 5, cursor: 'help' }}>
-              <LootCategoryIcon category={entry.category} size={18} />
-              <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>{entry.category}</Text>
-              <Text size="xs" fw={600}>{fcSep(entry.value)}</Text>
-            </Group>
-          </Tooltip>
-        ))}
-      </Group>
-
-      <Progress.Root size={6} radius="xl">
+      <Progress.Root size={8} radius="xl">
         {summary.categories.map((entry) => (
           <Progress.Section key={entry.category} value={(entry.value / categoryTotal) * 100}
             color={CAT_COLORS[entry.category] ?? 'gray'} />
         ))}
       </Progress.Root>
+
+      <div className="loot-evidence-categories">
+        {summary.categories.map((entry) => (
+          <Tooltip key={entry.category}
+            label={`${entry.category}: ${fcSep(entry.value)} (${((entry.value / categoryTotal) * 100).toFixed(0)}%)`}
+            withArrow>
+            <Stack gap={4} p={8} className="loot-evidence-category"
+              style={{ background: COLOR.surfaceSectionBg, borderRadius: 6, cursor: 'help', minWidth: 0 }}>
+              <Text size="xs" c="dimmed" lineClamp={1}>{entry.category}</Text>
+              <Group gap={8} wrap="nowrap" justify="center">
+                <LootCategoryIcon category={entry.category} size={28} />
+                <Stack gap={0} align="center">
+                  <Text size="sm" fw={700}>{fcSep(entry.value)}</Text>
+                  <Text size="xs" fw={600} c={CAT_COLORS[entry.category] ?? 'dimmed'}>
+                    {((entry.value / categoryTotal) * 100).toFixed(1)}%
+                  </Text>
+                </Stack>
+              </Group>
+            </Stack>
+          </Tooltip>
+        ))}
+      </div>
 
       <Button size="compact-xs" variant="subtle" color="gray"
         leftSection={rowsOpen ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}

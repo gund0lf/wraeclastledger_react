@@ -1,6 +1,6 @@
 import {
   Text, Group, Stack, Badge, ActionIcon, Tooltip, Button,
-  Collapse, SimpleGrid,
+  Collapse,
 } from '@mantine/core';
 import { useState, useMemo, useRef, useLayoutEffect } from 'react';
 import {
@@ -29,6 +29,24 @@ import { LootEvidenceSummary } from './LootEvidenceSummary';
 import { evidencePresentation } from '../utils/evidenceApi';
 import { COLOR, FONT } from '../utils/uiTokens';
 import { formatRelativeAge, latestStrategyActivity } from '../utils/relativeTime';
+import './StrategyCard.css';
+
+const EconomicTile = ({
+  label, value, color,
+}: {
+  label: string; value: string; color?: string;
+}) => (
+  <div style={{
+    minWidth: 0, padding: '10px 12px', borderRadius: 7,
+    background: COLOR.surfaceSectionBg, border: `1px solid ${COLOR.border}`,
+    display: 'flex', flexDirection: 'column',
+  }}>
+    <SectionLabel>{label}</SectionLabel>
+    <Text fw={800} ta="center" style={{ fontSize: FONT.xl, color, fontVariantNumeric: 'tabular-nums', margin: 'auto 0' }}>
+      {value}
+    </Text>
+  </div>
+);
 
 // ─── CopyRegex ────────────────────────────────────────────────────────────────
 
@@ -142,6 +160,8 @@ export const StrategyCard = ({
   frozen = false,
   maximized = false,
   showPublishedActivity = false,
+  expanded,
+  onExpandedChange,
 }: {
   strategy: Strategy; onLoadBuild: (s: Strategy) => void;
   /** Continuing a strategy is author-only. This display heuristic only decides
@@ -155,6 +175,9 @@ export const StrategyCard = ({
   maximized?: boolean;
   /** Adds relative publish/update age only while the Setup sidebar is collapsed. */
   showPublishedActivity?: boolean;
+  /** Controlled by the live Browser so one expanded strategy can take focus. */
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
 }) => {
   const browserCols = maximized ? BROWSER_MAXIMIZED_COLS : BROWSER_COLS;
   const browserActivityWidth = maximized
@@ -167,7 +190,12 @@ export const StrategyCard = ({
     : maximized
       ? BROWSER_MAXIMIZED_GRID_TEMPLATE
       : BROWSER_GRID_TEMPLATE;
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = expanded ?? internalOpen;
+  const setOpen = (next: boolean) => {
+    if (expanded === undefined) setInternalOpen(next);
+    onExpandedChange?.(next);
+  };
   // Author's atlas multiplier at share time (from the export). Only parsed
   // when the card is expanded at least once — the raw_export parse is cheap
   // but there's no reason to run it for collapsed rows.
@@ -227,6 +255,14 @@ export const StrategyCard = ({
       ? '6.0'
       : strategy.map_type ?? '?';
   const modDisplay = hasObservedMods ? observedModAverage.toFixed(1) : setupBucketDisplay;
+  const sessionMinutes = isPooled ? strategy.timed_session_minutes : strategy.session_minutes;
+  const requirementStats: { label: string; value: string; color: string }[] = [];
+  if (strategy.avg_quant != null) requirementStats.push({ label: 'Quantity', value: `${f1(strategy.avg_quant)}%`, color: COLOR.accent });
+  if (strategy.avg_rarity != null) requirementStats.push({ label: 'Rarity', value: `${f1(strategy.avg_rarity)}%`, color: COLOR.nightmare });
+  if (strategy.avg_pack != null) requirementStats.push({ label: 'Pack Size', value: `${f1(strategy.avg_pack)}%`, color: COLOR.profit });
+  if (strategy.avg_currency != null && strategy.avg_currency > 0) {
+    requirementStats.push({ label: 'Currency', value: `${f1(strategy.avg_currency)}%`, color: COLOR.warning });
+  }
 
   const isGroup = strategy.is_group_play ||
     (strategy.raw_export ? /Party Play:\s*Yes/i.test(strategy.raw_export) : false);
@@ -239,15 +275,16 @@ export const StrategyCard = ({
 
   return (
     <div style={{
-      background: isOwn ? 'rgba(74,158,255,0.03)' : score <= -3 ? 'rgba(255,107,107,0.04)' : 'rgba(255,255,255,0.025)',
-      boxShadow: `inset 0 0 0 1px ${score <= -3 ? 'rgba(255,107,107,0.2)' : 'rgba(255,255,255,0.07)'}`,
+      background: 'var(--mantine-color-dark-6)',
+      border: `1px solid ${score <= -3 ? COLOR.loss : isOwn ? COLOR.surfaceInfoBorder : COLOR.border}`,
+      boxShadow: open ? `0 5px 16px ${COLOR.bgDeep}` : undefined,
       borderRadius: 8, overflow: 'hidden', position: 'relative',
     }}>
-      {isOwn && <div aria-hidden style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 3, background: 'rgba(74,158,255,0.55)' }} />}
-      <div onClick={() => setOpen((o) => !o)} style={{
+      {isOwn && <div aria-hidden style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 3, background: COLOR.info }} />}
+      <div onClick={() => setOpen(!open)} style={{
         display: 'grid', gridTemplateColumns: browserGridTemplate,
         columnGap: BROWSER_ROW_GAP, alignItems: 'center', cursor: 'pointer',
-        padding: `7px ${BROWSER_ROW_PAD_X}px`, userSelect: 'none',
+        padding: `8px ${BROWSER_ROW_PAD_X}px`, userSelect: 'none',
       }}>
         <ActionIcon size={browserCols.chevron} variant="transparent" c="dimmed">
           {open ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
@@ -361,105 +398,147 @@ export const StrategyCard = ({
       </div>
 
       <Collapse in={open}>
-        <div style={{ padding: '8px 12px 12px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="strategy-card-expanded" style={{ padding: '16px 20px', borderTop: `1px solid ${COLOR.border}` }}>
           {/* session-16: boxed StatTiles — same treatment as the Dashboard's
               Map Multipliers grid (the free-floating look was the complaint) */}
-          {strategy.strategy_name && (
-            <Group gap={4} mb={8} wrap="wrap">
-              <SectionLabel>Strategy</SectionLabel>
-              <Text size="xs" fw={600} style={{ overflowWrap: 'anywhere' }}>{strategy.strategy_name}</Text>
-            </Group>
-          )}
-          <SimpleGrid cols={3} spacing={5} mb={10}>
-            {strategy.avg_quant    != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Quantity" value={`${f1(strategy.avg_quant)}%`} color={COLOR.accent} />}
-            {strategy.avg_rarity   != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Rarity" value={`${f1(strategy.avg_rarity)}%`} color={COLOR.accent} />}
-            {strategy.avg_pack     != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Pack" value={`${f1(strategy.avg_pack)}%`} color={COLOR.accent} />}
-            {strategy.avg_currency != null && strategy.avg_currency > 0 && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Currency" value={`${f1(strategy.avg_currency)}%`} color={COLOR.warning} />}
-            {costPerMap != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Cost/map" value={`${f1(costPerMap)}c`} />}
-            {authorMult != null && (
-              <Tooltip withArrow multiline w={260}
-                label="The author's atlas multiplier when they shared. All stat tiles here are base (unprojected) map averages — the regexes are built from them. Load the build and the Dashboard projects YOUR maps with YOUR atlas config.">
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label="Author Mult." value={`${authorMult.toFixed(3)}×`} color={COLOR.accentStrong} />
-                </div>
-              </Tooltip>
-            )}
-            {strategy.net_profit   != null && <StatTile boxed centered labelStyle={{ marginBottom: 2, lineHeight: 1 }} label={isPooled ? 'Historical Net' : 'Net Profit'} value={`${fcSep(strategy.net_profit, true)}${historicalProfitDivines != null ? ` (${strategy.net_profit >= 0 ? '+' : ''}${historicalProfitDivines.toFixed(1)}d)` : ''}`} color={strategy.net_profit >= 0 ? COLOR.profit : COLOR.loss} />}
-          </SimpleGrid>
-
-          <Group gap="md" mb={8} wrap="wrap">
-            <Group gap={4}><SectionLabel>Published</SectionLabel><Text size="xs" c="dimmed">{publishedDate}</Text></Group>
-            {revision > 1 && updatedDate && (
-              <Group gap={4}><SectionLabel>Last updated</SectionLabel><Text size="xs" c="dimmed">{updatedDate}</Text></Group>
-            )}
-            {isPooled
-              ? <Group gap={4}><SectionLabel>Divine pricing</SectionLabel><Text size="xs" c="dimmed">Per-run snapshots</Text></Group>
-              : strategy.divine_price != null && <Group gap={4}><SectionLabel>Divine at time</SectionLabel><Text size="xs" c="dimmed">{strategy.divine_price.toFixed(0)}c</Text></Group>}
-            {strategy.game_data_revision != null && (
-              <Tooltip label="The game-data snapshot active when this result was shared" withArrow>
-                <Group gap={4}><SectionLabel>Game data</SectionLabel><Text size="xs" c="dimmed">r{strategy.game_data_revision}{strategy.game_data_patch_version ? ` · ${strategy.game_data_patch_version}` : ''}</Text></Group>
-              </Tooltip>
-            )}
-            {strategy.total_invest != null && <Group gap={4}><SectionLabel>Total invest</SectionLabel><Text size="xs" c="dimmed">{fcSep(strategy.total_invest)}{!isPooled && strategy.divine_price ? ` (${(strategy.total_invest / strategy.divine_price).toFixed(1)}d)` : ''}</Text></Group>}
-          </Group>
-          {(() => {
-            // Optional author-declared session context (shared-metadata batch
-            // 2026-07): time (+ derived div/h) and atlas points. Absent fields
-            // simply do not render — no placeholder, no penalty.
-            const mins = isPooled ? strategy.timed_session_minutes : strategy.session_minutes;
-            const pts  = strategy.atlas_points;
-            const ptsMax = strategy.atlas_points_max;
-            if (!mins && pts == null) return null;
-            // divPerHour is hoisted to the component top (shared with the row cell).
-            return (
-              <Group gap="md" mb={6} wrap="wrap">
-                {mins ? (
-                  <Tooltip label="Optional author-reported context — selectable as a sort, but never the default ranking; div/map stays primary" withArrow multiline w={250}>
-                    <Group gap={4} wrap="nowrap" style={{ cursor: 'help' }}>
-                      <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>Time</Text>
-                      <Text size="xs">{formatActiveTime(mins * 60_000)}{divPerHour != null ? ` · ${divPerHour.toFixed(2)} div/h` : ''}{isPooled ? ` · ${timedRunCount}/${evidenceRunCount} timed runs` : ''}</Text>
-                    </Group>
+          <div className="strategy-card-header" style={{ marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${COLOR.border}` }}>
+            <div className="strategy-card-hero">
+            <Stack className="strategy-card-hero-identity" gap={6}>
+              <Text size="xl" fw={800} style={{ overflowWrap: 'anywhere' }}>
+                {strategy.strategy_name || `${strategy.discord_username}'s strategy`}
+              </Text>
+              {strategy.type_tag && (
+                <Group gap={4} wrap="wrap">
+                  {strategy.type_tag.split(',').map((t) => t.trim()).filter(Boolean).map((t) => (
+                    <Badge key={t} size="sm" color={TAG_COLORS[t] ?? 'gray'} variant="light">{t}</Badge>
+                  ))}
+                </Group>
+              )}
+              <Group gap="xs" wrap="wrap" mt={4}>
+                <Button size="xs" variant="light" color="blue" onClick={(e) => { e.stopPropagation(); onLoadBuild(strategy); }}>
+                  {frozen ? 'Load Frozen Build' : 'Load Build Settings'}
+                </Button>
+                {strategy.atlas_tree_url && (
+                  <Tooltip label="Open atlas tree in browser">
+                    <Button size="xs" variant="default" rightSection={<IconExternalLink size={11} />}
+                      onClick={(e) => { e.stopPropagation(); window.open(strategy.atlas_tree_url!, '_blank'); }}>
+                      Atlas Tree
+                    </Button>
                   </Tooltip>
-                ) : null}
-                {pts != null && ptsMax != null && (
-                  <Group gap={4} wrap="nowrap">
-                    <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>Atlas points</Text>
-                    <Text size="xs">{pts}/{ptsMax}</Text>
-                  </Group>
+                )}
+                {!frozen && isOwn && onContinueStrategy && (
+                  <Tooltip label="Continue with a fresh cloned setup or use your current session, then choose whether the run adds evidence or replaces the published strategy." withArrow multiline w={290}>
+                    <Button size="xs" variant="light" color="teal"
+                      onClick={(e) => { e.stopPropagation(); onContinueStrategy(strategy); }}>
+                      Continue strategy
+                    </Button>
+                  </Tooltip>
+                )}
+                {strategy.discord_jump_url && (
+                  <Tooltip label="Jump to this message in Discord to vote">
+                    <Button size="xs" variant="default" rightSection={<IconExternalLink size={11} />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const jumpUrl = strategy.discord_jump_url!;
+                        window.open(jumpUrl.replace('https://discord.com', 'discord://discord.com'), '_blank');
+                      }}>
+                      View in Discord
+                    </Button>
+                  </Tooltip>
                 )}
               </Group>
-            );
-          })()}
+            </Stack>
+            <Stack className="strategy-card-hero-meta" gap={2}>
+              <Text size="sm" c="dimmed">by <Text span fw={600} c="gray.3">{strategy.discord_username}</Text></Text>
+              <Text size="xs" c="dimmed">Published {publishedDate}</Text>
+              {revision > 1 && updatedDate && <Text size="xs" c="dimmed">Last updated {updatedDate}</Text>}
+              <Text size="xs" c="dimmed" tt="uppercase">
+                {displayMapCount != null ? `${displayMapCount} maps` : 'Maps —'} · {modDisplay} mod
+              </Text>
+              <Text size="xs" c="dimmed" tt="uppercase">
+                Latest activity <Text span c="gray.3">{activityRelative}</Text>
+                {sessionMinutes ? <> · Time <Text span c="gray.3">{formatActiveTime(sessionMinutes * 60_000)}{isPooled ? ` · ${timedRunCount}/${evidenceRunCount} timed runs` : ''}</Text></> : null}
+              </Text>
+              {(isPooled || strategy.divine_price != null || divPerHour != null) && (
+                <Text size="xs" c="dimmed" tt="uppercase">
+                  {isPooled
+                    ? <>Divine <Text span c="gray.3">Per-run snapshots</Text></>
+                    : strategy.divine_price != null ? <>Divine <Text span c="gray.3">{strategy.divine_price.toFixed(0)}c</Text></> : null}
+                  {(isPooled || strategy.divine_price != null) && divPerHour != null ? ' · ' : null}
+                  {divPerHour != null ? <>Div/hr <Text span c="gray.3">{divPerHour.toFixed(2)}</Text></> : null}
+                </Text>
+              )}
+              {(strategy.game_data_revision != null || (strategy.atlas_points != null && strategy.atlas_points_max != null)) && (
+                <Text size="xs" c="dimmed" tt="uppercase">
+                  {strategy.game_data_revision != null ? <>Game data <Text span c="gray.3">r{strategy.game_data_revision}{strategy.game_data_patch_version ? ` · ${strategy.game_data_patch_version}` : ''}</Text></> : null}
+                  {strategy.game_data_revision != null && strategy.atlas_points != null && strategy.atlas_points_max != null ? ' · ' : null}
+                  {strategy.atlas_points != null && strategy.atlas_points_max != null ? <>Atlas <Text span c="gray.3">{strategy.atlas_points}/{strategy.atlas_points_max}</Text></> : null}
+                </Text>
+              )}
+              {authorMult != null && (
+                <Tooltip withArrow multiline w={260}
+                  label="The author's atlas multiplier when they shared. All stat tiles here are base (unprojected) map averages — the regexes are built from them. Load the build and the Dashboard projects YOUR maps with YOUR atlas config.">
+                  <Text size="xs" c="dimmed" tt="uppercase" style={{ cursor: 'help' }}>
+                    Author mult. <Text span c="blue">{authorMult.toFixed(3)}×</Text>
+                  </Text>
+                </Tooltip>
+              )}
+            </Stack>
+            </div>
+          </div>
+
+          <div className="strategy-card-economics" style={{ marginBottom: 14 }}>
+            <EconomicTile label={isPooled ? 'Historical Net' : 'Net Profit'} value={strategy.net_profit != null ? `${fcSep(strategy.net_profit, true)}${historicalProfitDivines != null ? ` (${strategy.net_profit >= 0 ? '+' : ''}${historicalProfitDivines.toFixed(1)}d)` : ''}` : '—'} color={profitColor} />
+            <EconomicTile label="Profit/map" value={div != null ? `${div.toFixed(3)}d` : '—'} color={divColor} />
+            <EconomicTile label="Total investment" value={strategy.total_invest != null ? `${fcSep(strategy.total_invest)}${!isPooled && strategy.divine_price ? ` (${(strategy.total_invest / strategy.divine_price).toFixed(1)}d)` : ''}` : '—'} color={COLOR.textSoft} />
+            <EconomicTile label="Cost/map" value={costPerMap != null ? `${f1(costPerMap)}c` : '—'} color={COLOR.warning} />
+          </div>
+
+          {lootSummary && (
+            <div style={{ padding: 8, marginBottom: 12, background: COLOR.surfaceInfoBg, border: `1px solid ${COLOR.surfaceInfoBorder}`, borderRadius: 6 }}>
+              <LootEvidenceSummary summary={lootSummary} />
+            </div>
+          )}
 
           {!frozen && isPooled && displayMapCount != null && (
+            <div style={{ padding: 6, marginBottom: 8, background: COLOR.bgSunken, border: `1px solid ${COLOR.borderDeep}`, borderRadius: 6 }}>
             <EvidenceRunsDisclosure
               strategyId={strategy.id}
               runCount={evidenceRunCount}
               mapCount={displayMapCount}
             />
+            </div>
           )}
 
-          {lootSummary && <LootEvidenceSummary summary={lootSummary} />}
+          <div className="strategy-card-lower-grid">
+            <Stack gap={8} className="strategy-card-lower-panel"
+              style={{ background: COLOR.surfaceSectionBg, border: `1px solid ${COLOR.border}`, borderRadius: 6, padding: 10 }}>
+              <SectionLabel>Strategy setup</SectionLabel>
+            </Stack>
 
           {(() => {
-            // Breakdown of the ALL-IN per-map figure. The remainder after
-            // scarabs + chisel includes the base map AND amortized session
-            // costs / one-time scarabs — labeled honestly as one bucket.
+            // Breakdown of the existing ALL-IN per-map figure. Astrolabe uses
+            // the authored count and price amortized over the submitted maps;
+            // the remainder is the existing base + session bucket.
             if (isPooled || costPerMap == null || costPerMap <= 0) return null;
             const scarabTotal = (strategy.scarabs ?? []).reduce((a, s) => a + (s.cost ?? 0), 0);
-            const chiselM = strategy.raw_export?.match(/Chisel:\s*[^(]+\((\d+(?:\.\d+)?)c(?:\s*each)?\)/i);
-            const chiselCost = chiselM ? parseFloat(chiselM[1]) : 0;
-            const baseImplied = Math.round(costPerMap - scarabTotal - chiselCost);
-            if (scarabTotal === 0 && chiselCost === 0) return null; // nothing to break down
+            const chiselCost = parsedExport?.chiselPrice ?? 0;
+            const astroCost = parsedExport && parsedExport.mapCount > 0
+              ? (parsedExport.astroCount * parsedExport.astroPrice) / parsedExport.mapCount
+              : 0;
+            const baseImplied = Math.max(0, costPerMap - scarabTotal - chiselCost - astroCost);
+            if (scarabTotal === 0 && chiselCost === 0 && astroCost === 0) return null;
             return (
-              <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 4, padding: '5px 8px', marginBottom: 8 }}>
+              <div className="strategy-card-cost-panel"
+                style={{ background: COLOR.surfaceSectionBg, border: `1px solid ${COLOR.border}`, borderRadius: 6, padding: 10 }}>
                 <SectionLabel mb={3}>Cost breakdown / map</SectionLabel>
-                <Group gap="md" wrap="wrap">
-                  {baseImplied > 0 && <Group gap={3}><Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>Base + session</Text><Text size="xs">{fcSep(baseImplied)}</Text></Group>}
-                  {chiselCost > 0 && <Group gap={3}><Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>Chisel</Text><Text size="xs">{chiselCost}c</Text></Group>}
-                  {scarabTotal > 0 && <Group gap={3}><Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>Scarabs</Text><Text size="xs">{fcSep(scarabTotal)}</Text></Group>}
-                  <Group gap={3}><Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>= All-in</Text><Text size="xs" fw={600}>{fcSep(costPerMap)}</Text></Group>
-                </Group>
+                <Stack gap={6} className="strategy-card-cost-list">
+                  {baseImplied > 0 && <Group gap="md" justify="space-between" wrap="nowrap"><Text size="xs" c="dimmed">Base + session</Text><Text size="xs">{fcSep(baseImplied)}</Text></Group>}
+                  {chiselCost > 0 && <Group gap="md" justify="space-between" wrap="nowrap"><Text size="xs" c="dimmed">Chisel</Text><Text size="xs">{chiselCost}c</Text></Group>}
+                  {scarabTotal > 0 && <Group gap="md" justify="space-between" wrap="nowrap"><Text size="xs" c="dimmed">Scarabs</Text><Text size="xs">{fcSep(scarabTotal)}</Text></Group>}
+                  {astroCost > 0 && <Group gap="md" justify="space-between" wrap="nowrap"><Text size="xs" c="dimmed">Astrolabe</Text><Text size="xs">{fcSep(astroCost)}</Text></Group>}
+                  <Group gap="md" justify="space-between" wrap="nowrap" pt={5} style={{ borderTop: `1px solid ${COLOR.border}` }}><Text size="xs" c="dimmed">= All-in</Text><Text size="xs" fw={700} c="yellow">{fcSep(costPerMap)}</Text></Group>
+                </Stack>
               </div>
             );
           })()}
@@ -467,9 +546,8 @@ export const StrategyCard = ({
           {(() => {
             if (!strategy.raw_export) return null;
             const deliM = strategy.raw_export.match(/Delirium Orbs:\s*(\d+)x\s+([^\s(]+)/i);
-            const astM  = strategy.raw_export.match(/Astrolabe:\s*([^\n(]+?)\s+\(\d+x/i);
             const observedDelirium = parsedExport?.observedDelirium ?? null;
-            if (!deliM && !astM && !observedDelirium) return null;
+            if (!deliM && !observedDelirium) return null;
             const observedLevel = observedDelirium?.levelCounts.length === 1
               ? observedDelirium.levelCounts[0].percentage
               : null;
@@ -483,7 +561,7 @@ export const StrategyCard = ({
                 ].join('\n')
               : '';
             return (
-              <Stack gap={3} mb={6}>
+              <Stack gap={3} className="strategy-card-setup-deli">
                 <Group gap={4} wrap="wrap">
                   {deliM && (
                     <Badge size="sm" color="grape" variant="light"
@@ -499,12 +577,6 @@ export const StrategyCard = ({
                       </Badge>
                     </Tooltip>
                   )}
-                  {astM && (
-                    <Badge size="sm" color="teal" variant="light"
-                      leftSection={<PoeItemIcon name={astM[1].replace(/[^\x00-\x7F]/g, '').trim()} size={16} category="astrolabe" />}>
-                      {astM[1].replace(/[^\x00-\x7F]/g, '').trim()}
-                    </Badge>
-                  )}
                 </Group>
                 {observedDelirium && observedDelirium.rewardCounts.length > 0 && (
                   <Text size="xs" c="dimmed" lineClamp={1}>
@@ -517,8 +589,27 @@ export const StrategyCard = ({
             );
           })()}
 
+          {parsedExport?.astroType && (
+            <Stack gap={2} className="strategy-card-setup-astro">
+              <SectionLabel>Astrolabe</SectionLabel>
+              <Group gap={6} wrap="nowrap" className="strategy-card-setup-item">
+                <PoeItemIcon name={parsedExport.astroType} size={20} category="astrolabe" />
+                <Text size="xs" c="teal" fw={600} style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
+                  {parsedExport.astroType}
+                </Text>
+                {!isPooled && (parsedExport.astroCount > 0 || parsedExport.astroPrice > 0) && (
+                  <Text size="xs" c="dimmed" style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                    {parsedExport.astroCount > 0 ? `${parsedExport.astroCount}x` : ''}
+                    {parsedExport.astroCount > 0 && parsedExport.astroPrice > 0 ? ' · ' : ''}
+                    {parsedExport.astroPrice > 0 ? `${parsedExport.astroPrice}c ea` : ''}
+                  </Text>
+                )}
+              </Group>
+            </Stack>
+          )}
+
           {strategy.chisel && strategy.chisel !== 'None' && (
-            <Group gap={4} mb={6}>
+            <Group gap={4} className="strategy-card-setup-chisel">
               <Badge size="sm" color="yellow" variant="light"
                 leftSection={<PoeItemIcon name={chiselItemName(strategy.chisel)} size={16} category="chisel" />}>
                 {strategy.chisel}
@@ -526,48 +617,48 @@ export const StrategyCard = ({
             </Group>
           )}
 
-          {strategy.type_tag && (
-            <Group gap={4} mb={6} wrap="wrap">
-              {strategy.type_tag.split(',').map((t) => t.trim()).filter(Boolean).map((t) => (
-                <Badge key={t} size="sm" color={TAG_COLORS[t] ?? 'gray'} variant="light">{t}</Badge>
-              ))}
-            </Group>
-          )}
-
           {strategy.strategy_notes && (
-            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: 4, padding: '6px 8px', marginBottom: 8, borderLeft: '2px solid rgba(255,255,255,0.15)' }}>
+            <div className="strategy-card-supporting-note" style={{ background: COLOR.surfaceSectionBg, borderRadius: 4, padding: '6px 8px' }}>
               <SectionLabel style={{ marginBottom: 2 }}>Notes</SectionLabel>
               <Text size="xs" style={{ color: COLOR.textDim, lineHeight: 1.5 }}>{strategy.strategy_notes}</Text>
             </div>
           )}
 
           {strategy.scarabs && strategy.scarabs.length > 0 && (
-            <Stack gap={2} mb={8}>
+            <Stack gap={2} className="strategy-card-setup-scarabs">
               <Tooltip
                 label="Setup scarabs. For pooled strategies, authored prices are preserved per run under Evidence runs."
                 withArrow disabled={!isPooled}>
                 <SectionLabel style={isPooled ? { cursor: 'help' } : undefined}>Scarabs</SectionLabel>
               </Tooltip>
-              <Group gap={4} wrap="wrap">
+              <Stack gap={2} className="strategy-card-scarab-list">
                 {strategy.scarabs.map((s, i) => {
                   // Per-scarab compat cue (step 4). Match the precomputed issue
                   // by stored name so we don't resolve twice.
                   const issue = compat.issues.find((c) => c.kind === 'scarab' && c.storedName === s.name.trim());
                   const removed = issue?.level === 'removed';
                   const changed = issue?.level === 'changed';
+                  const scarabColor = removed ? 'red' : changed ? 'yellow' : (TAG_COLORS[strategy.type_tag ?? ''] ?? 'orange');
                   return (
                     <Tooltip key={i} label={issue?.detail ?? ''} withArrow disabled={!issue}>
-                      <Badge size="sm"
-                        color={removed ? 'red' : changed ? 'yellow' : (TAG_COLORS[strategy.type_tag ?? ''] ?? 'orange')}
-                        variant="light"
-                        leftSection={<PoeItemIcon name={s.name} size={16} category="scarab" />}
+                      <Group gap={6} wrap="nowrap" className="strategy-card-setup-item"
                         style={removed ? { textDecoration: 'line-through', opacity: 0.7 } : undefined}>
-                        {s.name}{!isPooled && s.cost > 0 ? ` · ${s.cost}c` : ''}
-                      </Badge>
+                        <PoeItemIcon name={s.name} size={18} category="scarab" />
+                        <Text size="xs" c={scarabColor} fw={600}
+                          style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
+                          {s.name}
+                        </Text>
+                        {!isPooled && s.cost > 0 && (
+                          <Text size="xs" c={scarabColor} fw={600}
+                            style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                            {s.cost}c
+                          </Text>
+                        )}
+                      </Group>
                     </Tooltip>
                   );
                 })}
-              </Group>
+              </Stack>
             </Stack>
           )}
 
@@ -581,7 +672,7 @@ export const StrategyCard = ({
               return m ? { name: m[1].trim(), value: parseFloat(m[2]) } : null;
             }).filter(Boolean) as { name: string; value: number }[] : [];
             return (
-              <Stack gap={4} mb={8}>
+              <Stack gap={4} className="strategy-card-supporting-evidence">
                 {drops.length > 0 && (
                   <div style={{ background: 'rgba(255,107,107,0.04)', borderRadius: 4, padding: '6px 8px', borderLeft: '2px solid rgba(255,107,107,0.3)' }}>
                     <SectionLabel mb={2}>Excluded drops ({drops.length})</SectionLabel>
@@ -599,47 +690,23 @@ export const StrategyCard = ({
             );
           })()}
 
-          {(strategy.run_regex || strategy.slam_regex) && (
-            <Stack gap={4} mb={8} style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 4, padding: '6px 8px' }}>
-              <SectionLabel>Regex</SectionLabel>
-              {strategy.run_regex && <RegexLine value={strategy.run_regex} badge="Run" badgeColor="green" c="teal" />}
-              {strategy.slam_regex && <RegexLine value={strategy.slam_regex} badge="Slam" badgeColor="orange" c="orange" />}
-            </Stack>
-          )}
-
-          <Group gap="xs">
-            <Button size="xs" variant="light" color="blue" onClick={(e) => { e.stopPropagation(); onLoadBuild(strategy); }}>
-              {frozen ? 'Load Frozen Build' : 'Load Build Settings'}
-            </Button>
-            {strategy.atlas_tree_url && (
-              <Tooltip label="Open atlas tree in browser">
-                <Button size="xs" variant="default" rightSection={<IconExternalLink size={11} />}
-                  onClick={(e) => { e.stopPropagation(); window.open(strategy.atlas_tree_url!, '_blank'); }}>
-                  Atlas Tree
-                </Button>
-              </Tooltip>
+          <Stack gap={6} className="strategy-card-map-panel"
+            style={{ background: COLOR.surfaceSectionBg, border: `1px solid ${COLOR.border}`, borderRadius: 6, padding: 10 }}>
+            <SectionLabel>Map requirements</SectionLabel>
+            <div className="strategy-card-map-stats">
+              {requirementStats.map((stat) => (
+                <StatTile key={stat.label} boxed centered label={stat.label} value={stat.value} color={stat.color} />
+              ))}
+            </div>
+            {(strategy.run_regex || strategy.slam_regex) && (
+              <Stack gap={4} style={{ background: COLOR.surfaceSectionContent, borderRadius: 4, padding: '6px 8px' }}>
+                <SectionLabel>Regex</SectionLabel>
+                {strategy.run_regex && <RegexLine value={strategy.run_regex} badge="Run" badgeColor="green" c="teal" />}
+                {strategy.slam_regex && <RegexLine value={strategy.slam_regex} badge="Slam" badgeColor="orange" c="orange" />}
+              </Stack>
             )}
-            {!frozen && isOwn && onContinueStrategy && (
-              <Tooltip label="Continue with a fresh cloned setup or use your current session, then choose whether the run adds evidence or replaces the published strategy." withArrow multiline w={290}>
-                <Button size="xs" variant="light" color="teal"
-                  onClick={(e) => { e.stopPropagation(); onContinueStrategy(strategy); }}>
-                  Continue strategy
-                </Button>
-              </Tooltip>
-            )}
-            {strategy.discord_jump_url && (
-              <Tooltip label="Jump to this message in Discord to vote">
-                <Button size="xs" variant="default" rightSection={<IconExternalLink size={11} />}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const jumpUrl = strategy.discord_jump_url!;
-                    window.open(jumpUrl.replace('https://discord.com', 'discord://discord.com'), '_blank');
-                  }}>
-                  View in Discord
-                </Button>
-              </Tooltip>
-            )}
-          </Group>
+          </Stack>
+          </div>
         </div>
       </Collapse>
     </div>

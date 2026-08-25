@@ -1,0 +1,174 @@
+.strategy-card-expanded {
+  container-type: inline-size;
+}
+
+.strategy-card-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+}
+
+.strategy-card-hero-meta {
+  align-items: flex-end;
+}
+
+.strategy-card-economics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.strategy-card-economics > * {
+  min-height: 84px;
+}
+
+.strategy-card-lower-grid {
+  display: grid;
+  grid-template-columns: minmax(250px, 1fr) minmax(210px, 0.85fr) minmax(360px, 1.65fr);
+  gap: 10px;
+  align-items: stretch;
+  margin-top: 10px;
+}
+
+.strategy-card-lower-panel {
+  grid-column: 1;
+  grid-row: 1 / 6;
+}
+
+.strategy-card-cost-panel {
+  grid-column: 2;
+  grid-row: 1 / 6;
+}
+
+.strategy-card-map-panel {
+  grid-column: 3;
+  grid-row: 1 / 6;
+}
+
+.strategy-card-setup-scarabs,
+.strategy-card-setup-astro,
+.strategy-card-setup-chisel,
+.strategy-card-setup-deli {
+  grid-column: 1;
+  z-index: 1;
+  margin-inline: 10px;
+}
+
+.strategy-card-setup-scarabs {
+  grid-row: 2;
+}
+
+.strategy-card-setup-astro {
+  grid-row: 3;
+}
+
+.strategy-card-setup-chisel {
+  grid-row: 4;
+}
+
+.strategy-card-setup-deli {
+  grid-row: 5;
+  margin-bottom: 10px;
+}
+
+.strategy-card-supporting-note,
+.strategy-card-supporting-evidence {
+  grid-column: 1 / -1;
+}
+
+.strategy-card-supporting-note {
+  grid-row: 6;
+}
+
+.strategy-card-supporting-evidence {
+  grid-row: 7;
+}
+
+.strategy-card-map-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+  gap: 8px;
+}
+
+.strategy-card-scarab-list {
+  max-width: 560px;
+}
+
+.strategy-card-setup-item {
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+@container (max-width: 980px) {
+  .strategy-card-economics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .strategy-card-lower-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .strategy-card-map-panel {
+    grid-column: 1 / -1;
+    grid-row: 8;
+  }
+}
+
+@container (max-width: 620px) {
+  .strategy-card-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .strategy-card-hero-meta {
+    align-items: flex-start;
+  }
+
+  .strategy-card-economics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .strategy-card-map-stats {
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  }
+
+  .strategy-card-lower-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .strategy-card-cost-panel {
+    grid-column: 1;
+    grid-row: 6;
+  }
+
+  .strategy-card-map-panel {
+    grid-column: 1;
+    grid-row: 7;
+  }
+
+  .strategy-card-supporting-note {
+    grid-row: 8;
+  }
+
+  .strategy-card-supporting-evidence {
+    grid-row: 9;
+  }
+
+  .strategy-card-setup-scarabs,
+  .strategy-card-setup-astro,
+  .strategy-card-setup-chisel,
+  .strategy-card-setup-deli {
+    margin-inline: 10px;
+  }
+}
+
+.loot-evidence-categories {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 6px;
+}
+
+.loot-evidence-category {
+  min-height: 78px;
+}
