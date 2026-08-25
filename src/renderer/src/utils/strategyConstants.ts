@@ -67,6 +67,7 @@ export interface Strategy {
   evidence_generation?: number | null;
   historical_div_per_map?: number | null;
   historical_total_divines?: number | null;
+  historical_total_invest_divines?: number | null;
   timed_run_count?: number | null;
   timed_map_count?: number | null;
   timed_session_minutes?: number | null;

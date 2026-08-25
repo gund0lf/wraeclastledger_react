@@ -596,12 +596,14 @@ export const StrategyCard = ({
         </Text>
         <Tooltip
           disabled={!isPooled}
-          label="Pooled runs may use different authored Divine-price snapshots. Expand the strategy for the exact historical Divine total."
+          label={totalInvestDivines != null
+            ? 'Historical Divine total — each run uses its authored Divine-price snapshot.'
+            : 'Historical Divine total unavailable because at least one run lacks an authored investment or Divine-price snapshot.'}
           withArrow multiline w={270}>
           <Text size="xs" fw={600} c="gray.3" style={{ width: browserCols.invest, flexShrink: 0, fontSize: FONT.body, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', cursor: isPooled ? 'help' : undefined }}>
             {fc(strategy.total_invest)}
-            {!isPooled && strategy.total_invest != null && strategy.divine_price != null && strategy.divine_price > 0 && (
-              <Text span style={{ color: COLOR.textFaint, fontSize: FONT.small }}> ({(strategy.total_invest / strategy.divine_price).toFixed(1)}d)</Text>
+            {strategy.total_invest != null && totalInvestDivines != null && (
+              <Text span style={{ color: COLOR.textFaint, fontSize: FONT.small }}> ({totalInvestDivines.toFixed(1)}d)</Text>
             )}
           </Text>
         </Tooltip>

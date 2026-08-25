@@ -96,15 +96,17 @@ export function evidencePresentation(strategy: Strategy): EvidencePresentation {
   const profitPerMapChaos = strategy.net_profit != null && mapCount != null && mapCount > 0
     ? strategy.net_profit / mapCount
     : null;
-  // A pooled strategy contains several authored divine-price snapshots. The
-  // server exposes historical profit divines, but not historical investment
-  // divines, so applying one run's price to the aggregate would be dishonest.
-  const totalInvestDivines = !isPooled
-    && strategy.total_invest != null
+  // Pooled investment divines are materialized server-side from each run's
+  // authored investment and Divine snapshot. Never apply one run's price to
+  // the aggregate, and never display a partial pooled conversion.
+  const singleRunTotalInvestDivines = strategy.total_invest != null
     && strategy.divine_price != null
     && strategy.divine_price > 0
     ? strategy.total_invest / strategy.divine_price
     : null;
+  const totalInvestDivines = isPooled
+    ? strategy.historical_total_invest_divines ?? null
+    : singleRunTotalInvestDivines;
   const costPerMapDivines = !isPooled
     && costPerMap != null
     && strategy.divine_price != null
