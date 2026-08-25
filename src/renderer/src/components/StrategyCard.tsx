@@ -59,9 +59,11 @@ type StrategyLabLayout =
   | 'traceur-hybrid'
   | 'traceur-focus'
   | 'traceur-centered'
-  | 'traceur-spread';
+  | 'traceur-spread'
+  | 'feedback-triptych'
+  | 'feedback-compact';
 
-type StrategyLabSkin = 'native' | 'mockup';
+type StrategyLabSkin = 'native' | 'refined' | 'mockup';
 
 const STRATEGY_LAB_LAYOUTS: { value: StrategyLabLayout; label: string }[] = [
   { value: 'pr', label: 'PR baseline' },
@@ -73,6 +75,8 @@ const STRATEGY_LAB_LAYOUTS: { value: StrategyLabLayout; label: string }[] = [
   { value: 'traceur-focus', label: '6 · Traceur focus' },
   { value: 'traceur-centered', label: '7 · Traceur centered' },
   { value: 'traceur-spread', label: '8 · Traceur spread' },
+  { value: 'feedback-triptych', label: '9 · Feedback triptych' },
+  { value: 'feedback-compact', label: '10 · Feedback compact' },
 ];
 
 // ─── CopyRegex ────────────────────────────────────────────────────────────────
@@ -226,6 +230,7 @@ export const StrategyCard = ({
   // a design decision that has not been made yet.
   const [labLayout, setLabLayout] = useState<StrategyLabLayout>('traceur-focus');
   const [labSkin, setLabSkin] = useState<StrategyLabSkin>('native');
+  const usesFullWidthRegex = labLayout === 'feedback-triptych' || labLayout === 'feedback-compact';
   const open = expanded ?? internalOpen;
   const setOpen = (next: boolean) => {
     if (expanded === undefined) setInternalOpen(next);
@@ -515,7 +520,7 @@ export const StrategyCard = ({
               <Stack gap={1}>
                 <Group gap={6}>
                   <Badge size="xs" color="blue" variant="light">Layout lab</Badge>
-                  <Text size="xs" fw={700}>9 layouts × 2 visual skins</Text>
+                  <Text size="xs" fw={700}>11 layouts × 3 visual skins</Text>
                   {detailLoading && <Badge size="xs" color="yellow" variant="light">Loading full share…</Badge>}
                 </Group>
                 <Text size="xs" c="dimmed">Disposable comparison controls — this choice is not saved.</Text>
@@ -536,6 +541,7 @@ export const StrategyCard = ({
                   onChange={(value) => setLabSkin(value as StrategyLabSkin)}
                   data={[
                     { value: 'native', label: 'App native' },
+                    { value: 'refined', label: 'Refined native' },
                     { value: 'mockup', label: 'Mockup palette' },
                   ]}
                 />
@@ -560,40 +566,44 @@ export const StrategyCard = ({
               {labLayout === 'pr' && strategyActions}
             </Stack>
             <Stack className="strategy-card-hero-meta" gap={2}>
-              <Text size="sm" c="dimmed">by <Text span fw={600} c="gray.3">{strategy.discord_username}</Text></Text>
-              <Text size="xs" c="dimmed">Published {publishedDate}</Text>
-              {revision > 1 && updatedDate && <Text size="xs" c="dimmed">Last updated {updatedDate}</Text>}
-              <Text size="xs" c="dimmed" tt="uppercase">
-                {displayMapCount != null ? `${displayMapCount} maps` : 'Maps —'} · {modDisplay} mod
-              </Text>
-              <Text size="xs" c="dimmed" tt="uppercase">
-                Latest activity <Text span c="gray.3">{activityRelative}</Text>
-                {sessionMinutes ? <> · Time <Text span c="gray.3">{formatActiveTime(sessionMinutes * 60_000)}{isPooled ? ` · ${timedRunCount}/${evidenceRunCount} timed runs` : ''}</Text></> : null}
-              </Text>
-              {(isPooled || strategy.divine_price != null || divPerHour != null) && (
+              <Stack className="strategy-card-hero-attribution" gap={2}>
+                <Text size="sm" c="dimmed">by <Text span fw={600} c="gray.3">{strategy.discord_username}</Text></Text>
+                <Text size="xs" c="dimmed">Published {publishedDate}</Text>
+                {revision > 1 && updatedDate && <Text size="xs" c="dimmed">Last updated {updatedDate}</Text>}
+              </Stack>
+              <Stack className="strategy-card-hero-facts" gap={2}>
                 <Text size="xs" c="dimmed" tt="uppercase">
-                  {isPooled
-                    ? <>Divine <Text span c="gray.3">Per-run snapshots</Text></>
-                    : strategy.divine_price != null ? <>Divine <Text span c="gray.3">{strategy.divine_price.toFixed(0)}c</Text></> : null}
-                  {(isPooled || strategy.divine_price != null) && divPerHour != null ? ' · ' : null}
-                  {divPerHour != null ? <>Div/hr <Text span c="gray.3">{divPerHour.toFixed(2)}</Text></> : null}
+                  {displayMapCount != null ? `${displayMapCount} maps` : 'Maps —'} · {modDisplay} mod
                 </Text>
-              )}
-              {(strategy.game_data_revision != null || (strategy.atlas_points != null && strategy.atlas_points_max != null)) && (
                 <Text size="xs" c="dimmed" tt="uppercase">
-                  {strategy.game_data_revision != null ? <>Game data <Text span c="gray.3">r{strategy.game_data_revision}{strategy.game_data_patch_version ? ` · ${strategy.game_data_patch_version}` : ''}</Text></> : null}
-                  {strategy.game_data_revision != null && strategy.atlas_points != null && strategy.atlas_points_max != null ? ' · ' : null}
-                  {strategy.atlas_points != null && strategy.atlas_points_max != null ? <>Atlas <Text span c="gray.3">{strategy.atlas_points}/{strategy.atlas_points_max}</Text></> : null}
+                  Latest activity <Text span c="gray.3">{activityRelative}</Text>
+                  {sessionMinutes ? <> · Time <Text span c="gray.3">{formatActiveTime(sessionMinutes * 60_000)}{isPooled ? ` · ${timedRunCount}/${evidenceRunCount} timed runs` : ''}</Text></> : null}
                 </Text>
-              )}
-              {authorMult != null && (
-                <Tooltip withArrow multiline w={260}
-                  label="The author's atlas multiplier when they shared. All stat tiles here are base (unprojected) map averages — the regexes are built from them. Load the build and the Dashboard projects YOUR maps with YOUR atlas config.">
-                  <Text size="xs" c="dimmed" tt="uppercase" style={{ cursor: 'help' }}>
-                    Author mult. <Text span c="blue">{authorMult.toFixed(3)}×</Text>
+                {(isPooled || strategy.divine_price != null || divPerHour != null) && (
+                  <Text size="xs" c="dimmed" tt="uppercase">
+                    {isPooled
+                      ? <>Divine <Text span c="gray.3">Per-run snapshots</Text></>
+                      : strategy.divine_price != null ? <>Divine <Text span c="gray.3">{strategy.divine_price.toFixed(0)}c</Text></> : null}
+                    {(isPooled || strategy.divine_price != null) && divPerHour != null ? ' · ' : null}
+                    {divPerHour != null ? <>Div/hr <Text span c="gray.3">{divPerHour.toFixed(2)}</Text></> : null}
                   </Text>
-                </Tooltip>
-              )}
+                )}
+                {(strategy.game_data_revision != null || (strategy.atlas_points != null && strategy.atlas_points_max != null)) && (
+                  <Text size="xs" c="dimmed" tt="uppercase">
+                    {strategy.game_data_revision != null ? <>Game data <Text span c="gray.3">r{strategy.game_data_revision}{strategy.game_data_patch_version ? ` · ${strategy.game_data_patch_version}` : ''}</Text></> : null}
+                    {strategy.game_data_revision != null && strategy.atlas_points != null && strategy.atlas_points_max != null ? ' · ' : null}
+                    {strategy.atlas_points != null && strategy.atlas_points_max != null ? <>Atlas <Text span c="gray.3">{strategy.atlas_points}/{strategy.atlas_points_max}</Text></> : null}
+                  </Text>
+                )}
+                {authorMult != null && (
+                  <Tooltip withArrow multiline w={260}
+                    label="The author's atlas multiplier when they shared. All stat tiles here are base (unprojected) map averages — the regexes are built from them. Load the build and the Dashboard projects YOUR maps with YOUR atlas config.">
+                    <Text size="xs" c="dimmed" tt="uppercase" style={{ cursor: 'help' }}>
+                      Author mult. <Text span c="blue">{authorMult.toFixed(3)}×</Text>
+                    </Text>
+                  </Tooltip>
+                )}
+              </Stack>
             </Stack>
             </div>
           </div>
@@ -739,8 +749,8 @@ export const StrategyCard = ({
                       <Group gap={6} wrap="nowrap" className="strategy-card-setup-item"
                         style={removed ? { textDecoration: 'line-through', opacity: 0.7 } : undefined}>
                         <PoeItemIcon name={s.name} size={18} category="scarab" />
-                        <Text size="xs" c={scarabColor} fw={600} lineClamp={1}
-                          style={{ flex: 1, minWidth: 0 }}>
+                        <Text size="xs" c={scarabColor} fw={600}
+                          style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', lineHeight: 1.35 }}>
                           {s.name}
                         </Text>
                         {!isPooled && s.cost > 0 && (
@@ -803,7 +813,7 @@ export const StrategyCard = ({
                 <StatTile key={stat.label} boxed centered label={stat.label} value={stat.value} color={stat.color} />
               ))}
             </div>
-            {(strategy.run_regex || strategy.slam_regex) && (
+            {!usesFullWidthRegex && (strategy.run_regex || strategy.slam_regex) && (
               <Stack gap={4} style={{ background: COLOR.surfaceSectionContent, borderRadius: 4, padding: '6px 8px' }}>
                 <SectionLabel>Regex</SectionLabel>
                 {strategy.run_regex && <RegexLine value={strategy.run_regex} badge="Run" badgeColor="green" c="teal" />}
@@ -812,6 +822,14 @@ export const StrategyCard = ({
             )}
           </Stack>
           </div>
+          {usesFullWidthRegex && (strategy.run_regex || strategy.slam_regex) && (
+            <Stack className="strategy-card-regex-wide" gap={4}
+              style={{ background: COLOR.surfaceSectionContent, border: `1px solid ${COLOR.border}`, borderRadius: 4, padding: '8px 10px' }}>
+              <SectionLabel>Map regex</SectionLabel>
+              {strategy.run_regex && <RegexLine value={strategy.run_regex} badge="Run" badgeColor="green" c="teal" />}
+              {strategy.slam_regex && <RegexLine value={strategy.slam_regex} badge="Slam" badgeColor="orange" c="orange" />}
+            </Stack>
+          )}
           {labLayout !== 'pr' && strategyActions}
         </div>
       </Collapse>

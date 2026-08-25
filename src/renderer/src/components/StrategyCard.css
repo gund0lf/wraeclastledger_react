@@ -31,6 +31,12 @@
   text-align: right;
 }
 
+.strategy-card-hero-attribution,
+.strategy-card-hero-facts {
+  align-items: flex-end;
+  text-align: right;
+}
+
 .strategy-card-actions {
   margin-top: 10px;
 }
@@ -107,7 +113,7 @@
 
 .strategy-card-scarab-list {
   display: grid !important;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 2px 8px;
   max-width: 680px;
 }
@@ -116,18 +122,20 @@
   min-width: 0;
   padding: 2px 6px;
   border-radius: 4px;
+  align-items: flex-start;
 }
 
-/* Layouts 1-3 retain the centered editorial top from the first mockups. */
+/* Layouts 1-3 now reproduce the original triptych: author/date at left,
+   strategy identity in the centre, run facts at right. */
 .strategy-card-expanded:is(
   [data-lab-layout='balanced-wide'],
   [data-lab-layout='quiet-wide'],
-  [data-lab-layout='loot-led-wide']
+  [data-lab-layout='loot-led-wide'],
+  [data-lab-layout='feedback-triptych']
 ) .strategy-card-hero {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
-  justify-items: center;
-  text-align: center;
+  grid-template-columns: minmax(180px, 1fr) minmax(300px, 1.35fr) minmax(240px, 1fr);
+  gap: 24px;
+  align-items: center;
 }
 
 .strategy-card-expanded:not([data-lab-layout='pr']) .strategy-card-scarab-list {
@@ -137,34 +145,65 @@
 .strategy-card-expanded:is(
   [data-lab-layout='balanced-wide'],
   [data-lab-layout='quiet-wide'],
-  [data-lab-layout='loot-led-wide']
+  [data-lab-layout='loot-led-wide'],
+  [data-lab-layout='feedback-triptych']
 ) .strategy-card-hero-identity {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
   align-items: center;
+  text-align: center;
   max-width: 980px;
 }
 
 .strategy-card-expanded:is(
   [data-lab-layout='balanced-wide'],
   [data-lab-layout='quiet-wide'],
-  [data-lab-layout='loot-led-wide']
+  [data-lab-layout='loot-led-wide'],
+  [data-lab-layout='feedback-triptych']
 ) .strategy-card-hero-meta {
-  display: grid;
-  grid-template-columns: repeat(3, auto);
-  align-items: center;
-  justify-content: center;
-  gap: 3px 22px;
-  text-align: center;
+  display: contents;
 }
 
-/* Layouts 4-8 use the favored wide run-sheet heading. */
+.strategy-card-expanded:is(
+  [data-lab-layout='balanced-wide'],
+  [data-lab-layout='quiet-wide'],
+  [data-lab-layout='loot-led-wide'],
+  [data-lab-layout='feedback-triptych']
+) .strategy-card-hero-attribution {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  align-items: flex-start;
+  text-align: left;
+}
+
+.strategy-card-expanded:is(
+  [data-lab-layout='balanced-wide'],
+  [data-lab-layout='quiet-wide'],
+  [data-lab-layout='loot-led-wide'],
+  [data-lab-layout='feedback-triptych']
+) .strategy-card-hero-facts {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  align-items: flex-end;
+  text-align: right;
+}
+
+/* Wide run-sheet family: identity and attribution stay together at left while
+   the denser run facts occupy the right. */
 .strategy-card-expanded:is(
   [data-lab-layout='wide-run-sheet'],
   [data-lab-layout='traceur-hybrid'],
   [data-lab-layout='traceur-focus'],
-  [data-lab-layout='traceur-centered'],
-  [data-lab-layout='traceur-spread']
+  [data-lab-layout='traceur-spread'],
+  [data-lab-layout='feedback-compact']
 ) .strategy-card-hero {
   grid-template-columns: minmax(0, 1fr) minmax(360px, 0.48fr);
+  grid-template-areas:
+    'identity facts'
+    'attribution facts';
   gap: 32px;
 }
 
@@ -173,8 +212,49 @@
   [data-lab-layout='traceur-hybrid'],
   [data-lab-layout='traceur-focus'],
   [data-lab-layout='traceur-centered'],
-  [data-lab-layout='traceur-spread']
+  [data-lab-layout='traceur-spread'],
+  [data-lab-layout='feedback-triptych'],
+  [data-lab-layout='feedback-compact']
 ) .strategy-card-economics > * { min-height: 72px; }
+
+.strategy-card-expanded:is(
+  [data-lab-layout='wide-run-sheet'],
+  [data-lab-layout='traceur-hybrid'],
+  [data-lab-layout='traceur-focus'],
+  [data-lab-layout='traceur-spread'],
+  [data-lab-layout='feedback-compact']
+) .strategy-card-hero-identity { grid-area: identity; }
+
+.strategy-card-expanded:is(
+  [data-lab-layout='wide-run-sheet'],
+  [data-lab-layout='traceur-hybrid'],
+  [data-lab-layout='traceur-focus'],
+  [data-lab-layout='traceur-spread'],
+  [data-lab-layout='feedback-compact']
+) .strategy-card-hero-meta { display: contents; }
+
+.strategy-card-expanded:is(
+  [data-lab-layout='wide-run-sheet'],
+  [data-lab-layout='traceur-hybrid'],
+  [data-lab-layout='traceur-focus'],
+  [data-lab-layout='traceur-spread'],
+  [data-lab-layout='feedback-compact']
+) .strategy-card-hero-attribution {
+  grid-area: attribution;
+  align-items: flex-start;
+  text-align: left;
+}
+
+.strategy-card-expanded:is(
+  [data-lab-layout='wide-run-sheet'],
+  [data-lab-layout='traceur-hybrid'],
+  [data-lab-layout='traceur-focus'],
+  [data-lab-layout='traceur-spread'],
+  [data-lab-layout='feedback-compact']
+) .strategy-card-hero-facts {
+  grid-area: facts;
+  justify-self: end;
+}
 
 /* 1 · Balanced wide: strongly structured, dashboard-like lower row. */
 .strategy-card-expanded[data-lab-layout='balanced-wide'] .strategy-card-lower-grid {
@@ -292,6 +372,75 @@
   grid-template-columns: repeat(4, minmax(105px, 1fr));
 }
 
+/* 9 · Feedback triptych: corrected three-part header plus the original
+   full-width regex rhythm above the centred actions. */
+.strategy-card-expanded[data-lab-layout='feedback-triptych'] .strategy-card-lower-grid {
+  grid-template-columns: minmax(360px, 1.2fr) minmax(235px, 0.72fr) minmax(410px, 1.28fr);
+}
+
+/* 10 · Feedback compact: the favored run-sheet header, 2×2 map requirements,
+   and the full-width regex treatment from the mockups. */
+.strategy-card-expanded[data-lab-layout='feedback-compact'] .strategy-card-lower-grid {
+  grid-template-columns: minmax(440px, 1.3fr) minmax(240px, 0.72fr) minmax(390px, 1.05fr);
+}
+.strategy-card-expanded[data-lab-layout='feedback-compact'] .strategy-card-map-stats {
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+}
+
+.strategy-card-regex-wide {
+  margin-top: 10px;
+}
+
+.strategy-card-expanded:not([data-lab-layout='pr']) .strategy-card-supporting-note {
+  text-align: center;
+}
+
+/* Refined native: keep the application's colour language while adding the
+   border contrast, surface separation, and title character that made the
+   mockup palette easier to scan. */
+.strategy-card-expanded[data-lab-skin='refined'] {
+  background:
+    radial-gradient(circle at 50% -30%, rgba(77, 171, 247, 0.12), transparent 40%),
+    linear-gradient(180deg, rgba(20, 24, 29, 0.98), rgba(14, 17, 21, 0.98));
+}
+
+.strategy-card-expanded[data-lab-skin='refined'] .strategy-card-hero-identity > :first-child {
+  font-family: Georgia, 'Times New Roman', serif;
+  letter-spacing: 0.012em;
+}
+
+.strategy-card-expanded[data-lab-skin='refined'] .strategy-card-header {
+  border-color: rgba(116, 192, 252, 0.28) !important;
+}
+
+.strategy-card-expanded[data-lab-skin='refined'] .strategy-card-economic-tile,
+.strategy-card-expanded[data-lab-skin='refined'] :is(
+  .strategy-card-lower-panel,
+  .strategy-card-cost-panel,
+  .strategy-card-map-panel,
+  .strategy-card-supporting-note,
+  .strategy-card-regex-wide
+) {
+  background: rgba(28, 33, 39, 0.96) !important;
+  border-color: rgba(116, 192, 252, 0.24) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.035);
+}
+
+.strategy-card-expanded[data-lab-skin='refined'] .strategy-card-loot-panel {
+  background: rgba(20, 42, 55, 0.94) !important;
+  border-color: rgba(77, 171, 247, 0.55) !important;
+  box-shadow: inset 0 0 0 1px rgba(77, 171, 247, 0.08);
+}
+
+.strategy-card-expanded[data-lab-skin='refined'] .loot-evidence-category {
+  background: rgba(17, 25, 32, 0.92) !important;
+  border: 1px solid rgba(116, 192, 252, 0.16);
+}
+
+.strategy-card-expanded[data-lab-skin='refined'] .strategy-card-setup-item {
+  background: rgba(255, 255, 255, 0.018);
+}
+
 /* Mockup-faithful skin: same live data/components, alternate visual language. */
 .strategy-card-expanded[data-lab-skin='mockup'] {
   --lab-panel-radius: 3px;
@@ -357,10 +506,30 @@
     [data-lab-layout='traceur-hybrid'],
     [data-lab-layout='traceur-focus'],
     [data-lab-layout='traceur-centered'],
-    [data-lab-layout='traceur-spread']
-  ) .strategy-card-hero { grid-template-columns: minmax(0, 1fr); }
+    [data-lab-layout='traceur-spread'],
+    [data-lab-layout='feedback-triptych'],
+    [data-lab-layout='feedback-compact']
+  ) .strategy-card-hero {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: none;
+  }
+
+  .strategy-card-expanded[data-lab-layout] .strategy-card-hero-identity,
+  .strategy-card-expanded[data-lab-layout] .strategy-card-hero-attribution,
+  .strategy-card-expanded[data-lab-layout] .strategy-card-hero-facts {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: stretch;
+  }
 
   .strategy-card-expanded .strategy-card-hero-meta {
+    display: flex;
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .strategy-card-expanded .strategy-card-hero-attribution,
+  .strategy-card-expanded .strategy-card-hero-facts {
     align-items: flex-start;
     text-align: left;
   }
@@ -369,8 +538,20 @@
     [data-lab-layout='balanced-wide'],
     [data-lab-layout='quiet-wide'],
     [data-lab-layout='loot-led-wide'],
-    [data-lab-layout='traceur-centered']
+    [data-lab-layout='traceur-centered'],
+    [data-lab-layout='feedback-triptych']
   ) .strategy-card-hero-meta {
+    align-items: center;
+    text-align: center;
+  }
+
+  .strategy-card-expanded:is(
+    [data-lab-layout='balanced-wide'],
+    [data-lab-layout='quiet-wide'],
+    [data-lab-layout='loot-led-wide'],
+    [data-lab-layout='traceur-centered'],
+    [data-lab-layout='feedback-triptych']
+  ) :is(.strategy-card-hero-attribution, .strategy-card-hero-facts) {
     align-items: center;
     text-align: center;
   }
@@ -432,7 +613,7 @@
 
 .loot-evidence-categories {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
   gap: 6px;
 }
 
