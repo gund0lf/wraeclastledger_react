@@ -10,6 +10,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.87',
+    date: '2026-08-26',
+    changes: [
+      'Dashboard and shared loot views now use one cleaner Chaos/Divine presentation with aligned values, clearer totals, responsive status cards, and the same refined loot hierarchy throughout the app.',
+      'Setup now uses a restrained neutral workspace for Sessions, Atlas Calc, and Investment. Left-side panels can grow beyond the old narrow limit and can be maximized by button or double-click, while the maximized Setup view uses a centered two-column layout.',
+      'Map Log now has a responsive capture workspace, opaque sticky headers, aligned metrics, hover-revealed row deletion, and clearer empty states. Automatic Pace remains visible while it gathers enough captures and explains its capture-to-capture timing and break filtering.',
+      'Run Statistics now presents its scope, denominator, manual timer, and five mechanic groups in a more compact responsive workspace. Observed results stay prominent while setup provenance, models, and data-quality detail remain available in a nested disclosure.',
+      'Regex now uses one neutral tabbed workspace. Generated Run and Slam output stays first, empty sessions point clearly toward capture or Trade, exclusions and presets are named accurately, and the exact copied exclusion regex remains visible above both catalogues.',
+      'Notes now uses a centered full-height editor with stable session identity, responsive word and line counts, and accurate auto-save guidance. Working-session notes are no longer described as unsaved, and the clear action stays neutral until direct interaction.',
+    ],
+  },
+  {
     version: '1.0.86',
     date: '2026-08-26',
     changes: [
