@@ -412,7 +412,7 @@ export const FromSessionTab = () => {
   const selectedMapTypeInfo = MAP_TYPE_OPTIONS.find((o) => o.value === tradeMapType);
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, padding: 8 }}>
+    <div className="regex-tab-workspace regex-from-session">
       {/* ── Trade search modal ── */}
       <Modal opened={tradeOpen} onClose={closeTrade} title="PoE Trade Map Search" size="md" scrollAreaComponent={ScrollArea.Autosize}>
         <Stack gap="md">
@@ -668,8 +668,8 @@ export const FromSessionTab = () => {
         </Stack>
       </Modal>
 
-      <ScrollArea style={{ flex: 1, minHeight: 0 }}>
-        <Stack gap="xs">
+      <ScrollArea className="regex-tab-scroll">
+        <Stack className="regex-tab-content" gap="xs">
 
           {/* ── OUTPUT FIRST (Sad 2026-07-11): the generated/loaded regex +
               copy/save/Open Trade actions are what the tab exists for, so they
@@ -678,10 +678,10 @@ export const FromSessionTab = () => {
 
           {/* ── Generated from session ── */}
           {generatedRegex && (
-            <Stack gap="xs" p="xs" style={{ background: COLOR.tintTealBg, borderRadius: 6, border: `1px solid ${COLOR.tintTealBorder}` }}>
+            <Stack className="regex-session-output" gap="xs" p="xs">
               <Group gap="xs">
                 <IconWand size={12} color={COLOR.accentStrong} />
-                <Text size="xs" fw={700} c="blue">Generated from {generatedRegex.n} maps (trimmed avg)</Text>
+                <Text className="regex-output-source" size="xs" fw={700}>Generated from {generatedRegex.n} maps (trimmed avg)</Text>
               </Group>
               <Text size="xs" c="dimmed">
                 {generatedRegex.avg.avgQuant.toFixed(0)}%Q · {generatedRegex.avg.avgRarity.toFixed(0)}%R · {generatedRegex.avg.avgPack.toFixed(0)}%P · {generatedRegex.avg.avgCurr.toFixed(0)}% Curr
@@ -694,7 +694,7 @@ export const FromSessionTab = () => {
                   <Text size="xs" c="dimmed" fs="italic">8-mod / Nightmare maps are corrupted — slam not applicable.</Text>
                 )}
               </Stack>
-              <Group gap={4}>
+              <Group className="regex-output-actions" gap={4}>
                 <CopyButton value={generatedRegex.run} timeout={2000}>
                   {({ copied, copy }) => (
                     <Button size="xs" variant="default" onClick={copy}
@@ -730,10 +730,10 @@ export const FromSessionTab = () => {
                 }, []));
             const slam = neutralSlam ? applyUserExclusionsToRegex(neutralSlam, exclusions) : null;
             return (
-              <Stack gap="xs" p="xs" style={{ background: COLOR.tintTealBg, borderRadius: 6, border: `1px solid ${COLOR.tintTealBorder}` }}>
+              <Stack className="regex-session-output" gap="xs" p="xs">
                 <Group gap="xs">
                   <IconWand size={12} color={COLOR.accentStrong} />
-                  <Text size="xs" fw={700} c="blue">From {loadedStrategyInfo.authorName} · {loadedStrategyInfo.mapCount} maps</Text>
+                  <Text className="regex-output-source" size="xs" fw={700}>From {loadedStrategyInfo.authorName} · {loadedStrategyInfo.mapCount} maps</Text>
                   {loadedStrategyInfo.mapType && (
                     <Badge size="xs" color="gray" variant="outline">{loadedStrategyInfo.mapType}</Badge>
                   )}
@@ -749,7 +749,7 @@ export const FromSessionTab = () => {
                   ? <Text size="xs" c="dimmed" style={{ fontSize: FONT.label }}>Your exclusions applied. Click Set Default to make these permanent.</Text>
                   : <Text size="xs" c="orange" style={{ fontSize: FONT.label }}>No exclusions set — set a default preset or pick mods below.</Text>
                 }
-                <Group gap={4}>
+                <Group className="regex-output-actions" gap={4}>
                   <CopyButton value={run} timeout={2000}>
                     {({ copied, copy }) => (
                       <Button size="xs" variant="default" onClick={copy}
@@ -774,23 +774,32 @@ export const FromSessionTab = () => {
           {/* session-16: Open Trade lives with the regex boxes above when one is
               showing; this standalone fallback only renders when neither is. */}
           {!generatedRegex && !loadedStrategyInfo && (
-            <Group gap={4} justify="flex-end">
-              <Button size="xs" variant="light" color="orange" loading={tradeLoading}
-                leftSection={<IconExternalLink size={12} />} onClick={handleSearch}>
-                Search Trade
-              </Button>
-              <Button size="xs" variant="default" leftSection={<IconSettings size={12} />}
-                onClick={handleOpenTradeModal}>
-                Trade settings
-              </Button>
-            </Group>
+            <Stack className="regex-empty-output" gap="xs" align="center">
+              <IconWand size={20} />
+              <div>
+                <Text size="sm" fw={700} ta="center">No session regex yet</Text>
+                <Text size="xs" c="dimmed" ta="center">
+                  Capture maps or load a strategy to generate Run and Slam thresholds.
+                </Text>
+              </div>
+              <Group className="regex-output-actions" gap={4} justify="center">
+                <Button size="xs" variant="light" color="orange" loading={tradeLoading}
+                  leftSection={<IconExternalLink size={12} />} onClick={handleSearch}>
+                  Search Trade
+                </Button>
+                <Button size="xs" variant="default" leftSection={<IconSettings size={12} />}
+                  onClick={handleOpenTradeModal}>
+                  Trade settings
+                </Button>
+              </Group>
+            </Stack>
           )}
 
           {/* ── Brick Exclusions ── */}
-          <Stack gap={4} p="xs" style={{ background: COLOR.tintOliveBg, borderRadius: 6, border: `1px solid ${COLOR.tintOliveBorder}` }}>
+          <Stack className="regex-exclusions-panel" gap="xs" p="xs">
             <Group justify="space-between">
               <Group gap={4}>
-                <Text size="xs" fw={700} c="yellow">Your Regex</Text>
+                <Text size="xs" fw={700}>Exclusions &amp; presets</Text>
                 <Tooltip multiline w={280}
                   label={
                     <Stack gap={3} p={2}>
@@ -872,27 +881,35 @@ export const FromSessionTab = () => {
               </Group>
             </Group>
 
-            {exclusions.length > 0 && (
-              <Group gap={4} wrap="wrap">
-                {exclusions.map((term) => (
-                  <Badge key={term} size="sm" color="yellow" variant="light"
-                    rightSection={
-                      <ActionIcon size={12} variant="transparent" color="yellow"
-                        onClick={() => removeExclusion(term)} style={{ marginLeft: 2 }}>
-                        <IconX size={10} />
-                      </ActionIcon>
-                    }
-                    style={{ paddingRight: 2 }}>
-                    !{term}
-                  </Badge>
-                ))}
-              </Group>
-            )}
+            <div className="regex-exclusions-summary">
+              {exclusions.length > 0 && (
+                <Group className="regex-exclusion-chips" gap={4} wrap="wrap">
+                  {exclusions.map((term) => (
+                    <Badge key={term} size="sm" color="yellow" variant="light"
+                      rightSection={
+                        <ActionIcon size={12} variant="transparent" color="yellow"
+                          onClick={() => removeExclusion(term)} style={{ marginLeft: 2 }}>
+                          <IconX size={10} />
+                        </ActionIcon>
+                      }
+                      style={{ paddingRight: 2 }}>
+                      !{term}
+                    </Badge>
+                  ))}
+                </Group>
+              )}
+              <Text className="regex-exclusions-exact" size="xs" c="dimmed"
+                style={{ fontSize: FONT.small }}>
+                Exclusion regex: <Code style={{ fontSize: FONT.small }}>
+                  {exclusions.length > 0 ? `"!${exclusions.join('|')}"` : '(no exclusions)'}
+                </Code>
+              </Text>
+            </div>
 
             {brickMods.length > 0 && (
               /* Persistent catalogues keep the complete mod pools visible and
                  searchable without opening a separate scrolling menu. */
-              <SimpleGrid cols={2} spacing="md">
+              <SimpleGrid className="regex-exclusion-catalogues" cols={2} spacing="md">
                 <FullscreenBrickModList
                   label="Regular / shared mods"
                   options={brickModData.find((group) => group.group === 'Regular / shared')?.items ?? []}
@@ -913,11 +930,6 @@ export const FromSessionTab = () => {
               </SimpleGrid>
             )}
 
-            <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>
-              Preview: <Code style={{ fontSize: FONT.small }}>
-                {exclusions.length > 0 ? `"!${exclusions.join('|')}"` : '(no exclusions)'}
-              </Code>
-            </Text>
           </Stack>
 
         </Stack>

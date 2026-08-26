@@ -73,7 +73,6 @@ const ModGroupEditor = ({
   const [customOpen, setCustomOpen] = useState(false);
   const [newToken, setNewToken] = useState('');
   const [newLabel, setNewLabel] = useState('');
-  const [removeHover, setRemoveHover] = useState(false);
   const tooltipStyles = {
     tooltip: {
       background: COLOR.bgPanel,
@@ -128,13 +127,9 @@ const ModGroupEditor = ({
 
   return (
     <Stack
+      className="regex-builder-group-editor"
       gap={8}
       p="sm"
-      style={{
-        background: COLOR.bgInset,
-        borderRadius: 8,
-        border: `1px solid ${COLOR.border}`,
-      }}
     >
       <Group gap={8} wrap="nowrap">
         {isPreset ? (
@@ -161,18 +156,11 @@ const ModGroupEditor = ({
         )}
         <Tooltip label={`Delete ${displayLabel}`}>
           <ActionIcon
+            className="regex-destructive-icon"
             size="sm"
             variant="default"
             aria-label={`Delete group ${displayLabel}`}
-            onMouseEnter={() => setRemoveHover(true)}
-            onMouseLeave={() => setRemoveHover(false)}
-            style={removeHover
-              ? { color: 'var(--mantine-color-red-4)', borderColor: 'var(--mantine-color-red-7)' }
-              : undefined}
-            onClick={() => {
-              setRemoveHover(false);
-              onRemove();
-            }}
+            onClick={onRemove}
           >
             <IconX size={13} />
           </ActionIcon>
@@ -265,9 +253,10 @@ const ModGroupEditor = ({
                 onClick={() => toggleMod(mod.id)}
                 rightSection={removeAction ? (
                   <ActionIcon
+                    className="regex-destructive-icon"
                     size={12}
                     variant="transparent"
-                    color={isCustom ? 'red' : 'gray'}
+                    color="gray"
                     aria-label={isCustom ? `Remove ${mod.label}` : `Deselect ${mod.label}`}
                     onClick={(event) => {
                       event.stopPropagation();
@@ -444,16 +433,14 @@ const SectionBar = ({
   onHelpToggle?: () => void;
 }) => (
   <Group
+    className="regex-builder-section-bar"
+    data-open={open || undefined}
     gap={8}
     wrap="nowrap"
     onClick={onToggle}
     style={{
       cursor: 'pointer',
       userSelect: 'none',
-      background: COLOR.bgRaised,
-      border: `1px solid ${COLOR.border}`,
-      borderRadius: open ? '8px 8px 0 0' : 8,
-      padding: '7px 10px',
     }}
   >
     <ActionIcon size={16} variant="transparent" c="dimmed" aria-hidden>
@@ -582,7 +569,7 @@ export const BuilderTab = () => {
   return (
     <div
       ref={rootRef}
-      style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, padding: 8 }}
+      className="regex-tab-workspace regex-builder"
     >
       <Modal opened={saveOpen} onClose={() => setSaveOpen(false)} title="Save Complete Regex Preset" size="sm">
         <Stack gap="sm">
@@ -597,9 +584,9 @@ export const BuilderTab = () => {
         </Stack>
       </Modal>
 
-      <ScrollArea style={{ flex: 1, minHeight: 0 }} scrollbarSize={4}>
-        <Stack gap={10}>
-          <Alert color="blue" variant="light" p="xs">
+      <ScrollArea className="regex-tab-scroll" scrollbarSize={4}>
+        <Stack className="regex-tab-content" gap={10}>
+          <Alert className="regex-builder-intro" color="gray" variant="light" p="xs">
             <Text size="xs">
               This crafting and threshold builder is intended for Originator maps. Groups are ANDed together; within a group, Any/All/At least N controls its OR logic.
             </Text>
@@ -616,26 +603,17 @@ export const BuilderTab = () => {
             />
             <Collapse in={builderOpen}>
               <Stack
+                className="regex-builder-section-content"
                 gap={10}
-                style={{
-                  background: COLOR.bgPanel,
-                  border: `1px solid ${COLOR.border}`,
-                  borderTop: 'none',
-                  borderRadius: '0 0 8px 8px',
-                  padding: 10,
-                }}
               >
                 <Collapse in={howOpen}>
                   <Text
+                    className="regex-builder-help"
                     size="xs"
                     c="dimmed"
                     style={{
                       fontSize: FONT.small,
                       lineHeight: 1.55,
-                      background: COLOR.bgSunken,
-                      border: `1px solid ${COLOR.borderDeep}`,
-                      borderRadius: 6,
-                      padding: '9px 11px',
                     }}
                   >
                     PoE&apos;s engine is <Text span c="orange">line-by-line</Text> — .* across lines doesn&apos;t work.
@@ -691,6 +669,8 @@ export const BuilderTab = () => {
                 </Group>
 
                 <div
+                  className="regex-builder-main-split"
+                  data-wide={wideLayout || undefined}
                   style={{
                     display: 'flex',
                     flexDirection: wideLayout ? 'row' : 'column',
@@ -721,6 +701,7 @@ export const BuilderTab = () => {
                   </div>
 
                   <Stack
+                    className="regex-builder-output"
                     gap={8}
                     p="sm"
                     style={{
@@ -729,13 +710,10 @@ export const BuilderTab = () => {
                       minWidth: 0,
                       position: wideLayout ? 'sticky' : 'static',
                       top: wideLayout ? 8 : undefined,
-                      background: COLOR.tintTealBg,
-                      borderRadius: 8,
-                      border: `1px solid ${COLOR.tintTealBorder}`,
                     }}
                   >
                     <Group justify="space-between" wrap="nowrap">
-                      <Text size="xs" fw={700} c="teal">Generated Regex</Text>
+                      <Text size="xs" fw={700}>Generated Regex</Text>
                       <Badge size="xs" color={charCountColor(charCount)} variant="light">
                         {charCount} / {REGEX_CHAR_LIMIT}
                       </Badge>
@@ -808,13 +786,7 @@ export const BuilderTab = () => {
             />
             <Collapse in={craftingOpen}>
               <div
-                style={{
-                  background: COLOR.bgPanel,
-                  border: `1px solid ${COLOR.border}`,
-                  borderTop: 'none',
-                  borderRadius: '0 0 8px 8px',
-                  padding: 10,
-                }}
+                className="regex-builder-section-content"
               >
                 <AltAugSection onCharCountChange={setAltAugCharCount} />
               </div>

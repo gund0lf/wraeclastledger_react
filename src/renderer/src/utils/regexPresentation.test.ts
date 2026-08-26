@@ -1,0 +1,98 @@
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
+
+const panelSource = readFileSync(
+  new URL('../modules/RegexPanelModule.tsx', import.meta.url),
+  'utf8',
+);
+const sessionSource = readFileSync(
+  new URL('../modules/RegexModule.tsx', import.meta.url),
+  'utf8',
+);
+const builderSource = readFileSync(
+  new URL('../modules/RegexBuilderModule.tsx', import.meta.url),
+  'utf8',
+);
+const cssSource = readFileSync(
+  new URL('../modules/RegexPanelModule.css', import.meta.url),
+  'utf8',
+);
+
+function rule(selector: string): string {
+  const start = cssSource.indexOf(`${selector} {`);
+  expect(start, `missing CSS rule: ${selector}`).toBeGreaterThanOrEqual(0);
+  const end = cssSource.indexOf('}', start);
+  expect(end, `unterminated CSS rule: ${selector}`).toBeGreaterThan(start);
+  return cssSource.slice(start, end + 1).replace(/\s+/g, ' ');
+}
+
+describe('Regex visual-alignment presentation contract', () => {
+  it('uses one neutral tab workspace without a generic outer Card', () => {
+    expect(panelSource).toContain('<div className="regex-panel-root">');
+    expect(panelSource).not.toContain('<Card');
+    expect(panelSource).toContain('<Tabs.Tab value="session">From Session</Tabs.Tab>');
+    expect(panelSource).toContain('<Tabs.Tab value="builder">Builder</Tabs.Tab>');
+    expect(rule('.regex-panel-tab-list'))
+      .toContain('background: rgba(255, 255, 255, 0.018);');
+  });
+
+  it('keeps generated output first and structural surfaces neutral', () => {
+    const outputIndex = sessionSource.indexOf('className="regex-session-output"');
+    const exclusionsIndex = sessionSource.indexOf('className="regex-exclusions-panel"');
+    expect(outputIndex).toBeGreaterThanOrEqual(0);
+    expect(exclusionsIndex).toBeGreaterThan(outputIndex);
+    expect(sessionSource).not.toContain('COLOR.tintTealBg');
+    expect(sessionSource).not.toContain('COLOR.tintOliveBg');
+    expect(rule('.regex-session-output'))
+      .toContain('background: var(--regex-surface-raised);');
+  });
+
+  it('provides a structured no-output state and accurate exclusions label', () => {
+    expect(sessionSource).toContain('No session regex yet');
+    expect(sessionSource).toContain('Capture maps or load a strategy');
+    expect(sessionSource).toContain('Exclusions &amp; presets');
+    expect(sessionSource).not.toContain('>Your Regex</Text>');
+  });
+
+  it('keeps removable exclusions and the exact copied value above the catalogues', () => {
+    const summaryIndex = sessionSource.indexOf('className="regex-exclusions-summary"');
+    const catalogueIndex = sessionSource.indexOf('className="regex-exclusion-catalogues"');
+    expect(summaryIndex).toBeGreaterThanOrEqual(0);
+    expect(catalogueIndex).toBeGreaterThan(summaryIndex);
+    expect(sessionSource).toContain('className="regex-exclusion-chips"');
+    expect(sessionSource).toContain('className="regex-exclusions-exact"');
+    expect(sessionSource).toContain('Exclusion regex: <Code');
+    expect(sessionSource).not.toContain('Preview: <Code');
+    expect(rule('.regex-exclusions-exact')).toContain('margin-left: auto;');
+    expect(rule('.regex-exclusions-exact')).toContain('text-align: right;');
+  });
+
+  it('keeps Regular/shared and Nightmare catalogues side by side at supported widths', () => {
+    expect(sessionSource).toContain(
+      '<SimpleGrid className="regex-exclusion-catalogues" cols={2} spacing="md">',
+    );
+    expect(rule('.regex-exclusion-catalogues'))
+      .toContain('grid-template-columns: repeat(2, minmax(0, 1fr)) !important;');
+    expect(cssSource).not.toContain('.regex-exclusion-catalogues {\n    grid-template-columns: minmax(0, 1fr)');
+  });
+
+  it('retains the accepted Builder split while neutralizing its structure', () => {
+    expect(builderSource).toContain('const updateWidth = (width: number) => setWideLayout(width >= 680);');
+    expect(builderSource).toContain('className="regex-builder-main-split"');
+    expect(builderSource).toContain('className="regex-builder-output"');
+    expect(builderSource).toContain('className="regex-builder-section-content"');
+    expect(builderSource).toContain('REGEX_CHAR_LIMIT');
+    expect(rule('.regex-builder-output'))
+      .toContain('background: var(--regex-surface-raised);');
+  });
+
+  it('keeps Trade and generation behavior entry points unchanged', () => {
+    expect(sessionSource).toContain('title="PoE Trade Map Search"');
+    expect(sessionSource).toContain('generateRunRegex(');
+    expect(sessionSource).toContain('generateSlamRegex(');
+    expect(sessionSource).toContain('generateTradeRegex(');
+    expect(builderSource).toContain('generateBuilderRegex(groups)');
+    expect(builderSource).toContain('generateAltAugRegex(');
+    expect(panelSource).toContain('clearDefaultPreset');
+  });
+});
