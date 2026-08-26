@@ -1,0 +1,295 @@
+.session-log-card {
+  container-type: inline-size;
+  --session-log-surface: rgba(255, 255, 255, 0.018);
+  --session-log-surface-raised: rgba(255, 255, 255, 0.032);
+  --session-log-border: rgba(255, 255, 255, 0.08);
+  --session-log-border-strong: rgba(255, 255, 255, 0.14);
+  --session-log-divider: rgba(255, 255, 255, 0.07);
+}
+
+.session-log-card.session-log-refined {
+  background: linear-gradient(180deg, rgba(24, 24, 26, 0.98), rgba(16, 17, 19, 0.98));
+  border-color: rgba(255, 255, 255, 0.09);
+}
+
+.session-log-toolbar {
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 2px 7px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--session-log-divider);
+  flex-shrink: 0;
+}
+
+.session-log-primary-controls,
+.session-log-actions {
+  min-width: 0;
+}
+
+.session-log-capture-control {
+  padding: 3px 7px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.session-log-capture-control[data-active='true'] {
+  background: rgba(32, 201, 151, 0.06);
+  border-color: rgba(32, 201, 151, 0.3);
+}
+
+.session-log-map-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.session-log-search {
+  width: 132px;
+  flex: 0 1 132px;
+}
+
+.session-log-clear:hover:not([data-disabled]) {
+  color: var(--mantine-color-red-4);
+  border-color: var(--mantine-color-red-7);
+}
+
+.session-log-pace-guide {
+  min-width: 0;
+  min-height: 42px;
+  margin-bottom: 6px;
+  padding: 5px 7px;
+  background: var(--session-log-surface);
+  border: 1px solid var(--session-log-border);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.018),
+    inset 0 1px rgba(255, 255, 255, 0.025);
+  flex-shrink: 0;
+}
+
+.session-log-pace-summary {
+  min-width: 0;
+  flex: 1;
+}
+
+.session-log-pace-detail {
+  max-width: 720px;
+}
+
+.session-log-pace-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 4px 6px;
+  color: var(--mantine-color-gray-4);
+  font-size: 11px;
+  border-radius: 4px;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.session-log-pace-help:hover {
+  color: var(--mantine-color-blue-2);
+  background: rgba(77, 171, 247, 0.08);
+}
+
+.session-log-pace-popover {
+  background: rgba(20, 24, 29, 0.99);
+  border-color: var(--session-log-border-strong);
+}
+
+.session-log-pace-flow {
+  color: var(--mantine-color-dimmed);
+}
+
+.session-log-pace-step {
+  min-width: 0;
+  min-height: 38px;
+  padding: 4px 6px;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: var(--mantine-color-gray-2);
+  font-size: 11px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+}
+
+.session-log-pace-step b {
+  color: var(--mantine-color-gray-1);
+}
+
+.session-log-table-shell {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--session-log-border);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.012),
+    inset 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.session-log-table-scroll {
+  height: 100%;
+}
+
+.session-log-table {
+  min-width: 900px;
+  font-variant-numeric: tabular-nums;
+}
+
+.session-log-table.has-delirium-column {
+  min-width: 1120px;
+}
+
+.session-log-table thead th {
+  height: 35px;
+  padding: 7px 8px;
+  color: var(--mantine-color-gray-4);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  background: rgb(25, 26, 28);
+  border-bottom: 1px solid var(--session-log-border-strong);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
+}
+
+.session-log-table tbody tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+  transition: background 100ms ease;
+}
+
+.session-log-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.session-log-table tbody td {
+  height: 39px;
+  padding: 6px 8px;
+  color: var(--mantine-color-gray-2);
+  font-size: 12px;
+}
+
+.session-log-index {
+  width: 40px;
+  color: var(--mantine-color-dimmed) !important;
+  text-align: center !important;
+}
+
+.session-log-name {
+  min-width: 160px;
+}
+
+.session-log-tier {
+  width: 58px;
+  text-align: center !important;
+}
+
+.session-log-delirium {
+  text-align: left !important;
+}
+
+.session-log-number {
+  min-width: 66px;
+  text-align: right !important;
+}
+
+.session-log-row-action {
+  width: 42px;
+  padding-inline: 4px !important;
+  text-align: center !important;
+}
+
+.session-log-metric {
+  color: var(--mantine-color-gray-2);
+  font-size: inherit;
+}
+
+.session-log-metric.is-empty {
+  color: var(--mantine-color-dark-2);
+}
+
+.session-log-delete {
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.session-log-table tbody tr:hover .session-log-delete,
+.session-log-delete:focus-visible {
+  opacity: 1;
+}
+
+.session-log-delete:hover {
+  color: var(--mantine-color-red-4);
+  border-color: var(--mantine-color-red-7);
+}
+
+.session-log-empty-layer {
+  position: absolute;
+  inset: 36px 0 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(42px, 11vh, 120px) 20px 24px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 15%, rgba(255, 255, 255, 0.025), transparent 30%),
+    linear-gradient(180deg, rgba(18, 18, 20, 0.34), rgba(12, 13, 15, 0.12));
+}
+
+.session-log-empty {
+  width: min(100%, 560px);
+  padding: 14px 18px;
+  background: var(--session-log-surface-raised);
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  border-radius: 7px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+}
+
+@container (max-width: 760px) {
+  .session-log-toolbar {
+    align-items: stretch;
+    flex-wrap: wrap !important;
+  }
+
+  .session-log-primary-controls,
+  .session-log-actions {
+    width: 100%;
+  }
+
+  .session-log-actions {
+    justify-content: flex-end;
+  }
+
+  .session-log-search {
+    width: auto;
+    flex: 1;
+  }
+}
+
+@container (max-width: 540px) {
+  .session-log-pace-guide {
+    align-items: flex-start;
+  }
+
+  .session-log-pace-detail {
+    white-space: normal;
+  }
+
+  .session-log-pace-help span {
+    display: none;
+  }
+
+  .session-log-empty {
+    padding-inline: 12px;
+  }
+}

@@ -19,7 +19,7 @@ const STEPS: string[] = [
 // loop. Auto-save/fork explains the repository identity model; Atlas Bonus =
 // discoverability for the pill inside the collapsed "Click to edit" section.
 const GOOD_TO_KNOW: string[] = [
-  'Pace uses the time between captures. For pre-imported batches, use the optional manual timer in Run Statistics instead.',
+  'Automatic Pace measures from one pre-map capture to the next, including looting and stash preparation; clearly abnormal AFK gaps are excluded. Pre-imported batches can use the manual timer in Run Statistics.',
   'Loaded sessions auto-save as you edit - use Duplicate as new in Sessions to fork before experimenting.',
   'Completed all 100 Atlas objectives? Toggle Atlas Bonus in the Multiplier panel - it starts off each new league.'
 ]

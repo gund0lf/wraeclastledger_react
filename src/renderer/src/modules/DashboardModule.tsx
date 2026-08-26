@@ -163,6 +163,10 @@ export const DashboardModule = () => {
   // WP9 Tier 1: local pace estimate from parsedAt gaps. Null until >= 5
   // timestamped maps; never persisted, never shared, never load-bearing.
   const pace = useMemo(() => computeTimeEstimate(maps), [maps]);
+  const timestampedMaps = useMemo(
+    () => maps.filter((map) => typeof map.parsedAt === 'number' && Number.isFinite(map.parsedAt)).length,
+    [maps],
+  );
 
   const fileInputRef   = useRef<HTMLInputElement>(null);
   const pendingRoleRef = useRef<'baseline' | 'current' | null>(null);
@@ -628,7 +632,7 @@ export const DashboardModule = () => {
             </SimpleGrid>
             {!profit.hasReturn && <Text size="xs" c="dimmed" fs="italic" pt={2}>No return CSV — loot not in profit</Text>}
             {pace && (
-              <Group justify="space-between" py={3} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <Group className="dashboard-pace-row" justify="space-between" py={3}>
                 <Tooltip multiline w={280} label={`Measures the gaps between maps captured as you play: copy one before running it, then copy the next after finishing (${pace.countedGaps} gaps counted; ${pace.excludedGaps} break-like gaps excluded). Needs 5+ captured maps. This remains the automatic Share-time default; pre-imported runs can explicitly choose the manual timer instead.`}>
                   <Text size="sm" c="dimmed" style={{ cursor: 'help' }}>Pace (estimate)</Text>
                 </Tooltip>
@@ -636,6 +640,18 @@ export const DashboardModule = () => {
                   <Text size="sm" fw={600}>{pace.mapsPerHour.toFixed(1)} maps/h</Text>
                   <Text size="xs" c="dimmed">· {formatActiveTime(pace.activeMs)} active</Text>
                 </Group>
+              </Group>
+            )}
+            {!pace && timestampedMaps > 0 && (
+              <Group className="dashboard-pace-row dashboard-pace-pending" justify="space-between" py={3} gap="xs" wrap="nowrap">
+                <Tooltip multiline w={300} label="Automatic Pace measures from one pre-map capture to the next, including the run, looting, stashing, and preparation. Clearly abnormal break-like gaps are excluded. Map Log shows the full timing guide.">
+                  <Text size="sm" c="dimmed" style={{ cursor: 'help' }}>Pace (collecting)</Text>
+                </Tooltip>
+                <Text size="xs" c="dimmed" ta="right">
+                  {timestampedMaps < 5
+                    ? `${timestampedMaps}/5 captures`
+                    : 'Building a reliable 10m sample'}
+                </Text>
               </Group>
             )}
           </Section>
@@ -691,7 +707,14 @@ export const DashboardModule = () => {
               </div>
             </Section>
           )}
-          {!stats && <Text size="xs" c="dimmed" ta="center" py="xs">No maps parsed yet</Text>}
+          {!stats && (
+            <Stack className="dashboard-map-empty" gap={1} align="center">
+              <Text size="xs" fw={600} c="dimmed" ta="center">No maps captured yet</Text>
+              <Text size="xs" c="dimmed" ta="center">
+                Copy each map before running it; the next capture completes its automatic Pace interval.
+              </Text>
+            </Stack>
+          )}
 
           <Divider my={4} />
         </div>

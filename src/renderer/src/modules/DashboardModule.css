@@ -92,6 +92,22 @@
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.025);
 }
 
+.dashboard-pace-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.dashboard-pace-pending {
+  min-height: 29px;
+}
+
+.dashboard-map-empty {
+  margin-block: 2px;
+  padding: 7px 8px;
+  background: rgba(255, 255, 255, 0.018);
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  border-radius: 6px;
+}
+
 @container (max-width: 240px) {
   .dashboard-loot-status-detail {
     display: none;
