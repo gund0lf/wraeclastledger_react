@@ -836,7 +836,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
                 onClick={() => { setNameInput(''); openSave(); }}>
                 {savedFlash ? 'Saved' : isUnsaved ? (compactPanel ? 'Save' : 'Save to Sessions') : (compactPanel ? 'Duplicate' : 'Duplicate as new')}
               </Button>
-              <Tooltip label={selectableSessionEntries.length < 2 ? 'Save at least 2 sessions to compare' : 'Compare 2-3 saved sessions side by side'} withArrow>
+              <Tooltip label={selectableSessionEntries.length < 2 ? 'Save at least 2 sessions to compare' : 'Compare up to 6 saved sessions side by side'} withArrow>
                 <span style={{ display: 'flex', flex: 1 }}>
                   <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
                     leftSection={<IconArrowsLeftRight size={12} />}

@@ -10,7 +10,52 @@
  * live. Sessions saved before C (or that never had a correction) resolve to 0.
  */
 import type { SavedSession } from '../types';
+import type { RepositorySessionSummary } from '../../../shared/sessionRepositoryIpc';
 import { computeProfit, computeMultiplier } from './profit';
+import { computeTimeEstimate, type TimeEstimate } from './timeEstimate';
+
+export const MAX_COMPARE_SESSIONS = 6;
+
+type CompareSessionSummary = Pick<
+  RepositorySessionSummary,
+  'id' | 'name' | 'createdAt' | 'updatedAt' | 'status'
+>;
+
+const activityTime = (session: Pick<CompareSessionSummary, 'createdAt' | 'updatedAt'>): number => {
+  const updatedAt = Date.parse(session.updatedAt);
+  if (Number.isFinite(updatedAt)) return updatedAt;
+  const createdAt = Date.parse(session.createdAt);
+  return Number.isFinite(createdAt) ? createdAt : Number.NEGATIVE_INFINITY;
+};
+
+export function sortReadyCompareSessions<T extends CompareSessionSummary>(
+  sessions: readonly T[],
+): T[] {
+  return sessions
+    .filter(({ status }) => status === 'ready')
+    .sort((left, right) => (
+      activityTime(right) - activityTime(left)
+      || left.name.localeCompare(right.name)
+      || left.id.localeCompare(right.id)
+    ));
+}
+
+export interface CompareSelectionSeed {
+  selectedIds: string[];
+  omittedCount: number;
+}
+
+export function buildCompareSelectionSeed(
+  initialSelectedIds: readonly string[],
+  sessions: readonly CompareSessionSummary[],
+): CompareSelectionSeed {
+  const requested = new Set(initialSelectedIds);
+  const eligible = sortReadyCompareSessions(sessions.filter(({ id }) => requested.has(id)));
+  return {
+    selectedIds: eligible.slice(0, MAX_COMPARE_SESSIONS).map(({ id }) => id),
+    omittedCount: Math.max(0, eligible.length - MAX_COMPARE_SESSIONS),
+  };
+}
 
 export interface CompareColumn {
   id: string;
@@ -29,6 +74,7 @@ export interface CompareColumn {
   net: number;
   cPerMap: number;        // net per map
   divPerMap: number;      // net per map in divines (PRIMARY metric)
+  pace: TimeEstimate | null; // optional capture-derived estimate
   neutralization: number; // double-count correction applied to this session (0 if none)
   hasReturn: boolean;
 }
@@ -71,6 +117,7 @@ export function buildCompareColumn(session: SavedSession): CompareColumn {
     net: p.net,
     cPerMap: p.cPerMap,
     divPerMap: p.divPerMap,
+    pace: computeTimeEstimate(session.maps),
     neutralization,
     hasReturn: p.hasReturn,
   };
@@ -81,8 +128,8 @@ export function buildCompareColumn(session: SavedSession): CompareColumn {
  * winner highlighting. `pick` returns null for ineligible columns (e.g. loot
  * gain for a session with no return CSV); those are excluded.
  *
- * Highlights the FULL set achieving the max, so if two of three tie for best
- * above a worse third, BOTH are highlighted. Returns an EMPTY set when a
+ * Highlights the FULL set achieving the max, so if multiple columns tie for
+ * best above a worse column, every winner is highlighted. Returns an EMPTY set when a
  * highlight would carry no signal: fewer than two eligible columns, or every
  * eligible column ties (nothing to distinguish).
  */

@@ -1,0 +1,41 @@
+.session-compare-results-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding-bottom: 4px;
+}
+
+.session-compare-table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: fixed;
+}
+
+.session-compare-metric-cell {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: 148px;
+  min-width: 148px;
+  max-width: 148px;
+  white-space: nowrap;
+  background: var(--mantine-color-body);
+  border-inline-end: 1px solid var(--mantine-color-dark-4);
+}
+
+.session-compare-corner-cell {
+  z-index: 3;
+}
+
+.session-compare-value-cell {
+  width: 156px;
+  min-width: 156px;
+  max-width: 156px;
+}
+
+.session-compare-winner {
+  background: var(--mantine-color-blue-light);
+}
+
+.session-compare-section-cell {
+  padding-top: 8px;
+}

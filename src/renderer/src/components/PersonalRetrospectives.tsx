@@ -107,7 +107,7 @@ export const PersonalRetrospectives = ({ onLoadSession }: Props) => {
   };
 
   const openLeagueCompare = (ids: string[]) => {
-    setCompareIds(ids.slice(0, 3));
+    setCompareIds(ids);
     openCompare();
   };
 

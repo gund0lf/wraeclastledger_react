@@ -6,12 +6,20 @@
  *   - per-column parity with computeProfit/computeMultiplier,
  *   - the averaging + all-in cost/map,
  *   - the empty-session (0 maps) divide-by-zero guards,
- *   - bestIndex winner selection (tie -> -1, null eligibility skipped).
+ *   - best-value winner selection,
+ *   - the shared six-session activity-ordering and seed-disclosure policy.
  */
 import { describe, it, expect } from 'vitest';
-import { SessionSettings, LootItem, MapData, SavedSession } from '../types';
+import type { SessionSettings, LootItem, MapData, SavedSession } from '../types';
 import { computeProfit, computeMultiplier } from './profit';
-import { buildCompareColumn, bestIndices, CompareColumn } from './sessionCompare';
+import {
+  MAX_COMPARE_SESSIONS,
+  buildCompareColumn,
+  bestIndices,
+  buildCompareSelectionSeed,
+  sortReadyCompareSessions,
+  type CompareColumn,
+} from './sessionCompare';
 
 /* ------------------------------------------------------------------ */
 /* Fixture builders                                                    */
@@ -147,6 +155,62 @@ describe('buildCompareColumn', () => {
     // and matches the engine when the same correction is passed
     const p = computeProfit({ settings, mapCount: 2, lootItems: base.lootItems, baselineTotal: 1000, investmentNeutralization: 500 });
     expect(withFix.net).toBeCloseTo(p.net);
+  });
+
+  it('includes Pace only when capture timestamps form a valid estimate', () => {
+    const start = Date.parse('2026-07-01T00:00:00.000Z');
+    const timed = buildCompareColumn(mkSession({
+      maps: Array.from({ length: 5 }, (_, index) => mkMap({
+        parsedAt: start + index * 3 * 60_000,
+      })),
+    }));
+    const untimed = buildCompareColumn(mkSession({ maps: [mkMap(), mkMap()] }));
+
+    expect(timed.pace?.mapsPerHour).toBeCloseTo(20);
+    expect(timed.pace?.activeMs).toBe(12 * 60_000);
+    expect(untimed.pace).toBeNull();
+  });
+});
+
+describe('comparison selection policy', () => {
+  const summary = (
+    id: string,
+    updatedAt: string,
+    status: 'ready' | 'damaged' | 'unsupported' = 'ready',
+  ) => ({
+    id,
+    name: `Session ${id}`,
+    createdAt: '2026-07-01T00:00:00.000Z',
+    updatedAt,
+    status,
+  });
+
+  it('uses one six-session bound and reports every omitted seed', () => {
+    const sessions = Array.from({ length: 8 }, (_, index) => summary(
+      `s${index + 1}`,
+      `2026-07-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`,
+    ));
+    const seed = buildCompareSelectionSeed(sessions.map(({ id }) => id), sessions);
+
+    expect(MAX_COMPARE_SESSIONS).toBe(6);
+    expect(seed.selectedIds).toEqual(['s8', 's7', 's6', 's5', 's4', 's3']);
+    expect(seed.omittedCount).toBe(2);
+  });
+
+  it('orders ready sessions by repository activity and excludes unavailable entries', () => {
+    const sessions = [
+      summary('older', '2026-07-02T00:00:00.000Z'),
+      summary('damaged', '2026-07-05T00:00:00.000Z', 'damaged'),
+      summary('newer', '2026-07-04T00:00:00.000Z'),
+      summary('fallback', 'invalid'),
+    ];
+
+    expect(sortReadyCompareSessions(sessions).map(({ id }) => id))
+      .toEqual(['newer', 'older', 'fallback']);
+    expect(buildCompareSelectionSeed(
+      ['damaged', 'older', 'older', 'newer'],
+      sessions,
+    )).toEqual({ selectedIds: ['newer', 'older'], omittedCount: 0 });
   });
 });
 
