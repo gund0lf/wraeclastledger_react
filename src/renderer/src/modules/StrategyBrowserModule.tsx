@@ -702,12 +702,13 @@ export const StrategyBrowserModule = () => {
           </Group>
         </Paper>
 
-        <div ref={strategyViewportRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 6, border: `1px solid ${COLOR.border}`, borderRadius: 6 }}>
+        <div ref={strategyViewportRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 6px 6px', border: `1px solid ${COLOR.border}`, borderRadius: 6, position: 'relative', isolation: 'isolate' }}>
         {!expandedStrategyId && <div style={{
           display: 'grid', gridTemplateColumns: browserGridTemplate,
           columnGap: BROWSER_ROW_GAP, alignItems: 'center', marginBottom: 3,
           padding: `2px ${BROWSER_ROW_PAD_X}px`, position: 'sticky', top: 0,
-          zIndex: 2, background: 'var(--mantine-color-dark-6)', borderBottom: `1px solid ${COLOR.border}`,
+          zIndex: 10, background: COLOR.surfaceSectionContent,
+          borderBottom: `1px solid ${COLOR.border}`, boxShadow: `0 2px 0 ${COLOR.bgDeep}`,
         }}>
           <div style={{ width: browserCols.chevron, flexShrink: 0 }} />
           <Text size="xs" c="dimmed" style={{ width: browserCols.author, flexShrink: 0, fontSize: FONT.small }}>Author</Text>

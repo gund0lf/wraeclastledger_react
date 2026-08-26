@@ -453,7 +453,7 @@ export const StrategyCard = ({
       background: 'var(--mantine-color-dark-6)',
       border: `1px solid ${score <= -3 ? COLOR.loss : isOwn ? COLOR.surfaceInfoBorder : COLOR.border}`,
       boxShadow: open ? `0 5px 16px ${COLOR.bgDeep}` : undefined,
-      borderRadius: 8, overflow: 'hidden', position: 'relative',
+      borderRadius: 8, overflow: 'hidden', position: 'relative', zIndex: 0,
     }}>
       {isOwn && <div aria-hidden style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 3, background: COLOR.info }} />}
       <div onClick={() => setOpen(!open)} style={{

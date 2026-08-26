@@ -10,6 +10,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.86',
+    date: '2026-08-26',
+    changes: [
+      'Strategy Browser hotfix: the sticky sortable header now sits flush against its scroll boundary so rows cannot show through above it, expanded cards retain the approved Layout 9 triptych with responsive tags centered beneath the strategy name, and each historical Evidence run uses the same compact loot-category grid as the pooled breakdown.',
+      'Layout 9 fidelity audit: restored the lab-approved responsive setup grid, adaptive scarab layout and row alignment, plus the exact refined-native contrast and shadows that were weakened while the disposable comparison controls were removed.',
+    ],
+  },
+  {
     version: '1.0.85',
     date: '2026-08-26',
     changes: [
