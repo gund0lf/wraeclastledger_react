@@ -43,6 +43,7 @@ import {
 } from '../../../shared/sessionRepositoryIpc';
 import { confirmedLeagueSync } from '../utils/league';
 import { deriveShareTags } from '../utils/shareTags';
+import './SessionManagerModule.css';
 
 const TILE_STYLES = { inner: { width: '100%' }, label: { flex: 1, textAlign: 'center' as const } };
 const RECOVERY_LIST_SCROLL_PROPS = {
@@ -686,6 +687,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
         radius="md"
         withBorder={!embedded}
         h={embedded ? 'auto' : '100%'}
+        className="session-manager-card session-manager-refined"
         style={{ background: embedded ? 'transparent' : undefined, overflow: embedded ? 'visible' : 'auto' }}
       >
         <Stack gap={isMaximized ? 10 : 6}>
@@ -743,139 +745,146 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
               </Stack>
             </Alert>
           )}
-          <Group justify="space-between" gap={6} wrap="nowrap">
-            {/* Storage indicator lives left; the folder is the complete
-                user-authored ledger-data backup unit. */}
-            <Group gap={4} wrap="nowrap">
-              <Tooltip label="Complete ledger-data backup size" position="right" withArrow>
-                <Text size={isMaximized ? 'sm' : 'xs'} c="dimmed" style={{ cursor: 'default' }}>{storageMB} MB</Text>
-              </Tooltip>
-              <Tooltip label="Open complete data folder" withArrow>
-                <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Open data folder"
-                  onClick={() => { void runOperation(openRepositoryFolder); }}>
-                  <IconFolderOpen size={12} />
-                </ActionIcon>
+          <div className="session-manager-overview">
+            <Group justify="space-between" gap={6} wrap="nowrap" className="session-manager-status-row">
+              {/* Storage indicator lives left; the folder is the complete
+                  user-authored ledger-data backup unit. */}
+              <Group gap={4} wrap="nowrap">
+                <Tooltip label="Complete ledger-data backup size" position="right" withArrow>
+                  <Text size={isMaximized ? 'sm' : 'xs'} c="dimmed" style={{ cursor: 'default' }}>{storageMB} MB</Text>
+                </Tooltip>
+                <Tooltip label="Open complete data folder" withArrow>
+                  <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Open data folder"
+                    onClick={() => { void runOperation(openRepositoryFolder); }}>
+                    <IconFolderOpen size={12} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
+              <Tooltip label={saveError ?? 'The latest acknowledged filesystem save'} position="left" withArrow>
+                <Badge
+                  color={saveStatus === 'failed' ? 'red' : saveStatus === 'saving' ? 'yellow' : 'green'}
+                  variant="dot"
+                  size={isMaximized ? 'md' : 'sm'}
+                >
+                  {saveStatus === 'failed' ? 'Save failed' : saveStatus === 'saving' ? 'Saving' : 'Auto-saved'}
+                </Badge>
               </Tooltip>
             </Group>
-            <Tooltip label={saveError ?? 'The latest acknowledged filesystem save'} position="left" withArrow>
-              <Badge
-                color={saveStatus === 'failed' ? 'red' : saveStatus === 'saving' ? 'yellow' : 'green'}
-                variant="dot"
-                size={isMaximized ? 'md' : 'sm'}
-              >
-                {saveStatus === 'failed' ? 'Save failed' : saveStatus === 'saving' ? 'Saving' : 'Auto-saved'}
-              </Badge>
-            </Tooltip>
-          </Group>
-          {saveStatus === 'failed' && (
-            <Alert color="red" variant="light" p="xs">
-              <Group justify="space-between" wrap="nowrap">
-                <Text size="xs" lineClamp={2}>{saveError ?? 'The latest changes were not saved.'}</Text>
-                <Button size="compact-xs" variant="default" leftSection={<IconRefresh size={11} />}
-                  onClick={() => { void runOperation(retryRepositorySave); }}>Retry</Button>
-              </Group>
-            </Alert>
-          )}
-          <Group gap={4} wrap="nowrap" align="center">
-            <Select
-              style={{ flex: 1, minWidth: 0 }}
-              data={[
-                { value: '__new__', label: '— New Session —' },
-                ...sessionEntries.map((s) => ({
-                  value: s.id,
-                  label: `${s.name}${s.status === 'ready' ? '' : ` — ${s.status}`} (${sessionMapCount(s)} maps, ${new Date(s.createdAt).toLocaleDateString()})`,
-                  disabled: s.status !== 'ready',
-                })),
-              ]}
-              value={activeSessionId ?? '__new__'}
-              onChange={handleSessionSelect}
-              onOptionSubmit={(value) => {
-                const intent = resolveReselectedNewSessionIntent(
-                  value,
-                  activeSessionId ?? '__new__',
-                );
-                if (intent) {
-                  setSessionSelectOpen(false);
-                  requestSwitch(intent);
-                }
-              }}
-              allowDeselect={false}
-              dropdownOpened={sessionSelectOpen}
-              onDropdownOpen={() => setSessionSelectOpen(true)}
-              onDropdownClose={() => setSessionSelectOpen(false)}
-              searchable size={isMaximized ? 'md' : 'sm'}
-            />
-            {!isUnsaved && (
-              <>
-                <Tooltip label="Rename session" withArrow>
-                  <ActionIcon variant="default" size="lg" aria-label="Rename session"
-                    onClick={() => { setNameInput(activeSessionName ?? ''); openRename(); }}>
-                    <IconPencil size={14} />
-                  </ActionIcon>
-                </Tooltip>
-                <Tooltip label="Move session to Recently Deleted" withArrow>
-                  <ActionIcon variant="default" size="lg" aria-label="Move session to Recently Deleted"
-                    onMouseEnter={() => setHoveredTrashTop(true)}
-                    onMouseLeave={() => setHoveredTrashTop(false)}
-                    style={hoveredTrashTop ? { borderColor: 'var(--mantine-color-red-7)', color: 'var(--mantine-color-red-4)' } : undefined}
-                    onClick={() => { setHoveredTrashTop(false); if (activeSessionId) setDeleteTarget(activeSessionId); }}>
-                    <IconTrash size={14} />
-                  </ActionIcon>
-                </Tooltip>
-              </>
+            {saveStatus === 'failed' && (
+              <Alert color="red" variant="light" p="xs">
+                <Group justify="space-between" wrap="nowrap">
+                  <Text size="xs" lineClamp={2}>{saveError ?? 'The latest changes were not saved.'}</Text>
+                  <Button size="compact-xs" variant="default" leftSection={<IconRefresh size={11} />}
+                    onClick={() => { void runOperation(retryRepositorySave); }}>Retry</Button>
+                </Group>
+              </Alert>
             )}
-          </Group>
-          <SimpleGrid cols={2} spacing={isMaximized ? 8 : 4}>
-            <Button size={isMaximized ? 'sm' : 'xs'} variant={savedFlash ? 'light' : 'default'} color={savedFlash ? 'green' : undefined}
-              leftSection={savedFlash ? <IconCheck size={12} /> : <IconDeviceFloppy size={12} />}
-              rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
-              styles={TILE_STYLES}
-              onClick={() => { setNameInput(''); openSave(); }}>
-              {savedFlash ? 'Named' : isUnsaved ? (compactPanel ? 'Name' : 'Name session') : (compactPanel ? 'Duplicate' : 'Duplicate as new')}
-            </Button>
-            <Tooltip label={selectableSessionEntries.length < 2 ? 'Save at least 2 sessions to compare' : 'Compare 2-3 saved sessions side by side'} withArrow>
-              <span style={{ display: 'flex', flex: 1 }}>
-                <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
-                  leftSection={<IconArrowsLeftRight size={12} />}
-                  rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
-                  styles={TILE_STYLES}
-                  disabled={selectableSessionEntries.length < 2}
-                  onClick={openCompare} style={{ flex: 1 }}>
-                  Compare
-                </Button>
-              </span>
-            </Tooltip>
-          </SimpleGrid>
-          <SimpleGrid cols={2} spacing={isMaximized ? 8 : 4}>
-            <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
-              leftSection={<IconBrandDiscord size={12} />}
-              rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
-              styles={TILE_STYLES}
-              onClick={() => triggerStrategyAction('import')}>
-              {compactPanel ? 'Import' : 'Import Strategy'}
-            </Button>
-            <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
-              leftSection={<IconShare2 size={12} />}
-              rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
-              styles={TILE_STYLES}
-              onClick={handleOpenShare}>
-              {compactPanel ? 'Share' : 'Share Strategy'}
-            </Button>
-          </SimpleGrid>
-          <SimpleGrid cols={2} spacing={isMaximized ? 8 : 4}>
-            <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
-              leftSection={<IconHistory size={12} />} styles={TILE_STYLES}
-              onClick={showVersionHistory}>
-              {compactPanel ? 'Versions' : 'Version history'}
-            </Button>
-            <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
-              leftSection={<IconTrash size={12} />} styles={TILE_STYLES}
-              onClick={showRecentlyDeleted}>
-              {compactPanel ? 'Deleted' : 'Recently Deleted'}
-            </Button>
-          </SimpleGrid>
+            <Group gap={4} wrap="nowrap" align="center">
+              <Select
+                style={{ flex: 1, minWidth: 0 }}
+                data={[
+                  { value: '__new__', label: '— New Session —' },
+                  ...sessionEntries.map((s) => ({
+                    value: s.id,
+                    label: `${s.name}${s.status === 'ready' ? '' : ` — ${s.status}`} (${sessionMapCount(s)} maps, ${new Date(s.createdAt).toLocaleDateString()})`,
+                    disabled: s.status !== 'ready',
+                  })),
+                ]}
+                value={activeSessionId ?? '__new__'}
+                onChange={handleSessionSelect}
+                onOptionSubmit={(value) => {
+                  const intent = resolveReselectedNewSessionIntent(
+                    value,
+                    activeSessionId ?? '__new__',
+                  );
+                  if (intent) {
+                    setSessionSelectOpen(false);
+                    requestSwitch(intent);
+                  }
+                }}
+                allowDeselect={false}
+                dropdownOpened={sessionSelectOpen}
+                onDropdownOpen={() => setSessionSelectOpen(true)}
+                onDropdownClose={() => setSessionSelectOpen(false)}
+                searchable size={isMaximized ? 'md' : 'sm'}
+              />
+              {!isUnsaved && (
+                <>
+                  <Tooltip label="Rename session" withArrow>
+                    <ActionIcon variant="default" size="lg" aria-label="Rename session"
+                      onClick={() => { setNameInput(activeSessionName ?? ''); openRename(); }}>
+                      <IconPencil size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                  <Tooltip label="Move session to Recently Deleted" withArrow>
+                    <ActionIcon variant="default" size="lg" aria-label="Move session to Recently Deleted"
+                      onMouseEnter={() => setHoveredTrashTop(true)}
+                      onMouseLeave={() => setHoveredTrashTop(false)}
+                      style={hoveredTrashTop ? { borderColor: 'var(--mantine-color-red-7)', color: 'var(--mantine-color-red-4)' } : undefined}
+                      onClick={() => { setHoveredTrashTop(false); if (activeSessionId) setDeleteTarget(activeSessionId); }}>
+                      <IconTrash size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                </>
+              )}
+            </Group>
+          </div>
+          <Stack gap={4} className="session-manager-actions">
+            <SimpleGrid cols={2} spacing={isMaximized ? 8 : 4}>
+              <Button size={isMaximized ? 'sm' : 'xs'} variant={savedFlash ? 'light' : 'default'} color={savedFlash ? 'green' : undefined}
+                leftSection={savedFlash ? <IconCheck size={12} /> : <IconDeviceFloppy size={12} />}
+                rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
+                styles={TILE_STYLES}
+                onClick={() => { setNameInput(''); openSave(); }}>
+                {savedFlash ? 'Named' : isUnsaved ? (compactPanel ? 'Name' : 'Name session') : (compactPanel ? 'Duplicate' : 'Duplicate as new')}
+              </Button>
+              <Tooltip label={selectableSessionEntries.length < 2 ? 'Save at least 2 sessions to compare' : 'Compare 2-3 saved sessions side by side'} withArrow>
+                <span style={{ display: 'flex', flex: 1 }}>
+                  <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
+                    leftSection={<IconArrowsLeftRight size={12} />}
+                    rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
+                    styles={TILE_STYLES}
+                    disabled={selectableSessionEntries.length < 2}
+                    onClick={openCompare} style={{ flex: 1 }}>
+                    Compare
+                  </Button>
+                </span>
+              </Tooltip>
+            </SimpleGrid>
+            <SimpleGrid cols={2} spacing={isMaximized ? 8 : 4}>
+              <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
+                leftSection={<IconBrandDiscord size={12} />}
+                rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
+                styles={TILE_STYLES}
+                onClick={() => triggerStrategyAction('import')}>
+                {compactPanel ? 'Import' : 'Import Strategy'}
+              </Button>
+              <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
+                leftSection={<IconShare2 size={12} />}
+                rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
+                styles={TILE_STYLES}
+                onClick={handleOpenShare}>
+                {compactPanel ? 'Share' : 'Share Strategy'}
+              </Button>
+            </SimpleGrid>
+            <SimpleGrid cols={2} spacing={isMaximized ? 8 : 4}>
+              <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
+                leftSection={<IconHistory size={12} />} styles={TILE_STYLES}
+                onClick={showVersionHistory}>
+                {compactPanel ? 'Versions' : 'Version history'}
+              </Button>
+              <Button size={isMaximized ? 'sm' : 'xs'} variant="default"
+                leftSection={<IconTrash size={12} />} styles={TILE_STYLES}
+                onClick={showRecentlyDeleted}>
+                {compactPanel ? 'Deleted' : 'Recently Deleted'}
+              </Button>
+            </SimpleGrid>
+          </Stack>
           {sessionEntries.length > 0 && (
             <CollapsibleSection variant="group" defaultOpen={false} title="Saved sessions"
+              className="session-manager-saved-section"
+              headerClassName="session-manager-saved-section-header"
+              contentClassName="session-manager-saved-section-content"
               right={<Badge size={isMaximized ? 'sm' : 'xs'} variant="light" color="gray">{sessionEntries.length}</Badge>}>
 
               {/* Bulk action bar — ALWAYS mounted, revealed via visibility so
@@ -930,13 +939,11 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
                   const isSelected = selected.has(s.id);
                   return (
                     <Group key={s.id} gap={6} wrap="nowrap"
+                      className={`session-manager-saved-row${isSelected ? ' is-selected' : ''}${isHovered ? ' is-hovered' : ''}`}
                       onMouseEnter={() => setHoveredRowId(s.id)}
                       onMouseLeave={() => setHoveredRowId(null)}
                       style={{
                         padding: isMaximized ? '7px 8px' : '3px 4px', borderRadius: 4,
-                        background: isSelected
-                          ? 'rgba(74,158,255,0.07)'
-                          : isHovered ? 'rgba(255,255,255,0.04)' : undefined,
                         transition: 'background 120ms ease',
                       }}>
                       <Checkbox size={isMaximized ? 'sm' : 'xs'} checked={isSelected}

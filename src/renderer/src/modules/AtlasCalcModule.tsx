@@ -8,6 +8,7 @@ import { inferMapType } from '../utils/mapTypeDetection';
 import { confirmedLeagueSync } from '../utils/league';
 import { COLOR, FONT } from '../utils/uiTokens';
 import { MAP_DEVICE_SLOT_COUNT, MULTIPLYING_EFFECT_PER_FRAGMENT } from '../../../shared/mapDevice';
+import './AtlasCalcModule.css';
 
 type ConfigStep = 'mounting' | 'fragments' | 'nodes' | 'atlasBonus';
 
@@ -18,12 +19,12 @@ const SectionBar = ({ title, meta, open, onClick }: {
   onClick: () => void;
 }) => (
   <UnstyledButton
+    className="atlas-calc-section-bar"
+    data-open={open}
     onClick={onClick}
     aria-expanded={open}
     style={{
       alignItems: 'center',
-      background: COLOR.surfaceSectionBg,
-      border: `1px solid ${COLOR.border}`,
       borderRadius: open ? '7px 7px 0 0' : 7,
       display: 'flex',
       gap: 6,
@@ -54,11 +55,8 @@ const SectionBar = ({ title, meta, open, onClick }: {
 );
 
 const SectionContent = ({ children }: { children: React.ReactNode }) => (
-  <div style={{
-    background: COLOR.surfaceSectionContent,
-    border: `1px solid ${COLOR.border}`,
+  <div className="atlas-calc-section-content" style={{
     borderRadius: '0 0 7px 7px',
-    borderTop: 'none',
     padding: 8,
   }}>
     {children}
@@ -375,21 +373,21 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
       radius="md"
       withBorder={!embedded}
       h={embedded ? 'auto' : '100%'}
+      className="atlas-calc-card atlas-calc-refined"
       style={{ background: embedded ? 'transparent' : undefined, overflow: embedded ? 'visible' : 'auto' }}
     >
       <Stack gap={8}>
         {/* Toned down 2026-07-20 (Sad): the info-blue surface made the hero
             dominate the whole panel; neutral section surface + the softer
             accent token keep it the headline without shouting. */}
-        <div style={{
-          background: COLOR.surfaceSectionBg,
-          border: `1px solid ${COLOR.border}`,
+        <div className={`atlas-calc-hero${presentationConfigured ? ' is-configured' : ''}`} style={{
           borderRadius: 8,
           padding: compactPanel ? '7px 8px' : '8px 10px',
           textAlign: 'center',
         }}>
           <Text
             fw={700}
+            className="atlas-calc-hero-value"
             style={{
               color: presentationConfigured ? COLOR.accent : COLOR.textMuted,
               fontSize: compactPanel ? FONT.xl : 24,

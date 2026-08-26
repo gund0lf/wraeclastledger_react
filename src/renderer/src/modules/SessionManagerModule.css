@@ -1,0 +1,64 @@
+.session-manager-card {
+  container-type: inline-size;
+}
+
+.session-manager-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px;
+  background: var(--setup-surface-sunken, rgba(0, 0, 0, 0.14));
+  border: 1px solid var(--setup-border-strong, rgba(255, 255, 255, 0.14));
+  border-radius: 6px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.018),
+    inset 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.session-manager-status-row {
+  min-height: 23px;
+  padding-inline: 2px;
+}
+
+.session-manager-actions {
+  padding-inline: 1px;
+}
+
+.session-manager-saved-section {
+  overflow: hidden;
+  padding-inline: 7px;
+  background: var(--setup-surface, rgba(255, 255, 255, 0.018));
+  border: 1px solid var(--setup-border, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+}
+
+.session-manager-saved-section[data-open='true'] {
+  background: var(--setup-surface-raised, rgba(255, 255, 255, 0.032));
+  border-color: var(--setup-border-strong, rgba(255, 255, 255, 0.14));
+}
+
+.session-manager-saved-section-header {
+  min-height: 30px;
+}
+
+.session-manager-saved-section[data-open='true'] .session-manager-saved-section-header {
+  border-color: var(--setup-divider, rgba(255, 255, 255, 0.07)) !important;
+}
+
+.session-manager-saved-section-content {
+  padding-inline: 1px;
+}
+
+.session-manager-saved-row {
+  border: 1px solid transparent;
+}
+
+.session-manager-saved-row.is-hovered {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--setup-border, rgba(255, 255, 255, 0.08));
+}
+
+.session-manager-saved-row.is-selected {
+  background: rgba(74, 158, 255, 0.07);
+  border-color: rgba(74, 158, 255, 0.18);
+}

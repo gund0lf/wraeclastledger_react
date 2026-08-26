@@ -18,26 +18,50 @@ import { KNOWN_LEAGUES, confirmedLeagueSync, fetchSelectableLeagues, currentLeag
 import { isCrossLeagueSession, isLiveSessionLeagueMismatch } from '../utils/historicalSession';
 import { chiselItemName, deliOrbItemName } from '../utils/itemIcons';
 import { PoeItemIcon } from '../components/ui/PoeItemIcon';
+import { SectionLabel } from '../components/ui/SectionLabel';
 import { IconTrash, IconDeviceFloppy, IconChevronDown, IconRefresh, IconX, IconSettings, IconLock } from '@tabler/icons-react';
 import { CollapsibleSection } from '../components/ui/CollapsibleSection';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { MAP_DEVICE_SLOT_COUNT } from '../../../shared/mapDevice';
 import { usePanelMaximized } from '../layout/panelLayoutContext';
+import './InvestmentModule.css';
 
 const AdvSection = ({ title, filled, children }: {
   title: string; filled: boolean; children: React.ReactNode;
 }) => (
-  <CollapsibleSection title={title} variant="group" filled={filled}>
+  <CollapsibleSection
+    title={title}
+    variant="group"
+    filled={filled}
+    className="investment-advanced-section"
+    headerClassName="investment-advanced-section-header"
+    contentClassName="investment-advanced-section-content"
+  >
     {children}
   </CollapsibleSection>
 );
 
+const InvestmentMetric = ({
+  label,
+  children,
+}: {
+  label: React.ReactNode;
+  children: React.ReactNode;
+}) => (
+  <div className="investment-summary-tile">
+    <SectionLabel className="investment-summary-label">{label}</SectionLabel>
+    {children}
+  </div>
+);
+
 const PriceInput = ({
   label, description, value, onChange, divinePrice, placeholder = '0', style, size = 'xs',
+  previewWidth = 52, compactSpacing = false,
 }: {
   label?: string; description?: string; value: number;
   onChange: (v: number) => void; divinePrice: number;
   placeholder?: string; style?: React.CSSProperties; size?: 'xs' | 'sm';
+  previewWidth?: number; compactSpacing?: boolean;
 }) => {
   const [raw, setRaw]         = useState(value > 0 ? String(value) : '');
   const [editing, setEditing] = useState(false);
@@ -58,7 +82,11 @@ const PriceInput = ({
       onChange={(e) => { setEditing(true); setRaw(e.currentTarget.value); }}
       onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && commit()}
       rightSection={divPreview ? <Text size="xs" c="dimmed">{divPreview}</Text> : undefined}
-      rightSectionWidth={divPreview ? 52 : 0}
+      rightSectionWidth={divPreview ? previewWidth : 0}
+      classNames={compactSpacing ? {
+        input: 'investment-price-input-compact-input',
+        section: 'investment-price-input-compact-section',
+      } : undefined}
       style={style} size={size} />
   );
 };
@@ -480,9 +508,10 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
         radius="md"
         withBorder={!embedded}
         h={embedded ? 'auto' : '100%'}
+        className={`investment-card investment-refined${isMaximized ? ' is-maximized' : ''}`}
         style={{ background: embedded ? 'transparent' : undefined, overflow: embedded ? 'visible' : 'auto' }}
       >
-        <Group justify="space-between" mb={isMaximized ? 12 : 8} wrap="nowrap" gap={compactPanel ? 4 : 'md'}>
+        <div className="investment-context-row">
           {/* Panel title removed (redundant with the tab label — same call as the
               Sessions panel). The header slot hosts the league override instead
               (rollover D4/D5): '' = auto-detect via poe.ninja probe; anything
@@ -501,14 +530,15 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
                 ? 'Saved-session league provenance is fixed and cannot be reassigned here'
                 : 'Choose the league once to repair this saved session\'s missing provenance')
               : 'League — leave on Auto unless detection picks the wrong league'}
-            style={{ width: compactPanel ? undefined : (isMaximized ? 220 : 170), minWidth: 0, flex: compactPanel ? 1 : undefined }}
+            style={{ minWidth: 0, width: '100%' }}
           />
-          <Group gap={4} style={{ marginLeft: 'auto' }}>
-            <Tooltip label="All-in cost per map: total investment (base map + chisel + scarabs incl. one-time + session costs) divided by parsed maps. Equals Dashboard Investment / maps.">
-              <Badge size={isMaximized ? 'md' : 'sm'} color="gray" variant="outline" style={{ fontVariantNumeric: 'tabular-nums' }}>{totalPerMapFull.toFixed(1)}c/map</Badge>
-            </Tooltip>
-          </Group>
-        </Group>
+          <Tooltip label="All-in cost per map: total investment (base map + chisel + scarabs incl. one-time + session costs) divided by parsed maps. Equals Dashboard Investment / maps." withArrow multiline w={280}>
+            <Badge size={isMaximized ? 'md' : 'sm'} color="gray" variant="outline"
+              className="investment-cost-per-map">
+              {totalPerMapFull.toFixed(1)}c/map
+            </Badge>
+          </Tooltip>
+        </div>
 
         <Stack gap={isMaximized ? 10 : 6}>
           {liveLeagueMismatch && (
@@ -519,30 +549,24 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
               </Text>
             </Alert>
           )}
-          {/* ── Costs box ─────────────────────────────────── */}
-          <div style={{
-            background: 'rgba(255,255,255,0.03)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 6, padding: compactPanel ? '6px 8px' : (isMaximized ? '14px 16px' : '10px 12px'),
-          }}>
-            {/* Two equal columns — label on top, control below, all centered */}
-            <Group grow gap={compactPanel ? 6 : 'md'} mb={compactPanel ? 6 : (isMaximized ? 12 : 8)} align="flex-start">
-              {/* Divine Price */}
-              <Stack gap={4} align="center">
-                {crossLeague ? (
+          <div className="investment-overview">
+            <div className="investment-summary-grid">
+              <InvestmentMetric label={
+                crossLeague ? (
                   <Tooltip label={historicalPriceTooltip} withArrow multiline w={280}>
-                    <Text size={isMaximized ? 'sm' : 'xs'} c="yellow" style={{ cursor: 'help' }}>{compactPanel ? compactHistoricalDivinePriceLabel : historicalDivinePriceLabel}</Text>
+                    <span className="investment-historical-price-label">
+                      {compactPanel ? compactHistoricalDivinePriceLabel : historicalDivinePriceLabel}
+                    </span>
                   </Tooltip>
                 ) : (
-                  <Text size={isMaximized ? 'sm' : 'xs'} c="dimmed">Divine Price</Text>
-                )}
-                {/* Input + icon on same row, input fills available space */}
-                {/* session-16: refresh lives INSIDE the price input (it belongs to
-                    that value; also removes the uneven spacing vs Session costs) */}
+                  'Divine price'
+                )
+              }>
                 <NumberInput
                   value={settings.divinePrice}
                   onChange={(v) => setDivinePriceManual(Number(v))}
-                  suffix="c" size={isMaximized ? 'md' : 'sm'} hideControls style={{ width: '100%' }}
+                  suffix="c" size={isMaximized ? 'md' : 'sm'} hideControls
+                  className="investment-divine-input"
                   styles={{ input: { textAlign: 'center', fontWeight: 700, fontSize: FONT.stat } }}
                   rightSection={
                     <ActionIcon size="sm" variant="subtle" color="gray" loading={fetchingPrice}
@@ -553,36 +577,20 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
                   }
                   rightSectionPointerEvents="all"
                 />
-              </Stack>
+              </InvestmentMetric>
 
-              {/* Session costs — live derived total of Advanced Costs (WP1) */}
-              <Stack gap={4} align="center">
-                <Text size={isMaximized ? 'sm' : 'xs'} c="dimmed">Session costs</Text>
-                {/* session-16: match the Divine Price input's surface (dark-6/dark-4)
-                    and drop the orange value — both boxes now read as one family */}
-                <div style={{
-                  height: isMaximized ? 42 : 34, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: 'var(--mantine-color-dark-6)', borderRadius: 4,
-                  border: '1px solid var(--mantine-color-dark-4)',
-                }}>
-                  <Text fw={700} style={{
-                    fontSize: FONT.stat, fontVariantNumeric: 'tabular-nums',
+              <InvestmentMetric label="Session costs">
+                <div className="investment-summary-static-value">
+                  <Text fw={700} className="investment-summary-value" style={{
                     color: rollingSessionTotal > 0 ? COLOR.text : COLOR.dim,
                   }}>
                     {rollingSessionTotal > 0 ? fcSep(rollingSessionTotal) : '—'}
                   </Text>
                 </div>
-              </Stack>
-            </Group>
+              </InvestmentMetric>
+            </div>
 
-            {/* session-16: the reset lives IN the box it resets, beside the
-                button that configures those costs (Sad asked for in-box; the
-                literal top-right corner would collide with the centered
-                column labels — flag it if this placement doesn't read). */}
-            <Group gap={4} wrap="nowrap">
-              {/* session-17 review: variant="default" — the blue light button
-                  was the odd one out vs the reference language (neutral
-                  surfaces; colour = status/destructive-hover only). */}
+            <Group className="investment-overview-actions" gap={4} wrap="nowrap">
               <Button variant="default" size={isMaximized ? 'sm' : 'xs'} leftSection={<IconSettings size={12} />} onClick={openAdv} style={{ flex: 1 }}>
                 Advanced Costs
               </Button>
@@ -623,9 +631,9 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
             </Group>
           </div>
 
-          {/* Active cost indicators — CENTERED */}
+          {/* Active cost indicators stay grouped with the authored cost context. */}
           {(settings.chiselType || isSplit || deliPerMap > 0 || astrolabeTotal > 0) && (
-            <Group gap={4} wrap="wrap" justify="center">
+            <Group className="investment-cost-badges" gap={4} wrap="wrap" justify="center">
               {settings.chiselType && (
                 <Badge size="sm" color="yellow" variant="light" style={{ cursor: 'pointer' }} onClick={openAdv}
                   leftSection={<PoeItemIcon name={chiselItemName(settings.chiselType)} size={16} category="chisel" />}>
@@ -659,44 +667,30 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
 
           {/* Gem P&L — separate row, not mixed with investment */}
           {settings.advGemCount > 0 && (
-            <Group gap={4} justify="center">
+            <Group className="investment-cost-badges" gap={4} justify="center">
               <Badge size="sm" color={gemNetPL >= 0 ? 'green' : 'red'} variant="light" style={{ cursor: 'pointer' }} onClick={openAdv}>
                 Gems: {gemNetPL >= 0 ? '+' : ''}{gemNetPL.toFixed(0)}c net ({settings.advGemCount} leveled)
               </Badge>
             </Group>
           )}
 
-          <div style={{
-            alignItems: 'center',
-            display: 'grid',
-            gap: 4,
-            gridTemplateColumns: `minmax(0, 1fr) ${isMaximized ? 120 : 100}px`,
-          }}>
-            <div style={{
-              alignItems: 'center',
-              display: 'grid',
-              gap: 8,
-              gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)',
-            }}>
-              <div style={{ background: COLOR.borderSoft, height: 1 }} />
-              <Group gap={4} wrap="nowrap">
-                <Text size={isMaximized ? 'sm' : 'xs'} c="dimmed">Scarabs</Text>
-                {hasPreservation && (
-                  <Tooltip
-                    label="Horned Scarab of Preservation detected — only Preservation scarabs are counted per-map. All other scarabs are treated as a one-time cost."
-                    withArrow multiline w={240}>
-                    <span
-                      aria-label="Preservation active"
-                      style={{ color: COLOR.profit, cursor: 'help', display: 'inline-flex', alignItems: 'center' }}
-                    >
-                      <IconLock size={10} />
-                    </span>
-                  </Tooltip>
-                )}
-              </Group>
-              <div style={{ background: COLOR.borderSoft, height: 1 }} />
-            </div>
-            <div>
+          <div className="investment-scarab-header">
+            <Group gap={5} wrap="nowrap">
+              <SectionLabel>Map-device scarabs</SectionLabel>
+              {hasPreservation && (
+                <Tooltip
+                  label="Horned Scarab of Preservation detected — only Preservation scarabs are counted per-map. All other scarabs are treated as a one-time cost."
+                  withArrow multiline w={240}>
+                  <span
+                    aria-label="Preservation active"
+                    style={{ color: COLOR.profit, cursor: 'help', display: 'inline-flex', alignItems: 'center' }}
+                  >
+                    <IconLock size={10} />
+                  </span>
+                </Tooltip>
+              )}
+            </Group>
+            <div className="investment-preset-control">
               <Menu shadow="md" width={220} position="bottom-end">
                 <Menu.Target>
                   <Button fullWidth size={isMaximized ? 'sm' : 'xs'} variant="default" rightSection={<IconChevronDown size={10} />}>Presets</Button>
@@ -732,25 +726,28 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
             </div>
           </div>
 
-          {settings.scarabs.map((scarab, i) => (
-            <Group key={i} gap={4} wrap="nowrap">
-              <Autocomplete placeholder={`Scarab ${i + 1}`} value={scarab.name}
-                onChange={(v) => updateScarab(i, 'name', v)}
-                data={scarabOptions} size={isMaximized ? 'sm' : 'xs'} style={{ flex: 1, minWidth: 0 }}
-                leftSection={scarab.name ? <PoeItemIcon name={scarab.name} size={isMaximized ? 18 : 16} category="scarab" /> : undefined}
-                rightSection={scarab.name
-                  ? <ActionIcon size="xs" variant="transparent" c="dimmed"
-                      onMouseDown={(e) => { e.preventDefault(); clearScarab(i); }}>
-                      <IconX size={10} />
-                    </ActionIcon>
-                  : undefined}
-                rightSectionPointerEvents={scarab.name ? 'all' : 'none'}
-              />
-              <PriceInput value={scarab.cost} onChange={(v) => updateScarab(i, 'cost', v)}
-                divinePrice={divinePrice} placeholder="0c" size={isMaximized ? 'sm' : 'xs'}
-                style={{ width: isMaximized ? 120 : 100, flexShrink: 0 }} />
-            </Group>
-          ))}
+          <Stack gap={4} className="investment-scarab-list">
+            {settings.scarabs.map((scarab, i) => (
+              <Group key={i} gap={4} wrap="nowrap" className="investment-scarab-row">
+                <Autocomplete placeholder={`Scarab ${i + 1}`} value={scarab.name}
+                  onChange={(v) => updateScarab(i, 'name', v)}
+                  data={scarabOptions} size={isMaximized ? 'sm' : 'xs'} style={{ flex: 1, minWidth: 0 }}
+                  leftSection={scarab.name ? <PoeItemIcon name={scarab.name} size={isMaximized ? 18 : 16} category="scarab" /> : undefined}
+                  rightSection={scarab.name
+                    ? <ActionIcon size="xs" variant="transparent" c="dimmed"
+                        onMouseDown={(e) => { e.preventDefault(); clearScarab(i); }}>
+                        <IconX size={10} />
+                      </ActionIcon>
+                    : undefined}
+                  rightSectionPointerEvents={scarab.name ? 'all' : 'none'}
+                />
+                <PriceInput value={scarab.cost} onChange={(v) => updateScarab(i, 'cost', v)}
+                  divinePrice={divinePrice} placeholder="0c" size={isMaximized ? 'sm' : 'xs'}
+                  previewWidth={compactPanel ? 38 : 52} compactSpacing={compactPanel}
+                  style={{ width: isMaximized ? 120 : compactPanel ? 68 : 100, flexShrink: 0 }} />
+              </Group>
+            ))}
+          </Stack>
         </Stack>
       </Card>
     </>

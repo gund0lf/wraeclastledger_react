@@ -4,6 +4,7 @@ import {
   migrateDefaultSetupSidebarJson,
   migratePersistedLayout,
   migrateRegexBuilderTabs,
+  removeLegacySetupSidebarMaxSize,
   removeRetiredTabs,
 } from './layoutMigration';
 
@@ -68,6 +69,7 @@ describe('migrateDefaultSetupSidebarJson', () => {
         children: [expect.objectContaining({ component: 'setup', name: 'Setup' })],
       }),
     ]);
+    expect(json.borders?.[0]).not.toHaveProperty('maxSize');
     expect(() => Model.fromJson(json)).not.toThrow();
     expect(migrateDefaultSetupSidebarJson(json)).toBe(false);
   });
@@ -87,6 +89,52 @@ describe('migrateDefaultSetupSidebarJson', () => {
       expect(migrateDefaultSetupSidebarJson(json)).toBe(false);
       expect(json).toEqual(before);
     }
+  });
+});
+
+describe('removeLegacySetupSidebarMaxSize', () => {
+  it('removes the historical 440px ceiling from a Setup border', () => {
+    const model = Model.fromJson({
+      global: {},
+      borders: [{
+        type: 'border',
+        location: 'left',
+        size: 330,
+        minSize: 300,
+        maxSize: 440,
+        selected: 0,
+        children: [tab('Setup', 'setup'), tab('Notes', 'notes')],
+      }],
+      layout: { type: 'row', children: [{ type: 'tabset', children: [tab('Map Log', 'session-log')] }] },
+    } as IJsonModel);
+
+    expect(removeLegacySetupSidebarMaxSize(model)).toBe(true);
+    expect(model.getBorderSet().getBorders()[0].getMaxSize()).toBe(99999);
+    expect(removeLegacySetupSidebarMaxSize(model)).toBe(false);
+  });
+
+  it('preserves custom limits and unrelated borders', () => {
+    const custom = Model.fromJson({
+      global: {},
+      borders: [{
+        type: 'border', location: 'left', size: 330, maxSize: 700, selected: 0,
+        children: [tab('Setup', 'setup')],
+      }],
+      layout: { type: 'row', children: [{ type: 'tabset', children: [tab('Map Log', 'session-log')] }] },
+    } as IJsonModel);
+    const unrelated = Model.fromJson({
+      global: {},
+      borders: [{
+        type: 'border', location: 'left', size: 330, maxSize: 440, selected: 0,
+        children: [tab('Notes', 'notes')],
+      }],
+      layout: { type: 'row', children: [{ type: 'tabset', children: [tab('Map Log', 'session-log')] }] },
+    } as IJsonModel);
+
+    expect(removeLegacySetupSidebarMaxSize(custom)).toBe(false);
+    expect(custom.getBorderSet().getBorders()[0].getMaxSize()).toBe(700);
+    expect(removeLegacySetupSidebarMaxSize(unrelated)).toBe(false);
+    expect(unrelated.getBorderSet().getBorders()[0].getMaxSize()).toBe(440);
   });
 });
 

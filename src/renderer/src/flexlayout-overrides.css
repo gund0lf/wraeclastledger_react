@@ -35,6 +35,36 @@
 
 .flexlayout__tabset--selected { border: 1px solid rgba(150, 150, 150, 0.25) !important; }
 
+/* Left-border panels retain the compact edge rail, but can temporarily take
+   over the workspace just like a maximized tabset. The content stays mounted;
+   FlexLayout remeasures the expanded border content after these flex rules. */
+.wl-layout-shell--left-border-maximized .flexlayout__layout_main,
+.wl-layout-shell--left-border-maximized .flexlayout__splitter_border {
+  display: none !important;
+}
+
+.wl-layout-shell--left-border-maximized .flexlayout__border_tab_contents {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  flex: 1 1 auto !important;
+}
+
+.wl-border-tab-label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.wl-border-maximize-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5em;
+  height: 1.5em;
+  color: var(--color-icon);
+  cursor: pointer;
+}
+
 /* ── Auto-hide native scrollbars (density-pass rider, 2026-07-08) ──────────
    Applies to native overflow containers (Card overflow:auto, loot tables).
    Mantine <ScrollArea> renders its own scrollbars and already auto-fades —

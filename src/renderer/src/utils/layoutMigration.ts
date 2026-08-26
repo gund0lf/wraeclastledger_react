@@ -1,4 +1,4 @@
-import { Actions, IJsonModel, Model, Node } from 'flexlayout-react';
+import { Actions, DockLocation, IJsonModel, Model, Node } from 'flexlayout-react';
 
 type ComponentNode = Node & { getComponent?: () => string | undefined };
 
@@ -11,6 +11,8 @@ type JsonNode = {
 
 const ORIGINAL_SETUP_COMPONENTS = ['session-manager', 'atlas-calc', 'investment'];
 const ORIGINAL_SETUP_WEIGHTS = [18, 37, 45];
+const LEGACY_SETUP_BORDER_MAX_SIZE = 440;
+const UNBOUNDED_BORDER_MAX_SIZE = 99999;
 
 /**
  * Replace only the untouched original three-stack settings column with the
@@ -48,7 +50,6 @@ export function migrateDefaultSetupSidebarJson(json: IJsonModel): boolean {
       location: 'left',
       size: 330,
       minSize: 300,
-      maxSize: 440,
       selected: 0,
       children: [
         {
@@ -61,6 +62,29 @@ export function migrateDefaultSetupSidebarJson(json: IJsonModel): boolean {
       ],
     },
   ];
+  return true;
+}
+
+/**
+ * The first native Setup border shipped with a 440px ceiling. That ceiling
+ * applies to every tab later docked in the border (for example Notes), so it
+ * unnecessarily prevents the user from giving any left-panel tool more room.
+ * Upgrade only that exact historical Setup border value; other authored border
+ * constraints remain untouched.
+ */
+export function removeLegacySetupSidebarMaxSize(model: Model): boolean {
+  const setupBorder = model.getBorderSet().getBorders().find((border) =>
+    border.getLocation() === DockLocation.LEFT
+    && border.getMaxSize() === LEGACY_SETUP_BORDER_MAX_SIZE
+    && border.getChildren().some((node) =>
+      node.getType() === 'tab' && (node as ComponentNode).getComponent?.() === 'setup'
+    )
+  );
+  if (!setupBorder) return false;
+
+  model.doAction(Actions.updateNodeAttributes(setupBorder.getId(), {
+    maxSize: UNBOUNDED_BORDER_MAX_SIZE,
+  }));
   return true;
 }
 
@@ -110,7 +134,8 @@ export function removeRetiredTabs(model: Model): boolean {
 
 /** Apply every persisted-layout migration; all passes must run independently. */
 export function migratePersistedLayout(model: Model): boolean {
+  const setupBorderChanged = removeLegacySetupSidebarMaxSize(model);
   const regexChanged = migrateRegexBuilderTabs(model);
   const retiredChanged = removeRetiredTabs(model);
-  return regexChanged || retiredChanged;
+  return setupBorderChanged || regexChanged || retiredChanged;
 }

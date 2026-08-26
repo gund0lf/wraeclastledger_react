@@ -16,7 +16,6 @@ export const defaultLayout: IJsonModel = {
       location: 'left',
       size: 330,
       minSize: 300,
-      maxSize: 440,
       selected: 0,
       children: [
         {

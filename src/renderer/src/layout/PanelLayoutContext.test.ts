@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { Actions, Model, Node, TabNode } from 'flexlayout-react';
 import { defaultLayout } from './defaultLayout';
-import { maximizedPanelComponent, setupSidebarCollapsed } from './panelLayoutState';
+import {
+  maximizedPanelComponent,
+  selectedBorderPanelComponent,
+  setupSidebarCollapsed,
+} from './panelLayoutState';
 
 const tabsetForComponent = (model: Model, componentId: string): Node => {
   let tabset: Node | undefined;
@@ -58,10 +62,12 @@ describe('default Setup border', () => {
     if (!setupId) throw new Error('Missing Setup border tab');
 
     expect(model.toJson().borders?.[0]).toMatchObject({ location: 'left', selected: 0 });
+    expect(selectedBorderPanelComponent(model)).toBe('setup');
     expect(setupSidebarCollapsed(model)).toBe(false);
 
     model.doAction(Actions.selectTab(setupId));
     expect(model.toJson().borders?.[0].selected ?? -1).toBe(-1);
+    expect(selectedBorderPanelComponent(model)).toBeNull();
     expect(setupSidebarCollapsed(model)).toBe(true);
 
     model.doAction(Actions.selectTab(setupId));

@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
-import { Layout, Model, Node, Actions, DockLocation } from 'flexlayout-react';
+import { Layout, Model, Actions, DockLocation } from 'flexlayout-react';
+import type {
+  BorderNode,
+  ITabRenderValues,
+  ITabSetRenderValues,
+  Node,
+  TabNode,
+  TabSetNode,
+} from 'flexlayout-react';
 import { getModuleComponent } from './layout/Registry';
 import { defaultLayout } from './layout/defaultLayout';
 import { Box, Button, Menu, Text, ActionIcon, Tooltip, Badge, Alert } from '@mantine/core';
@@ -9,11 +17,15 @@ import { useUIStore } from './store/useUIStore';
 import { parseMapClipboard } from './utils/mapParser';
 import { getGameDataStatus, initGameData } from './utils/gameData';
 import { UpdateBanner, APP_VERSION } from './UpdateBanner';
-import { IconRefresh } from '@tabler/icons-react';
+import { IconArrowsMaximize, IconArrowsMinimize, IconRefresh } from '@tabler/icons-react';
 import { FONT } from './utils/uiTokens';
 import { migrateDefaultSetupSidebarJson, migratePersistedLayout } from './utils/layoutMigration';
 import { MaximizedPanelProvider } from './layout/MaximizedPanelProvider';
-import { maximizedPanelComponent, setupSidebarCollapsed } from './layout/panelLayoutState';
+import {
+  maximizedPanelComponent,
+  selectedBorderPanelComponent,
+  setupSidebarCollapsed,
+} from './layout/panelLayoutState';
 import { retryRepositorySave, saveRepositoryLayout } from './repository/sessionRepositoryRuntime';
 import { OverlayController } from './components/OverlayController';
 
@@ -60,7 +72,12 @@ function App({ initialLayoutRawValue }: { initialLayoutRawValue: string | null }
   // FlexLayout mutates its Model in place. Updating this otherwise-unused state
   // forces the toolbar and context-derived maximized presentation to re-render.
   const [, setModelVersion] = useState(0);
-  const maximizedPanel = maximizedPanelComponent(model);
+  const [leftBorderMaximized, setLeftBorderMaximized] = useState(false);
+  const borderTabClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectedLeftBorderPanel = selectedBorderPanelComponent(model);
+  const maximizedPanel = leftBorderMaximized
+    ? selectedLeftBorderPanel
+    : maximizedPanelComponent(model);
   const isSetupSidebarCollapsed = setupSidebarCollapsed(model);
   const [checking, setChecking] = useState(false);
   const [layoutError, setLayoutError] = useState<string | null>(null);
@@ -98,6 +115,19 @@ function App({ initialLayoutRawValue }: { initialLayoutRawValue: string | null }
     // Initial sync (isWatching can start true when a layout restores mid-state)
     window.api?.setClipboardWatch(isWatchingRef.current);
     return () => { unsub(); window.api?.setClipboardWatch(false); };
+  }, []);
+
+  useEffect(() => {
+    if (!leftBorderMaximized) return;
+    const restoreOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setLeftBorderMaximized(false);
+    };
+    window.addEventListener('keydown', restoreOnEscape);
+    return () => window.removeEventListener('keydown', restoreOnEscape);
+  }, [leftBorderMaximized]);
+
+  useEffect(() => () => {
+    if (borderTabClickTimerRef.current) clearTimeout(borderTabClickTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -146,6 +176,74 @@ function App({ initialLayoutRawValue }: { initialLayoutRawValue: string | null }
     const componentId = (node as any).getComponent?.();
     if (typeof componentId === 'string') return getModuleComponent(componentId);
     return <div>Missing Config</div>;
+  };
+
+  const onRenderTab = (node: TabNode, renderValues: ITabRenderValues) => {
+    const parent = node.getParent();
+    if (parent?.getType() !== 'border') return;
+    const border = parent as BorderNode;
+    if (border.getLocation() !== DockLocation.LEFT) return;
+
+    const content = renderValues.content;
+    renderValues.content = (
+      <span
+        className="wl-border-tab-label"
+        title="Double-click to maximize or restore this panel"
+        onClick={(event) => {
+          // Border tabs toggle closed on click, unlike ordinary tabset tabs.
+          // Delay that single-click action just long enough to distinguish the
+          // native-feeling double-click maximize gesture.
+          event.stopPropagation();
+          if (event.detail !== 1) return;
+          if (borderTabClickTimerRef.current) clearTimeout(borderTabClickTimerRef.current);
+          borderTabClickTimerRef.current = setTimeout(() => {
+            model.doAction(Actions.selectTab(node.getId()));
+            borderTabClickTimerRef.current = null;
+          }, 220);
+        }}
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+          if (borderTabClickTimerRef.current) {
+            clearTimeout(borderTabClickTimerRef.current);
+            borderTabClickTimerRef.current = null;
+          }
+          const wasSelected = border.getSelectedNode()?.getId() === node.getId();
+          if (!wasSelected) model.doAction(Actions.selectTab(node.getId()));
+          setLeftBorderMaximized((current) => wasSelected ? !current : true);
+        }}
+      >
+        {content}
+      </span>
+    );
+  };
+
+  const onRenderTabSet = (
+    node: BorderNode | TabSetNode,
+    renderValues: ITabSetRenderValues,
+  ) => {
+    if (node.getType() !== 'border') return;
+    const border = node as BorderNode;
+    if (border.getLocation() !== DockLocation.LEFT || !border.getSelectedNode()) return;
+
+    const label = leftBorderMaximized ? 'Restore left panel' : 'Maximize left panel';
+    renderValues.buttons.push(
+      <button
+        key="left-border-maximize"
+        type="button"
+        className="flexlayout__border_toolbar_button wl-border-maximize-button"
+        title={`${label} (Escape restores)`}
+        aria-label={label}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          setLeftBorderMaximized((current) => !current);
+        }}
+      >
+        {leftBorderMaximized
+          ? <IconArrowsMinimize size={13} />
+          : <IconArrowsMaximize size={13} />}
+      </button>
+    );
   };
 
   const openComponents = getOpenComponents();
@@ -226,7 +324,10 @@ function App({ initialLayoutRawValue }: { initialLayoutRawValue: string | null }
       </Box>
 
       {/* Layout */}
-      <Box style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+      <Box
+        className={`wl-layout-shell${leftBorderMaximized ? ' wl-layout-shell--left-border-maximized' : ''}`}
+        style={{ flex: 1, position: 'relative', overflow: 'hidden' }}
+      >
         <MaximizedPanelProvider
           maximizedPanel={maximizedPanel}
           setupSidebarCollapsed={isSetupSidebarCollapsed}
@@ -234,8 +335,13 @@ function App({ initialLayoutRawValue }: { initialLayoutRawValue: string | null }
           <Layout
             model={model}
             factory={factory}
+            onRenderTab={onRenderTab}
+            onRenderTabSet={onRenderTabSet}
             onModelChange={() => {
               setModelVersion((v) => v + 1);
+              if (leftBorderMaximized && selectedBorderPanelComponent(model) === null) {
+                setLeftBorderMaximized(false);
+              }
               void saveRepositoryLayout(JSON.stringify(model.toJson()))
                 .then(() => setLayoutError(null))
                 .catch((error) => {

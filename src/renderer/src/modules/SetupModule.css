@@ -1,0 +1,83 @@
+.setup-panel-root {
+  container-type: inline-size;
+  height: 100%;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  --setup-surface: rgba(255, 255, 255, 0.018);
+  --setup-surface-raised: rgba(255, 255, 255, 0.032);
+  --setup-surface-sunken: rgba(0, 0, 0, 0.14);
+  --setup-border: rgba(255, 255, 255, 0.08);
+  --setup-border-strong: rgba(255, 255, 255, 0.14);
+  --setup-divider: rgba(255, 255, 255, 0.07);
+}
+
+.setup-panel-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.setup-panel-section {
+  overflow: hidden;
+  padding-inline: 8px;
+  background: var(--setup-surface);
+  border: 1px solid var(--setup-border);
+  border-radius: 6px;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.025);
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.setup-panel-section[data-open='true'] {
+  background: var(--setup-surface-raised);
+  border-color: var(--setup-border-strong);
+}
+
+.setup-panel-section-header {
+  min-height: 30px;
+}
+
+.setup-panel-section[data-open='true'] .setup-panel-section-header {
+  border-bottom: 1px solid var(--setup-divider);
+}
+
+.setup-panel-section-content {
+  padding-top: 7px;
+}
+
+@container (max-width: 285px) {
+  .setup-panel-section {
+    padding-inline: 6px;
+  }
+}
+
+/* A maximized Setup panel becomes a bounded workspace instead of stretching
+   every compact sidebar control across the full application width. Sessions
+   and Atlas share the left column; the taller Investment section owns the
+   right column. Narrow maximized windows naturally retain the sidebar stack. */
+@container (min-width: 900px) {
+  .setup-panel-root.is-maximized .setup-panel-layout {
+    width: calc(100% - 24px);
+    max-width: 1500px;
+    margin-inline: auto;
+    padding-block: 12px;
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: 10px;
+    align-items: start;
+  }
+
+  .setup-panel-root.is-maximized .setup-panel-section:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .setup-panel-root.is-maximized .setup-panel-section:nth-child(2) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .setup-panel-root.is-maximized .setup-panel-section:nth-child(3) {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+}
