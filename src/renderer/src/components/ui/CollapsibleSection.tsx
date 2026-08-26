@@ -20,7 +20,8 @@ export const CollapsibleSection = ({
   variant = 'heading',
   defaultOpen = variant === 'heading',
   right,
-  filled = false
+  filled = false,
+  contentPaddingBottom = 6
 }: {
   title: string
   children: ReactNode
@@ -28,6 +29,7 @@ export const CollapsibleSection = ({
   defaultOpen?: boolean
   right?: ReactNode
   filled?: boolean
+  contentPaddingBottom?: number
 }) => {
   const [open, setOpen] = useState(defaultOpen)
   const toggle = () => setOpen((o) => !o)
@@ -75,7 +77,7 @@ export const CollapsibleSection = ({
       </Group>
       <Collapse in={open}>
         {isHeading ? (
-          <div style={{ paddingBottom: 6 }}>{children}</div>
+          <div style={{ paddingBottom: contentPaddingBottom }}>{children}</div>
         ) : (
           <Stack gap="xs" pt="xs" pb={4}>
             {children}

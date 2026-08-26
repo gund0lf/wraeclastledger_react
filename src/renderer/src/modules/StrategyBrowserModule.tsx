@@ -722,7 +722,7 @@ export const StrategyBrowserModule = () => {
             </Tooltip>
           )}
           <Tooltip label="Observed average when exact map evidence was shared; otherwise the 6-mod/8-mod strategy bucket. Filtering always uses the bucket." withArrow multiline w={250}>
-            <Text size="xs" c="dimmed" style={{ width: browserCols.mod,    flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>Mod</Text>
+            <Text size="xs" c="dimmed" style={{ width: browserCols.mod, textAlign: 'center', flexShrink: 0, fontSize: FONT.small, cursor: 'help' }}>Mod</Text>
           </Tooltip>
           <Tooltip label="Total maps represented by the visible result pool — click to sort" withArrow multiline w={250}>
             <UnstyledButton onClick={() => handleHeaderSort('map_count')} aria-pressed={sortBy === 'map_count'}
@@ -732,19 +732,19 @@ export const StrategyBrowserModule = () => {
           </Tooltip>
           <Tooltip label="All-in: total investment ÷ map count — click to sort" withArrow>
             <UnstyledButton onClick={() => handleHeaderSort('cost_per_map')} aria-pressed={sortBy === 'cost_per_map'}
-              style={{ width: browserCols.cost, flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Cost/map{sortArrow('cost_per_map')}</UnstyledButton>
+              style={{ width: browserCols.cost, textAlign: 'center', flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Cost/map{sortArrow('cost_per_map')}</UnstyledButton>
           </Tooltip>
           <Tooltip label="Click to sort by total investment" withArrow>
             <UnstyledButton onClick={() => handleHeaderSort('least_invest')} aria-pressed={sortBy === 'least_invest'}
-              style={{ width: browserCols.invest, flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Total Invest{sortArrow('least_invest')}</UnstyledButton>
+              style={{ width: browserCols.invest, textAlign: 'center', flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Total Invest{sortArrow('least_invest')}</UnstyledButton>
           </Tooltip>
           <Tooltip label="Click to sort by net profit" withArrow>
             <UnstyledButton onClick={() => handleHeaderSort('net_profit')} aria-pressed={sortBy === 'net_profit'}
-              style={{ width: browserCols.profit, flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Total Profit{sortArrow('net_profit')}</UnstyledButton>
+              style={{ width: browserCols.profit, textAlign: 'center', flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Total Profit{sortArrow('net_profit')}</UnstyledButton>
           </Tooltip>
           <Tooltip label="Community score from thumbs reactions on the Discord post — click to sort" withArrow>
             <UnstyledButton onClick={() => handleHeaderSort('score')} aria-pressed={sortBy === 'score'}
-              style={{ width: browserCols.score, flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Score{sortArrow('score')}</UnstyledButton>
+              style={{ width: browserCols.score, textAlign: 'center', flexShrink: 0, fontSize: FONT.small, color: COLOR.textFaint, cursor: 'pointer', userSelect: 'none' }}>Score{sortArrow('score')}</UnstyledButton>
           </Tooltip>
           <Tooltip label="Optional author-reported context — click to select it as the sort. It is never the default ranking; div/map stays primary. Strategies without shared time list last." withArrow multiline w={270}>
             <UnstyledButton onClick={() => handleHeaderSort('div_per_hour')} aria-pressed={sortBy === 'div_per_hour'}

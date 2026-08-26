@@ -51,7 +51,7 @@ const stateDefaults = (): Record<string, unknown> => {
     'currentGeneration', 'preferencesGeneration', 'layoutGeneration', 'saveStatus',
     'saveError', 'sessionLifecycle', 'liveSessionId', 'activationCheckpointNotice',
     'historyStoragePressure', 'manualRunTimer', 'manualTimerRecoveryMs',
-    'overlayPreferences', 'overlayShortcutStatus',
+    'overlayPreferences', 'overlayShortcutStatus', 'lootCurrencyMode',
   ]) delete state[key];
   return state;
 };

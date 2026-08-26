@@ -10,7 +10,16 @@ import { COLOR, FONT } from '../utils/uiTokens';
 import { SectionLabel } from './ui/SectionLabel';
 import { LootCategoryIcon, LootCategoryGlyph } from './ui/LootCategoryIcon';
 import { PoeItemIcon } from './ui/PoeItemIcon';
-import { divineEquivalent } from '../utils/currencyDisplay';
+import {
+  hasDivinePrice,
+  lootCurrencyPresentation,
+} from '../utils/currencyDisplay';
+import {
+  LootCurrencyPair,
+  LootCurrencyToggle,
+  LootCurrencyValue,
+} from './ui/LootCurrencyDisplay';
+import { useSessionKeys } from '../store/useSessionStore';
 
 export const LootEvidenceSummary = ({
   summary,
@@ -21,32 +30,42 @@ export const LootEvidenceSummary = ({
    * omit it because their rows can span several historical Divine prices. */
   divinePrice?: number | null;
 }) => {
+  const { lootCurrencyMode, setLootCurrencyMode } = useSessionKeys(
+    'lootCurrencyMode',
+    'setLootCurrencyMode',
+  );
   const [rowsOpen, setRowsOpen] = useState(false);
   const categoryTotal = summary.categories.reduce((sum, entry) => sum + entry.value, 0) || 1;
   const manualRows = summary.rows.filter((row) => row.source === 'manual');
   const valuationRows = summary.rows.filter((row) => row.valuation !== undefined);
   const omittedRows = summary.omittedCsvRows + summary.omittedManualRows;
   const omittedValue = summary.omittedCsvValue + summary.omittedManualValue;
-  const reportedReturnDivines = divineEquivalent(summary.reportedReturn, divinePrice);
+  const displayValue = (value: number, sign = false) => lootCurrencyPresentation(
+    value,
+    divinePrice,
+    lootCurrencyMode,
+    { sign },
+  ).primary;
 
   return (
     <Stack gap={8}>
       <Group justify="space-between" align="center">
         <Group gap={5}>
           <SectionLabel>Loot breakdown</SectionLabel>
-          <Group gap={5} align="baseline" wrap="wrap">
-            <Text size="lg" fw={800} c="teal">{fcSep(summary.reportedReturn)}</Text>
-            {reportedReturnDivines != null && (
-              <Text size="xs" fw={700} c="dimmed">({reportedReturnDivines.toFixed(1)}d)</Text>
-            )}
-          </Group>
+          <LootCurrencyPair
+            chaosValue={summary.reportedReturn}
+            divinePrice={divinePrice}
+            mode={lootCurrencyMode}
+            color="var(--mantine-color-teal-4)"
+            align="left"
+          />
         </Group>
         <Group gap={5} wrap="wrap" justify="flex-end">
           <Badge size="xs" color="teal" variant="light">Top {summary.rows.length}</Badge>
           {manualRows.length > 0 && (
             <Tooltip label="Author-valued drops that were not present or correctly priced in the Return CSV" withArrow>
               <Badge size="xs" color="yellow" variant="outline" style={{ cursor: 'help' }}>
-                {manualRows.length} manual / {fcSep(summary.manualTotal)}
+                {manualRows.length} manual / {displayValue(summary.manualTotal)}
               </Badge>
             </Tooltip>
           )}
@@ -70,7 +89,7 @@ export const LootEvidenceSummary = ({
       <div className="loot-evidence-categories">
         {summary.categories.map((entry) => (
           <Tooltip key={entry.category}
-            label={`${entry.category}: ${fcSep(entry.value)} (${((entry.value / categoryTotal) * 100).toFixed(0)}%)`}
+            label={`${entry.category}: ${displayValue(entry.value)} (${((entry.value / categoryTotal) * 100).toFixed(0)}%)`}
             withArrow>
             <Stack gap={4} p={8} className="loot-evidence-category"
               style={{ background: COLOR.surfaceSectionBg, borderRadius: 6, cursor: 'help', minWidth: 0 }}>
@@ -78,7 +97,12 @@ export const LootEvidenceSummary = ({
               <Group gap={8} wrap="nowrap" justify="center">
                 <LootCategoryIcon category={entry.category} size={28} />
                 <Stack gap={0} align="center">
-                  <Text size="sm" fw={700}>{fcSep(entry.value)}</Text>
+                  <LootCurrencyValue
+                    chaosValue={entry.value}
+                    divinePrice={divinePrice}
+                    mode={lootCurrencyMode}
+                    align="left"
+                  />
                   <Text size="xs" fw={600} c={CAT_COLORS[entry.category] ?? 'dimmed'}>
                     {((entry.value / categoryTotal) * 100).toFixed(1)}%
                   </Text>
@@ -89,11 +113,20 @@ export const LootEvidenceSummary = ({
         ))}
       </div>
 
-      <Button size="compact-xs" variant="subtle" color="gray"
-        leftSection={rowsOpen ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
-        onClick={() => setRowsOpen((value) => !value)} style={{ alignSelf: 'flex-start' }}>
-        {rowsOpen ? 'Hide item breakdown' : `Show item breakdown (${summary.rows.length}${omittedRows > 0 ? ` + ${omittedRows} omitted` : ''})`}
-      </Button>
+      <Group justify="space-between" align="center" wrap="wrap" gap={6}>
+        <Button size="compact-xs" variant="subtle" color="gray"
+          leftSection={rowsOpen ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
+          onClick={() => setRowsOpen((value) => !value)}>
+          {rowsOpen ? 'Hide item breakdown' : `Show item breakdown (${summary.rows.length}${omittedRows > 0 ? ` + ${omittedRows} omitted` : ''})`}
+        </Button>
+        <LootCurrencyToggle
+          mode={lootCurrencyMode}
+          onChange={setLootCurrencyMode}
+          divineAvailable={hasDivinePrice(divinePrice)}
+          compact
+          unavailableReason="Pooled evidence spans several authored Divine snapshots, so its item rows stay in chaos rather than inventing one conversion rate."
+        />
+      </Group>
 
       <Collapse in={rowsOpen}>
         <Stack gap={4}>
@@ -107,7 +140,6 @@ export const LootEvidenceSummary = ({
             </Table.Thead>
             <Table.Tbody>
               {summary.rows.map((row, index) => {
-                const rowDivines = divineEquivalent(row.value, divinePrice, 1);
                 return (
                 <Table.Tr key={`${row.source}-${row.name}-${index}`}>
                   <Table.Td>
@@ -142,12 +174,12 @@ export const LootEvidenceSummary = ({
                     </Text>
                   </Table.Td>
                   <Table.Td ta="right">
-                    <Text size="xs" fw={700} c="teal" style={{ whiteSpace: 'nowrap' }}>
-                      {fcSep(row.value)}
-                      {rowDivines != null && (
-                        <Text span c="dimmed" style={{ fontSize: FONT.label }}> ({rowDivines.toFixed(2)}d)</Text>
-                      )}
-                    </Text>
+                    <LootCurrencyValue
+                      chaosValue={row.value}
+                      divinePrice={divinePrice}
+                      mode={lootCurrencyMode}
+                      color="var(--mantine-color-teal-4)"
+                    />
                   </Table.Td>
                 </Table.Tr>
                 );
@@ -156,21 +188,21 @@ export const LootEvidenceSummary = ({
           </Table>
           {omittedRows > 0 && (
             <Text size="xs" c="dimmed">
-              {omittedRows} lower-value row{omittedRows === 1 ? '' : 's'} omitted from the public top-30 view ({fcSep(omittedValue)}).
+              {omittedRows} lower-value row{omittedRows === 1 ? '' : 's'} omitted from the public top-30 view ({displayValue(omittedValue)}).
             </Text>
           )}
           <Group gap="md" wrap="wrap">
-            <Text size="xs" c="dimmed">CSV net: {fcSep(summary.csvNet, true)}</Text>
+            <Text size="xs" c="dimmed">CSV net: {displayValue(summary.csvNet, true)}</Text>
             <Text size="xs" c="dimmed">
-              Inventory movement: {fcSep(summary.inventoryFlow ?? summary.csvNet - summary.csvAdjustment, true)}
+              Inventory movement: {displayValue(summary.inventoryFlow ?? summary.csvNet - summary.csvAdjustment, true)}
             </Text>
             <Text size="xs" c={summary.marketRevaluation ? 'blue' : 'dimmed'}>
-              Market revaluation: {fcSep(summary.marketRevaluation ?? 0, true)}
+              Market revaluation: {displayValue(summary.marketRevaluation ?? 0, true)}
             </Text>
-            {summary.csvAdjustment !== 0 && <Text size="xs" c="dimmed">CSV adjustment: {fcSep(summary.csvAdjustment, true)}</Text>}
-            {summary.gemCorrection !== 0 && <Text size="xs" c="dimmed">Gem correction: {fcSep(summary.gemCorrection, true)}</Text>}
-            {summary.investmentCorrection !== 0 && <Text size="xs" c="dimmed">Investment correction: {fcSep(summary.investmentCorrection, true)}</Text>}
-            {summary.manualTotal !== 0 && <Text size="xs" c="yellow">Manual: {fcSep(summary.manualTotal, true)}</Text>}
+            {summary.csvAdjustment !== 0 && <Text size="xs" c="dimmed">CSV adjustment: {displayValue(summary.csvAdjustment, true)}</Text>}
+            {summary.gemCorrection !== 0 && <Text size="xs" c="dimmed">Gem correction: {displayValue(summary.gemCorrection, true)}</Text>}
+            {summary.investmentCorrection !== 0 && <Text size="xs" c="dimmed">Investment correction: {displayValue(summary.investmentCorrection, true)}</Text>}
+            {summary.manualTotal !== 0 && <Text size="xs" c="yellow">Manual: {displayValue(summary.manualTotal, true)}</Text>}
           </Group>
         </Stack>
       </Collapse>

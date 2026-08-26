@@ -41,6 +41,10 @@ import {
   type OverlayPreferences,
   type OverlayShortcutStatus,
 } from '../../../shared/overlay';
+import {
+  normalizeLootCurrencyMode,
+  type LootCurrencyMode,
+} from '../utils/currencyDisplay';
 
 /** Closed legacy-browser-store schema ceiling for the WP14 extraction path. */
 export { LEGACY_STORE_VERSION } from '../../../shared/sessionMigration';
@@ -302,6 +306,9 @@ export interface SessionState {
   // WP7: first-run onboarding card dismissed. Top-level + additive - persist's
   // shallow merge defaults it to false for old stores (no migration needed).
   onboardingDismissed: boolean;
+  // User-scoped presentation preference shared by every repeated loot table.
+  // Session accounting remains authored in chaos; this only selects the view.
+  lootCurrencyMode: LootCurrencyMode;
   // Persistent default exclusion preset — applied to fresh sessions and strategy loads
   defaultExclusionPreset: string[];
   // Named exclusion presets for rotation (Sad 2026-07-09). User-scoped,
@@ -406,6 +413,7 @@ export interface SessionState {
   setInvestmentNeutralization: (v: number) => void;
   setInvestmentDismissed: (v: boolean) => void;
   dismissOnboarding: () => void;
+  setLootCurrencyMode: (mode: LootCurrencyMode) => void;
   setLoadedStrategyInfo: (info: SessionState['loadedStrategyInfo']) => void;
   importSessions: (sessions: SavedSession[], conflictMode: 'skip' | 'overwrite') => void;
 }
@@ -432,6 +440,7 @@ export function mergePersistedSessionState(
     manualStatistics: normalizeLocalManualStatistics(persisted.manualStatistics),
     manualRunTimer: normalizeManualRunTimer(persisted.manualRunTimer),
     overlayPreferences: normalizeOverlayPreferences(persisted.overlayPreferences),
+    lootCurrencyMode: normalizeLootCurrencyMode(persisted.lootCurrencyMode),
     isWatching: false,
   };
 }
@@ -451,7 +460,7 @@ export const useSessionStore = create<SessionStoreState>()(
       isWatching: false, savedSessions: {},
       activeSessionId: null, activeSessionName: null, scarabPresets: [], sessionNonce: 0,
       divinePriceFetchedAt: 0,
-      sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, onboardingDismissed: false, loadedStrategyInfo: null, defaultExclusionPreset: [], exclusionPresets: [],
+      sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, onboardingDismissed: false, lootCurrencyMode: 'chaos', loadedStrategyInfo: null, defaultExclusionPreset: [], exclusionPresets: [],
       overlayPreferences: { ...DEFAULT_OVERLAY_PREFERENCES, counterIds: [...DEFAULT_OVERLAY_PREFERENCES.counterIds] },
       overlayShortcutStatus: null,
       repositoryStatus: 'dormant', repositoryError: null, repositorySessions: [], repositorySizeBytes: 0,
@@ -1113,6 +1122,7 @@ export const useSessionStore = create<SessionStoreState>()(
       setInvestmentNeutralization: (v) => set({ investmentNeutralization: v }),
       setInvestmentDismissed: (v: boolean) => set({ investmentDismissed: v }),
       dismissOnboarding: () => set({ onboardingDismissed: true }),
+      setLootCurrencyMode: (mode) => set({ lootCurrencyMode: normalizeLootCurrencyMode(mode) }),
       importSessions: (sessions, conflictMode) =>
         get().repositoryStatus === 'ready' && repositoryActions
           ? void repositoryActions.importNamed(sessions, conflictMode)

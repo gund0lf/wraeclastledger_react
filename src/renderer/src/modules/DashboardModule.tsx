@@ -27,13 +27,19 @@ import { GettingStartedCard } from '../components/GettingStartedCard';
 import { CollapsibleSection as Section } from '../components/ui/CollapsibleSection';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { isCrossLeagueSession } from '../utils/historicalSession';
-import { divineEquivalent } from '../utils/currencyDisplay';
+import { hasDivinePrice } from '../utils/currencyDisplay';
+import {
+  LootCurrencyPair,
+  LootCurrencyToggle,
+  LootCurrencyValue,
+} from '../components/ui/LootCurrencyDisplay';
 import {
   manualLootEntryValue,
   manualLootTotalAfterQuantityChange,
   manualLootTotalFromEntry,
   type ManualLootValueMode,
 } from '../utils/manualLootValue';
+import './DashboardModule.css';
 
 // Smart page size: show INITIAL rows, user can load more in STEP increments
 const INITIAL_ROWS = 25;
@@ -103,6 +109,7 @@ export const DashboardModule = () => {
     investmentNeutralization, setInvestmentNeutralization,
     investmentDismissed, setInvestmentDismissed,
     onboardingDismissed, dismissOnboarding, sessionLifecycle, leagueOverride,
+    lootCurrencyMode, setLootCurrencyMode,
   } = useSessionKeys(
     'maps', 'settings', 'lootItems', 'baselineItems', 'baselineTotal', 'manualLootItems',
     'setLootItems', 'setBaselineItems', 'toggleLootItemExcluded', 'clearLoot',
@@ -110,6 +117,7 @@ export const DashboardModule = () => {
     'investmentNeutralization', 'setInvestmentNeutralization',
     'investmentDismissed', 'setInvestmentDismissed',
     'onboardingDismissed', 'dismissOnboarding', 'sessionLifecycle', 'leagueOverride',
+    'lootCurrencyMode', 'setLootCurrencyMode',
   );
 
   // Phase 1.5 (rollover plan): cross-league loaded session banner. The
@@ -181,7 +189,7 @@ export const DashboardModule = () => {
   const hasBaseline = baselineItems.length > 0 || baselineTotal > 0;
   const hasCurrent  = lootItems.length > 0;
   const hasBoth     = hasBaseline && hasCurrent;
-  const divPrice    = settings.divinePrice || 1;
+  const divPrice = hasDivinePrice(settings.divinePrice) ? settings.divinePrice : null;
 
   useEffect(() => {
     if (!hasCurrent && !hasBaseline) return;
@@ -469,7 +477,14 @@ export const DashboardModule = () => {
             onChange={(value) => setManualValueMode(value as ManualLootValueMode)}
           />
           <SimpleGrid cols={2} spacing="sm">
-            <NumberInput label="Quantity" min={1} step={1} allowDecimal={false}
+            <NumberInput
+              label={
+                <Group justify="space-between" gap={6} wrap="nowrap" style={{ width: '100%' }}>
+                  <Text span size="sm" fw={500}>Quantity</Text>
+                </Group>
+              }
+              styles={{ label: { display: 'block', width: '100%' } }}
+              min={1} step={1} allowDecimal={false}
               value={manualDraft.quantity}
               onChange={(value) => setManualDraft((draft) => {
                 const quantity = Math.max(1, Math.round(Number(value) || 1));
@@ -485,10 +500,19 @@ export const DashboardModule = () => {
                 };
               })} />
             <NumberInput
-              label={manualValueMode === 'perItem' ? 'Value per item (chaos)' : 'Total value (chaos)'}
-              description={manualValueMode === 'perItem'
-                ? `Saved total: ${fcSep(manualDraft.total, false, 1)}`
-                : undefined}
+              label={
+                <Group justify="space-between" gap={6} wrap="nowrap" style={{ width: '100%' }}>
+                  <Text span size="sm" fw={500}>
+                    {manualValueMode === 'perItem' ? 'Value per item (chaos)' : 'Total value (chaos)'}
+                  </Text>
+                  {manualValueMode === 'perItem' && (
+                    <Text span size="xs" c="dimmed" fw={400} style={{ whiteSpace: 'nowrap' }}>
+                      Saved total: {fcSep(manualDraft.total, false, 1)}
+                    </Text>
+                  )}
+                </Group>
+              }
+              styles={{ label: { display: 'block', width: '100%' } }}
               min={0}
               decimalScale={1}
               value={manualLootEntryValue(
@@ -538,7 +562,7 @@ export const DashboardModule = () => {
         </Stack>
       </Modal>
 
-      <Card shadow="sm" padding="sm" radius="md" withBorder h="100%"
+      <Card className="dashboard-card dashboard-refined" shadow="sm" padding="sm" radius="md" withBorder h="100%"
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleCsvDrop}
@@ -568,7 +592,7 @@ export const DashboardModule = () => {
         )}
 
         <div style={{ flexShrink: 0 }}>
-          <Section title="Profit Overview">
+          <Section title="Profit Overview" contentPaddingBottom={0}>
             <SimpleGrid cols={2} spacing="xs" mb={6}>
               <div style={{ background: profit.net >= 0 ? 'rgba(81,207,102,0.08)' : 'rgba(255,107,107,0.10)', border: `1px solid ${profit.net >= 0 ? 'rgba(81,207,102,0.3)' : 'rgba(255,107,107,0.3)'}`, borderRadius: 8, padding: '8px', textAlign: 'center' }}>
                 <Text size="xs" c="dimmed" mb={2}>Total Net Profit</Text>
@@ -584,7 +608,7 @@ export const DashboardModule = () => {
             {/* session-17 experiment: Investment + Loot gain as a second,
                 QUIETER tile row (neutral surface, compact) under the two big
                 tinted decision tiles — same shape family, preserved hierarchy. */}
-            <SimpleGrid cols={profit.hasBl ? 2 : 1} spacing="xs" mb={2}>
+            <SimpleGrid cols={profit.hasBl ? 2 : 1} spacing="xs" mb={4}>
               <div style={{ background: 'var(--mantine-color-dark-6)', border: '1px solid var(--mantine-color-dark-4)', borderRadius: 8, padding: '5px 8px', textAlign: 'center' }}>
                 <Text size="xs" c="dimmed" mb={1}>Investment</Text>
                 <Group gap={4} justify="center" align="baseline" wrap="nowrap">
@@ -597,7 +621,7 @@ export const DashboardModule = () => {
                   <Text size="xs" c="dimmed" mb={1}>Loot gain (vs baseline)</Text>
                   <Group gap={4} justify="center" align="baseline" wrap="nowrap">
                     <Text size="sm" fw={600} c={profit.lootGain >= 0 ? 'teal' : 'red'} style={{ fontVariantNumeric: 'tabular-nums' }}>{fcSep(profit.lootGain, true)}</Text>
-                    <Text size="xs" style={{ color: COLOR.dim }}>({(profit.lootGain / profit.div).toFixed(2)}d)</Text>
+                    <Text size="xs" c="dimmed">({(profit.lootGain / profit.div).toFixed(2)}d)</Text>
                   </Group>
                 </div>
               )}
@@ -636,7 +660,7 @@ export const DashboardModule = () => {
                   )}
                 </Group>
               }>
-              <SimpleGrid cols={2} spacing={5} mt={2}>
+              <div className="dashboard-multiplier-grid">
                 {STAT_KEYS.map((key) => {
                   const d = stats.stats[key as string];
                   if (!d || (d.avg === 0 && d.proj === 0)) return null;
@@ -664,7 +688,7 @@ export const DashboardModule = () => {
                     />
                   );
                 })}
-              </SimpleGrid>
+              </div>
             </Section>
           )}
           {!stats && <Text size="xs" c="dimmed" ta="center" py="xs">No maps parsed yet</Text>}
@@ -704,34 +728,21 @@ export const DashboardModule = () => {
               </Group>
             </Stack>
           )}
-          {detectedMatches.length > 0 && investmentNeutralization === 0 && investmentDismissed && (
-            <Group gap={4} mb={4} align="center" style={{ flexShrink: 0 }}>
-              <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>
-                Double-count check dismissed — {detectedMatches.length} investment item{detectedMatches.length > 1 ? 's' : ''} still detected in the diff.
+          <div className="dashboard-loot-panel">
+          <Group className="dashboard-loot-header" justify="space-between" mb={6} wrap="wrap" style={{ flexShrink: 0 }}>
+            <Group className="dashboard-loot-title-row" justify="space-between" gap={6} wrap="nowrap">
+              <Text size="xs" fw={700} c="dimmed" style={{ textTransform: 'uppercase', letterSpacing: 1, fontSize: FONT.small }}>
+                Loot Tracker
               </Text>
-              <Button size="compact-xs" variant="subtle" color="yellow"
-                onClick={() => setInvestmentDismissed(false)} style={{ fontSize: FONT.label, padding: '0 4px' }}>
-                Recheck
-              </Button>
+              <LootCurrencyToggle
+                mode={lootCurrencyMode}
+                onChange={setLootCurrencyMode}
+                divineAvailable={divPrice !== null}
+                compact
+                unavailableReason="Import or set a valid Divine-price snapshot before displaying loot in Divine Orbs."
+              />
             </Group>
-          )}
-          {investmentNeutralization > 0 && (
-            <Group gap={4} mb={4} style={{ flexShrink: 0 }}>
-              <Badge color="teal" variant="light" size="xs">
-                +{investmentNeutralization.toFixed(1)}c double-count corrected
-              </Badge>
-              {/* compact prop was removed in Mantine v8 — use size="compact-xs" instead */}
-              <Button size="compact-xs" variant="subtle" color="gray"
-                onClick={() => setInvestmentNeutralization(0)} style={{ fontSize: FONT.label, padding: '0 4px' }}>
-                undo
-              </Button>
-            </Group>
-          )}
-          <Group justify="space-between" mb={4} style={{ flexShrink: 0 }}>
-            <Text size="xs" fw={700} c="dimmed" style={{ textTransform: 'uppercase', letterSpacing: 1, fontSize: FONT.small }}>
-              Loot Tracker
-            </Text>
-            <Group gap={4}>
+            <Group className="dashboard-loot-actions" gap={4} wrap="wrap">
               <Tooltip label="Import your stash CSV from before the session">
                 <Button size="xs" variant={hasBaseline ? 'light' : 'default'} color={hasBaseline ? 'yellow' : undefined}
                   leftSection={<IconPackage size={12} />} onClick={() => triggerImport('baseline')}>
@@ -766,6 +777,51 @@ export const DashboardModule = () => {
             </Group>
           </Group>
 
+          {(manualLootItems.length > 0 || investmentNeutralization > 0 ||
+            (detectedMatches.length > 0 && investmentNeutralization === 0 && investmentDismissed)) && (
+            <div className="dashboard-loot-status-grid">
+              {manualLootItems.length > 0 && (
+                <Group className="dashboard-loot-status dashboard-loot-status-manual" justify="space-between" gap={5} wrap="nowrap">
+                  <Group className="dashboard-loot-status-label" gap={5} wrap="nowrap">
+                    <Badge color="yellow" variant="outline" size="xs" style={{ flexShrink: 0 }}>Manual</Badge>
+                    <Text className="dashboard-loot-status-detail" size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+                      {manualLootItems.length} addition{manualLootItems.length === 1 ? '' : 's'}
+                    </Text>
+                  </Group>
+                  <Button size="compact-xs" variant="subtle" color="yellow" onClick={startAddManual} style={{ flexShrink: 0 }}>
+                    {fcSep(manualTotal, true, 1)} / review
+                  </Button>
+                </Group>
+              )}
+              {investmentNeutralization > 0 && (
+                <Group className="dashboard-loot-status dashboard-loot-status-corrected" justify="space-between" gap={5} wrap="nowrap">
+                  <Group className="dashboard-loot-status-label" gap={5} wrap="nowrap">
+                    <Badge color="teal" variant="outline" size="xs" style={{ flexShrink: 0 }}>Corrected</Badge>
+                    <Text className="dashboard-loot-status-detail" size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>double-count</Text>
+                  </Group>
+                  <Button size="compact-xs" variant="subtle" color="teal"
+                    onClick={() => setInvestmentNeutralization(0)} style={{ flexShrink: 0 }}>
+                    +{investmentNeutralization.toFixed(1)}c / undo
+                  </Button>
+                </Group>
+              )}
+              {detectedMatches.length > 0 && investmentNeutralization === 0 && investmentDismissed && (
+                <Group className="dashboard-loot-status dashboard-loot-status-dismissed" justify="space-between" gap={5} wrap="nowrap">
+                  <Group className="dashboard-loot-status-label" gap={5} wrap="nowrap">
+                    <Badge color="gray" variant="outline" size="xs" style={{ flexShrink: 0 }}>Dismissed</Badge>
+                    <Text className="dashboard-loot-status-detail" size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+                      {detectedMatches.length} item{detectedMatches.length === 1 ? '' : 's'}
+                    </Text>
+                  </Group>
+                  <Button size="compact-xs" variant="subtle" color="yellow"
+                    onClick={() => setInvestmentDismissed(false)} style={{ flexShrink: 0 }}>
+                    Recheck
+                  </Button>
+                </Group>
+              )}
+            </div>
+          )}
+
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             {!hasCurrent && !hasBaseline && (
               <Stack align="center" justify="center" style={{ flex: 1 }} gap="xs">
@@ -792,23 +848,11 @@ export const DashboardModule = () => {
 
             {(hasCurrent || hasBoth) && (
               <Stack gap={4} style={{ flex: 1, minHeight: 0 }}>
-                {manualLootItems.length > 0 && (
-                  <Group justify="space-between" px={6} py={4}
-                    style={{ border: `1px solid ${COLOR.tintYellowBorder}`, borderRadius: 6, background: COLOR.tintYellowBg, flexShrink: 0 }}>
-                    <Group gap={5} wrap="nowrap">
-                      <Badge color="yellow" variant="outline" size="xs">Manual</Badge>
-                      <Text size="xs" c="dimmed">
-                        {manualLootItems.length} addition{manualLootItems.length === 1 ? '' : 's'} included in return
-                      </Text>
-                    </Group>
-                    <Button size="compact-xs" variant="subtle" color="yellow" onClick={startAddManual}>
-                      {fcSep(manualTotal, true, 1)} / review
-                    </Button>
-                  </Group>
-                )}
-                <SegmentedControl value={lootView} onChange={(v) => setLootView(v as any)}
-                  data={[{ value: 'list', label: 'List' }, { value: 'diff', label: 'Diff', disabled: !hasBoth }, { value: 'breakdown', label: 'Breakdown' }]}
-                  size="xs" fullWidth style={{ flexShrink: 0 }} />
+                <div className="dashboard-loot-view-controls">
+                  <SegmentedControl value={lootView} onChange={(v) => setLootView(v as any)}
+                    data={[{ value: 'list', label: 'List' }, { value: 'diff', label: 'Diff', disabled: !hasBoth }, { value: 'breakdown', label: 'Breakdown' }]}
+                    size="xs" fullWidth style={{ flexShrink: 0 }} />
+                </div>
 
                 {lootView === 'list' && (
                   <Stack gap={4} style={{ flex: 1, minHeight: 0 }}>
@@ -827,19 +871,18 @@ export const DashboardModule = () => {
                         </Table.Thead>
                         <Table.Tbody>
                           {filteredItems.slice(0, visibleListRows).map((item) => {
-                            const itemDivines = divineEquivalent(item.total, divPrice, 1);
                             return (
                             <Table.Tr key={item.id} style={{ opacity: item.excluded ? 0.4 : 1 }}>
                               <Table.Td><Checkbox checked={!item.excluded} onChange={() => toggleLootItemExcluded(item.id)} size="xs" /></Table.Td>
                               <Table.Td><Group gap={6} wrap="nowrap"><ResolvedLootIcon name={item.name} tab={item.tab} resolver={resolver} loading={iconsLoading} /><Text size="xs" lineClamp={1}>{item.name}</Text></Group></Table.Td>
                               <Table.Td><Text size="xs">{item.quantity}</Text></Table.Td>
                               <Table.Td ta="right">
-                                <Text size="xs" fw={600} c={item.excluded ? 'dimmed' : 'teal'} ta="right" style={{ whiteSpace: 'nowrap' }}>
-                                  {fcSep(item.total, false, 1)}
-                                  {itemDivines != null && (
-                                    <Text span c="dimmed" style={{ fontSize: FONT.label }}> ({itemDivines.toFixed(2)}d)</Text>
-                                  )}
-                                </Text>
+                                <LootCurrencyValue
+                                  chaosValue={item.total}
+                                  divinePrice={divPrice}
+                                  mode={lootCurrencyMode}
+                                  color={item.excluded ? 'var(--mantine-color-dimmed)' : 'var(--mantine-color-teal-4)'}
+                                />
                               </Table.Td>
                             </Table.Tr>
                             );
@@ -854,29 +897,23 @@ export const DashboardModule = () => {
                         </Button>
                       )}
                     </div>
-                    <Group justify="space-between" px={4} pt={4} style={{
-                      flexShrink: 0,
-                      borderTop: `1px solid ${COLOR.borderSoft}`,
-                      background: COLOR.bgPanel,
-                    }}>
+                    <Group className="dashboard-loot-summary" justify="space-between">
                       <Text size="xs" c="dimmed">
                         {filteredItems.length} items
                         {visibleListRows < filteredItems.length && ` (showing ${visibleListRows})`}
                       </Text>
-                      <Group gap={4}>
-                        <Badge color="teal" variant="light" size="sm">{fcSep(inclTotal, false, 1)}</Badge>
-                        <Badge color="yellow" variant="light" size="sm">{(inclTotal / divPrice).toFixed(2)}d</Badge>
-                      </Group>
+                      <LootCurrencyPair
+                        chaosValue={inclTotal}
+                        divinePrice={divPrice}
+                        mode={lootCurrencyMode}
+                        color="var(--mantine-color-teal-4)"
+                      />
                     </Group>
                   </Stack>
                 )}
 
                 {hasBoth && lootView === 'diff' && (
                   <Stack gap={4} style={{ flex: 1, minHeight: 0 }}>
-                    <Group justify="space-between" style={{ flexShrink: 0 }}>
-                      <Text size="xs" c="dimmed">Net Gain</Text>
-                      <Text size="sm" fw={700} c={netGain >= 0 ? 'green' : 'red'}>{fcSep(netGain, true, 1)}</Text>
-                    </Group>
                     <SegmentedControl value={diffTab} onChange={(v) => setDiffTab(v as any)}
                       data={[{ value: 'gains', label: `Gained (${gains.length})` }, { value: 'losses', label: `Spent (${losses.length})` }]}
                       size="xs" fullWidth style={{ flexShrink: 0 }} />
@@ -885,18 +922,18 @@ export const DashboardModule = () => {
                         <Table.Thead><Table.Tr><Table.Th>Item</Table.Th><Table.Th>Qty</Table.Th><Table.Th ta="right">{diffTab === 'gains' ? 'Gained' : 'Reduced'}</Table.Th></Table.Tr></Table.Thead>
                         <Table.Tbody>
                           {activeDiff.slice(0, visibleDiffRows).map((r) => {
-                            const deltaDivines = divineEquivalent(r.delta, divPrice, 1);
                             return (
                             <Table.Tr key={r.name}>
                               <Table.Td><Group gap={6} wrap="nowrap"><ResolvedLootIcon name={r.name} tab={r.tab} resolver={resolver} loading={iconsLoading} /><Text size="xs" lineClamp={1}>{r.name}</Text></Group></Table.Td>
                               <Table.Td><Text size="xs" c="dimmed">{r.baseQty} → {r.currQty}</Text></Table.Td>
                               <Table.Td ta="right">
-                                <Text size="xs" fw={600} c={r.delta > 0 ? 'green' : 'red'} ta="right" style={{ whiteSpace: 'nowrap' }}>
-                                  {fcSep(r.delta, true, 1)}
-                                  {deltaDivines != null && (
-                                    <Text span c="dimmed" style={{ fontSize: FONT.label }}> ({deltaDivines.toFixed(2)}d)</Text>
-                                  )}
-                                </Text>
+                                <LootCurrencyValue
+                                  chaosValue={r.delta}
+                                  divinePrice={divPrice}
+                                  mode={lootCurrencyMode}
+                                  signed
+                                  color={r.delta > 0 ? 'var(--mantine-color-green-4)' : 'var(--mantine-color-red-4)'}
+                                />
                               </Table.Td>
                             </Table.Tr>
                             );
@@ -911,6 +948,19 @@ export const DashboardModule = () => {
                         </Button>
                       )}
                     </div>
+                    <Group className="dashboard-loot-summary" justify="space-between">
+                      <Text size="xs" c="dimmed">
+                        {activeDiff.length} items
+                        {visibleDiffRows < activeDiff.length && ` (showing ${visibleDiffRows})`}
+                      </Text>
+                      <LootCurrencyPair
+                        chaosValue={netGain}
+                        divinePrice={divPrice}
+                        mode={lootCurrencyMode}
+                        signed
+                        color={netGain >= 0 ? 'var(--mantine-color-green-4)' : 'var(--mantine-color-red-4)'}
+                      />
+                    </Group>
                   </Stack>
                 )}
 
@@ -920,8 +970,7 @@ export const DashboardModule = () => {
                     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
                       <Stack gap={4}>
                         {sortedCats.map(([cat, value]) => (
-                          <Stack key={cat} gap={3} p={6}
-                            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6 }}>
+                          <Stack className="dashboard-loot-category" key={cat} gap={3} p={6}>
                             <Group justify="space-between">
                               <Group gap={6} wrap="nowrap">
                                 <LootCategoryIcon category={cat as ItemCategory} size={20} />
@@ -929,7 +978,12 @@ export const DashboardModule = () => {
                               </Group>
                               <Group gap={6} align="baseline">
                                 <Text size="xs" c="dimmed" style={{ fontVariantNumeric: 'tabular-nums' }}>{((value / catTotal) * 100).toFixed(0)}%</Text>
-                                <Text size="xs" fw={600} c="teal" style={{ fontVariantNumeric: 'tabular-nums' }}>{fcSep(value, false, 1)}</Text>
+                                <LootCurrencyValue
+                                  chaosValue={value}
+                                  divinePrice={divPrice}
+                                  mode={lootCurrencyMode}
+                                  color="var(--mantine-color-teal-4)"
+                                />
                               </Group>
                             </Group>
                             <Progress value={(value / maxCat) * 100} size={6} radius="xl" color={CAT_COLORS[cat as ItemCategory] ?? 'gray'} />
@@ -941,6 +995,7 @@ export const DashboardModule = () => {
                 })()}
               </Stack>
             )}
+          </div>
           </div>
         </div>
       </Card>

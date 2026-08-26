@@ -20,6 +20,7 @@ import { confirmedLeagueSync, getCurrentLeague, setLeagueOverrideValue } from '.
 import { isWorkingPayloadMeaningful, isWorkingSessionMeaningful } from '../utils/workingSession';
 import { recoverManualRunTimer } from '../utils/manualRunTimer';
 import { normalizeOverlayPreferences } from '../../../shared/overlay';
+import { normalizeLootCurrencyMode } from '../utils/currencyDisplay';
 import {
   DEFAULT_SETTINGS,
   configureSessionRepositoryActions,
@@ -238,6 +239,7 @@ function applyPreferences(preferences: JsonObject): Partial<SessionState> {
     scarabPresets: Array.isArray(preferences.scarabPresets)
       ? preferences.scarabPresets as unknown as SessionState['scarabPresets'] : [],
     onboardingDismissed: preferences.onboardingDismissed === true,
+    lootCurrencyMode: normalizeLootCurrencyMode(preferences.lootCurrencyMode),
     defaultExclusionPreset: Array.isArray(preferences.defaultExclusionPreset)
       ? preferences.defaultExclusionPreset as string[] : [],
     exclusionPresets: Array.isArray(preferences.exclusionPresets)
@@ -296,6 +298,7 @@ function preferencePayload(state = useSessionStore.getState()): JsonObject {
     regexBuilderGroups: state.regexBuilderGroups,
     scarabPresets: state.scarabPresets,
     onboardingDismissed: state.onboardingDismissed,
+    lootCurrencyMode: state.lootCurrencyMode,
     defaultExclusionPreset: state.defaultExclusionPreset,
     exclusionPresets: state.exclusionPresets,
     overlayPreferences: state.overlayPreferences,
@@ -1007,6 +1010,7 @@ function installStoreSubscription(): void {
       state.retrospectiveCloseouts !== previous.retrospectiveCloseouts ||
       state.regexBuilderGroups !== previous.regexBuilderGroups || state.scarabPresets !== previous.scarabPresets ||
       state.onboardingDismissed !== previous.onboardingDismissed ||
+      state.lootCurrencyMode !== previous.lootCurrencyMode ||
       state.defaultExclusionPreset !== previous.defaultExclusionPreset ||
       state.exclusionPresets !== previous.exclusionPresets ||
       state.overlayPreferences !== previous.overlayPreferences ||

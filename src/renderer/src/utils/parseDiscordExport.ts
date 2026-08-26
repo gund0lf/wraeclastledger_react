@@ -11,6 +11,7 @@ import {
   parseObservedDeliriumLine,
   type ObservedDeliriumSummary,
 } from './deliriumMetadata';
+import { formatChaosValue } from './currencyDisplay';
 
 export interface DiscordImport {
   mapCount: number; mapType: string; multiplier: number;
@@ -291,13 +292,7 @@ export const fc = (v: number | null | undefined, sign = false): string => {
  *  the Discord export wire format — the bot + all 3 client parsers expect
  *  plain digits there (session 17; large raw values were unreadable). */
 export const fcSep = (v: number | null | undefined, sign = false, decimals = 0): string => {
-  if (v == null) return '\u2014';
-  const prefix = sign ? (v >= 0 ? '+' : '-') : (v < 0 ? '-' : '');
-  const abs = Math.abs(v);
-  const s = decimals > 0
-    ? abs.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: decimals })
-    : Math.round(abs).toLocaleString('en-US');
-  return `${prefix}${s}c`;
+  return formatChaosValue(v, sign, decimals);
 };
 
 /** Format a number to one decimal place, or return null if nil. */

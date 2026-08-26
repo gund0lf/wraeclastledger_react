@@ -514,7 +514,7 @@ export const StrategyCard = ({
           <Tooltip
             label={`Observed explicit-mod average across ${observedModSampleSize} exact maps. Strategy bucket remains ${strategy.map_type ?? 'unclassified'}; Browser 6/8 filtering is unchanged.`}
             withArrow multiline w={250}>
-            <Text size="xs" fw={600} c="gray.5" style={{ width: browserCols.mod, flexShrink: 0, fontSize: FONT.body, cursor: 'help', fontVariantNumeric: 'tabular-nums' }}>
+            <Text size="xs" fw={600} c="gray.5" style={{ width: browserCols.mod, textAlign: 'center', flexShrink: 0, fontSize: FONT.body, cursor: 'help', fontVariantNumeric: 'tabular-nums' }}>
               {modDisplay}
             </Text>
           </Tooltip>
@@ -522,7 +522,7 @@ export const StrategyCard = ({
           <Tooltip
             label={`No complete observed-mod sample is available. Showing the published ${strategy.map_type ?? 'unclassified'} setup bucket instead; observed averages require exact advanced-format data for every map in the run.`}
             withArrow multiline w={270}>
-            <Text size="xs" fw={600} c="gray.5" style={{ width: browserCols.mod, flexShrink: 0, fontSize: FONT.body, cursor: 'help', fontVariantNumeric: 'tabular-nums' }}>{modDisplay}</Text>
+            <Text size="xs" fw={600} c="gray.5" style={{ width: browserCols.mod, textAlign: 'center', flexShrink: 0, fontSize: FONT.body, cursor: 'help', fontVariantNumeric: 'tabular-nums' }}>{modDisplay}</Text>
           </Tooltip>
         )}
         <Tooltip
@@ -556,7 +556,7 @@ export const StrategyCard = ({
             )}
           </div>
         </Tooltip>
-        <Text size="xs" fw={600} c="gray.4" style={{ width: browserCols.cost, flexShrink: 0, fontSize: FONT.body, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+        <Text size="xs" fw={600} c="gray.4" style={{ width: browserCols.cost, textAlign: 'center', flexShrink: 0, fontSize: FONT.body, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {costPerMap != null ? fcSep(costPerMap) : '—'}
         </Text>
         <Tooltip
@@ -565,20 +565,20 @@ export const StrategyCard = ({
             ? 'Historical Divine total — each run uses its authored Divine-price snapshot.'
             : 'Historical Divine total unavailable because at least one run lacks an authored investment or Divine-price snapshot.'}
           withArrow multiline w={270}>
-          <Text size="xs" fw={600} c="gray.3" style={{ width: browserCols.invest, flexShrink: 0, fontSize: FONT.body, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', cursor: isPooled ? 'help' : undefined }}>
+          <Text size="xs" fw={600} c="gray.3" style={{ width: browserCols.invest, textAlign: 'center', flexShrink: 0, fontSize: FONT.body, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden', cursor: isPooled ? 'help' : undefined }}>
             {fc(strategy.total_invest)}
             {strategy.total_invest != null && totalInvestDivines != null && (
               <Text span style={{ color: COLOR.textFaint, fontSize: FONT.small }}> ({totalInvestDivines.toFixed(1)}d)</Text>
             )}
           </Text>
         </Tooltip>
-        <Text size="xs" fw={700} style={{ width: browserCols.profit, flexShrink: 0, fontSize: FONT.body, fontVariantNumeric: 'tabular-nums', color: profitColor, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+        <Text size="xs" fw={700} style={{ width: browserCols.profit, textAlign: 'center', flexShrink: 0, fontSize: FONT.body, fontVariantNumeric: 'tabular-nums', color: profitColor, whiteSpace: 'nowrap', overflow: 'hidden' }}>
           {fc(strategy.net_profit, true)}
           {strategy.net_profit != null && historicalProfitDivines != null && (
             <Text span style={{ color: COLOR.textFaint, fontSize: FONT.small }}> ({strategy.net_profit >= 0 ? '+' : ''}{historicalProfitDivines.toFixed(1)}d)</Text>
           )}
         </Text>
-        <Group gap={2} style={{ width: browserCols.score, flexShrink: 0 }} align="center">
+        <Group gap={2} style={{ width: browserCols.score, flexShrink: 0 }} align="center" justify="center">
           {score >= 0 ? <IconThumbUp size={10} style={{ color: scoreColor }} /> : <IconThumbDown size={10} style={{ color: scoreColor }} />}
           <Text size="xs" fw={600} style={{ color: scoreColor, fontSize: FONT.small, fontVariantNumeric: 'tabular-nums' }}>{score > 0 ? `+${score}` : score}</Text>
         </Group>

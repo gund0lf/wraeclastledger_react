@@ -21,7 +21,7 @@ const POST_CUTOVER_ONLY_KEYS = new Set([
   'currentGeneration', 'preferencesGeneration', 'layoutGeneration', 'saveStatus',
   'saveError', 'sessionLifecycle', 'liveSessionId', 'activationCheckpointNotice',
   'historyStoragePressure', 'manualRunTimer', 'manualTimerRecoveryMs',
-  'overlayPreferences', 'overlayShortcutStatus',
+  'overlayPreferences', 'overlayShortcutStatus', 'lootCurrencyMode',
 ]);
 const LEGACY_V18_DATA_KEYS = Object.keys(FIELD_OWNERSHIP)
   .filter((key) => !POST_CUTOVER_ONLY_KEYS.has(key))

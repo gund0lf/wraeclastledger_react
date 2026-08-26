@@ -1,0 +1,113 @@
+.dashboard-card {
+  container-type: inline-size;
+}
+
+.dashboard-card.dashboard-refined {
+  background:
+    radial-gradient(circle at 50% -24%, rgba(77, 171, 247, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(20, 24, 29, 0.98), rgba(14, 17, 21, 0.98));
+}
+
+.dashboard-loot-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  background: rgba(17, 25, 32, 0.92);
+  border: 1px solid rgba(116, 192, 252, 0.24);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 0 0 1px rgba(77, 171, 247, 0.08),
+    inset 0 1px rgba(255, 255, 255, 0.035);
+}
+
+.dashboard-loot-header {
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(116, 192, 252, 0.16);
+}
+
+.dashboard-loot-title-row {
+  flex: 1;
+  min-width: 130px;
+}
+
+.dashboard-multiplier-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.dashboard-loot-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 5px;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+
+.dashboard-loot-status {
+  container-type: inline-size;
+  min-width: 0;
+  min-height: 30px;
+  padding: 2px 5px;
+  border-radius: 5px;
+}
+
+.dashboard-loot-status-label {
+  min-width: 0;
+}
+
+.dashboard-loot-status-manual {
+  background: rgba(255, 212, 59, 0.04);
+  border: 1px solid rgba(255, 212, 59, 0.22);
+}
+
+.dashboard-loot-status-corrected {
+  background: rgba(32, 201, 151, 0.05);
+  border: 1px solid rgba(32, 201, 151, 0.22);
+}
+
+.dashboard-loot-status-dismissed {
+  background: rgba(134, 142, 150, 0.05);
+  border: 1px solid rgba(134, 142, 150, 0.22);
+}
+
+.dashboard-loot-view-controls {
+  flex-shrink: 0;
+}
+
+.dashboard-loot-summary {
+  flex-shrink: 0;
+  padding: 4px 4px 0;
+  border-top: 1px solid #444;
+  background: #16171a;
+}
+
+.dashboard-loot-category {
+  background: rgba(28, 33, 39, 0.96);
+  border: 1px solid rgba(116, 192, 252, 0.16);
+  border-radius: 6px;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.025);
+}
+
+@container (max-width: 240px) {
+  .dashboard-loot-status-detail {
+    display: none;
+  }
+}
+
+@container (max-width: 540px) {
+  .dashboard-loot-header {
+    align-items: flex-start;
+  }
+
+  .dashboard-loot-actions {
+    width: 100%;
+  }
+
+  .dashboard-loot-title-row {
+    width: 100%;
+  }
+}

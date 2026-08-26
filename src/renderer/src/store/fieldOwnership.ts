@@ -55,6 +55,7 @@ export const FIELD_OWNERSHIP = {
   regexBuilderGroups: 'user-preference-cache',
   scarabPresets: 'user-preference-cache',
   onboardingDismissed: 'user-preference-cache',
+  lootCurrencyMode: 'user-preference-cache',
   defaultExclusionPreset: 'user-preference-cache',
   exclusionPresets: 'user-preference-cache',
   divinePriceFetchedAt: 'user-preference-cache',
