@@ -4,9 +4,7 @@ import {
   Badge,
   Box,
   Button,
-  Card,
   Collapse,
-  Divider,
   Group,
   Modal,
   NumberInput,
@@ -22,7 +20,6 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { IconChevronDown, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useMemo, useState, type ReactNode } from 'react';
-import { ModuleHeader } from '../components/ui/ModuleHeader';
 import { RunTimerPanel } from '../components/RunTimerPanel';
 import type {
   RunStatisticsSetupAttribution,
@@ -53,6 +50,7 @@ import {
   remainingUntrackedMaps,
   totalValuableBeastGains,
 } from '../utils/runStatistics';
+import './RunStatisticsModule.css';
 
 const COUNTER_FIELDS: Array<{
   field: ManualStatisticField;
@@ -128,8 +126,8 @@ const SetupContextBlock = ({
     : 'authored counter updates that add observations';
   return (
     <>
-      <Text size="xs" fw={700} mt="sm" mb={4}>Setup context</Text>
-      <Paper withBorder p="xs">
+      <Text className="run-statistics-subheading" size="xs" fw={700}>Setup context</Text>
+      <Paper className="run-statistics-technical-panel" withBorder p="xs">
         {isGlobal ? (
           <Text size="xs" c="dimmed">
             Setup evidence remains attached to each individual session. This combined view does not
@@ -186,8 +184,8 @@ const DataQualityBlock = ({
     : 'authored counter updates that add observations';
   return (
     <>
-      <Text size="xs" fw={700} mt="sm" mb={4}>Data quality</Text>
-      <Paper withBorder p="xs">
+      <Text className="run-statistics-subheading" size="xs" fw={700}>Data quality</Text>
+      <Paper className="run-statistics-technical-panel" withBorder p="xs">
         <Text size="xs" c="dimmed">
           {isGlobal
             ? 'Observed totals use only explicitly reporting sessions. Setup differences are not normalized or presented as causal.'
@@ -205,6 +203,49 @@ const DataQualityBlock = ({
         </Text>
       </Paper>
     </>
+  );
+};
+
+interface TechnicalDetailsProps extends SetupContextBlockProps {
+  children: ReactNode;
+}
+
+const TechnicalDetails = ({
+  attribution,
+  hasObservedResult,
+  isGlobal,
+  children,
+}: TechnicalDetailsProps) => {
+  const contexts = attribution?.contexts ?? [];
+  const status = isGlobal
+    ? { label: 'Per session', color: 'gray' }
+    : attribution?.overflowed
+      ? { label: 'Evidence limit', color: 'red' }
+      : attribution?.legacyUnattributed
+        ? { label: 'Legacy evidence', color: 'yellow' }
+        : contexts.length > 1
+          ? { label: 'Mixed setup', color: 'yellow' }
+          : contexts.length === 1
+            ? { label: 'Setup recorded', color: 'gray' }
+            : hasObservedResult
+              ? { label: 'Setup unavailable', color: 'yellow' }
+              : { label: 'No observations', color: 'gray' };
+
+  return (
+    <details className="run-statistics-technical-details">
+      <summary className="run-statistics-technical-summary">
+        <Group component="span" justify="space-between" gap="xs" wrap="nowrap">
+          <Group component="span" gap={6} wrap="nowrap">
+            <IconChevronDown className="run-statistics-technical-chevron" size={14} aria-hidden />
+            <Text component="span" size="xs" fw={650}>Setup &amp; data quality</Text>
+          </Group>
+          <Badge size="xs" variant="outline" color={status.color}>{status.label}</Badge>
+        </Group>
+      </summary>
+      <Stack className="run-statistics-technical-content" gap="xs">
+        {children}
+      </Stack>
+    </details>
   );
 };
 
@@ -230,8 +271,9 @@ const StatisticsSection = ({
   onToggle,
   children,
 }: StatisticsSectionProps) => (
-  <Box>
+  <Box component="section" className="run-statistics-section" data-open={opened || undefined}>
     <UnstyledButton
+      className="run-statistics-section-header"
       w="100%"
       aria-expanded={opened}
       aria-controls={`run-statistics-${id}`}
@@ -240,6 +282,7 @@ const StatisticsSection = ({
       <Group justify="space-between" align="center" wrap="nowrap" gap="xs">
         <Group align="center" wrap="nowrap" gap="xs" style={{ minWidth: 0 }}>
           <IconChevronDown
+            className="run-statistics-section-chevron"
             size={16}
             aria-hidden
             style={{
@@ -257,7 +300,7 @@ const StatisticsSection = ({
       </Group>
     </UnstyledButton>
     <Collapse in={opened} id={`run-statistics-${id}`}>
-      <Box pt="xs">{children}</Box>
+      <Box className="run-statistics-section-content">{children}</Box>
     </Collapse>
   </Box>
 );
@@ -451,38 +494,7 @@ export const RunStatisticsModule = () => {
   };
 
   return (
-    <Card
-      shadow="sm"
-      padding="sm"
-      radius="md"
-      withBorder
-      h="100%"
-      style={{ display: 'flex', flexDirection: 'column' }}
-    >
-      <ModuleHeader
-        title="Run Statistics"
-        right={
-          <Tooltip label={
-            isGlobal
-              ? 'Switch to Session to edit or clear its manual statistics'
-              : hasStatistics
-                ? 'Clear manual statistics'
-                : 'Nothing recorded manually'
-          }>
-            <Button
-              size="compact-xs"
-              variant="subtle"
-              color="red"
-              disabled={isGlobal || !hasStatistics}
-              leftSection={<IconTrash size={13} />}
-              onClick={openClear}
-            >
-              Clear manual
-            </Button>
-          </Tooltip>
-        }
-      />
-
+    <div className="run-statistics-root">
       <Modal opened={clearOpen} onClose={closeClear} title="Clear manual run statistics?" size="sm">
         <Stack gap="md">
           <Text size="sm" c="dimmed">
@@ -504,13 +516,51 @@ export const RunStatisticsModule = () => {
         </Stack>
       </Modal>
 
-      <ScrollArea style={{ flex: 1 }} type="auto" offsetScrollbars>
-        <Stack gap="md" pr="xs">
+      <ScrollArea className="run-statistics-scroll" type="auto" offsetScrollbars>
+        <div className="run-statistics-workspace">
+          <Group className="run-statistics-toolbar" justify="space-between" align="center" wrap="wrap" gap="xs">
+            <Group gap="sm" wrap="wrap">
+              <SegmentedControl
+                size="xs"
+                value={statisticsView}
+                data={[
+                  { label: 'Session', value: 'session' },
+                  { label: 'All sessions', value: 'all' },
+                ]}
+                onChange={(value) => setStatisticsView(value as StatisticsView)}
+              />
+              <Text size="xs" c="dimmed">
+                {isGlobal
+                  ? `${globalStatistics.sessionCount.toLocaleString()} sessions · ${globalStatistics.mapCount.toLocaleString()} maps`
+                  : `${maps.length.toLocaleString()} maps in this session`}
+              </Text>
+            </Group>
+            <Tooltip label={
+              isGlobal
+                ? 'Switch to Session to edit or clear its manual statistics'
+                : hasStatistics
+                  ? 'Clear manual statistics'
+                  : 'Nothing recorded manually'
+            }>
+              <Button
+                className="run-statistics-destructive"
+                size="compact-xs"
+                variant="subtle"
+                disabled={isGlobal || !hasStatistics}
+                leftSection={<IconTrash size={13} />}
+                onClick={openClear}
+              >
+                Clear manual
+              </Button>
+            </Tooltip>
+          </Group>
+
           <RunTimerPanel />
 
           {!manualStatistics.infoDismissed && (
             <Alert
-              color="blue"
+              className="run-statistics-intro"
+              color="gray"
               variant="light"
               withCloseButton
               closeButtonLabel="Dismiss Run Statistics information for this session"
@@ -525,23 +575,6 @@ export const RunStatisticsModule = () => {
             </Alert>
           )}
 
-          <Group justify="space-between" align="center" wrap="wrap" gap="xs">
-            <SegmentedControl
-              size="xs"
-              value={statisticsView}
-              data={[
-                { label: 'Session', value: 'session' },
-                { label: 'All sessions', value: 'all' },
-              ]}
-              onChange={(value) => setStatisticsView(value as StatisticsView)}
-            />
-            <Text size="xs" c="dimmed">
-              {isGlobal
-                ? `${globalStatistics.sessionCount.toLocaleString()} sessions · ${globalStatistics.mapCount.toLocaleString()} maps`
-                : `${maps.length.toLocaleString()} maps in this session`}
-            </Text>
-          </Group>
-
           {isGlobal && globalLoading && (
             <Text size="xs" c="dimmed">Loading saved-session statistics...</Text>
           )}
@@ -549,6 +582,7 @@ export const RunStatisticsModule = () => {
             <Alert color="red" variant="light"><Text size="xs">{globalLoadError}</Text></Alert>
           )}
 
+          <div className="run-statistics-sections">
           <StatisticsSection
             id="kalguuran"
             title="Kalguuran"
@@ -567,8 +601,9 @@ export const RunStatisticsModule = () => {
             opened={openSections.kalguuran}
             onToggle={toggleSection}
           >
-            <Text size="xs" fw={700} mb={4}>Observed</Text>
-            <Paper withBorder p="xs">
+            <div className="run-statistics-observed">
+            <Text className="run-statistics-subheading" size="xs" fw={700} mb={4}>Observed</Text>
+            <Paper className="run-statistics-observed-panel" withBorder p="xs">
               <Text size="xs" fw={600}>Starfall Crater</Text>
               <Text size="xs" c="dimmed" mb="xs">
                 Crater chance uses the Map Log; Svalinn is a Black Knight outcome within recorded Craters.
@@ -616,14 +651,21 @@ export const RunStatisticsModule = () => {
                 })}
               </Box>
             </Paper>
+            </div>
+            <TechnicalDetails
+              attribution={kalguuranSetup}
+              category="kalguuran"
+              hasObservedResult={starfallReported || (!isGlobal && manualStatistics.svalinnDrops !== undefined)}
+              isGlobal={isGlobal}
+            >
             <SetupContextBlock
               attribution={kalguuranSetup}
               category="kalguuran"
               hasObservedResult={starfallReported || (!isGlobal && manualStatistics.svalinnDrops !== undefined)}
               isGlobal={isGlobal}
             />
-            <Text size="xs" fw={700} mt="sm" mb={4}>Model / normalization</Text>
-            <Paper withBorder p="xs">
+            <Text className="run-statistics-subheading" size="xs" fw={700}>Model / normalization</Text>
+            <Paper className="run-statistics-technical-panel" withBorder p="xs">
               <Text size="xs" c="dimmed">
                 Observed Crater rate uses the Map Log and Svalinn uses recorded Craters. No Atlas or
                 scarab adjustment is applied in this first setup-aware slice.
@@ -635,9 +677,8 @@ export const RunStatisticsModule = () => {
               hasObservedResult={starfallReported || (!isGlobal && manualStatistics.svalinnDrops !== undefined)}
               isGlobal={isGlobal}
             />
+            </TechnicalDetails>
           </StatisticsSection>
-
-          <Divider />
 
           <StatisticsSection
             id="wildwood"
@@ -653,9 +694,10 @@ export const RunStatisticsModule = () => {
             opened={openSections.wildwood}
             onToggle={toggleSection}
           >
-            <Text size="xs" fw={700} mb={4}>Observed</Text>
+            <div className="run-statistics-observed">
+            <Text className="run-statistics-subheading" size="xs" fw={700} mb={4}>Observed</Text>
             {isGlobal ? (
-              <Paper withBorder p="xs">
+              <Paper className="run-statistics-observed-panel" withBorder p="xs">
                 <Text size="xs" fw={600}>Wildwood encounters</Text>
                 <Text size="sm" fw={700}>
                   {globalStatistics.counters.wildwoodEncounters.sessionCount > 0
@@ -683,14 +725,21 @@ export const RunStatisticsModule = () => {
                 }}
               />
             )}
+            </div>
+            <TechnicalDetails
+              attribution={wildwoodSetup}
+              category="wildwood"
+              hasObservedResult={wildwoodReported}
+              isGlobal={isGlobal}
+            >
             <SetupContextBlock
               attribution={wildwoodSetup}
               category="wildwood"
               hasObservedResult={wildwoodReported}
               isGlobal={isGlobal}
             />
-            <Text size="xs" fw={700} mt="sm" mb={4}>Model / normalization</Text>
-            <Paper withBorder p="xs">
+            <Text className="run-statistics-subheading" size="xs" fw={700}>Model / normalization</Text>
+            <Paper className="run-statistics-technical-panel" withBorder p="xs">
               <Text size="xs" c="dimmed">
                 No spawn-rate adjustment is made. Scarab of Wisps pre-empowers monsters with wisps;
                 it is retained as setup context, not treated as proven extra Wildwood chance.
@@ -702,9 +751,8 @@ export const RunStatisticsModule = () => {
               hasObservedResult={wildwoodReported}
               isGlobal={isGlobal}
             />
+            </TechnicalDetails>
           </StatisticsSection>
-
-          <Divider />
 
           <StatisticsSection
             id="anomalies"
@@ -718,7 +766,8 @@ export const RunStatisticsModule = () => {
             opened={openSections.anomalies}
             onToggle={toggleSection}
           >
-            <Text size="xs" fw={700} mb={4}>Observed</Text>
+            <div className="run-statistics-observed">
+            <Text className="run-statistics-subheading" size="xs" fw={700} mb={4}>Observed</Text>
             {!isGlobal && (
               <Box
                 style={{
@@ -792,9 +841,9 @@ export const RunStatisticsModule = () => {
                           />
                           <Tooltip label={`Remove ${row.name}`}>
                             <ActionIcon
+                              className="run-statistics-row-delete"
                               size="md"
                               variant="subtle"
-                              color="red"
                               aria-label={`Remove ${row.name}`}
                               onClick={() => setManualAtlasAnomalyCount(row.name, null)}
                             >
@@ -812,14 +861,21 @@ export const RunStatisticsModule = () => {
                 {isGlobal ? 'No Atlas anomalies recorded across sessions.' : 'No Atlas anomalies recorded yet.'}
               </Text>
             )}
+            </div>
+            <TechnicalDetails
+              attribution={anomalySetup}
+              category="anomalies"
+              hasObservedResult={anomalyRows.length > 0}
+              isGlobal={isGlobal}
+            >
             <SetupContextBlock
               attribution={anomalySetup}
               category="anomalies"
               hasObservedResult={anomalyRows.length > 0}
               isGlobal={isGlobal}
             />
-            <Text size="xs" fw={700} mt="sm" mb={4}>Model / normalization</Text>
-            <Paper withBorder p="xs">
+            <Text className="run-statistics-subheading" size="xs" fw={700}>Model / normalization</Text>
+            <Paper className="run-statistics-technical-panel" withBorder p="xs">
               <Text size="xs" c="dimmed">
                 Each anomaly remains a direct observed rate. Map modifiers and Risk-scarab setup are
                 not normalized or claimed to cause the result; stable cohorts come later.
@@ -831,9 +887,8 @@ export const RunStatisticsModule = () => {
               hasObservedResult={anomalyRows.length > 0}
               isGlobal={isGlobal}
             />
+            </TechnicalDetails>
           </StatisticsSection>
-
-          <Divider />
 
           <StatisticsSection
             id="beasts"
@@ -847,9 +902,10 @@ export const RunStatisticsModule = () => {
             opened={openSections.beasts}
             onToggle={toggleSection}
           >
-            <Text size="xs" fw={700} mb={4}>Observed</Text>
+            <div className="run-statistics-observed">
+            <Text className="run-statistics-subheading" size="xs" fw={700} mb={4}>Observed</Text>
             {isGlobal && (
-              <Paper withBorder p="xs" mb="xs">
+              <Paper className="run-statistics-observed-panel" withBorder p="xs" mb="xs">
                 <Text size="xs" fw={600}>Combined observed gains</Text>
                 <Text size="xs" c="dimmed">
                   {globalStatistics.beastSessionCount.toLocaleString()} snapshot
@@ -894,23 +950,30 @@ export const RunStatisticsModule = () => {
               Each run contributes only its positive Baseline-to-Return quantity delta; price changes
               and exclusions do not affect these totals.
             </Text>
+            </div>
 
+            <TechnicalDetails
+              attribution={beastSetup}
+              category="beasts"
+              hasObservedResult={hasLootSnapshots}
+              isGlobal={isGlobal}
+            >
             <SetupContextBlock
               attribution={beastSetup}
               category="beasts"
               hasObservedResult={hasLootSnapshots}
               isGlobal={isGlobal}
             />
-            <Text size="xs" fw={700} mt="sm" mb={4}>Model / normalization</Text>
+            <Text className="run-statistics-subheading" size="xs" fw={700}>Model / normalization</Text>
             {isGlobal ? (
-              <Paper withBorder p="xs">
+              <Paper className="run-statistics-technical-panel" withBorder p="xs">
                 <Text size="xs" c="dimmed">
                   No cross-session Bestiary model is calculated because each run can have a different
                   Atlas tree, scarabs, and capture multiplier.
                 </Text>
               </Paper>
             ) : beastModel ? (
-              <Paper withBorder p="xs">
+              <Paper className="run-statistics-technical-panel" withBorder p="xs">
                 <Text size="xs" fw={600}>Bestiary model input</Text>
                 <Text size="xs" c="dimmed">
                   {beastModel.herdCount} Herd · {beastModel.duplicatesCapturedBeasts ? 'Duplicating' : 'no Duplicating'}
@@ -965,9 +1028,8 @@ export const RunStatisticsModule = () => {
               hasObservedResult={hasLootSnapshots}
               isGlobal={isGlobal}
             />
+            </TechnicalDetails>
           </StatisticsSection>
-
-          <Divider />
 
           <StatisticsSection
             id="mercenaries"
@@ -981,9 +1043,10 @@ export const RunStatisticsModule = () => {
             opened={openSections.mercenaries}
             onToggle={toggleSection}
           >
-            <Text size="xs" fw={700} mb={4}>Observed</Text>
+            <div className="run-statistics-observed">
+            <Text className="run-statistics-subheading" size="xs" fw={700} mb={4}>Observed</Text>
             {isGlobal && (
-              <Paper withBorder p="xs" mb="xs">
+              <Paper className="run-statistics-observed-panel" withBorder p="xs" mb="xs">
                 <Text size="xs" fw={600}>Combined tracked archetypes</Text>
                 <Text size="xs" c="dimmed">
                   {globalStatistics.mercenarySessionCount.toLocaleString()} reporting
@@ -1074,9 +1137,9 @@ export const RunStatisticsModule = () => {
                             />
                             <Tooltip label={`Remove ${row.archetype}`}>
                               <ActionIcon
+                                className="run-statistics-row-delete"
                                 size="md"
                                 variant="subtle"
-                                color="red"
                                 aria-label={`Remove ${row.archetype}`}
                                 onClick={() => setManualMercenaryCount(row.archetype, null)}
                               >
@@ -1113,22 +1176,29 @@ export const RunStatisticsModule = () => {
                   : 'No tracked Mercenary archetypes yet. Maps without a tracked row remain Other.'}
               </Text>
             )}
+            </div>
+            <TechnicalDetails
+              attribution={mercenarySetup}
+              category="mercenaries"
+              hasObservedResult={mercenaryRows.length > 0}
+              isGlobal={isGlobal}
+            >
             <SetupContextBlock
               attribution={mercenarySetup}
               category="mercenaries"
               hasObservedResult={mercenaryRows.length > 0}
               isGlobal={isGlobal}
             />
-            <Text size="xs" fw={700} mt="sm" mb={4}>Model / normalization</Text>
+            <Text className="run-statistics-subheading" size="xs" fw={700}>Model / normalization</Text>
             {isGlobal ? (
-              <Paper withBorder p="xs">
+              <Paper className="run-statistics-technical-panel" withBorder p="xs">
                 <Text size="xs" c="dimmed">
                   Combined archetype rates are not normalized across different attribute suppression,
                   House bias, encounter chance, or Trarthan scarab setups.
                 </Text>
               </Paper>
             ) : mercenarySetupContext && mercenaryAtlasSetup ? (
-              <Paper withBorder p="xs">
+              <Paper className="run-statistics-technical-panel" withBorder p="xs">
                 <Text size="xs" fw={600}>Recorded Mercenary setup</Text>
                 <Text size="xs" c="dimmed">
                   {mercenaryScarabSetup.infamy
@@ -1171,7 +1241,7 @@ export const RunStatisticsModule = () => {
                 )}
               </Paper>
             ) : (
-              <Paper withBorder p="xs">
+              <Paper className="run-statistics-technical-panel" withBorder p="xs">
                 <Text size="xs" c="dimmed">
                   Descriptive targeting requires one fully attributed setup with Path of Pathing stats.
                   Mixed, legacy, and unavailable setup evidence is not replaced by current settings.
@@ -1184,9 +1254,11 @@ export const RunStatisticsModule = () => {
               hasObservedResult={mercenaryRows.length > 0}
               isGlobal={isGlobal}
             />
+            </TechnicalDetails>
           </StatisticsSection>
-        </Stack>
+          </div>
+        </div>
       </ScrollArea>
-    </Card>
+    </div>
   );
 };

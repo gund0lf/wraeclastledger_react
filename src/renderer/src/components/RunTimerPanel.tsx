@@ -78,33 +78,24 @@ export function RunTimerPanel() {
 
   return (
     <>
-      <Paper withBorder p="sm">
-        <Stack gap="xs">
-          <Group justify="space-between" wrap="wrap" gap="xs">
-            <Group gap="xs">
-              <IconClock size={18} />
-              <div>
-                <Group gap={6}>
-                  <Text size="sm" fw={700}>Manual active-play timer</Text>
-                  {manualRunTimer.finishedAt !== null && <Badge size="xs" color="teal">Finished</Badge>}
-                  {running && <Badge size="xs" color="blue">Running</Badge>}
-                </Group>
-                <Text size="xs" c="dimmed">
-                  Optional alternative for pre-imported runs; clipboard-derived Pace remains the automatic default.
-                </Text>
-              </div>
-            </Group>
-            <Button
-              size="compact-xs"
-              variant="subtle"
-              leftSection={<IconAdjustments size={13} />}
-              onClick={settingsDisclosure.open}
-            >
-              Overlay
-            </Button>
+      <Paper className="run-timer-panel" withBorder p="sm">
+        <div className="run-timer-layout">
+          <Group className="run-timer-heading" gap="xs" wrap="nowrap">
+            <IconClock size={18} />
+            <div>
+              <Group gap={6}>
+                <Text size="sm" fw={700}>Manual timer</Text>
+                {manualRunTimer.finishedAt !== null && <Badge size="xs" color="teal">Finished</Badge>}
+                {running && <Badge size="xs" color="blue">Running</Badge>}
+              </Group>
+              <Text size="xs" c="dimmed">
+                For pre-imported runs; automatic clipboard Pace remains the default.
+              </Text>
+            </div>
           </Group>
 
           <Text
+            className="run-timer-value"
             fw={800}
             ta="center"
             style={{ fontSize: FONT.xl, fontVariantNumeric: 'tabular-nums', letterSpacing: 1 }}
@@ -112,7 +103,7 @@ export function RunTimerPanel() {
             {formatStopwatch(elapsedMs)}
           </Text>
 
-          <Group justify="center" gap="xs">
+          <Group className="run-timer-controls" justify="center" gap={5}>
             <Button
               size="xs"
               disabled={!live}
@@ -142,29 +133,37 @@ export function RunTimerPanel() {
               Adjust
             </Button>
             <Button
+              className="run-statistics-destructive"
               size="xs"
               variant="subtle"
-              color="red"
               disabled={running || elapsedMs <= 0}
               leftSection={<IconTrash size={13} />}
               onClick={resetDisclosure.open}
             >
               Reset
             </Button>
+            <Button
+              size="xs"
+              variant="subtle"
+              leftSection={<IconAdjustments size={13} />}
+              onClick={settingsDisclosure.open}
+            >
+              Overlay
+            </Button>
           </Group>
 
-          <Group justify="space-between" gap="xs" wrap="wrap">
+          <Group className="run-timer-meta" justify="space-between" gap="xs" wrap="wrap">
             <Text size="xs" c="dimmed">
               Clipboard estimate: {clipboardTime ? formatActiveTime(clipboardTime.activeMs) : 'not available'}
             </Text>
             <Text size="xs" c="dimmed">Manual: {formatStopwatch(elapsedMs)}</Text>
           </Group>
           {!live && (
-            <Text size="xs" c="dimmed">
+            <Text className="run-timer-history-note" size="xs" c="dimmed">
               Historical sessions retain and allow adjustment of recorded time, but active tracking can only run on the live session.
             </Text>
           )}
-        </Stack>
+        </div>
       </Paper>
 
       {manualTimerRecoveryMs !== null && (
