@@ -580,7 +580,7 @@ export const DashboardModule = () => {
           <Tooltip label="Divine price, league and atlas points of this session are frozen — live refreshes never touch loaded sessions from another league. Start a new session to track the current league." withArrow multiline w={280}>
             <Badge color="yellow" variant="light" size="sm" mb={6}
               style={{ cursor: 'help', flexShrink: 0, alignSelf: 'flex-start' }}>
-              Historical session — {settings.leagueName}
+              Previous league — {settings.leagueName}
             </Badge>
           </Tooltip>
         )}

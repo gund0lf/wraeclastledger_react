@@ -45,6 +45,10 @@ import {
   normalizeLootCurrencyMode,
   type LootCurrencyMode,
 } from '../utils/currencyDisplay';
+import {
+  type SessionMutationOrigin,
+  withAutomaticSessionMutation,
+} from '../utils/sessionMutationOrigin';
 
 /** Closed legacy-browser-store schema ceiling for the WP14 extraction path. */
 export { LEGACY_STORE_VERSION } from '../../../shared/sessionMigration';
@@ -346,7 +350,11 @@ export interface SessionState {
   clearSession: () => void;
   dismissActivationCheckpointNotice: () => void;
   toggleWatch: () => void;
-  updateSetting: <K extends keyof SessionSettings>(key: K, value: SessionSettings[K]) => void;
+  updateSetting: <K extends keyof SessionSettings>(
+    key: K,
+    value: SessionSettings[K],
+    origin?: SessionMutationOrigin,
+  ) => void;
   updateAdvSetting: <K extends keyof SessionSettings>(key: K, value: SessionSettings[K]) => void;
   updateScarab: (index: number, field: keyof ScarabSlot, value: string | number) => void;
   clearScarab: (index: number) => void;
@@ -485,8 +493,8 @@ export const useSessionStore = create<SessionStoreState>()(
         s.sessionLifecycle === 'live' ? { isWatching: !s.isWatching } : { isWatching: false }
       )),
 
-      updateSetting: (key, value) =>
-        set((s) => {
+      updateSetting: (key, value, origin = 'user') => {
+        const apply = () => set((s) => {
           const atlasTreeChanged = key === 'atlasTreeUrl' && value !== s.settings.atlasTreeUrl;
           return {
             settings: {
@@ -497,7 +505,10 @@ export const useSessionStore = create<SessionStoreState>()(
                 : {}),
             },
           };
-        }),
+        });
+        if (origin === 'automatic') withAutomaticSessionMutation(apply);
+        else apply();
+      },
 
       updateAdvSetting: (key, value) =>
         set((s) => {
@@ -781,7 +792,7 @@ export const useSessionStore = create<SessionStoreState>()(
         // (a failed refresh preserves the old price everywhere).
         const price = await tryFetchDivinePrice(opts.force === true || leagueChanged);
         const quotedAt = new Date().toISOString();
-        set((s) => {
+        const applyPriceSnapshot = () => set((s) => {
           const priceOk = !!(price && price > 0);
           const stillLive = s.sessionLifecycle === 'live';
           // Ignore a response that completed after the user changed sessions.
@@ -832,6 +843,8 @@ export const useSessionStore = create<SessionStoreState>()(
             },
           };
         });
+        if (!opts.force && !opts.repriceLoaded) withAutomaticSessionMutation(applyPriceSnapshot);
+        else applyPriceSnapshot();
       },
 
       setDivinePriceManual: (v) => {

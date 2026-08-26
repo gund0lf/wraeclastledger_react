@@ -20,6 +20,19 @@
   padding-inline: 2px;
 }
 
+.session-manager-undo-toast,
+.session-manager-viewing-status {
+  min-height: 28px;
+  padding: 3px 6px;
+  background: var(--setup-surface, rgba(255, 255, 255, 0.018));
+  border: 1px solid var(--setup-border, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+}
+
+.session-manager-undo-toast {
+  color: var(--mantine-color-blue-4);
+}
+
 .session-manager-actions {
   padding-inline: 1px;
 }

@@ -102,22 +102,23 @@ Verify all of the following inside that isolated candidate:
    `$WL_SMOKE/config/WraeclastLedger/ledger-data`; `README.txt`, `storage.json`,
    session entries, preferences, layout, and bootstrap records are present.
 4. Duplicate a session as `WP14 Linux disposable`. Change one known scarab price,
-   wait for **Auto-saved**, and confirm **Undo changes since opening** restores
-   the old value. Repeat the edit, open **Version history**, expand its change
+   wait for **Auto-saved**, and confirm the compact **Undo** action restores the
+   old value. Repeat the edit, open **Version history**, expand its change
    details, and confirm the exact old and new values are shown. Restart and verify
    the edited value and history persist, then restore the opening version.
 5. Move the disposable session to **Recently Deleted**. It appears exactly once
-   under its real name. Restore it; it opens as **Historical session** without
-   replacing the separate live target. Resume it, delete it again, then delete it
+   under its real name. Restore it; it opens as **Viewing saved session** without
+   replacing the picker entry marked **capture target**. Choose **Resume capture**,
+   delete it again, then delete it
    permanently. No unnamed companion entry appears at any point.
 6. Start a fresh empty session and switch away. Recently Deleted remains
    unchanged. Fork one historical session into the current league, select the
    fork from the session picker, and confirm it opens the fork rather than a new
    blank session.
-7. Open a historical session, edit a value, wait for **Auto-saved**, then choose
-   **Return to live session**. The previous live target returns and the historical
-   edit remains when that session is reopened; Return to live is navigation, not
-   an undo action.
+7. Open a saved session, edit a value, and wait for **Auto-saved**. Select the
+   separate picker entry marked **capture target**, then reopen the edited saved
+   session and confirm the edit remains. Ordinary picker navigation must not
+   create a Historical-session warning or a protection notice by itself.
 8. Export the disposable/restored session as JSON and restore it once with the
    non-destructive conflict option. Quit normally and relaunch once more; session
    state, history, Recently Deleted state, and layout still persist.
@@ -138,15 +139,15 @@ AppImage whose SHA-256 is supplied with the new exact source commit, then verify
 
 1. Load build settings from Strategy Browser into **New Session**. Open the
    Sessions picker and click the already-selected **New Session** row. The
-   **Protect working session** dialog must appear; **Cancel** must leave the
+   **Keep this working session?** dialog must appear; **Cancel** must leave the
    loaded build untouched.
 2. With that loaded working build still live, open a named historical session,
    return to Strategy Browser, and load a second build. The same protection
    dialog must appear even though the historical session is on screen.
-3. Choose **Name & continue**, using `WP14 protected Linux build`. The named
+3. Choose **Save to Sessions**, using `WP14 protected Linux build`. The named
    session must contain the first build, the second build must load into the new
    working session, and Recently Deleted must gain no unnamed entry.
-4. Click **New Session** again and choose **Move & continue**. This deliberate
+4. Click **New Session** again and choose **Continue without saving**. This deliberate
    discard must create exactly one unnamed Recently Deleted entry containing the
    second build; restore or permanently delete that disposable entry afterward.
 5. Make a price change that creates Version history details. Open Version

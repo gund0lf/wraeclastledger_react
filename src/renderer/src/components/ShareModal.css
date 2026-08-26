@@ -1,0 +1,6 @@
+.share-target-status {
+  padding: 7px 9px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+}

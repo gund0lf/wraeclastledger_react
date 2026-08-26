@@ -23,16 +23,16 @@ export function WorkingSessionGuardModal({
 }: WorkingSessionGuardModalProps) {
   const trimmedName = name.trim();
   return (
-    <Modal opened={opened} onClose={onCancel} title="Protect working session" size="sm" returnFocus={false}>
+    <Modal opened={opened} onClose={onCancel} title="Keep this working session?" size="sm" returnFocus={false}>
       <Stack gap="sm">
         <Text size="sm">
-          Your unnamed working session contains work
+          Your working session is auto-saved and contains work
           {mapCount > 0 ? ` (${mapCount} map${mapCount !== 1 ? 's' : ''})` : ''}.
-          {' '}{actionDescription} will replace its working slot. WraeclastLedger will move it to Recently Deleted,
-          or you can name it now to keep it in Sessions.
+          {' '}{actionDescription} will replace it. Continue without saving to Sessions to move it to Recently Deleted,
+          or give it a name to keep it in Sessions.
         </Text>
         <TextInput
-          label="Save as"
+          label="Session name"
           placeholder="e.g. T16 Deli - 72 maps"
           value={name}
           onChange={(event) => onNameChange(event.currentTarget.value)}
@@ -40,10 +40,10 @@ export function WorkingSessionGuardModal({
           autoFocus
         />
         <Group justify="space-between">
-          <Button variant="subtle" color="red" onClick={onDiscard}>Move &amp; continue</Button>
+          <Button variant="subtle" color="red" onClick={onDiscard}>Continue without saving</Button>
           <Group gap="xs">
             <Button variant="default" onClick={onCancel}>Cancel</Button>
-            <Button color="blue" onClick={onSave} disabled={!trimmedName}>Name &amp; continue</Button>
+            <Button color="blue" onClick={onSave} disabled={!trimmedName}>Save to Sessions</Button>
           </Group>
         </Group>
       </Stack>

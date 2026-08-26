@@ -197,7 +197,7 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
     if (maps.length < 4) return undefined;
     const inferred = inferMapType(maps, settings.mapType);
     if (inferred !== settings.mapType) {
-      updateSetting('mapType', inferred);
+      updateSetting('mapType', inferred, 'automatic');
       setAutoDetectMsg(`Auto-detected ${inferred} from ${maps.length} maps`);
       const t = setTimeout(() => setAutoDetectMsg(null), 4000);
       return () => clearTimeout(t);

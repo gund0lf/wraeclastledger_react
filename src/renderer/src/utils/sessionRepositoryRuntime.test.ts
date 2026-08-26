@@ -22,11 +22,19 @@ const workflow = (lifecycle: 'live' | 'historical' = 'live'): RepositoryWorkflow
 });
 
 describe('WP14 repository lifecycle provenance', () => {
-  it('coalesces production save snapshots to the newest body while retaining a pending checkpoint', () => {
+  it('coalesces to the newest body while retaining authored activation and destructive intent', () => {
     expect(coalescePendingSessionSnapshot(
-      { payload: { revision: 1 }, checkpointReason: 'destructive' as const },
+      {
+        payload: { revision: 1 },
+        activationId: 'activation:user-edit',
+        checkpointReason: 'destructive' as const,
+      },
       { payload: { revision: 2 } },
-    )).toEqual({ payload: { revision: 2 }, checkpointReason: 'destructive' });
+    )).toEqual({
+      payload: { revision: 2 },
+      activationId: 'activation:user-edit',
+      checkpointReason: 'destructive',
+    });
   });
 
   it('retries the newest queued snapshot rather than the older failed write', () => {

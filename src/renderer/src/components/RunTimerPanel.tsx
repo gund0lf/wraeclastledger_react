@@ -160,7 +160,7 @@ export function RunTimerPanel() {
           </Group>
           {!live && (
             <Text className="run-timer-history-note" size="xs" c="dimmed">
-              Historical sessions retain and allow adjustment of recorded time, but active tracking can only run on the live session.
+              Saved sessions retain their recorded time. Use Resume capture in Sessions before starting the timer again.
             </Text>
           )}
         </div>

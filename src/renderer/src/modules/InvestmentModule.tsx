@@ -229,19 +229,19 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
     setFetchingPrice(false);
   };
   // Cross-league loaded session (e.g. an Ancestors session opened under
-  // 3.29): show the historical banner. The price guard above is stricter
-  // (any loaded session); this banner only flags the league mismatch case.
+  // 3.29): show the previous-league context. The price guard above is stricter
+  // (any loaded session); this copy only flags the league mismatch case.
   const crossLeague = isCrossLeagueSession(sessionLifecycle, settings.leagueName);
   const liveLeagueMismatch = isLiveSessionLeagueMismatch(sessionLifecycle, settings.leagueName);
   // Keep the historical-session status inside the existing price label. A
   // standalone badge costs a whole row in short stacked FlexLayout panels.
   const historicalDivinePriceLabel = settings.leagueName
     ? `${settings.leagueName} Divine Price`
-    : 'Historical Divine Price';
+    : 'Previous-league Divine Price';
   const compactHistoricalDivinePriceLabel = settings.leagueName
     ? `${settings.leagueName} Divine`
-    : 'Historical Divine';
-  const historicalPriceTooltip = `Historical session — divine price, league and atlas points are frozen. Live refreshes never touch this loaded session. Start a new session to track ${currentLeagueSync() ?? 'the current league'}.`;
+    : 'Previous-league Divine';
+  const historicalPriceTooltip = `Previous-league session — divine price, league and atlas points are frozen. Automatic refreshes never touch it. Start a new session to track ${currentLeagueSync() ?? 'the current league'}.`;
 
   const baseMapFilled   = settings.baseMapCost > 0;
   const doPresetSave = () => {

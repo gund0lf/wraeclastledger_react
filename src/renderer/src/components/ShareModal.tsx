@@ -28,6 +28,19 @@ import {
   prepareEvidenceSubmission,
   type EvidenceSubmissionProof,
 } from '../utils/evidencePreflight';
+import './ShareModal.css';
+
+const SETUP_FIELD_LABELS: Record<string, string> = {
+  leagueKey: 'League',
+  mapType: 'Map type',
+  partySize: 'Play style',
+  chiselType: 'Chisel',
+  scarabs: 'Scarabs',
+  delirium: 'Delirium setup',
+  astrolabeType: 'Astrolabe',
+  atlasAllocationHash: 'Atlas tree',
+  multiplyingModifiers: 'Multiplying Modifiers setup',
+};
 
 interface Props {
   opened: boolean;
@@ -82,16 +95,26 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   const [evidenceFetchError, setEvidenceFetchError] = useState<string | null>(null);
   const [evidenceProof, setEvidenceProof] = useState<EvidenceSubmissionProof | null>(null);
   const [evidencePreflightError, setEvidencePreflightError] = useState<string | null>(null);
+  const [evidenceMismatchFields, setEvidenceMismatchFields] = useState<string[]>([]);
+  const [targetOptionsOpen, setTargetOptionsOpen] = useState(false);
+  const [replacementDetailsOpen, setReplacementDetailsOpen] = useState(false);
+
+  useEffect(() => {
+    setTargetOptionsOpen(false);
+    setReplacementDetailsOpen(false);
+  }, [opened, evidenceTargetId, updateTargetId]);
 
   useEffect(() => {
     if (!opened || !evidenceTargetId) {
       setEvidenceCurrent(null);
       setEvidenceFetchError(null);
+      setEvidenceMismatchFields([]);
       return;
     }
     let cancelled = false;
     setEvidenceCurrent(null);
     setEvidenceFetchError(null);
+    setEvidenceMismatchFields([]);
     fetch(`${STRATEGY_API_URL}/strategies/${evidenceTargetId}`)
       .then((response) => (
         response.ok ? response.json() : Promise.reject(new Error(String(response.status)))
@@ -171,6 +194,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     if (!opened || !evidenceTargetId) {
       setEvidenceProof(null);
       setEvidencePreflightError(null);
+      setEvidenceMismatchFields([]);
       return;
     }
     if (
@@ -189,6 +213,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     let cancelled = false;
     setEvidenceProof(null);
     setEvidencePreflightError(null);
+    setEvidenceMismatchFields([]);
     prepareEvidenceSubmission({
       targetRawExport: evidenceCurrent.raw_export,
       targetCurrentRevision: evidenceCurrent.current_revision!,
@@ -201,10 +226,11 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     }).catch((error: unknown) => {
       if (cancelled) return;
       if (error instanceof EvidencePreflightError) {
-        const fields = error.mismatches.map((mismatch) => mismatch.field).join(', ');
-        setEvidencePreflightError(fields ? `${error.message} Incompatible: ${fields}.` : error.message);
+        setEvidencePreflightError(error.message);
+        setEvidenceMismatchFields(error.mismatches.map(({ field }) => SETUP_FIELD_LABELS[field] ?? field));
       } else {
         setEvidencePreflightError('The evidence proof could not be generated.');
+        setEvidenceMismatchFields([]);
       }
     });
     return () => { cancelled = true; };
@@ -344,82 +370,121 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
         <Text size="xs" c="dimmed">
           Copy the compact submission into your strategy Discord channel. The preview below is the readable card the bot will post.
         </Text>
-        {evidenceTargetId && (
-          <Alert color={evidenceFetchError || evidencePreflightError ? 'red' : 'teal'} variant="light" p="xs">
-            <Text size="xs" mb={4}>
-              Adding run {evidenceCurrent ? (evidenceCurrent.evidence_run_count ?? 1) + 1 : '...'} to {' '}
-              <Text span fw={700}>{evidenceTargetName ?? 'your strategy'}</Text>
-              {evidenceCurrent?.current_revision
-                ? <Text span c="dimmed"> (published v{evidenceCurrent.current_revision})</Text>
-                : null}
-              . This adds evidence without replacing the published setup.
+        {evidenceTargetId && !evidenceFetchError && !evidencePreflightError && !evidenceProof && (
+          <Group className="share-target-status" gap="xs" wrap="nowrap">
+            <Text size="xs" c="dimmed" style={{ flex: 1 }}>
+              Checking whether this run can be added to{' '}
+              <Text span fw={700}>{evidenceTargetName ?? 'your strategy'}</Text>…
             </Text>
-            {evidenceCurrent && (
-              <Text size="xs" c="dimmed" mb={4}>
-                Current pool: {evidenceCurrent.evidence_run_count ?? 1} run{(evidenceCurrent.evidence_run_count ?? 1) === 1 ? '' : 's'} / {' '}
-                {evidenceCurrent.evidence_map_count ?? evidenceCurrent.map_count ?? 0} maps. This run: {maps.length} maps.
+          </Group>
+        )}
+        {evidenceTargetId && !evidenceFetchError && !evidencePreflightError && evidenceProof && (
+          <Stack className="share-target-status" gap={4}>
+            <Group justify="space-between" gap="xs" wrap="nowrap">
+              <Text size="xs" style={{ minWidth: 0 }}>
+                Add this run to <Text span fw={700}>{evidenceTargetName ?? 'your strategy'}</Text>
+                {evidenceCurrent?.current_revision
+                  ? <Text span c="dimmed"> · v{evidenceCurrent.current_revision}</Text>
+                  : null}
               </Text>
-            )}
-            {evidenceFetchError && <Text size="xs" mb={4}>{evidenceFetchError}</Text>}
-            {evidencePreflightError && <Text size="xs" mb={4}>{evidencePreflightError}</Text>}
-            {!evidenceFetchError && !evidencePreflightError && evidenceProof && (
-              <Text size="xs" c="teal" mb={4}>
-                Revision, setup and all {evidenceProof.mapCount} map timestamps verified.
-              </Text>
-            )}
-            <Group gap="xs">
-              <Button size="xs" variant="default" onClick={switchEvidenceToUpdate}>Replace instead</Button>
-              <Button size="xs" variant="default" onClick={clearEvidenceTarget}>Share as new</Button>
-              <Button size="xs" variant="subtle" onClick={onClose}>Cancel</Button>
+              <Button size="compact-xs" variant="subtle"
+                onClick={() => setTargetOptionsOpen((value) => !value)}>Change</Button>
             </Group>
+            <Text size="xs" c="dimmed">
+              {evidenceCurrent
+                ? `${evidenceCurrent.evidence_run_count ?? 1} pooled run${(evidenceCurrent.evidence_run_count ?? 1) === 1 ? '' : 's'} · ${evidenceCurrent.evidence_map_count ?? evidenceCurrent.map_count ?? 0} maps · `
+                : ''}
+              This run: {maps.length} maps · setup and timestamps verified
+            </Text>
+            {targetOptionsOpen && (
+              <Group gap="xs">
+                <Button size="compact-xs" variant="default" onClick={clearEvidenceTarget}>
+                  Publish separately
+                </Button>
+                <Button size="compact-xs" variant="default" onClick={switchEvidenceToUpdate}>
+                  Replace published strategy
+                </Button>
+              </Group>
+            )}
+          </Stack>
+        )}
+        {evidenceTargetId && (evidenceFetchError || evidencePreflightError) && (
+          <Alert color="red" variant="light" p="xs"
+            title={`This run cannot be added to ${evidenceTargetName ?? 'the published strategy'}`}>
+            <Stack gap={6}>
+              <Text size="xs">{evidenceFetchError ?? evidencePreflightError}</Text>
+              <Text size="xs" c="dimmed">
+                Publish it as a separate strategy to keep both setups, or replace the published strategy only if that is what you intend.
+              </Text>
+              <Group gap="xs">
+                <Button size="xs" onClick={clearEvidenceTarget}>Publish as a separate strategy</Button>
+                <Button size="xs" variant="default" onClick={switchEvidenceToUpdate}>Replace published strategy</Button>
+              </Group>
+              {evidenceMismatchFields.length > 0 && (
+                <Stack gap={2}>
+                  <Button size="compact-xs" variant="subtle" style={{ alignSelf: 'flex-start' }}
+                    onClick={() => setTargetOptionsOpen((value) => !value)}>
+                    {targetOptionsOpen ? 'Hide setup differences' : 'Show setup differences'}
+                  </Button>
+                  {targetOptionsOpen && (
+                    <Text size="xs" c="dimmed">Different: {evidenceMismatchFields.join(', ')}.</Text>
+                  )}
+                </Stack>
+              )}
+            </Stack>
           </Alert>
         )}
         {updateTargetId && (
-          <Alert color="indigo" variant="light" p="xs">
-            <Text size="xs" mb={4}>
-              Replacing <Text span fw={700}>{updateTargetName ?? 'your strategy'}</Text>
-              {compareCurrent?.current_revision ? <Text span c="dimmed"> (currently v{compareCurrent.current_revision})</Text> : null}
-              {' '}— this share replaces your published result in place (votes and post date kept).
+          <Stack className="share-target-status" gap={4}>
+            <Group justify="space-between" gap="xs" wrap="nowrap">
+              <Text size="xs" style={{ minWidth: 0 }}>
+                Replace <Text span fw={700}>{updateTargetName ?? 'your published strategy'}</Text>
+                {compareCurrent?.current_revision
+                  ? <Text span c="dimmed"> · currently v{compareCurrent.current_revision}</Text>
+                  : null}
+              </Text>
+              <Button size="compact-xs" variant="subtle" onClick={clearUpdateTarget}>Publish separately</Button>
+            </Group>
+            <Text size="xs" c="dimmed">
+              This share becomes the new published revision. Votes and the original post date stay; its evidence pool starts with this run.
             </Text>
-
-            <Text size="xs" c="dimmed" mb={4}>
-              The replacement revision starts a fresh one-run evidence pool; the previous revision keeps its historical pool.
-            </Text>
-
             {compareError && (
-              <Text size="xs" c="dimmed" mb={4} style={{ fontSize: FONT.small }}>{compareError}</Text>
+              <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>{compareError}</Text>
             )}
-
             {compareRows && (
-              <Stack gap={1} mb={6}>
-                <Group gap={0} wrap="nowrap" px={4}>
-                  <Text style={{ flex: 1, fontSize: FONT.small }} c="dimmed">Change vs published</Text>
-                  <Text style={{ width: 70, textAlign: 'right', fontSize: FONT.small }} c="dimmed">now</Text>
-                  <Text style={{ width: 70, textAlign: 'right', fontSize: FONT.small }} c="dimmed">this share</Text>
-                </Group>
-                {compareRows.map((row) => {
-                  const dir = rowDirection(row);
-                  const color = dir === 'same' || dir == null ? COLOR.dim : COLOR.accent;
-                  const arrow = dir === 'up' ? '▲' : dir === 'down' ? '▼' : '';
-                  return (
-                    <Group key={row.label} gap={0} wrap="nowrap" px={4}>
-                      <Text style={{ flex: 1, fontSize: FONT.small }} c="dimmed">{row.label}</Text>
-                      <Text style={{ width: 70, textAlign: 'right', fontSize: FONT.small, fontVariantNumeric: 'tabular-nums' }} c="dimmed">
-                        {fmtCompare(row.before, row.kind)}
-                      </Text>
-                      <Text style={{ width: 70, textAlign: 'right', fontSize: FONT.small, fontVariantNumeric: 'tabular-nums', color }}>
-                        {arrow ? `${arrow} ` : ''}{fmtCompare(row.after, row.kind)}
-                      </Text>
+              <>
+                <Button size="compact-xs" variant="subtle" style={{ alignSelf: 'flex-start' }}
+                  onClick={() => setReplacementDetailsOpen((value) => !value)}>
+                  {replacementDetailsOpen ? 'Hide changes' : 'Review changes'}
+                </Button>
+                {replacementDetailsOpen && (
+                  <Stack gap={1}>
+                    <Group gap={0} wrap="nowrap" px={4}>
+                      <Text style={{ flex: 1, fontSize: FONT.small }} c="dimmed">Change vs published</Text>
+                      <Text style={{ width: 70, textAlign: 'right', fontSize: FONT.small }} c="dimmed">now</Text>
+                      <Text style={{ width: 70, textAlign: 'right', fontSize: FONT.small }} c="dimmed">this share</Text>
                     </Group>
-                  );
-                })}
-              </Stack>
+                    {compareRows.map((row) => {
+                      const dir = rowDirection(row);
+                      const color = dir === 'same' || dir == null ? COLOR.dim : COLOR.accent;
+                      const arrow = dir === 'up' ? '▲' : dir === 'down' ? '▼' : '';
+                      return (
+                        <Group key={row.label} gap={0} wrap="nowrap" px={4}>
+                          <Text style={{ flex: 1, fontSize: FONT.small }} c="dimmed">{row.label}</Text>
+                          <Text style={{ width: 70, textAlign: 'right', fontSize: FONT.small, fontVariantNumeric: 'tabular-nums' }} c="dimmed">
+                            {fmtCompare(row.before, row.kind)}
+                          </Text>
+                          <Text style={{ width: 70, textAlign: 'right', fontSize: FONT.small, fontVariantNumeric: 'tabular-nums', color }}>
+                            {arrow ? `${arrow} ` : ''}{fmtCompare(row.after, row.kind)}
+                          </Text>
+                        </Group>
+                      );
+                    })}
+                  </Stack>
+                )}
+              </>
             )}
-
-            <Button size="xs" variant="default" onClick={clearUpdateTarget}>
-              Share as new strategy instead
-            </Button>
-          </Alert>
+          </Stack>
         )}
         <TextInput
           size="xs"

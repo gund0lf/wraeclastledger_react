@@ -21,6 +21,7 @@ import { isWorkingPayloadMeaningful, isWorkingSessionMeaningful } from '../utils
 import { recoverManualRunTimer } from '../utils/manualRunTimer';
 import { normalizeOverlayPreferences } from '../../../shared/overlay';
 import { normalizeLootCurrencyMode } from '../utils/currencyDisplay';
+import { isAutomaticSessionMutation } from '../utils/sessionMutationOrigin';
 import {
   DEFAULT_SETTINGS,
   configureSessionRepositoryActions,
@@ -53,13 +54,18 @@ interface PendingSessionSave {
   freshEmptyWorking?: true;
 }
 
-export function coalescePendingSessionSnapshot<T extends { checkpointReason?: 'destructive' }>(
+export function coalescePendingSessionSnapshot<T extends {
+  activationId?: string;
+  checkpointReason?: 'destructive';
+}>(
   previous: T | null,
   next: T,
 ): T {
+  const activationId = previous?.activationId ?? next.activationId;
   const checkpointReason = previous?.checkpointReason ?? next.checkpointReason;
   return {
     ...next,
+    ...(activationId ? { activationId } : {}),
     ...(checkpointReason ? { checkpointReason } : {}),
   };
 }
@@ -257,7 +263,7 @@ function applyPayload(data: LoadData, sessions: RepositorySessionSummary[]): Par
     queueMicrotask(() => {
       if (useSessionStore.getState().repositoryStatus === 'ready' &&
           useSessionStore.getState().manualTimerRecoveryMs !== null) {
-        queueSessionSave(true);
+        queueSessionSave(true, false);
       }
     });
   }
@@ -387,7 +393,7 @@ function ensureSessionDrain(): Promise<void> {
   return sessionSaveDrain;
 }
 
-function queueSessionSave(immediate: boolean): void {
+function queueSessionSave(immediate: boolean, authored = true): void {
   try {
     if (pendingRestoreHydration) {
       throw new Error('A restored version is waiting to be reloaded. Retry before making more changes.');
@@ -397,7 +403,7 @@ function queueSessionSave(immediate: boolean): void {
     pendingSessionSave = coalescePendingSessionSnapshot(pendingSessionSave, {
       target,
       payload: sessionPayload(state),
-      ...(repositoryWorkflow?.activationId ? { activationId: repositoryWorkflow.activationId } : {}),
+      ...(authored && repositoryWorkflow?.activationId ? { activationId: repositoryWorkflow.activationId } : {}),
       ...(pendingExplicitCheckpointReason ? { checkpointReason: pendingExplicitCheckpointReason } : {}),
       ...(target.kind === 'working' && !isWorkingSessionMeaningful(state, DEFAULT_SETTINGS)
         ? { freshEmptyWorking: true as const } : {}),
@@ -1002,7 +1008,7 @@ function installStoreSubscription(): void {
         state.baselineItems !== previous.baselineItems || state.baselineTotal !== previous.baselineTotal ||
         state.manualLootItems !== previous.manualLootItems || state.manualStatistics !== previous.manualStatistics ||
         state.manualRunTimer !== previous.manualRunTimer;
-      queueSessionSave(discrete);
+      queueSessionSave(discrete, !isAutomaticSessionMutation());
     }
     const preferencesChanged =
       state.discordTag !== previous.discordTag || state.regexSets !== previous.regexSets ||

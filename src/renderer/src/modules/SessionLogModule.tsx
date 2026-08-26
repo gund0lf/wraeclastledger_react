@@ -265,7 +265,7 @@ export const SessionLogModule = () => {
         <Group className="session-log-primary-controls" gap="xs" wrap="nowrap">
           <div className="session-log-capture-control" data-active={isWatching || undefined}>
             <Tooltip multiline w={260} label={sessionLifecycle === 'historical'
-              ? 'Capture is paused while viewing a historical session. Resume its live context or start a new session first.'
+              ? 'Capture is paused while viewing a saved session. Use Resume capture in Sessions when you want to continue it.'
               : isWatching
                 ? 'Capturing — copy a map with Ctrl+C; 3.29 records exact modifier counts automatically.'
                 : 'Paused — turn on Capture, then copy a map with Ctrl+C.'}>

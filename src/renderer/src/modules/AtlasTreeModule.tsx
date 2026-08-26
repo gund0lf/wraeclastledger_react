@@ -54,6 +54,7 @@ export const AtlasTreeModule = () => {
   const webviewRef     = useRef<Electron.WebviewTag>(null);
   const webviewHostRef = useRef<HTMLDivElement>(null);
   const visibleRef     = useRef(false);
+  const guestInitialLoadPendingRef = useRef(true);
   const prevSessionRef = useRef<string | null>(activeSessionId);
   const prevNonceRef   = useRef(sessionNonce);
   // Session-bound instead of boolean: delayed guest work must never apply or
@@ -98,6 +99,7 @@ export const AtlasTreeModule = () => {
   // reloads therefore unmount the guest first, then remount it only after two
   // frames with real host bounds — the same protection as hidden-tab activation.
   const remountAfterLayout = useCallback(() => {
+    guestInitialLoadPendingRef.current = true;
     setWebviewReady(false);
     visibleRef.current = false;
     requestAnimationFrame(() => {
@@ -265,7 +267,7 @@ export const AtlasTreeModule = () => {
     // session 13). Fired on every tree edit (nav events change the hash) and
     // on load; the small delay lets the spans update after the nav event.
     // Author-declared share context ONLY — never load-bearing (batch 2026-07).
-    const readPoints = () => {
+    const readPoints = (origin: 'user' | 'automatic') => {
       setTimeout(async () => {
         if (!isListenerSessionCurrent()) return;
         try {
@@ -294,8 +296,8 @@ export const AtlasTreeModule = () => {
             }
             const s = st.settings;
             if (s.atlasPoints !== r.allocated || s.atlasPointsMax !== r.max) {
-              updateSetting('atlasPoints', r.allocated);
-              updateSetting('atlasPointsMax', r.max);
+              updateSetting('atlasPoints', r.allocated, origin);
+              updateSetting('atlasPointsMax', r.max, origin);
             }
           }
         } catch (err) {
@@ -308,6 +310,7 @@ export const AtlasTreeModule = () => {
       const url: string = e.url ?? '';
       if (!isPathofpathingUrl(url)) return;
       const storedUrl = useSessionStore.getState().settings.atlasTreeUrl;
+      const origin = guestInitialLoadPendingRef.current ? 'automatic' : 'user';
       captureUrl(url);
       const retargeted = retargetedViewRef.current;
       const initialDocumentNavigation = e.type === 'did-navigate'
@@ -322,17 +325,17 @@ export const AtlasTreeModule = () => {
         retargetSettledRef.current = true;
         setRetargetActive(false);
         guestNavigationUrlRef.current = url;
-        updateSetting('atlasTreeUrl', url);
-        if (url !== storedUrl) updateSetting('atlasDetectedTags', []);
+        updateSetting('atlasTreeUrl', url, origin);
+        if (url !== storedUrl) updateSetting('atlasDetectedTags', [], origin);
       } else {
         retargetedViewRef.current = '';
         retargetSettledRef.current = true;
         setRetargetActive(false);
         guestNavigationUrlRef.current = url;
-        updateSetting('atlasTreeUrl', url);
-        if (url !== storedUrl) updateSetting('atlasDetectedTags', []);
+        updateSetting('atlasTreeUrl', url, origin);
+        if (url !== storedUrl) updateSetting('atlasDetectedTags', [], origin);
       }
-      readPoints(); // node toggles change the hash — capture the new count
+      readPoints(origin); // node toggles change the hash — capture the new count
     };
     // Auto-apply to calc when URL is loaded externally (Load Build Settings / import URL)
     // Block any navigation that would leave pathofpathing.com (e.g. ad/link clicks on the page)
@@ -371,7 +374,8 @@ export const AtlasTreeModule = () => {
         retargetSettledRef.current = true;
       }
       if (!isListenerSessionCurrent()) return;
-      readPoints(); // restored sessions: capture points once the page is up
+      readPoints('automatic'); // restored sessions: capture points once the page is up
+      guestInitialLoadPendingRef.current = false;
       const requestedSessionNonce = autoApplySessionRef.current;
       if (requestedSessionNonce === null) return;
       autoApplySessionRef.current = null;

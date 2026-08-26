@@ -6,7 +6,7 @@ import { useDisclosure, useElementSize } from '@mantine/hooks';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useSessionKeys, useSessionStore } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
-import { IconTrash, IconPencil, IconDeviceFloppy, IconShare2, IconBrandDiscord, IconDownload, IconUpload, IconX, IconArrowsLeftRight, IconCheck, IconFolderOpen, IconRefresh, IconHistory, IconRestore } from '@tabler/icons-react';
+import { IconTrash, IconPencil, IconDeviceFloppy, IconShare2, IconBrandDiscord, IconDownload, IconUpload, IconX, IconArrowsLeftRight, IconCheck, IconFolderOpen, IconRefresh, IconHistory, IconRestore, IconPlayerPlay } from '@tabler/icons-react';
 import type { SavedSession } from '../types';
 import { SessionCompareModal } from '../components/SessionCompareModal';
 import { ShareModal } from '../components/ShareModal';
@@ -137,6 +137,11 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
   const importFileRef = useRef<HTMLInputElement>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (flashTimer.current) clearTimeout(flashTimer.current); }, []); // clear pending flash on unmount
+  useEffect(() => {
+    if (!activationCheckpointNotice) return undefined;
+    const timer = setTimeout(dismissActivationCheckpointNotice, 10_000);
+    return () => clearTimeout(timer);
+  }, [activationCheckpointNotice, dismissActivationCheckpointNotice]);
 
   const sessionEntries = useMemo(() =>
     [...repositorySessions].sort(
@@ -202,11 +207,6 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
   const performSwitch = async (target: string): Promise<void> => {
     if (target === '__new__') await startWorking(true);
     else await loadNamed(target);
-  };
-
-  const returnToLive = async (): Promise<void> => {
-    if (liveSessionId) await loadNamed(liveSessionId);
-    else await startWorking();
   };
 
   // Peeking at a named session preserves the live working target. Only a
@@ -340,7 +340,6 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
   const confirmedLeague = confirmedLeagueSync();
   const crossLeague = sessionLifecycle === 'historical' && !!confirmedLeague &&
     !!settings.leagueName.trim() && settings.leagueName !== confirmedLeague;
-  const hasDistinctLiveTarget = sessionLifecycle === 'historical' && activeSessionId !== liveSessionId;
   const flashSaved = () => {
     setSavedFlash(true);
     if (flashTimer.current) clearTimeout(flashTimer.current);
@@ -358,9 +357,14 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
       <ShareModal opened={shareOpen} onClose={closeShare} initialTags={shareTags} />
 
       {/* ── Save modal ── */}
-      <Modal opened={saveOpen} onClose={closeSave} title={isUnsaved ? 'Name Session' : 'Duplicate Session'} size="sm">
+      <Modal opened={saveOpen} onClose={closeSave} title={isUnsaved ? 'Save to Sessions' : 'Duplicate session'} size="sm">
         <Stack gap="sm">
-          <TextInput label="Session Name" placeholder="e.g. T16 Deli — 72 maps"
+          {isUnsaved && (
+            <Text size="sm" c="dimmed">
+              This working session is already auto-saved. Give it a name to keep it in Saved sessions.
+            </Text>
+          )}
+          <TextInput label="Session name" placeholder="e.g. T16 Deli — 72 maps"
             value={nameInput} onChange={(e) => setNameInput(e.currentTarget.value)}
             onKeyDown={(e) => e.key === 'Enter' && nameInput.trim() && void runOperation(
               () => nameCurrent(nameInput.trim()),
@@ -373,7 +377,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
               () => nameCurrent(nameInput.trim()),
               () => { setNameInput(''); closeSave(); flashSaved(); },
             ); }}
-              disabled={!nameInput.trim()}>Save</Button>
+              disabled={!nameInput.trim()}>{isUnsaved ? 'Save to Sessions' : 'Duplicate session'}</Button>
           </Group>
         </Stack>
       </Modal>
@@ -601,7 +605,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
         <Stack gap="sm">
           <Text size="xs" c="dimmed">
             Deleted sessions remain recoverable for up to 30 days, subject to the 20-entry and 32 MB Recently Deleted limits.
-            Restoring returns a session to Saved sessions without changing the live capture target; load it, then choose Resume session when you want it live again.
+            Restoring returns a session to Saved sessions without changing the capture target. Load it, then use Resume capture if you want to continue it.
           </Text>
           {trashLoading ? (
             <Text size="sm" c="dimmed">Loading Recently Deleted…</Text>
@@ -698,49 +702,34 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
             </Alert>
           )}
           {activationCheckpointNotice && (
-            <Alert color="blue" variant="light" p="xs" withCloseButton
-              title="Changes are protected" onClose={dismissActivationCheckpointNotice}>
-              <Stack gap={6}>
-                <Text size="xs">Changes are auto-saved. The version from when you opened this session was kept.</Text>
-                <Button size="compact-xs" variant="light" leftSection={<IconRestore size={11} />}
-                  onClick={() => { void runOperation(undoChangesSinceOpening); }}>
-                  Undo changes since opening
-                </Button>
-              </Stack>
-            </Alert>
+            <Group className="session-manager-undo-toast" gap={6} wrap="nowrap" role="status">
+              <IconRestore size={13} aria-hidden="true" />
+              <Text size="xs" c="dimmed" style={{ flex: 1 }}>Change saved</Text>
+              <Button size="compact-xs" variant="subtle"
+                onClick={() => { void runOperation(undoChangesSinceOpening); }}>
+                Undo
+              </Button>
+              <ActionIcon size="xs" variant="subtle" color="gray" aria-label="Dismiss Undo"
+                onClick={dismissActivationCheckpointNotice}>
+                <IconX size={11} />
+              </ActionIcon>
+            </Group>
           )}
-          {sessionLifecycle === 'historical' && (
+          {sessionLifecycle === 'historical' && crossLeague && (
             <Alert color="yellow" variant="light" p="xs"
-              title={crossLeague ? 'Previous-league session' : 'Historical session'}>
+              title={`Previous league: ${settings.leagueName}`}>
               <Stack gap={6}>
                 <Text size="xs">
-                  {crossLeague
-                    ? `This session belongs to ${settings.leagueName}. Capture and automatic repricing stay paused while ${confirmedLeague} is active.`
-                    : 'Capture is paused while you inspect this session. Resume it to make it the live capture target.'}
+                  Capture and automatic repricing stay paused because {confirmedLeague} is the current league. Keep this session as history or fork a current-league copy.
                 </Text>
                 <Group gap={6}>
-                  {hasDistinctLiveTarget && (
-                    <Button size="compact-xs" variant="light"
-                      onClick={() => { void runOperation(returnToLive); }}>Return to live session</Button>
-                  )}
-                  {crossLeague ? (
-                    <>
-                      <Button size="compact-xs" variant="default"
-                        onClick={() => requestSwitch('__new__')}>Start new session</Button>
-                      <Button size="compact-xs" variant="light"
-                        onClick={() => {
-                          setNameInput(`${activeSessionName ?? 'Session'} — ${confirmedLeague}`);
-                          openFork();
-                        }}>Fork into {confirmedLeague}</Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button size="compact-xs" variant="light"
-                        onClick={() => { void runOperation(resumeCurrent); }}>Resume session</Button>
-                      <Button size="compact-xs" variant="default"
-                        onClick={() => requestSwitch('__new__')}>Start new session</Button>
-                    </>
-                  )}
+                  <Button size="compact-xs" variant="light"
+                    onClick={() => {
+                      setNameInput(`${activeSessionName ?? 'Session'} — ${confirmedLeague}`);
+                      openFork();
+                    }}>Fork into {confirmedLeague}</Button>
+                  <Button size="compact-xs" variant="default"
+                    onClick={() => requestSwitch('__new__')}>Start empty {confirmedLeague} session</Button>
                 </Group>
               </Stack>
             </Alert>
@@ -783,10 +772,10 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
               <Select
                 style={{ flex: 1, minWidth: 0 }}
                 data={[
-                  { value: '__new__', label: '— New Session —' },
+                  { value: '__new__', label: `— New Session —${liveSessionId === null ? ' · capture target' : ''}` },
                   ...sessionEntries.map((s) => ({
                     value: s.id,
-                    label: `${s.name}${s.status === 'ready' ? '' : ` — ${s.status}`} (${sessionMapCount(s)} maps, ${new Date(s.createdAt).toLocaleDateString()})`,
+                    label: `${s.name}${s.id === liveSessionId ? ' · capture target' : ''}${s.status === 'ready' ? '' : ` — ${s.status}`} (${sessionMapCount(s)} maps, ${new Date(s.createdAt).toLocaleDateString()})`,
                     disabled: s.status !== 'ready',
                   })),
                 ]}
@@ -828,6 +817,15 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
                 </>
               )}
             </Group>
+            {sessionLifecycle === 'historical' && !crossLeague && (
+              <Group justify="space-between" gap={6} wrap="nowrap" className="session-manager-viewing-status">
+                <Text size="xs" c="dimmed" lineClamp={1}>Viewing saved session</Text>
+                <Button size="compact-xs" variant="subtle" leftSection={<IconPlayerPlay size={11} />}
+                  onClick={() => { void runOperation(resumeCurrent); }}>
+                  Resume capture
+                </Button>
+              </Group>
+            )}
           </div>
           <Stack gap={4} className="session-manager-actions">
             <SimpleGrid cols={2} spacing={isMaximized ? 8 : 4}>
@@ -836,7 +834,7 @@ export const SessionManagerModule = ({ embedded = false }: { embedded?: boolean 
                 rightSection={compactPanel ? undefined : <span style={{ width: 12 }} aria-hidden="true" />}
                 styles={TILE_STYLES}
                 onClick={() => { setNameInput(''); openSave(); }}>
-                {savedFlash ? 'Named' : isUnsaved ? (compactPanel ? 'Name' : 'Name session') : (compactPanel ? 'Duplicate' : 'Duplicate as new')}
+                {savedFlash ? 'Saved' : isUnsaved ? (compactPanel ? 'Save' : 'Save to Sessions') : (compactPanel ? 'Duplicate' : 'Duplicate as new')}
               </Button>
               <Tooltip label={selectableSessionEntries.length < 2 ? 'Save at least 2 sessions to compare' : 'Compare 2-3 saved sessions side by side'} withArrow>
                 <span style={{ display: 'flex', flex: 1 }}>

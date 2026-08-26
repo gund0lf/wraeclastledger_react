@@ -256,6 +256,60 @@ describe('WP14 concrete file repository', () => {
     await repository.releaseLock();
   });
 
+  it('persists automatic post-load changes without starting authored Undo history', async () => {
+    const profile = await tempProfile();
+    const repository = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
+    await repository.bootstrap({ operation: 'bootstrap', migrationPlan: await migrationPlan() });
+    const originalPayload: JsonObject = {
+      maps: [],
+      settings: { atlasPoints: 0, atlasPointsMax: 132 },
+      sessionNotes: '',
+    };
+    const created = await repository.save({
+      operation: 'save', target: { kind: 'new', name: 'Automatic refresh boundary' },
+      expectedGeneration: null, payload: originalPayload,
+    });
+    const sessionId = created.target.kind === 'session' ? created.target.sessionId : '';
+    const viewed = await repository.load({
+      operation: 'load', target: { kind: 'session', sessionId }, mode: 'view',
+    });
+    const automaticPayload: JsonObject = {
+      ...originalPayload,
+      settings: { atlasPoints: 131, atlasPointsMax: 132 },
+    };
+    const automaticSave = await repository.save({
+      operation: 'save', target: { kind: 'session', sessionId },
+      expectedGeneration: viewed.generation, payload: automaticPayload,
+    });
+    expect(automaticSave.checkpoint).toBeNull();
+    expect((await repository.historyList({
+      operation: 'history-list', target: { kind: 'session', sessionId },
+    })).checkpoints).toHaveLength(0);
+
+    const authoredPayload: JsonObject = { ...automaticPayload, sessionNotes: 'A real user edit' };
+    const authoredSave = await repository.save({
+      operation: 'save', target: { kind: 'session', sessionId },
+      expectedGeneration: automaticSave.generation,
+      activationId: viewed.workflow.activationId,
+      payload: authoredPayload,
+    });
+    expect(authoredSave.checkpoint).toMatchObject({
+      reason: 'activation',
+      isActivationBaseline: true,
+      changes: [{ label: 'Notes', before: 'Empty', after: '16 characters' }],
+    });
+
+    await repository.historyRestore({
+      operation: 'history-restore', target: { kind: 'session', sessionId },
+      checkpointId: authoredSave.checkpoint!.id,
+      expectedGeneration: authoredSave.generation,
+    });
+    expect((await repository.load({
+      operation: 'load', target: { kind: 'session', sessionId }, mode: 'inspect',
+    })).payload).toEqual(automaticPayload);
+    await repository.releaseLock();
+  });
+
   it('keeps change details specific when the same baseline starts a later activation', async () => {
     const profile = await tempProfile();
     const repository = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
