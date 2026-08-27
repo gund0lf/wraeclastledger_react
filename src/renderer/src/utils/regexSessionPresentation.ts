@@ -18,3 +18,12 @@ export function formatRegexAverageSummary(averages: RegexSessionAverages): strin
 
   return parts.join(' · ');
 }
+
+export interface RegexSlamMapState {
+  isCorrupted: boolean;
+  isNightmare: boolean;
+}
+
+export function isSlamUnavailableForSession(maps: RegexSlamMapState[]): boolean {
+  return maps.length > 0 && maps.every((map) => map.isCorrupted || map.isNightmare);
+}

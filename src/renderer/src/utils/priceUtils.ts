@@ -169,9 +169,14 @@ export const generateSlamRegex = (avg: MapAverages, exclusions?: string[]): stri
   const parts: string[] = [];
   const cleanExcl = sanitizeExclusionTerms(exclusions ?? []);
   if (cleanExcl.length > 0) parts.push(`"!${cleanExcl.join('|')}"`);
-  const currFloor = Math.max(Math.floor(avg.avgCurr * 0.75 / 10) * 10, 30);
   const packFloor = Math.max(Math.floor(avg.avgPack * 0.75 / 10) * 10, 15);
-  parts.push(`"(urr.*(${thresholdPat(currFloor)})%|ack.*(${thresholdPat(packFloor)})%)"`);
+  const packTerm = `ack.*(${thresholdPat(packFloor)})%`;
+  if (avg.avgCurr > 0) {
+    const currFloor = Math.max(Math.floor(avg.avgCurr * 0.75 / 10) * 10, 30);
+    parts.push(`"(urr.*(${thresholdPat(currFloor)})%|${packTerm})"`);
+  } else {
+    parts.push(`"${packTerm}"`);
+  }
   return parts.join(' ');
 };
 

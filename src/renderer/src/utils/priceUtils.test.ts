@@ -457,9 +457,15 @@ describe('generateSlamRegex', () => {
     expect(r).toMatch(/"\(urr\.\*.*\|ack\.\*.*\)"/);
   });
 
-  it('floors currency at 30, pack at 15, even with zero averages', () => {
-    // Both averages 0 → both go to minimum floors
+  it('uses pack only when the session has no Currency average', () => {
+    // Currency is absent from the source setup, so it must not become a SLAM keeper.
     const r = generateSlamRegex({ ...baseAvg });
+    expect(r).not.toContain('urr.*');
+    expect(r).toContain('ack.*([1-9].|\\d..)');
+  });
+
+  it('retains the 30 Currency floor for a positive low average', () => {
+    const r = generateSlamRegex({ ...baseAvg, avgCurr: 20, avgPack: 20 });
     expect(r).toContain('urr.*([3-9].|\\d..)');
     expect(r).toContain('ack.*([1-9].|\\d..)');
   });

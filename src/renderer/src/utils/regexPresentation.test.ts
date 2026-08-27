@@ -47,6 +47,11 @@ describe('Regex visual-alignment presentation contract', () => {
       .toContain('background: var(--regex-surface-raised);');
   });
 
+  it('explains why an all-corrupted session has no Slam output', () => {
+    expect(sessionSource).toContain('No Slam regex generated');
+    expect(sessionSource).toContain('an Exalted Orb cannot add a modifier');
+  });
+
   it('provides a structured no-output state and accurate exclusions label', () => {
     expect(sessionSource).toContain('No session regex yet');
     expect(sessionSource).toContain('Capture maps or load a strategy');

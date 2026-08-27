@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { formatRegexAverageSummary } from './regexSessionPresentation';
+import {
+  formatRegexAverageSummary,
+  isSlamUnavailableForSession,
+} from './regexSessionPresentation';
 
 describe('Regex session summary presentation', () => {
   it('omits Currency when its trimmed average is zero', () => {
@@ -18,5 +21,25 @@ describe('Regex session summary presentation', () => {
       avgPack: 43.4,
       avgCurr: 64.2,
     })).toBe('114%Q · 67%R · 43%P · 64% Curr');
+  });
+});
+
+describe('Regex SLAM availability', () => {
+  it('rejects an entirely corrupted session without guessing from mod counts', () => {
+    expect(isSlamUnavailableForSession([
+      { isCorrupted: true, isNightmare: false },
+      { isCorrupted: true, isNightmare: false },
+    ])).toBe(true);
+  });
+
+  it('rejects Nightmare maps and allows a session containing a slam-capable map', () => {
+    expect(isSlamUnavailableForSession([
+      { isCorrupted: false, isNightmare: true },
+    ])).toBe(true);
+    expect(isSlamUnavailableForSession([
+      { isCorrupted: true, isNightmare: false },
+      { isCorrupted: false, isNightmare: false },
+    ])).toBe(false);
+    expect(isSlamUnavailableForSession([])).toBe(false);
   });
 });

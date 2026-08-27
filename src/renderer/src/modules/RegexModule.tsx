@@ -23,7 +23,10 @@ import {
   filterBrickModSelectOptions,
   type BrickModSelectOption,
 } from '../utils/brickModSelect';
-import { formatRegexAverageSummary } from '../utils/regexSessionPresentation';
+import {
+  formatRegexAverageSummary,
+  isSlamUnavailableForSession,
+} from '../utils/regexSessionPresentation';
 
 // Badge tooltips explaining how each generated regex is derived (Sad 2026-07-09).
 const RUN_TOOLTIP = 'Run = maps ready to run: floors derived from your session averages — currency and pack (both required on high-currency sessions), plus quantity/rarity riders at 60% of your averages.';
@@ -230,7 +233,7 @@ export const FromSessionTab = () => {
   const removeExclusion = (term: string) =>
     updateSetting('regexExclusions', exclusions.filter((e) => e !== term));
 
-  const is8Mod = maps.length > 0 && maps.every((m) => m.modCount > 6 || m.isNightmare);
+  const slamUnavailable = isSlamUnavailableForSession(maps);
 
   useEffect(() => {
     try {
@@ -258,10 +261,10 @@ export const FromSessionTab = () => {
     };
     return {
       run:  generateRunRegex(avg, exclusions),
-      slam: is8Mod ? null : generateSlamRegex(avg, exclusions),
+      slam: slamUnavailable ? null : generateSlamRegex(avg, exclusions),
       avg, n: maps.length,
     };
-  }, [maps, exclusions, is8Mod]);
+  }, [maps, exclusions, slamUnavailable]);
 
   const nightmareBrickIds = useMemo(
     () => new Set(brickMods.filter((m) => m.category === 'nightmare').map((m) => m.id)),
@@ -700,7 +703,9 @@ export const FromSessionTab = () => {
                 {generatedRegex.slam ? (
                   <RegexLine value={generatedRegex.slam} badge="Slam" badgeColor="orange" badgeTooltip={SLAM_TOOLTIP} />
                 ) : (
-                  <Text size="xs" c="dimmed" fs="italic">8-mod / Nightmare maps are corrupted — slam not applicable.</Text>
+                  <Text size="xs" c="dimmed" fs="italic">
+                    No Slam regex generated — all captured maps are corrupted or Nightmare maps, so an Exalted Orb cannot add a modifier.
+                  </Text>
                 )}
               </Stack>
               <Group className="regex-output-actions" gap={4}>
