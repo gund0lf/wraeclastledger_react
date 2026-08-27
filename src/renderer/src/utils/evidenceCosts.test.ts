@@ -92,6 +92,109 @@ describe('pooled evidence setup costs', () => {
     expect(aggregate!.astrolabeItems[0].perMap).toBeCloseTo(10);
   });
 
+  it('preserves repeated scarabs as separate pooled setup slots', () => {
+    const aggregate = aggregateEvidenceSetupCosts([
+      run({
+        map_count: 20,
+        per_map_cost: 100,
+        cost_breakdown: {
+          chisel: null,
+          scarabs: [
+            { name: 'Delirium Scarab of Paranoia', priceEach: 21.15 },
+            { name: 'Delirium Scarab of Paranoia', priceEach: 21.15 },
+          ],
+          delirium: null,
+          astrolabe: null,
+        },
+      }),
+      run({
+        ordinal: 2,
+        map_count: 40,
+        per_map_cost: 100,
+        cost_breakdown: {
+          chisel: null,
+          scarabs: [
+            { name: 'Delirium Scarab of Paranoia', priceEach: 21 },
+            { name: 'Delirium Scarab of Paranoia', priceEach: 21 },
+          ],
+          delirium: null,
+          astrolabe: null,
+        },
+      }),
+    ]);
+
+    expect(aggregate!.scarabItems).toHaveLength(2);
+    expect(aggregate!.scarabItems[0]).toMatchObject({ name: 'Delirium Scarab of Paranoia' });
+    expect(aggregate!.scarabItems[1]).toMatchObject({ name: 'Delirium Scarab of Paranoia' });
+    expect(aggregate!.scarabItems[0].perMap).toBeCloseTo(21.05);
+    expect(aggregate!.scarabItems[1].perMap).toBeCloseTo(21.05);
+    expect(aggregate!.scarabs).toBeCloseTo(42.1);
+  });
+
+  it('weights each occurrence independently when runs use different copy counts', () => {
+    const aggregate = aggregateEvidenceSetupCosts([
+      run({
+        map_count: 20,
+        per_map_cost: 100,
+        cost_breakdown: {
+          chisel: null,
+          scarabs: [
+            { name: 'Delirium Scarab of Paranoia', priceEach: 10 },
+            { name: 'Delirium Scarab of Paranoia', priceEach: 10 },
+          ],
+          delirium: null,
+          astrolabe: null,
+        },
+      }),
+      run({
+        ordinal: 2,
+        map_count: 40,
+        per_map_cost: 100,
+        cost_breakdown: {
+          chisel: null,
+          scarabs: [{ name: 'Delirium Scarab of Paranoia', priceEach: 20 }],
+          delirium: null,
+          astrolabe: null,
+        },
+      }),
+    ]);
+
+    expect(aggregate!.scarabItems).toHaveLength(2);
+    expect(aggregate!.scarabItems[0].perMap).toBeCloseTo(50 / 3);
+    expect(aggregate!.scarabItems[1].perMap).toBeCloseTo(10 / 3);
+    expect(aggregate!.scarabs).toBeCloseTo(20);
+    expect(aggregate!.scarabItems.reduce((sum, item) => sum + item.perMap, 0))
+      .toBeCloseTo(aggregate!.scarabs);
+  });
+
+  it('keeps Preservation amortization intact for repeated retained scarab slots', () => {
+    const aggregate = aggregateEvidenceSetupCosts([
+      run({
+        map_count: 20,
+        per_map_cost: 30,
+        cost_breakdown: {
+          chisel: null,
+          scarabs: [
+            { name: 'Horned Scarab of Preservation', priceEach: 8 },
+            { name: 'Horned Scarab of Awakening', priceEach: 100 },
+            { name: 'Horned Scarab of Awakening', priceEach: 100 },
+          ],
+          delirium: null,
+          astrolabe: null,
+        },
+      }),
+    ]);
+
+    expect(aggregate!.scarabs).toBeCloseTo(18);
+    expect(aggregate!.scarabItems).toEqual([
+      { name: 'Horned Scarab of Preservation', perMap: 8 },
+      { name: 'Horned Scarab of Awakening', perMap: 5 },
+      { name: 'Horned Scarab of Awakening', perMap: 5 },
+    ]);
+    expect(aggregate!.scarabItems.reduce((sum, item) => sum + item.perMap, 0))
+      .toBeCloseTo(aggregate!.scarabs);
+  });
+
   it('keeps an unitemized authored all-in value as base and rolling cost', () => {
     const aggregate = aggregateEvidenceSetupCosts([
       run({

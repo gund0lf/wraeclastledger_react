@@ -30,23 +30,38 @@ const validCost = (value: number | null | undefined): number => (
   value != null && Number.isFinite(value) && value > 0 ? value : 0
 );
 
+interface WeightedItemAccumulator {
+  name: string;
+  weightedTotal: number;
+}
+
 const addWeightedItem = (
-  totals: Map<string, number>,
+  totals: Map<string, WeightedItemAccumulator>,
   name: string,
   contributionPerMap: number,
   runMaps: number,
+  identity?: string,
 ): void => {
   const cleanName = name.trim();
   if (!cleanName || contributionPerMap <= 0) return;
-  totals.set(cleanName, (totals.get(cleanName) ?? 0) + contributionPerMap * runMaps);
+  const key = identity ?? cleanName;
+  const existing = totals.get(key);
+  if (existing) {
+    existing.weightedTotal += contributionPerMap * runMaps;
+  } else {
+    totals.set(key, {
+      name: cleanName,
+      weightedTotal: contributionPerMap * runMaps,
+    });
+  }
 };
 
 const finishItems = (
-  totals: Map<string, number>,
+  totals: Map<string, WeightedItemAccumulator>,
   totalMaps: number,
 ): WeightedEvidenceSetupItem[] => (
-  [...totals.entries()]
-    .map(([name, weightedTotal]) => ({ name, perMap: weightedTotal / totalMaps }))
+  [...totals.values()]
+    .map(({ name, weightedTotal }) => ({ name, perMap: weightedTotal / totalMaps }))
     .sort((a, b) => b.perMap - a.perMap || a.name.localeCompare(b.name))
 );
 
@@ -69,10 +84,10 @@ export function aggregateEvidenceSetupCosts(
   const totalMaps = usable.reduce((sum, entry) => sum + entry.mapCount, 0);
   if (totalMaps <= 0) return null;
 
-  const chiselItems = new Map<string, number>();
-  const scarabItems = new Map<string, number>();
-  const deliriumItems = new Map<string, number>();
-  const astrolabeItems = new Map<string, number>();
+  const chiselItems = new Map<string, WeightedItemAccumulator>();
+  const scarabItems = new Map<string, WeightedItemAccumulator>();
+  const deliriumItems = new Map<string, WeightedItemAccumulator>();
+  const astrolabeItems = new Map<string, WeightedItemAccumulator>();
   let baseAndRollingTotal = 0;
   let chiselTotal = 0;
   let scarabTotal = 0;
@@ -106,12 +121,22 @@ export function aggregateEvidenceSetupCosts(
     const usesPreservation = (costs.scarabs ?? []).some((scarab) => (
       scarab.name.toLowerCase().includes('preservation')
     ));
+    const scarabOccurrences = new Map<string, number>();
     for (const scarab of costs.scarabs ?? []) {
+      const cleanName = scarab.name.trim();
+      const occurrence = (scarabOccurrences.get(cleanName) ?? 0) + 1;
+      scarabOccurrences.set(cleanName, occurrence);
       const price = validCost(scarab.priceEach);
       const contribution = usesPreservation && !scarab.name.toLowerCase().includes('preservation')
         ? price / mapCount
         : price;
-      addWeightedItem(scarabItems, scarab.name, contribution, mapCount);
+      addWeightedItem(
+        scarabItems,
+        scarab.name,
+        contribution,
+        mapCount,
+        `${cleanName}\0${occurrence}`,
+      );
     }
     if (costs.chisel) {
       addWeightedItem(chiselItems, costs.chisel.name, validCost(costs.chisel.priceEach), mapCount);
