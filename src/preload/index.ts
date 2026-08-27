@@ -21,7 +21,7 @@ type TradeParams = {
   deliRewardTypes: string[]; brickExclusions: string[];
 };
 
-type BrickMod = { id: string; label: string; regexTerm: string; category: 'regular' | 'nightmare'; tradeTexts: string[] };
+type BrickMod = { id: string; label: string; regexTerm: string; category: 'regular' | 'nightmare'; familyId?: string; displayText?: string; tradeTexts: string[] };
 type UnavailableBrickMod = { id: string; label: string; expectedCount: number; actualCount: number };
 type BrickModResult = { mods: BrickMod[]; unavailable: UnavailableBrickMod[]; error: string | null };
 type RepositoryFlushRequest = { requestId: string; mode: 'flush' | 'export-recovery' };

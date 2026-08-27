@@ -6,8 +6,8 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { autoUpdater } from 'electron-updater'
 import {
+  buildBrickTradeStatGroups,
   brickRegexTerm,
-  expandSelectedBrickIds,
   resolveBrickTradeStats,
 } from '../shared/brickMods'
 import type { ResolvedBrickTradeStat, UnavailableBrickTradeStat } from '../shared/brickMods'
@@ -799,6 +799,8 @@ ipcMain.handle('trade:get-brick-mods', async () => {
       label:     def.label,
       regexTerm: brickRegexTerm(def),
       category:  def.category,
+      familyId:  def.familyId,
+      displayText: def.displayText,
       tradeTexts: def.tradePatterns.map((pattern) => pattern.text),
     }));
   return { mods, unavailable: BRICK_MOD_UNAVAILABLE, error: statsLoadError };
@@ -915,13 +917,11 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
   }
 
   if (brickExclusions.length > 0) {
-    const resolvedBrickIds = expandSelectedBrickIds(
+    const brickGroups = buildBrickTradeStatGroups(
       brickExclusions,
       BRICK_MOD_RESOLVED,
     );
-    if (resolvedBrickIds.length > 0) {
-      statsArray.push({ type: 'not', filters: resolvedBrickIds.map((id) => ({ id })) });
-    }
+    statsArray.push(...brickGroups);
   }
 
   const itemType = tradeItemTypeForMapType(mapType);

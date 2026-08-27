@@ -13,8 +13,12 @@ import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
 import { MOD_TOKENS } from '../../../shared/modTokens';
 import {
+  BRICK_MOD_FAMILIES,
   BRICK_MOD_DEFS,
   brickRegexTerm,
+  buildBrickTradeStatGroups,
+  compileBrickExclusionPattern,
+  compileBrickExclusionTerms,
   expandSelectedBrickIds,
   normalizeTradeStatText,
   resolveBrickTradeStats,
@@ -63,7 +67,8 @@ describe('MOD_TOKENS integrity', () => {
 
   it('all tokens are reasonably short for stash regex use', () => {
     for (const [id, token] of entries) {
-      expect(token.length, `${id} token '${token}' is too long (>10 chars)`).toBeLessThanOrEqual(10);
+      const max = id.startsWith('brick_') ? 24 : 10;
+      expect(token.length, `${id} token '${token}' is too long (>${max} chars)`).toBeLessThanOrEqual(max);
     }
   });
 });
@@ -209,17 +214,58 @@ const BRICK_REGEX_SNAPSHOT: Record<string, string> = {
 };
 
 describe('BRICK_MOD_DEFS <-> MOD_TOKENS alignment (WP12)', () => {
-  it('covers exactly the snapshot labels (no additions/removals)', () => {
-    const labels = BRICK_MOD_DEFS.map((d) => d.label);
-    expect(labels.length).toBe(Object.keys(BRICK_REGEX_SNAPSHOT).length);
-    expect(new Set(labels).size, 'brick labels must be unique').toBe(labels.length);
-    expect(new Set(labels)).toEqual(new Set(Object.keys(BRICK_REGEX_SNAPSHOT)));
+  const replacedLabels = new Set([
+    'Thorns Reflection (all tiers)',
+    'Reduced Max Resistances',
+    'High Crit Chance + Multiplier',
+    'Increased Monster Damage',
+    'Monsters Suppress Spell Damage Chance',
+    'Extra Energy Shield from Life',
+    'Physical Damage Reduction',
+    'Chaos + Elemental Resistances',
+    'More Monster Life',
+    'Buffs on Players Expire Faster',
+    '-20% Max Resistances',
+    'Massive All Resistances',
+  ]);
+
+  it('keeps every unaffected catalogue token byte-identical', () => {
+    for (const [label, token] of Object.entries(BRICK_REGEX_SNAPSHOT)) {
+      if (replacedLabels.has(label)) continue;
+      const def = BRICK_MOD_DEFS.find((candidate) => candidate.label === label);
+      expect(def, label).toBeDefined();
+      expect(brickRegexTerm(def!), `${label} (${def!.id})`).toBe(token);
+    }
   });
 
-  it('every brick derives its exact original regexTerm from MOD_TOKENS (zero drift)', () => {
-    for (const def of BRICK_MOD_DEFS) {
-      expect(brickRegexTerm(def), `${def.label} (${def.id})`).toBe(BRICK_REGEX_SNAPSHOT[def.label]);
-    }
+  it('pins all 21 approved semantic leaf tokens', () => {
+    const expected = {
+      brick_crit_regular: '4[1-5]% to m',
+      brick_crit_nightmare: '7[0-5]% to m',
+      brick_es_regular: '4\\d% of m',
+      brick_es_nightmare: '(7\\d|80)% of m',
+      brick_max_res_regular: '-(9|1[0-2])% to all',
+      brick_max_res_nightmare: '-20% to all',
+      brick_monster_damage_regular: '2[2-5]%.*r d',
+      brick_monster_damage_nightmare: '(3\\d|40)%.*r d',
+      brick_monster_life_low_regular: '(2[5-9]|30)% more mo',
+      brick_monster_life_regular: '4\\d% more mo',
+      brick_monster_life_nightmare: '(9\\d|100)% more mo',
+      brick_suppression_regular: '60% chance to s',
+      brick_suppression_nightmare: '100% chance to s',
+      brick_buff_expiry_regular: 'players expire 70%',
+      brick_buff_expiry_nightmare: 'players expire 100%',
+      brick_thorns_physical_regular: 'ting 800 p',
+      brick_thorns_elemental_regular: 'ting 1500 e',
+      brick_thorns_combined_nightmare: 'ting 2500 e',
+      brick_armoured_regular: '40%.*duct',
+      brick_resistant_regular: '25%.*r chao',
+      brick_protected_nightmare: '50%.*duct',
+    } as const;
+    expect(Object.fromEntries(BRICK_MOD_DEFS
+      .filter((def) => def.familyId)
+      .map((def) => [def.id, brickRegexTerm(def)])))
+      .toEqual(expected);
   });
 
   it('every brick id resolves to a non-empty MOD_TOKENS entry', () => {
@@ -244,27 +290,31 @@ describe('exact Trade-stat resolution', () => {
     );
   });
 
-  it('resolves intended map stats without collecting global gear-stat decoys', () => {
+  it('resolves exact semantic stats and keeps their signed/value bounds', () => {
     const ids = [
-      'reduced_max_resistances',
-      'reduced_non_curse_aura_effect',
-      'cannot_regenerate_life_mana_es',
-      'less_recovery_rate',
-      'high_crit_chance_multiplier',
-      'reduced_block_less_armour',
-      'avoid_elemental_ailments',
-      'more_monster_life',
-      'players_less_accuracy',
+      'brick_crit_regular',
+      'brick_crit_nightmare',
+      'brick_max_res_regular',
+      'brick_max_res_nightmare',
+      'brick_monster_life_low_regular',
+      'brick_monster_life_regular',
+      'brick_monster_life_nightmare',
+      'brick_thorns_physical_regular',
+      'brick_thorns_elemental_regular',
+      'brick_thorns_combined_nightmare',
+      'brick_armoured_regular',
+      'brick_resistant_regular',
+      'brick_protected_nightmare',
     ];
     const definitions = ids.map(byId);
-    const intended = definitions.flatMap((def) =>
-      def.tradePatterns.map((pattern, index) => ({
-        id: pattern.statId ?? `intended.${def.id}.${index}`,
+    const intended = [...new Map(definitions.flatMap((def) =>
+      def.tradePatterns.map((pattern) => [pattern.statId!, {
+        id: pattern.statId!,
         text: pattern.text
           .replace('Elemental Thorns', '[ElementalThorns|Elemental Thorns]')
           .replace('Physical Thorns', '[PhysicalThorns|Physical Thorns]'),
-      })),
-    );
+      }] as const)),
+    ).values()];
     const decoys = [
       { id: 'gear.max-res', text: '+#% to all maximum Resistances while you have no Endurance Charges' },
       { id: 'gear.spectre-max-res', text: 'Raised Spectres have +#% to all maximum Resistances' },
@@ -279,15 +329,24 @@ describe('exact Trade-stat resolution', () => {
 
     const result = resolveBrickTradeStats([...intended, ...decoys], definitions);
     expect(result.unavailable).toEqual([]);
-    expect(Object.fromEntries(result.resolved.map(({ def, statIds }) => [def.id, statIds]))).toEqual(
-      Object.fromEntries(definitions.map((def) => [
+    expect(Object.fromEntries(result.resolved.map(({ def, filters }) => [def.id, filters])))
+      .toEqual(Object.fromEntries(definitions.map((def) => [
         def.id,
-        def.tradePatterns.map((pattern, index) => pattern.statId ?? `intended.${def.id}.${index}`),
-      ])),
-    );
+        def.tradePatterns.map((pattern) => ({
+          id: pattern.statId!,
+          value: pattern.value,
+        })),
+      ])));
     const expanded = expandSelectedBrickIds(ids, result.resolved);
-    expect(expanded).toHaveLength(9);
-    expect(expanded.every((id) => id.startsWith('intended.') || id.startsWith('explicit.'))).toBe(true);
+    expect(expanded).toEqual([
+      'explicit.stat_57326096',
+      'explicit.stat_3376488707',
+      'explicit.stat_95249895',
+      'explicit.stat_3278889477',
+      'explicit.stat_3938822425',
+      'explicit.stat_839186746',
+      'explicit.stat_365540634',
+    ]);
   });
 
   it('keeps the historically inverted player-accuracy label separate from monster accuracy', () => {
@@ -298,7 +357,7 @@ describe('exact Trade-stat resolution', () => {
   });
 
   it('fails a brick closed when an exact pattern is missing or ambiguous', () => {
-    const maxRes = byId('reduced_max_resistances');
+    const maxRes = byId('brick_max_res_regular');
     expect(resolveBrickTradeStats([], [maxRes]).unavailable).toEqual([{
       id: maxRes.id,
       label: maxRes.label,
@@ -306,12 +365,13 @@ describe('exact Trade-stat resolution', () => {
       actualCount: 0,
     }]);
 
-    const duplicateText = maxRes.tradePatterns[0].text;
+    const aura = byId('reduced_non_curse_aura_effect');
+    const duplicateText = aura.tradePatterns[0].text;
     expect(resolveBrickTradeStats([
       { id: 'duplicate.one', text: duplicateText },
       { id: 'duplicate.two', text: duplicateText },
-    ], [maxRes]).unavailable[0]).toMatchObject({
-      id: maxRes.id,
+    ], [aura]).unavailable[0]).toMatchObject({
+      id: aura.id,
       expectedCount: 1,
       actualCount: 2,
     });
@@ -320,31 +380,209 @@ describe('exact Trade-stat resolution', () => {
   it('pins the complete exact-pattern registry', () => {
     const snapshot = BRICK_MOD_DEFS.map(({ id, tradePatterns }) => ({ id, tradePatterns }));
     expect(createHash('sha256').update(JSON.stringify(snapshot)).digest('hex')).toBe(
-      'a894dfce98e5a5d61b4a9773b1cf41f0586f5d6f95aa29a5c1a90722ff3e42b6',
+      'cb0f794947bb5c0f106765677dd1c447079a11e01f56dec3a104e12d8c513787',
     );
   });
 
-  it('expands one stable brick id to both Thorns Trade filters', () => {
-    const thorns = byId('thorns_reflection');
-    expect(expandSelectedBrickIds(
-      [thorns.id, 'unknown.brick'],
-      [{ def: thorns, statIds: ['explicit.stat_physical', 'explicit.stat_elemental'] }],
+  it('keeps same-stat numerical leaves independent inside one NOT group', () => {
+    const regular = byId('brick_max_res_regular');
+    const nightmare = byId('brick_max_res_nightmare');
+    expect(buildBrickTradeStatGroups(
+      [regular.id, nightmare.id],
+      [
+        { def: regular, filters: [{ id: 'explicit.stat_3376488707', value: { min: -12, max: -9 } }] },
+        { def: nightmare, filters: [{ id: 'explicit.stat_3376488707', value: { min: -20, max: -20 } }] },
+      ],
     )).toEqual([
-      'explicit.stat_physical',
-      'explicit.stat_elemental',
+      { type: 'not', filters: [
+        { id: 'explicit.stat_3376488707', value: { min: -12, max: -9 } },
+        { id: 'explicit.stat_3376488707', value: { min: -20, max: -20 } },
+      ] },
     ]);
   });
 
-  it('keeps tier labels independently selectable while deduplicating a shared Trade stat', () => {
-    const regular = byId('reduced_max_resistances');
-    const nightmare = byId('uber_20_max_resistances');
-    expect(regular.label).not.toBe(nightmare.label);
-    expect(expandSelectedBrickIds(
-      [regular.id, nightmare.id],
+  it('consolidates ordinary and bounded brick exclusions into one NOT group', () => {
+    const ordinary = byId('cannot_regenerate_life_mana_es');
+    const regular = byId('brick_es_regular');
+    const nightmare = byId('brick_es_nightmare');
+    expect(buildBrickTradeStatGroups(
+      [ordinary.id, regular.id, nightmare.id],
       [
-        { def: regular, statIds: ['explicit.shared-max-res'] },
-        { def: nightmare, statIds: ['explicit.shared-max-res'] },
+        { def: ordinary, filters: [{ id: 'explicit.stat_plain' }] },
+        { def: regular, filters: [{ id: 'explicit.stat_es', value: { min: 40, max: 49 } }] },
+        { def: nightmare, filters: [{ id: 'explicit.stat_es', value: { min: 70, max: 80 } }] },
       ],
-    )).toEqual(['explicit.shared-max-res']);
+    )).toEqual([
+      { type: 'not', filters: [
+        { id: 'explicit.stat_plain' },
+        { id: 'explicit.stat_es', value: { min: 40, max: 49 } },
+        { id: 'explicit.stat_es', value: { min: 70, max: 80 } },
+      ] },
+    ]);
+  });
+
+  it('defines exactly the nine approved linked families and 21 leaves', () => {
+    expect(BRICK_MOD_FAMILIES.map((familyDef) => familyDef.id)).toEqual([
+      'critical_multiplier',
+      'energy_shield_from_life',
+      'maximum_resistances',
+      'monster_damage',
+      'monster_life',
+      'spell_suppression',
+      'buff_expiry',
+      'thorns',
+      'monster_protection',
+    ]);
+    expect(BRICK_MOD_FAMILIES.flatMap((familyDef) => familyDef.leafIds)).toHaveLength(21);
+    expect(byId('uber_triple_curse_vuln_temporal_elem').familyId).toBeUndefined();
+    expect(byId('uber_triple_curse_vuln_temporal_elem').tradePatterns[0]).toEqual({
+      text: 'Players are Cursed with Temporal Chains',
+      statId: 'explicit.stat_2326202293',
+    });
+  });
+
+  it('pins every semantic leaf to its exact official stat id and signed range', () => {
+    const expected = {
+      brick_crit_regular: ['explicit.stat_57326096', 41, 45],
+      brick_crit_nightmare: ['explicit.stat_57326096', 70, 75],
+      brick_es_regular: ['explicit.stat_2887760183', 40, 49],
+      brick_es_nightmare: ['explicit.stat_2887760183', 70, 80],
+      brick_max_res_regular: ['explicit.stat_3376488707', -12, -9],
+      brick_max_res_nightmare: ['explicit.stat_3376488707', -20, -20],
+      brick_monster_damage_regular: ['explicit.stat_1890519597', 22, 25],
+      brick_monster_damage_nightmare: ['explicit.stat_1890519597', 30, 40],
+      brick_monster_life_low_regular: ['explicit.stat_95249895', 25, 30],
+      brick_monster_life_regular: ['explicit.stat_95249895', 40, 49],
+      brick_monster_life_nightmare: ['explicit.stat_95249895', 90, 100],
+      brick_suppression_regular: ['explicit.stat_2138205941', 60, 60],
+      brick_suppression_nightmare: ['explicit.stat_2138205941', 100, 100],
+      brick_buff_expiry_regular: ['explicit.stat_1217583941', 70, 70],
+      brick_buff_expiry_nightmare: ['explicit.stat_1217583941', 100, 100],
+      brick_thorns_physical_regular: ['explicit.stat_3278889477', 800, 800],
+      brick_thorns_elemental_regular: ['explicit.stat_3938822425', 1500, 1500],
+      brick_thorns_combined_nightmare: ['explicit.stat_3938822425', 2500, 2500],
+      brick_armoured_regular: ['explicit.stat_839186746', 40, 40],
+      brick_resistant_regular: ['explicit.stat_365540634', 25, 25],
+      brick_protected_nightmare: ['explicit.stat_839186746', 50, 50],
+    } as const;
+    expect(Object.fromEntries(BRICK_MOD_DEFS.filter((def) => def.familyId).map((def) => {
+      const pattern = def.tradePatterns[0];
+      return [def.id, [pattern.statId, pattern.value?.min, pattern.value?.max]];
+    }))).toEqual(expected);
+  });
+
+  it('pins every approved optimized exact cover and the remaining leaf fallbacks', () => {
+    expect(compileBrickExclusionTerms(['brick_crit_regular', 'brick_crit_nightmare']))
+      .toEqual(['ike m']);
+    expect(compileBrickExclusionTerms(['brick_es_regular', 'brick_es_nightmare']))
+      .toEqual(['ife as e']);
+    expect(compileBrickExclusionTerms(['brick_max_res_regular', 'brick_max_res_nightmare']))
+      .toEqual(['mum r']);
+    expect(compileBrickExclusionTerms([
+      'brick_monster_damage_regular', 'brick_monster_damage_nightmare',
+    ])).toEqual(['d monster d']);
+    expect(compileBrickExclusionTerms([
+      'brick_monster_life_regular', 'brick_monster_life_nightmare',
+    ])).toEqual(['([49]\\d|100)% more mo']);
+    expect(compileBrickExclusionTerms([
+      'brick_monster_life_low_regular',
+      'brick_monster_life_regular',
+      'brick_monster_life_nightmare',
+    ])).toEqual(['ore mo']);
+    expect(compileBrickExclusionTerms(['brick_monster_life_low_regular']))
+      .toEqual(['(2[5-9]|30)% more mo']);
+    expect(compileBrickExclusionTerms([
+      'brick_suppression_regular', 'brick_suppression_nightmare',
+    ])).toEqual(['e to sup']);
+    expect(compileBrickExclusionTerms([
+      'brick_buff_expiry_regular', 'brick_buff_expiry_nightmare',
+    ])).toEqual(['yers e']);
+    expect(compileBrickExclusionTerms([
+      'brick_thorns_physical_regular', 'brick_thorns_elemental_regular',
+    ])).toEqual(['ting (800 p|1500 e)']);
+    expect(compileBrickExclusionTerms([
+      'brick_thorns_physical_regular', 'brick_thorns_combined_nightmare',
+    ])).toEqual(['ting (800|1500) p']);
+    expect(compileBrickExclusionTerms([
+      'brick_thorns_elemental_regular', 'brick_thorns_combined_nightmare',
+    ])).toEqual(['ting (1500|2500) e']);
+    expect(compileBrickExclusionTerms([
+      'brick_thorns_physical_regular', 'brick_thorns_elemental_regular',
+      'brick_thorns_combined_nightmare',
+    ])).toEqual(['horns']);
+    expect(compileBrickExclusionTerms([
+      'brick_armoured_regular', 'brick_protected_nightmare',
+    ])).toEqual(['duct']);
+    expect(compileBrickExclusionTerms([
+      'brick_resistant_regular', 'brick_protected_nightmare',
+    ])).toEqual(['r chao']);
+    expect(compileBrickExclusionTerms([
+      'brick_armoured_regular', 'brick_resistant_regular', 'brick_protected_nightmare',
+    ])).toEqual(['duct|r chao']);
+    expect(compileBrickExclusionTerms(['brick_max_res_regular']))
+      .toEqual(['-(9|1[0-2])% to all']);
+  });
+
+  it('migrates broad legacy tokens to their historical reach', () => {
+    expect(compileBrickExclusionPattern(['ster da', 'ore mo', 'ppress', 'ysic']))
+      .toBe('d monster d|ore mo|e to sup|duct');
+  });
+
+  it('keeps every optimized family cover collision-free across the full catalogue', () => {
+    const renderedCatalogue = BRICK_MOD_DEFS.map((def) => ({
+      id: def.id,
+      text: `${def.label}\n${def.displayText ?? def.tradePatterns
+        .map((pattern) => pattern.text.replaceAll('#', '42'))
+        .join('\n')}`,
+    }));
+
+    for (const familyDef of BRICK_MOD_FAMILIES) {
+      for (const [key, pattern] of Object.entries(familyDef.exactCovers)) {
+        const expected = new Set(key.split('|'));
+        const actual = renderedCatalogue
+          .filter(({ text }) => new RegExp(pattern, 'i').test(text))
+          .map(({ id }) => id);
+        expect(new Set(actual), `${familyDef.id}: ${pattern}`).toEqual(expected);
+      }
+    }
+  });
+
+  it('does not confuse Suppression with the separate chance-to-steal modifier', () => {
+    const suppression = new RegExp(compileBrickExclusionPattern([
+      'brick:brick_suppression_regular',
+      'brick:brick_suppression_nightmare',
+    ]), 'i');
+    expect(suppression.test('Monsters have +60% chance to Suppress Spell Damage')).toBe(true);
+    expect(suppression.test('Monsters have +100% chance to Suppress Spell Damage')).toBe(true);
+    expect(suppression.test(
+      'Monsters have 10% chance to steal Power, Frenzy and Endurance charges on Hit',
+    )).toBe(false);
+  });
+
+  it('keeps signed max-resistance and split-Thorns stash leaves exact', () => {
+    const regularMaxRes = new RegExp(compileBrickExclusionPattern([
+      'brick:brick_max_res_regular',
+    ]), 'i');
+    expect(regularMaxRes.test('Players have -9% to all maximum Resistances')).toBe(true);
+    expect(regularMaxRes.test('Players have -12% to all maximum Resistances')).toBe(true);
+    expect(regularMaxRes.test('Players have -20% to all maximum Resistances')).toBe(false);
+
+    const physical = new RegExp(compileBrickExclusionPattern([
+      'brick:brick_thorns_physical_regular',
+    ]), 'i');
+    const elemental = new RegExp(compileBrickExclusionPattern([
+      'brick:brick_thorns_elemental_regular',
+    ]), 'i');
+    expect(physical.test('Rare Monsters have Physical Thorns reflecting 800 Physical Damage')).toBe(true);
+    expect(physical.test('Rare Monsters have Elemental Thorns reflecting 1500 Elemental Damage')).toBe(false);
+    expect(elemental.test('Rare Monsters have Elemental Thorns reflecting 1500 Elemental Damage')).toBe(true);
+    expect(elemental.test('Rare Monsters have Physical Thorns reflecting 800 Physical Damage')).toBe(false);
+  });
+
+  it('deduplicates regular Temporal Chains when Triple Curse already covers it', () => {
+    expect(compileBrickExclusionPattern([
+      'brick:cursed_with_temporal_chains',
+      'brick:uber_triple_curse_vuln_temporal_elem',
+    ])).toBe('oral');
   });
 });

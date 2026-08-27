@@ -4,7 +4,8 @@
  *
  * This is deliberately a network/manual rollover check, not part of the
  * offline test gate. Exact text is the primary identity; statId is used only
- * where GGG publishes byte-identical active and obsolete entries.
+ * where GGG publishes byte-identical active/obsolete entries or where a
+ * semantic numerical leaf deliberately pins one official stat family.
  */
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -16,10 +17,17 @@ const SOURCE = join(ROOT, 'src', 'shared', 'brickMods.ts');
 const SPECIAL_MAP_SOURCE = join(ROOT, 'src', 'shared', 'tradeMapFilters.ts');
 const TRADE_STATS_URL = 'https://www.pathofexile.com/api/trade/data/stats';
 const EXPECTED_SHARED_BRICK_SETS = new Set([
-  'reduced_max_resistances|uber_20_max_resistances',
+  'brick_crit_regular|brick_crit_nightmare',
+  'brick_es_regular|brick_es_nightmare',
+  'brick_max_res_regular|brick_max_res_nightmare',
+  'brick_monster_damage_regular|brick_monster_damage_nightmare',
+  'brick_monster_life_low_regular|brick_monster_life_regular|brick_monster_life_nightmare',
+  'brick_suppression_regular|brick_suppression_nightmare',
+  'brick_buff_expiry_regular|brick_buff_expiry_nightmare',
+  'brick_thorns_elemental_regular|brick_thorns_combined_nightmare',
+  'brick_armoured_regular|brick_protected_nightmare',
   'monsters_fire_extra_projectiles|uber_extra_projectiles_massive_aoe',
-  'cursed_with_vulnerability|uber_triple_curse_vuln_temporal_elem',
-  'physical_damage_reduction|uber_massive_all_resistances',
+  'cursed_with_temporal_chains|uber_triple_curse_vuln_temporal_elem',
 ].map((ids) => ids.split('|').sort().join('|')));
 
 const fail = (message) => {
@@ -152,8 +160,8 @@ function resolvePatterns(definitions, entries) {
 
 const definitions = await readPatternTable();
 const specialMapDefinitions = await readSpecialMapStatTable();
-if (definitions.length !== 113) {
-  fail(`Expected 113 brick definitions, found ${definitions.length}`);
+if (definitions.length !== 122) {
+  fail(`Expected 122 brick definitions, found ${definitions.length}`);
 }
 
 const response = await fetch(TRADE_STATS_URL, {

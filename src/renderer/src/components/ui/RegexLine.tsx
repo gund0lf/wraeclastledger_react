@@ -7,12 +7,13 @@ import { FONT } from '../../utils/uiTokens'
  * Moved here verbatim from StrategyCard (which re-exports it for
  * backwards compatibility).
  */
-export const CopyRegex = ({ value, label }: { value: string; label: string }) => (
+export const CopyRegex = ({ value, label, disabled = false }: { value: string; label: string; disabled?: boolean }) => (
   <CopyButton value={value} timeout={2000}>
     {({ copied, copy }) => (
-      <ActionIcon size="md" variant={copied ? 'light' : 'default'} color={copied ? 'teal' : undefined} onClick={copy}
+      <ActionIcon size="md" variant={copied ? 'light' : 'default'} color={copied ? 'teal' : undefined}
+        disabled={disabled} onClick={disabled ? undefined : copy}
         aria-label={`Copy ${label} regex`}
-        title={copied ? 'Copied!' : `Copy ${label} regex`}>
+        title={disabled ? 'Regex exceeds the 250-character stash limit' : copied ? 'Copied!' : `Copy ${label} regex`}>
         {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
       </ActionIcon>
     )}
@@ -29,13 +30,15 @@ export const RegexLine = ({
   badge,
   badgeColor = 'gray',
   badgeTooltip,
-  c = 'teal'
+  c = 'teal',
+  charLimit,
 }: {
   value: string
   badge?: string
   badgeColor?: string
   badgeTooltip?: string
   c?: string
+  charLimit?: number
 }) => (
   // session-16: align center (the md copy button made top-aligned badges/text
   // look displaced against the taller row)
@@ -53,6 +56,14 @@ export const RegexLine = ({
     <Text size="xs" c={c} style={{ fontFamily: 'monospace', fontSize: FONT.small, flex: 1, wordBreak: 'break-all' }}>
       {value}
     </Text>
-    <CopyRegex value={value} label={(badge ?? 'this').toLowerCase()} />
+    {charLimit !== undefined && (
+      <Badge size="xs" variant="light"
+        color={value.length > charLimit ? 'red' : value.length > 220 ? 'yellow' : 'green'}
+        style={{ flexShrink: 0 }}>
+        {value.length} / {charLimit}
+      </Badge>
+    )}
+    <CopyRegex value={value} label={(badge ?? 'this').toLowerCase()}
+      disabled={charLimit !== undefined && value.length > charLimit} />
   </Group>
 )

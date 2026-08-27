@@ -1,43 +1,132 @@
 import { describe, expect, it } from 'vitest';
-import { buildBrickModSelectGroups, filterBrickModSelectOptions } from './brickModSelect';
+import {
+  buildBrickModCatalogues,
+  filterBrickModSelectOptions,
+  prioritizeActiveFamilyOptions,
+  selectedBrickIdsForContext,
+  toggleBrickExclusion,
+} from './brickModSelect';
 
-const groups = buildBrickModSelectGroups([
+const mods = [
   {
-    id: 'thorns_reflection',
-    label: 'Thorns Reflection (all tiers)',
-    tradeTexts: [
-      'Rare Monsters have Elemental Thorns reflecting # Elemental Damage',
-      'Rare Monsters have Physical Thorns reflecting # Physical Damage',
-    ],
+    id: 'brick_thorns_physical_regular',
+    label: 'Physical Thorns',
+    regexTerm: 'ting 800 p',
+    displayText: 'Rare Monsters have Physical Thorns reflecting 800 Physical Damage',
+    tradeTexts: ['Rare Monsters have Physical Thorns reflecting # Physical Damage'],
     category: 'regular',
+    familyId: 'thorns',
   },
   {
-    id: 'reduced_max_res',
-    label: 'Reduced Max Resistances',
-    tradeTexts: ['Players have #% to all maximum Resistances'],
+    id: 'brick_thorns_elemental_regular',
+    label: 'Elemental Thorns',
+    regexTerm: 'ting 1500 e',
+    displayText: 'Rare Monsters have Elemental Thorns reflecting 1500 Elemental Damage',
+    tradeTexts: ['Rare Monsters have Elemental Thorns reflecting # Elemental Damage'],
+    category: 'regular',
+    familyId: 'thorns',
+  },
+  {
+    id: 'brick_thorns_combined_nightmare',
+    label: 'Thorns Reflection',
+    regexTerm: 'ting 2500 e',
+    displayText: 'Rare Monsters have Physical Thorns reflecting 1500 Physical Damage / Rare Monsters have Elemental Thorns reflecting 2500 Elemental Damage',
+    tradeTexts: ['Rare Monsters have Elemental Thorns reflecting # Elemental Damage'],
+    category: 'nightmare',
+    familyId: 'thorns',
+  },
+  {
+    id: 'uber_triple_curse_vuln_temporal_elem',
+    label: 'Triple Curse (Vuln/Temporal/Elem)',
+    regexTerm: 'oral',
+    tradeTexts: ['Players are Cursed with Temporal Chains'],
     category: 'nightmare',
   },
-]);
+] satisfies Parameters<typeof buildBrickModCatalogues>[0];
+
+const catalogues = buildBrickModCatalogues(mods);
 
 describe('brick modifier select presentation', () => {
-  it('keeps selected labels compact while preserving exact trade wording', () => {
-    expect(groups[0].items[0]).toMatchObject({
-      value: 'thorns_reflection',
-      label: 'Thorns Reflection (all tiers)',
-      tradeLabel: 'Rare Monsters have Elemental Thorns reflecting # Elemental Damage / Rare Monsters have Physical Thorns reflecting # Physical Damage',
+  it('shows each leaf only in its native catalogue with value-aware wording', () => {
+    expect(catalogues.regular.map((item) => item.value)).toEqual([
+      'brick_thorns_physical_regular',
+      'brick_thorns_elemental_regular',
+    ]);
+    expect(catalogues.nightmare.map((item) => item.value)).toEqual([
+      'brick_thorns_combined_nightmare',
+      'uber_triple_curse_vuln_temporal_elem',
+    ]);
+    expect(catalogues.regular[0]).toMatchObject({
+      label: 'Physical Thorns',
+      tradeLabel: 'Rare Monsters have Physical Thorns reflecting 800 Physical Damage',
+      shared: true,
     });
   });
 
-  it('searches both catalogue names and exact trade text', () => {
-    expect(filterBrickModSelectOptions(groups, 'physical thorns')[0].items.map((item) => item.value))
-      .toEqual(['thorns_reflection']);
-    expect(filterBrickModSelectOptions(groups, 'reduced max')[0].items.map((item) => item.value))
-      .toEqual(['reduced_max_res']);
+  it('keeps every Regular and Nightmare checkbox semantically independent', () => {
+    const physicalOnly = toggleBrickExclusion(
+      mods,
+      [],
+      'brick_thorns_physical_regular',
+    );
+    expect(physicalOnly).toEqual([
+      'brick:brick_thorns_physical_regular',
+    ]);
+    expect(selectedBrickIdsForContext(mods, physicalOnly, 'regular')).toEqual([
+      'brick_thorns_physical_regular',
+    ]);
+    expect(selectedBrickIdsForContext(mods, physicalOnly, 'nightmare')).toEqual([]);
+
+    const withoutPhysical = toggleBrickExclusion(
+      mods,
+      physicalOnly,
+      'brick_thorns_physical_regular',
+    );
+    expect(withoutPhysical).toEqual([]);
+
+    expect(toggleBrickExclusion(
+      mods,
+      [],
+      'brick_thorns_combined_nightmare',
+    )).toEqual(['brick:brick_thorns_combined_nightmare']);
   });
 
-  it('drops groups that have no matching options', () => {
-    const filtered = filterBrickModSelectOptions(groups, 'elemental thorns');
-    expect(filtered).toHaveLength(1);
-    expect(filtered[0].group).toBe('Regular / shared');
+  it('pins every sibling while a family is active and restores canonical order when inactive', () => {
+    const nightmare = [...catalogues.nightmare].reverse();
+    expect(prioritizeActiveFamilyOptions(
+      nightmare,
+      mods,
+      ['brick_thorns_physical_regular'],
+    ).map((item) => item.value)).toEqual([
+      'brick_thorns_combined_nightmare',
+      'uber_triple_curse_vuln_temporal_elem',
+    ]);
+    expect(prioritizeActiveFamilyOptions(nightmare, mods, []).map((item) => item.value)).toEqual([
+      'uber_triple_curse_vuln_temporal_elem',
+      'brick_thorns_combined_nightmare',
+    ]);
+  });
+
+  it('does not link Triple Curse to separate curse exclusions', () => {
+    expect(toggleBrickExclusion(mods, [], 'uber_triple_curse_vuln_temporal_elem'))
+      .toEqual(['brick:uber_triple_curse_vuln_temporal_elem']);
+    expect(selectedBrickIdsForContext(mods, ['oral'], 'regular')).toEqual([]);
+  });
+
+  it('retains custom terms while one exact leaf is toggled', () => {
+    expect(toggleBrickExclusion(
+      mods,
+      ['custom'],
+      'brick_thorns_elemental_regular',
+    )).toEqual(['custom', 'brick:brick_thorns_elemental_regular']);
+  });
+
+  it('searches catalogue names and value-aware mod text', () => {
+    expect(filterBrickModSelectOptions(catalogues.regular, '800 physical').map((item) => item.value))
+      .toEqual(['brick_thorns_physical_regular']);
+    expect(filterBrickModSelectOptions(catalogues.nightmare, '2500 elemental')
+      .map((item) => item.value)).toEqual(['brick_thorns_combined_nightmare']);
+    expect(filterBrickModSelectOptions(catalogues.nightmare, 'temporal chains').map((item) => item.value))
+      .toEqual(['uber_triple_curse_vuln_temporal_elem']);
   });
 });

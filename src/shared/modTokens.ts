@@ -182,6 +182,34 @@ export const MOD_TOKENS = {
   uber_extra_es_from_life: 'a Ma',  // [V:game] Buffered — Extra ES from Life (+35% maps)
   uber_suppress_spell_damage: 'o su',  // [V:game] Oppressive — Suppress Spell Damage (+35% maps)
 
+  // ══════════════════════════════════════════════════════════════
+  // SEMANTIC BRICK-CATALOGUE LEAVES
+  // ══════════════════════════════════════════════════════════════
+  // These value-aware leaves are persisted by stable id and compiled by
+  // brickMods.ts. They deliberately do not replace the broader Builder tokens
+  // above: the Builder and the exclusion catalogue have different jobs.
+  brick_crit_regular: '4[1-5]% to m',
+  brick_crit_nightmare: '7[0-5]% to m',
+  brick_es_regular: '4\\d% of m',
+  brick_es_nightmare: '(7\\d|80)% of m',
+  brick_max_res_regular: '-(9|1[0-2])% to all',
+  brick_max_res_nightmare: '-20% to all',
+  brick_monster_damage_regular: '2[2-5]%.*r d',
+  brick_monster_damage_nightmare: '(3\\d|40)%.*r d',
+  brick_monster_life_low_regular: '(2[5-9]|30)% more mo',
+  brick_monster_life_regular: '4\\d% more mo',
+  brick_monster_life_nightmare: '(9\\d|100)% more mo',
+  brick_suppression_regular: '60% chance to s',
+  brick_suppression_nightmare: '100% chance to s',
+  brick_buff_expiry_regular: 'players expire 70%',
+  brick_buff_expiry_nightmare: 'players expire 100%',
+  brick_thorns_physical_regular: 'ting 800 p',
+  brick_thorns_elemental_regular: 'ting 1500 e',
+  brick_thorns_combined_nightmare: 'ting 2500 e',
+  brick_armoured_regular: '40%.*duct',
+  brick_resistant_regular: '25%.*r chao',
+  brick_protected_nightmare: '50%.*duct',
+
 } as const;
 
 export type ModTokenId = keyof typeof MOD_TOKENS;

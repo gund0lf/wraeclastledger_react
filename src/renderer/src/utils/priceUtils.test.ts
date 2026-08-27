@@ -309,25 +309,36 @@ describe('generateRunRegex', () => {
 // ─── generateSlamRegex ────────────────────────────────────────────────────────
 describe('Trade modal regex', () => {
   const bricks = [
-    { id: 'brick.max-res', regexTerm: 'um re' },
-    { id: 'brick.regen', regexTerm: 'reg' },
-    { id: 'brick.accuracy', regexTerm: 'ss acc' },
+    { id: 'brick_max_res_regular', regexTerm: '-(9|1[0-2])% to all' },
+    { id: 'cannot_regenerate_life_mana_es', regexTerm: 'reg' },
+    { id: 'players_less_accuracy', regexTerm: 'ss acc' },
   ];
 
   it('uses the live modal selection while preserving custom session terms', () => {
     expect(resolveTradeRegexExclusions(
-      ['brick.regen', 'brick.accuracy'],
+      ['cannot_regenerate_life_mana_es', 'players_less_accuracy'],
       bricks,
       ['um re', 'custom-token'],
-    )).toEqual(['reg', 'ss acc', 'custom-token']);
+    )).toEqual([
+      'custom-token',
+      'brick:cannot_regenerate_life_mana_es',
+      'brick:players_less_accuracy',
+    ]);
   });
 
   it('does not restore a known session brick deselected in the modal', () => {
     expect(resolveTradeRegexExclusions(
-      ['brick.regen'],
+      ['cannot_regenerate_life_mana_es'],
       bricks,
       ['um re', 'reg'],
-    )).toEqual(['reg']);
+    )).toEqual(['brick:cannot_regenerate_life_mana_es']);
+  });
+
+  it('compiles modal semantic ids to the exact reviewed stash terms', () => {
+    expect(generateTradeRegex([
+      'brick:brick_max_res_regular',
+      'brick:cannot_regenerate_life_mana_es',
+    ], 0, 0, 0, 0)).toBe('"!-(9|1[0-2])% to all|reg"');
   });
 
   it('copies exclusions even when every numeric Trade threshold is zero', () => {

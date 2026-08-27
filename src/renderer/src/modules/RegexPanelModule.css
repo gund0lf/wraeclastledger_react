@@ -98,7 +98,9 @@
   flex: 0 1 640px;
   max-width: 58%;
   min-width: 0;
-  margin-left: auto;
+  /* Mantine Text applies its own margin reset after module CSS. The important
+     auto margin keeps the populated value anchored right so it grows left. */
+  margin-left: auto !important;
   text-align: right;
   overflow-wrap: anywhere;
 }
@@ -106,13 +108,27 @@
 .regex-exclusions-summary[data-empty='true'] .regex-exclusions-exact {
   flex-basis: 100%;
   max-width: 100%;
-  margin-left: 0;
-  text-align: left;
+  margin-left: auto !important;
+  text-align: right;
 }
 
 .regex-exclusions-exact code {
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+.regex-catalogue-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  color: var(--mantine-color-gray-5);
+  font-size: var(--mantine-font-size-xs);
+  line-height: 1;
+}
+
+.regex-catalogue-help:hover {
+  color: var(--mantine-color-gray-2);
 }
 
 /* Regular/shared and Nightmare are one paired comparison. Keep both visible

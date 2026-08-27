@@ -1,6 +1,11 @@
 import { getCurrentLeague } from './league';
 import { MOD_TOKENS } from './modTokens';
 import { exactIntegerThresholdPattern } from './regexThreshold';
+import {
+  brickExclusionMarker,
+  compileBrickExclusionPattern,
+  normalizeBrickExclusionEntries,
+} from '../../../shared/brickMods';
 
 export const parsePriceInput = (raw: string, divinePrice: number): number => {
   let s = raw.trim().toLowerCase().replace(/,/g, '');
@@ -45,6 +50,16 @@ export function sanitizeExclusionTerms(terms: string[]): string[] {
   return [...new Set(sanitized)];
 }
 
+/** Exact body of the stash negative-look block after semantic leaf compilation. */
+export function buildExclusionRegexPattern(exclusions: readonly string[]): string {
+  return compileBrickExclusionPattern(sanitizeExclusionTerms([...exclusions]));
+}
+
+export function buildExclusionRegexBlock(exclusions: readonly string[]): string {
+  const pattern = buildExclusionRegexPattern(exclusions);
+  return pattern ? `"!${pattern}"` : '';
+}
+
 // ─── Regex helpers ────────────────────────────────────────────────────────────
 function thresholdPat(floor: number): string {
   if (floor <= 0) return '\\d..';
@@ -69,8 +84,8 @@ interface MapAverages {
 
 export const generateRunRegex = (avg: MapAverages, exclusions?: string[]): string => {
   const parts: string[] = [];
-  const cleanExcl = sanitizeExclusionTerms(exclusions ?? []);
-  if (cleanExcl.length > 0) parts.push(`"!${cleanExcl.join('|')}"`);
+  const exclusionBlock = buildExclusionRegexBlock(exclusions ?? []);
+  if (exclusionBlock) parts.push(exclusionBlock);
 
   const packFloor = Math.max(Math.floor(avg.avgPack / 10) * 10, 20);
 
@@ -117,14 +132,16 @@ export function resolveTradeRegexExclusions(
   bricks: readonly TradeRegexBrick[],
   sessionExclusions: readonly string[],
 ): string[] {
-  const knownTerms = new Set(sanitizeExclusionTerms(bricks.map((brick) => brick.regexTerm)));
-  const byBrickId = new Map(bricks.map((brick) => [brick.id, brick.regexTerm]));
-  const selectedTerms = selectedBrickIds
-    .map((brickId) => byBrickId.get(brickId))
-    .filter((term): term is string => !!term);
-  const customTerms = sanitizeExclusionTerms([...sessionExclusions])
-    .filter((term) => !knownTerms.has(term));
-  return sanitizeExclusionTerms([...selectedTerms, ...customTerms]);
+  const availableIds = new Set(bricks.map((brick) => brick.id));
+  const { customTerms } = normalizeBrickExclusionEntries(
+    sanitizeExclusionTerms([...sessionExclusions]),
+  );
+  return [
+    ...customTerms,
+    ...selectedBrickIds
+      .filter((id) => availableIds.has(id))
+      .map(brickExclusionMarker),
+  ];
 }
 
 /** Generate the modal's approximate stash regex from its live controls. */
@@ -138,8 +155,8 @@ export function generateTradeRegex(
   deliriumRewardTerms: readonly string[] = [],
 ): string {
   const numericParts: string[] = [];
-  const cleanExclusions = sanitizeExclusionTerms(exclusions);
-  if (cleanExclusions.length > 0) numericParts.push(`"!${cleanExclusions.join('|')}"`);
+  const exclusionBlock = buildExclusionRegexBlock(exclusions);
+  if (exclusionBlock) numericParts.push(exclusionBlock);
   // These controls are labelled Min, so their values are literal floors.
   // Do not route them through generateRunRegex: that function deliberately
   // derives lenient thresholds from session averages (including a 60% IIQ/IIR
@@ -167,8 +184,8 @@ export function generateTradeRegex(
 
 export const generateSlamRegex = (avg: MapAverages, exclusions?: string[]): string => {
   const parts: string[] = [];
-  const cleanExcl = sanitizeExclusionTerms(exclusions ?? []);
-  if (cleanExcl.length > 0) parts.push(`"!${cleanExcl.join('|')}"`);
+  const exclusionBlock = buildExclusionRegexBlock(exclusions ?? []);
+  if (exclusionBlock) parts.push(exclusionBlock);
   const packFloor = Math.max(Math.floor(avg.avgPack * 0.75 / 10) * 10, 15);
   const packTerm = `ack.*(${thresholdPat(packFloor)})%`;
   if (avg.avgCurr > 0) {

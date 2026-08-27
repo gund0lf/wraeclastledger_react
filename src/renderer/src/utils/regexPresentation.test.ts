@@ -65,20 +65,20 @@ describe('Regex visual-alignment presentation contract', () => {
     expect(summaryIndex).toBeGreaterThanOrEqual(0);
     expect(catalogueIndex).toBeGreaterThan(summaryIndex);
     expect(sessionSource).toContain('className="regex-exclusion-chips"');
-    expect(sessionSource).toContain('className="regex-exclusions-exact"');
+    expect(sessionSource).toContain('component="div" className="regex-exclusions-exact"');
     expect(sessionSource).toContain('Exclusion regex: <Code');
     expect(sessionSource).not.toContain('Preview: <Code');
-    expect(rule('.regex-exclusions-exact')).toContain('margin-left: auto;');
+    expect(rule('.regex-exclusions-exact')).toContain('margin-left: auto !important;');
     expect(rule('.regex-exclusions-exact')).toContain('text-align: right;');
   });
 
-  it('left-aligns the exact value only when the exclusion summary is empty', () => {
-    expect(sessionSource).toContain("data-empty={exclusions.length === 0 ? 'true' : undefined}");
+  it('keeps the exact value right-aligned and growing left even when empty', () => {
+    expect(sessionSource).toContain("data-empty={!exclusionBlock ? 'true' : undefined}");
     const emptyRule = rule(".regex-exclusions-summary[data-empty='true'] .regex-exclusions-exact");
     expect(emptyRule).toContain('flex-basis: 100%;');
     expect(emptyRule).toContain('max-width: 100%;');
-    expect(emptyRule).toContain('margin-left: 0;');
-    expect(emptyRule).toContain('text-align: left;');
+    expect(emptyRule).toContain('margin-left: auto !important;');
+    expect(emptyRule).toContain('text-align: right;');
   });
 
   it('keeps Regular/shared and Nightmare catalogues side by side at supported widths', () => {
@@ -88,6 +88,63 @@ describe('Regex visual-alignment presentation contract', () => {
     expect(rule('.regex-exclusion-catalogues'))
       .toContain('grid-template-columns: repeat(2, minmax(0, 1fr)) !important;');
     expect(cssSource).not.toContain('.regex-exclusion-catalogues {\n    grid-template-columns: minmax(0, 1fr)');
+  });
+
+  it('uses one search for both catalogues and marks shared options explicitly', () => {
+    expect(sessionSource).toContain('className="regex-catalogue-search"');
+    expect(sessionSource).toContain('placeholder="Search regular and Nightmare mods…"');
+    expect(sessionSource).toContain('options={brickModCatalogues.regular}');
+    expect(sessionSource).toContain('options={brickModCatalogues.nightmare}');
+    expect(sessionSource).toContain('>Shared</Badge>');
+    expect(sessionSource).toContain('Each checkbox is independent');
+    expect(sessionSource).toContain('Selecting a Shared row pins and marks its related variants');
+    expect(sessionSource).toContain('>How this works</span>');
+    expect(sessionSource.match(/>How this works<\/span>/g)).toHaveLength(1);
+    expect(sessionSource).not.toContain('>?</Badge>');
+    expect(sessionSource.indexOf('>How this works</span>'))
+      .toBeLessThan(sessionSource.indexOf('>Exclusions &amp; presets</Text>'));
+    expect(sessionSource).toContain('Shared means related, not automatically selected');
+    expect(sessionSource).toContain('aria-label="Clear modifier search"');
+    expect(sessionSource).toContain("onClick={() => setBrickSearch('')}");
+    expect(sessionSource).not.toContain('regularBrickSearch');
+    expect(sessionSource).not.toContain('nightmareBrickSearch');
+  });
+
+  it('uses each catalogue color and pins every sibling in an active family', () => {
+    expect(sessionSource).toContain('nightmare ? COLOR.nightmare : COLOR.text');
+    expect(sessionSource).not.toContain('nightmare && !option.shared');
+    expect(sessionSource).toContain('prioritizeActiveFamilyOptions(');
+    expect(sessionSource).toContain('allSelected={selectedCatalogueIds}');
+    expect(sessionSource).toContain('border: `1px solid ${checked ? outlineColor : COLOR.border}`');
+    expect(sessionSource).toContain('borderLeft: related && nightmare ? `2px solid ${outlineColor}`');
+    expect(sessionSource).toContain('borderRight: related && !nightmare ? `2px solid ${outlineColor}`');
+    expect(sessionSource).toContain("color={nightmare ? 'grape' : 'blue'}");
+    expect(sessionSource).toContain('wrap="nowrap" justify="space-between"');
+    expect(sessionSource).toContain('Related variant — select separately');
+  });
+
+  it('keeps Trade exclusions display-only and catalogue-authoritative', () => {
+    expect(sessionSource).toContain('No modifier exclusions selected.');
+    expect(sessionSource).not.toContain('Exclude maps with these mods.');
+    expect(sessionSource).not.toContain('Purple = Nightmare mods.');
+    expect(sessionSource).not.toContain('Display only — change these in the Regex exclusion catalogue');
+    expect(sessionSource).not.toContain('Sync to Regex Exclusions');
+    expect(sessionSource).not.toContain('Search and select mods to exclude');
+    expect(sessionSource).not.toContain('applyBrickMultiSelectChange');
+  });
+
+  it('shows live 250-character counts and blocks over-limit copies', () => {
+    expect(sessionSource).toContain('charLimit={250}');
+    expect(sessionSource).toContain('{exclusionBlock.length} / 250');
+    expect(sessionSource).toContain('disabled={generatedRegex.run.length > 250}');
+    expect(sessionSource).toContain('{tradeRegex.length} / 250');
+    expect(sessionSource).not.toContain('{r.length} / 250');
+  });
+
+  it('clears stale Trade thresholds when no session or strategy source exists', () => {
+    expect(sessionSource).toContain('} else {\n      setTradeMinIIQ(0);');
+    expect(sessionSource).toContain('setTradeMinIIR(0);');
+    expect(sessionSource).toContain('setTradeMinPack(0);');
   });
 
   it('retains the accepted Builder split while neutralizing its structure', () => {

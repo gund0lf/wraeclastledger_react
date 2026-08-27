@@ -1,57 +1,130 @@
+import {
+  brickExclusionMarker,
+  normalizeBrickExclusionEntries,
+} from '../../../shared/brickMods';
+
+export type BrickModCatalogueContext = 'regular' | 'nightmare';
+
 export interface BrickModSelectSource {
   id: string;
   label: string;
+  regexTerm: string;
   tradeTexts: string[];
-  category: 'regular' | 'nightmare';
+  displayText?: string;
+  category: BrickModCatalogueContext;
+  familyId?: string;
 }
 
 export interface BrickModSelectOption {
   value: string;
   /** Compact catalogue name used by selected pills. */
   label: string;
-  /** Exact normalized PoE Trade wording used in the dropdown. */
+  /** Exact value-aware wording shown in the catalogue. */
   tradeLabel: string;
   /** Both names remain searchable even though only one is selected/displayed. */
   searchText: string;
+  shared: boolean;
+  familyId?: string;
 }
 
-export interface BrickModSelectGroup {
-  group: string;
-  items: BrickModSelectOption[];
-}
-
-export function buildBrickModSelectGroups(mods: BrickModSelectSource[]): BrickModSelectGroup[] {
-  const toOption = (mod: BrickModSelectSource): BrickModSelectOption => {
-    const tradeLabel = mod.tradeTexts.length > 0 ? mod.tradeTexts.join(' / ') : mod.label;
-    return {
-      value: mod.id,
-      label: mod.label,
-      tradeLabel,
-      searchText: `${mod.label} ${tradeLabel}`,
-    };
+const toOption = (mod: BrickModSelectSource): BrickModSelectOption => {
+  const tradeLabel = mod.displayText ??
+    (mod.tradeTexts.length > 0 ? mod.tradeTexts.join(' / ') : mod.label);
+  return {
+    value: mod.id,
+    label: mod.label,
+    tradeLabel,
+    searchText: `${mod.label} ${tradeLabel}`,
+    shared: !!mod.familyId,
+    familyId: mod.familyId,
   };
-  const regular = mods.filter((mod) => mod.category === 'regular').map(toOption);
-  const nightmare = mods.filter((mod) => mod.category === 'nightmare').map(toOption);
-  const groups: BrickModSelectGroup[] = [];
-  if (regular.length > 0) groups.push({ group: 'Regular / shared', items: regular });
-  if (nightmare.length > 0) groups.push({ group: 'Nightmare', items: nightmare });
-  return groups;
+};
+
+/** Paired visible catalogues. Every semantic leaf appears only in its native
+ * context; familyId supplies the cross-context relationship. */
+export function buildBrickModCatalogues(mods: BrickModSelectSource[]): Record<
+  BrickModCatalogueContext,
+  BrickModSelectOption[]
+> {
+  return {
+    regular: mods.filter((mod) => mod.category === 'regular').map(toOption),
+    nightmare: mods.filter((mod) => mod.category === 'nightmare').map(toOption),
+  };
 }
 
-/** Mantine filter contract. Group structure is preserved while empty groups drop out. */
-export function filterBrickModSelectOptions<T extends BrickModSelectOption | BrickModSelectGroup>(
-  options: T[],
+export function selectedBrickIds(exclusions: readonly string[]): string[] {
+  return normalizeBrickExclusionEntries(exclusions).selectedIds;
+}
+
+export function selectedBrickIdsForContext(
+  mods: BrickModSelectSource[],
+  exclusions: readonly string[],
+  context: BrickModCatalogueContext,
+): string[] {
+  const selected = new Set(selectedBrickIds(exclusions));
+  return mods
+    .filter((mod) => mod.category === context && selected.has(mod.id))
+    .map((mod) => mod.id);
+}
+
+/** Surface every sibling in an active linked family at the top. This keeps an
+ * independently unchecked leaf beside its checked siblings until the entire
+ * family is inactive, then canonical order returns automatically. */
+export function prioritizeActiveFamilyOptions(
+  options: readonly BrickModSelectOption[],
+  allMods: readonly BrickModSelectSource[],
+  selectedIdsValue: readonly string[],
+): BrickModSelectOption[] {
+  const selected = new Set(selectedIdsValue);
+  const activeFamilies = new Set(allMods
+    .filter((mod) => mod.familyId && selected.has(mod.id))
+    .map((mod) => mod.familyId));
+  const pinned = options.filter((option) =>
+    option.familyId && activeFamilies.has(option.familyId));
+  if (pinned.length === 0) return [...options];
+  const pinnedIds = new Set(pinned.map((option) => option.value));
+  return [...pinned, ...options.filter((option) => !pinnedIds.has(option.value))];
+}
+
+function entriesForSelection(
+  mods: readonly BrickModSelectSource[],
+  selected: ReadonlySet<string>,
+  customTerms: readonly string[],
+): string[] {
+  const orderedKnown = mods.filter((mod) => selected.has(mod.id)).map((mod) => mod.id);
+  const known = new Set(mods.map((mod) => mod.id));
+  const unavailable = [...selected].filter((id) => !known.has(id));
+  return [
+    ...customTerms,
+    ...[...orderedKnown, ...unavailable].map(brickExclusionMarker),
+  ];
+}
+
+/** Every catalogue checkbox expresses only that exact semantic leaf. Related
+ * families affect presentation (pinning/cues), never selection intent. */
+export function toggleBrickExclusion(
+  mods: BrickModSelectSource[],
+  exclusions: readonly string[],
+  id: string,
+): string[] {
+  const { selectedIds: currentIds, customTerms } = normalizeBrickExclusionEntries(exclusions);
+  const selected = new Set(currentIds);
+  const mod = mods.find((candidate) => candidate.id === id);
+  if (!mod) return [...exclusions];
+
+  if (selected.has(id)) selected.delete(id);
+  else selected.add(id);
+
+  return entriesForSelection(mods, selected, customTerms);
+}
+/** Shared-search matcher for one native catalogue. */
+export function filterBrickModSelectOptions(
+  options: BrickModSelectOption[],
   search: string,
-): T[] {
+): BrickModSelectOption[] {
   const words = search.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return options;
   const matches = (option: BrickModSelectOption): boolean =>
     words.every((word) => option.searchText.toLowerCase().includes(word));
-  return options.flatMap((option) => {
-    if ('items' in option) {
-      const items = option.items.filter(matches);
-      return items.length > 0 ? [{ ...option, items } as T] : [];
-    }
-    return matches(option) ? [option] : [];
-  });
+  return options.filter(matches);
 }
