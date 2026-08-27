@@ -8,6 +8,7 @@ export type BrickModCatalogueContext = 'regular' | 'nightmare';
 export interface BrickModSelectSource {
   id: string;
   label: string;
+  summaryLabel?: string;
   regexTerm: string;
   tradeTexts: string[];
   displayText?: string;
@@ -17,7 +18,7 @@ export interface BrickModSelectSource {
 
 export interface BrickModSelectOption {
   value: string;
-  /** Compact catalogue name used by selected pills. */
+  /** Concise catalogue name; selected summaries may use summaryLabel instead. */
   label: string;
   /** Exact value-aware wording shown in the catalogue. */
   tradeLabel: string;

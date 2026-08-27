@@ -797,6 +797,7 @@ ipcMain.handle('trade:get-brick-mods', async () => {
     .map(({ def }) => ({
       id:        def.id,
       label:     def.label,
+      summaryLabel: def.summaryLabel,
       regexTerm: brickRegexTerm(def),
       category:  def.category,
       familyId:  def.familyId,

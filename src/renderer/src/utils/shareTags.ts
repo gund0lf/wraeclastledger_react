@@ -18,7 +18,7 @@ const SCARAB_TAG_KEYWORDS: ReadonlyArray<readonly [string, readonly string[]]> =
   ['essence', ['essence']], ['divination', ['divination']], ['harbinger', ['harbinger']],
   ['titanic', ['titanic']], ['torment', ['torment']], ['ultimatum', ['ultimatum']],
   ['kalguuran', ['kalguur']], ['heist', ['heist']], ['metamorph', ['metamorph']],
-  ['ambush', ['ambush']], ['cartography', ['cartography']],
+  ['ambush', ['ambush']], ['anarchy', ['anarchy']], ['cartography', ['cartography']],
   ['mercenar', ['trarthus']],
   // Mercenaries is the encounter name; Trarthus is the one strategy taxonomy
   // label shared by direct Mercenary names and the Trarthan scarab family.

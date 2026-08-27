@@ -102,6 +102,7 @@
      auto margin keeps the populated value anchored right so it grows left. */
   margin-left: auto !important;
   text-align: right;
+  text-wrap: balance;
   overflow-wrap: anywhere;
 }
 

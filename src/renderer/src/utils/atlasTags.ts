@@ -21,6 +21,7 @@ const TITLE_TO_TAG: Record<string, string> = {
   torment: 'torment',
   cartography: 'cartography',
   titanic: 'titanic',
+  'rogue exiles': 'anarchy',
   mercenaries: 'trarthus',
   'settlers of kalguur': 'kalguur',
   'eater of worlds': 'eater',

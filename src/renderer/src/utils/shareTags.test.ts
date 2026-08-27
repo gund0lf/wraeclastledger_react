@@ -11,6 +11,7 @@ const normalMap = {
 describe('deriveShareTags', () => {
   it('offers one Trarthus taxonomy value instead of a duplicate Mercenaries tag', () => {
     expect(ALL_TYPE_TAGS).toContain('bestiary');
+    expect(ALL_TYPE_TAGS).toContain('anarchy');
     expect(ALL_TYPE_TAGS).toContain('trarthus');
     expect(ALL_TYPE_TAGS).not.toContain('mercenaries');
   });
@@ -75,6 +76,17 @@ describe('deriveShareTags', () => {
     }, [normalMap]);
 
     expect(tags).toEqual(['regular', 'bestiary']);
+    expect(tags.every((tag) => ALL_TYPE_TAGS.includes(tag))).toBe(true);
+  });
+
+  it('infers the selectable Anarchy tag from the Anarchy scarab family', () => {
+    const tags = deriveShareTags({
+      scarabs: [{ name: 'Anarchy Scarab of the Exceptional', cost: 3 }],
+      atlasDetectedTags: [],
+      advAstrolabeType: '',
+    }, [normalMap]);
+
+    expect(tags).toEqual(['regular', 'anarchy']);
     expect(tags.every((tag) => ALL_TYPE_TAGS.includes(tag))).toBe(true);
   });
 

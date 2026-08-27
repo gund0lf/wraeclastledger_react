@@ -44,6 +44,25 @@ describe('deriveAtlasDetectedTags', () => {
     ])).toEqual(['bestiary', 'trarthus', 'kalguur']);
   });
 
+  it('maps the Rogue Exiles Atlas heading to the Anarchy strategy tag', () => {
+    expect(deriveAtlasDetectedTags([
+      {
+        title: 'Rogue Exiles',
+        stats: [
+          'Your Maps have a 100% chance to contain an additional Rogue Exile',
+          'Your Maps have a 8% chance to contain 20 additional Rogue Exiles',
+          '30% chance for Wild Rogue Exiles in your Maps to appear in Pairs',
+          'Rogue Exiles in your Maps have 35% chance to drop an additional Currency Item',
+          'Map Bosses have 20% chance to be accompanied by two Rogue Exile Bodyguards',
+          'Wild Rogue Exiles in your Maps are Possessed by a Tormented Spirit',
+          'Wild Rogue Exiles in your Maps have 50% chance to have additional Rewards',
+          'Rogue Exiles in your Maps have 100% more Life',
+          'Your Maps are inhabited by an additional Rogue Exile',
+        ],
+      },
+    ])).toEqual(['anarchy']);
+  });
+
   it('does not infer Bestiary from a disabled Atlas group', () => {
     expect(deriveAtlasDetectedTags([
       { title: 'Bestiary', stats: ['Your Maps have no chance to contain Einhar'] },

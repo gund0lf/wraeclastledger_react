@@ -18,7 +18,7 @@ import {
   buildExclusionRegexBlock,
   buildExclusionRegexPattern,
 } from '../utils/priceUtils';
-import { CURRENT_LEAGUE, KNOWN_LEAGUES } from '../utils/league';
+import { CURRENT_LEAGUE, currentLeagueSync } from '../utils/league';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { RegexLine } from '../components/ui/RegexLine'
 import {
@@ -224,7 +224,7 @@ export const FromSessionTab = () => {
   const [hoveredExclTrashId, setHoveredExclTrashId] = useState<string | null>(null); // preset delete red hover
 
   const [tradeMapType,      setTradeMapType]      = useState<MapType>('any');
-  const [tradeLeague,       setTradeLeague]       = useState(settings.leagueName?.trim() || CURRENT_LEAGUE);
+  const tradeLeague = currentLeagueSync() ?? CURRENT_LEAGUE;
   const [tradeEmpowered,    setTradeEmpowered]    = useState(false);
   const [tradeMinDelirious, setTradeMinDelirious] = useState(-1);
   const [tradeDeliRewards,  setTradeDeliRewards]  = useState<string[]>([]);
@@ -248,9 +248,16 @@ export const FromSessionTab = () => {
     [settings.regexExclusions],
   );
   const selectedCatalogueIds = useMemo(() => selectedBrickIds(exclusions), [exclusions]);
-  const tradeBrickExcl = useMemo(
-    () => selectedCatalogueIds.filter((id) => brickMods.some((mod) => mod.id === id)),
+  const selectedCatalogueMods = useMemo(
+    () => selectedCatalogueIds.flatMap((id) => {
+      const mod = brickMods.find((candidate) => candidate.id === id);
+      return mod ? [mod] : [];
+    }),
     [selectedCatalogueIds, brickMods],
+  );
+  const tradeBrickExcl = useMemo(
+    () => selectedCatalogueMods.map((mod) => mod.id),
+    [selectedCatalogueMods],
   );
   const exclusionPattern = useMemo(() => buildExclusionRegexPattern(exclusions), [exclusions]);
   const exclusionBlock = exclusionPattern ? `"!${exclusionPattern}"` : '';
@@ -295,13 +302,6 @@ export const FromSessionTab = () => {
   }, [maps, exclusions, slamUnavailable]);
 
   const brickModCatalogues = useMemo(() => buildBrickModCatalogues(brickMods), [brickMods]);
-  const tradeLeagueOptions = useMemo(
-    () => Array.from(new Set(
-      [settings.leagueName?.trim(), ...KNOWN_LEAGUES].filter((name): name is string => !!name)
-    )),
-    [settings.leagueName]
-  );
-
   const selectedIdsOf = (context: BrickModCatalogueContext) =>
     selectedBrickIdsForContext(brickMods, exclusions, context);
   const toggleSelectedMod = (id: string) =>
@@ -336,7 +336,6 @@ export const FromSessionTab = () => {
   };
 
   useEffect(() => {
-    setTradeLeague(settings.leagueName?.trim() || CURRENT_LEAGUE);
     const src = generatedRegex ?? (loadedStrategyInfo ? {
       avg: {
         avgQuant:  loadedStrategyInfo.avgQuant,
@@ -382,7 +381,7 @@ export const FromSessionTab = () => {
     setTradeCorrupted('any');
     setTradeMinTier(16);
     setTradeError(null);
-  }, [settings.leagueName, generatedRegex, loadedStrategyInfo, maps]);
+  }, [generatedRegex, loadedStrategyInfo, maps]);
 
   const handleOpenTradeModal = () => {
     setTradeError(null);
@@ -420,40 +419,17 @@ export const FromSessionTab = () => {
       return term ? [term] : [];
     }),
   );
-
   return (
     <div className="regex-tab-workspace regex-from-session">
       {/* ── Trade search modal ── */}
-      <Modal opened={tradeOpen} onClose={closeTrade} title="PoE Trade Map Search" size="md" scrollAreaComponent={ScrollArea.Autosize}>
-        <Stack gap="md">
-          <Text size="xs" c="dimmed">
-            League:{' '}
-            <Menu position="bottom-start" withinPortal>
-              <Menu.Target>
-                <UnstyledButton
-                  aria-label={`Trade league: ${tradeLeague}. Click to change for this search only.`}
-                  style={{
-                    color: 'var(--mantine-color-teal-4)',
-                    fontWeight: 600,
-                    fontSize: 'inherit',
-                    lineHeight: 'inherit',
-                  }}>
-                  {tradeLeague}
-                </UnstyledButton>
-              </Menu.Target>
-              <Menu.Dropdown>
-                {tradeLeagueOptions.map((league) => (
-                  <Menu.Item key={league} onClick={() => {
-                    setTradeLeague(league);
-                    if (league.toLowerCase() === 'allflame') setTradeEmpowered(false);
-                  }}>
-                    {league}
-                  </Menu.Item>
-                ))}
-              </Menu.Dropdown>
-            </Menu>
-            {' · '}Any Non-Unique{' · '}<Text span c="green" fw={600}>Instant Buyout</Text>
-          </Text>
+      <Modal opened={tradeOpen} onClose={closeTrade} title="PoE Trade Map Search" size="md"
+        scrollAreaComponent={ScrollArea.Autosize}>
+        <Stack gap="sm">
+          <Group gap={5} wrap="wrap">
+            <Text size="xs" c="dimmed">Any non-unique maps</Text>
+            <Text size="xs" c="dimmed">·</Text>
+            <Text size="xs" c="green" fw={600}>Instant Buyout</Text>
+          </Group>
 
           <Stack gap={4}>
             <Text size="xs" fw={600}>Map type</Text>
@@ -470,6 +446,17 @@ export const FromSessionTab = () => {
             {selectedMapTypeInfo && (
               <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>{selectedMapTypeInfo.description}</Text>
             )}
+            <Group gap="xs" grow>
+              <NumberInput size="xs" label="Min Tier" min={0} max={16} step={1}
+                value={tradeMinTier} onChange={(v) => setTradeMinTier(Number(v) || 0)} />
+              <Select size="xs" label="Corrupted"
+                data={[
+                  { value: 'any', label: 'Any (map type decides)' },
+                  { value: 'yes', label: 'Corrupted only' },
+                  { value: 'no',  label: 'Not corrupted' },
+                ]}
+                value={tradeCorrupted} onChange={(v) => setTradeCorrupted((v ?? 'any') as CorruptedFilter)} />
+            </Group>
           </Stack>
 
           {tradeLeague.toLowerCase() !== 'allflame' && (
@@ -478,12 +465,13 @@ export const FromSessionTab = () => {
                 <Text size="xs" fw={600}>Empowered Mirage enchant</Text>
                 <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>Require Empowered Mirage enchant</Text>
               </Stack>
-              <Switch size="sm" checked={tradeEmpowered} onChange={(e) => setTradeEmpowered(e.currentTarget.checked)} />
+              <Switch size="sm" checked={tradeEmpowered}
+                onChange={(e) => setTradeEmpowered(e.currentTarget.checked)} />
             </Group>
           )}
 
           <Stack gap={4}>
-            <Text size="xs" fw={600}>Delirium</Text>
+            <Divider label="Delirium" labelPosition="left" />
             <Group gap="md" grow>
               <Select size="xs" label="Delirium state"
                 data={[
@@ -507,8 +495,6 @@ export const FromSessionTab = () => {
                 data={DELI_REWARD_OPTIONS}
                 value={tradeDeliRewards} onChange={setTradeDeliRewards} maxDropdownHeight={200}
                 styles={{
-                  // Match the Brick Exclusions pickers: the field grows with
-                  // its pills, while clear/chevron stay pinned at top right.
                   section: { alignItems: 'flex-start', paddingTop: 5 },
                 }} />
             </Group>
@@ -516,19 +502,12 @@ export const FromSessionTab = () => {
 
           <Divider label="Map filters" labelPosition="left" />
           <Group gap="xs" grow>
-            <NumberInput size="xs" label="Min IIQ" min={0} max={300} step={10} value={tradeMinIIQ} onChange={(v) => setTradeMinIIQ(Number(v) || 0)} suffix="%" />
-            <NumberInput size="xs" label="Min IIR" min={0} max={300} step={10} value={tradeMinIIR} onChange={(v) => setTradeMinIIR(Number(v) || 0)} suffix="%" />
-            <NumberInput size="xs" label="Min Pack" min={0} max={200} step={10} value={tradeMinPack} onChange={(v) => setTradeMinPack(Number(v) || 0)} suffix="%" />
-          </Group>
-          <Group gap="xs" grow>
-            <NumberInput size="xs" label="Min Tier" min={0} max={16} step={1} value={tradeMinTier} onChange={(v) => setTradeMinTier(Number(v) || 0)} />
-            <Select size="xs" label="Corrupted"
-              data={[
-                { value: 'any', label: 'Any (map type decides)' },
-                { value: 'yes', label: 'Corrupted only' },
-                { value: 'no',  label: 'Not corrupted' },
-              ]}
-              value={tradeCorrupted} onChange={(v) => setTradeCorrupted((v ?? 'any') as CorruptedFilter)} />
+            <NumberInput size="xs" label="Min IIQ" min={0} max={300} step={10}
+              value={tradeMinIIQ} onChange={(v) => setTradeMinIIQ(Number(v) || 0)} suffix="%" />
+            <NumberInput size="xs" label="Min IIR" min={0} max={300} step={10}
+              value={tradeMinIIR} onChange={(v) => setTradeMinIIR(Number(v) || 0)} suffix="%" />
+            <NumberInput size="xs" label="Min Pack" min={0} max={200} step={10}
+              value={tradeMinPack} onChange={(v) => setTradeMinPack(Number(v) || 0)} suffix="%" />
           </Group>
 
           <Divider label="Pseudo stat filters" labelPosition="left" />
@@ -551,47 +530,53 @@ export const FromSessionTab = () => {
               value={tradeMinMaps} onChange={(v) => setTradeMinMaps(Number(v) || 0)} suffix="%" />
           </Group>
 
-          <Divider label="Brick exclusions (NOT filter)" labelPosition="left" />
-          <Stack gap={4}>
-            {brickModsError && (
-              <Alert color="orange" variant="light" p="xs">
-                <Text size="xs">{brickModsError} — restart the app to retry. Brick exclusions by regex term still work.</Text>
-              </Alert>
-            )}
-            {unavailableBricks.length > 0 && (
-              <Alert color="orange" variant="light" p="xs">
-                <Text size="xs">
-                  {unavailableBricks.length} exclusion{unavailableBricks.length === 1 ? '' : 's'} unavailable because the current PoE Trade definitions did not match exactly: {unavailableBricks.map((brick) => `${brick.label} (expected ${brick.expectedCount}, found ${brick.actualCount})`).join(', ')}.
-                </Text>
-              </Alert>
-            )}
-            <Group justify="space-between" gap="xs" wrap="nowrap" align="flex-start">
-              {tradeBrickExcl.length > 0 ? (
-                <Group gap={5} wrap="wrap" style={{ minWidth: 0 }}>
-                  {tradeBrickExcl.map((id) => {
-                    const mod = brickMods.find((candidate) => candidate.id === id);
-                    if (!mod) return null;
-                    return (
-                      <Tooltip key={id} label={mod.displayText ?? mod.tradeTexts.join(' / ')} withArrow>
-                        <Badge size="sm" variant="light"
-                          color={mod.category === 'nightmare' ? 'grape' : 'gray'}>
-                          {mod.label}
-                        </Badge>
-                      </Tooltip>
-                    );
-                  })}
-                </Group>
-              ) : (
-                <Text size="xs" c="dimmed" fs="italic">
-                  No modifier exclusions selected.
-                </Text>
-              )}
-              <Badge size="xs" variant="light" style={{ flexShrink: 0 }}
-                color={tradeRegex.length > 250 ? 'red' : tradeRegex.length > 220 ? 'yellow' : 'green'}>
-                {tradeRegex.length} / 250
+          <Group justify="space-between" gap="xs" wrap="nowrap" align="center"
+            style={{ minWidth: 0 }}>
+            <Divider label="Brick exclusions (NOT filter)" labelPosition="left"
+              style={{ flex: 1, minWidth: 0 }} />
+            <Group gap={5} wrap="nowrap" style={{ flexShrink: 0 }}>
+              <Badge size="xs" variant="outline" color="gray">
+                {selectedCatalogueMods.length} selected
               </Badge>
+              <Tooltip label="Approximate stash regex length from the current Trade settings" withArrow>
+                <Badge size="xs" variant="light"
+                  color={tradeRegex.length > 250 ? 'red' : tradeRegex.length > 220 ? 'yellow' : 'green'}>
+                  Regex {tradeRegex.length} / 250
+                </Badge>
+              </Tooltip>
             </Group>
-          </Stack>
+          </Group>
+          <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>
+            Read-only from Exclusions &amp; presets. Hover a chip for exact Trade wording.
+          </Text>
+          {brickModsError && (
+            <Alert color="orange" variant="light" p="xs">
+              <Text size="xs">{brickModsError} — restart the app to retry. Brick exclusions by regex term still work.</Text>
+            </Alert>
+          )}
+          {unavailableBricks.length > 0 && (
+            <Alert color="orange" variant="light" p="xs">
+              <Text size="xs">
+                {unavailableBricks.length} exclusion{unavailableBricks.length === 1 ? '' : 's'} unavailable because the current PoE Trade definitions did not match exactly: {unavailableBricks.map((brick) => `${brick.label} (expected ${brick.expectedCount}, found ${brick.actualCount})`).join(', ')}.
+              </Text>
+            </Alert>
+          )}
+          {selectedCatalogueMods.length > 0 ? (
+            <Group gap={5} wrap="wrap" style={{ minWidth: 0 }}>
+              {selectedCatalogueMods.map((mod) => (
+                <Tooltip key={mod.id} label={mod.displayText ?? mod.tradeTexts.join(' / ')} withArrow>
+                  <Badge size="xs" variant="light"
+                    color={mod.category === 'nightmare' ? 'grape' : 'gray'}>
+                    {mod.label}
+                  </Badge>
+                </Tooltip>
+              ))}
+            </Group>
+          ) : (
+            <Text size="xs" c="dimmed" fs="italic">
+              No resolved modifier exclusions apply to this search.
+            </Text>
+          )}
 
           {tradeError && <Text size="xs" c="red">{tradeError}</Text>}
 
@@ -898,8 +883,26 @@ export const FromSessionTab = () => {
 
             <div className="regex-exclusions-summary"
               data-empty={!exclusionBlock ? 'true' : undefined}>
-              {customExclusions.length > 0 && (
+              {(selectedCatalogueMods.length > 0 || customExclusions.length > 0) && (
                 <Group className="regex-exclusion-chips" gap={4} wrap="wrap">
+                  {selectedCatalogueMods.map((mod) => (
+                    <Tooltip key={mod.id}
+                      label={mod.displayText ?? mod.tradeTexts.join(' / ')} withArrow>
+                      <Badge size="sm"
+                        color={mod.category === 'nightmare' ? 'grape' : 'gray'} variant="light"
+                        rightSection={
+                          <ActionIcon size={12} variant="transparent"
+                            color={mod.category === 'nightmare' ? 'grape' : 'gray'}
+                            aria-label={`Remove ${mod.label} exclusion`}
+                            onClick={() => toggleSelectedMod(mod.id)} style={{ marginLeft: 2 }}>
+                            <IconX size={10} />
+                          </ActionIcon>
+                        }
+                        style={{ paddingRight: 2 }}>
+                        {mod.summaryLabel ?? mod.label}
+                      </Badge>
+                    </Tooltip>
+                  ))}
                   {customExclusions.map((term) => (
                     <Badge key={term} size="sm" color="yellow" variant="light"
                       rightSection={

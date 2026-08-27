@@ -65,11 +65,16 @@ describe('Regex visual-alignment presentation contract', () => {
     expect(summaryIndex).toBeGreaterThanOrEqual(0);
     expect(catalogueIndex).toBeGreaterThan(summaryIndex);
     expect(sessionSource).toContain('className="regex-exclusion-chips"');
+    expect(sessionSource).toContain('selectedCatalogueMods.map((mod) =>');
+    expect(sessionSource).toContain('aria-label={`Remove ${mod.label} exclusion`}');
+    expect(sessionSource).toContain('onClick={() => toggleSelectedMod(mod.id)}');
+    expect(sessionSource).toContain('{mod.summaryLabel ?? mod.label}');
     expect(sessionSource).toContain('component="div" className="regex-exclusions-exact"');
     expect(sessionSource).toContain('Exclusion regex: <Code');
     expect(sessionSource).not.toContain('Preview: <Code');
     expect(rule('.regex-exclusions-exact')).toContain('margin-left: auto !important;');
     expect(rule('.regex-exclusions-exact')).toContain('text-align: right;');
+    expect(rule('.regex-exclusions-exact')).toContain('text-wrap: balance;');
   });
 
   it('keeps the exact value right-aligned and growing left even when empty', () => {
@@ -124,13 +129,53 @@ describe('Regex visual-alignment presentation contract', () => {
   });
 
   it('keeps Trade exclusions display-only and catalogue-authoritative', () => {
-    expect(sessionSource).toContain('No modifier exclusions selected.');
+    expect(sessionSource).toContain('Read-only from Exclusions &amp; presets.');
+    expect(sessionSource).toContain('selectedCatalogueMods.map');
+    expect(sessionSource).not.toContain('selectedTradeBrickMods');
+    expect(sessionSource).not.toContain('selectedRegularBrickMods');
+    expect(sessionSource).not.toContain('selectedNightmareBrickMods');
+    expect(sessionSource).toContain('No resolved modifier exclusions');
     expect(sessionSource).not.toContain('Exclude maps with these mods.');
     expect(sessionSource).not.toContain('Purple = Nightmare mods.');
     expect(sessionSource).not.toContain('Display only — change these in the Regex exclusion catalogue');
     expect(sessionSource).not.toContain('Sync to Regex Exclusions');
     expect(sessionSource).not.toContain('Search and select mods to exclude');
     expect(sessionSource).not.toContain('applyBrickMultiSelectChange');
+  });
+
+  it('keeps Trade as a compact divider-led modal', () => {
+    const modalStart = sessionSource.indexOf('title="PoE Trade Map Search"');
+    const modalEnd = sessionSource.indexOf('Named structured-exclusion', modalStart);
+    const tradeModal = sessionSource.slice(modalStart, modalEnd);
+    const mapTypeIndex = tradeModal.indexOf('>Map type</Text>');
+    const minTierIndex = tradeModal.indexOf('label="Min Tier"');
+    const corruptedIndex = tradeModal.indexOf('label="Corrupted"');
+    const deliriumIndex = tradeModal.indexOf('label="Delirium"');
+    const mapFiltersIndex = tradeModal.indexOf('label="Map filters"');
+    const pseudoIndex = tradeModal.indexOf('label="Pseudo stat filters"');
+    const exclusionsIndex = tradeModal.indexOf('label="Brick exclusions (NOT filter)"');
+
+    expect(tradeModal).toContain('size="md"');
+    expect(tradeModal).toContain('Any non-unique maps');
+    expect(tradeModal).toContain('Instant Buyout');
+    expect(tradeModal).not.toContain('<Paper');
+    expect(mapTypeIndex).toBeGreaterThanOrEqual(0);
+    expect(minTierIndex).toBeGreaterThan(mapTypeIndex);
+    expect(corruptedIndex).toBeGreaterThan(minTierIndex);
+    expect(deliriumIndex).toBeGreaterThan(corruptedIndex);
+    expect(mapFiltersIndex).toBeGreaterThan(deliriumIndex);
+    expect(pseudoIndex).toBeGreaterThan(mapFiltersIndex);
+    expect(exclusionsIndex).toBeGreaterThan(pseudoIndex);
+  });
+
+  it('keeps current-league selection implicit and restores compact action order', () => {
+    expect(sessionSource).toContain('const tradeLeague = currentLeagueSync() ?? CURRENT_LEAGUE;');
+    expect(sessionSource).not.toContain('tradeLeagueOptions');
+    expect(sessionSource).not.toContain('className="trade-settings-league"');
+    expect(sessionSource).toContain('style={{ flex: 1, minWidth: 0 }}');
+    expect(sessionSource).toContain('style={{ flexShrink: 0 }}');
+    expect(sessionSource.indexOf('Search on PoE Trade'))
+      .toBeLessThan(sessionSource.indexOf("{copied ? 'Copied' : 'Copy Regex'}"));
   });
 
   it('shows live 250-character counts and blocks over-limit copies', () => {
