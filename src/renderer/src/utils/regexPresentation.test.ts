@@ -67,6 +67,15 @@ describe('Regex visual-alignment presentation contract', () => {
     expect(rule('.regex-exclusions-exact')).toContain('text-align: right;');
   });
 
+  it('left-aligns the exact value only when the exclusion summary is empty', () => {
+    expect(sessionSource).toContain("data-empty={exclusions.length === 0 ? 'true' : undefined}");
+    const emptyRule = rule(".regex-exclusions-summary[data-empty='true'] .regex-exclusions-exact");
+    expect(emptyRule).toContain('flex-basis: 100%;');
+    expect(emptyRule).toContain('max-width: 100%;');
+    expect(emptyRule).toContain('margin-left: 0;');
+    expect(emptyRule).toContain('text-align: left;');
+  });
+
   it('keeps Regular/shared and Nightmare catalogues side by side at supported widths', () => {
     expect(sessionSource).toContain(
       '<SimpleGrid className="regex-exclusion-catalogues" cols={2} spacing="md">',

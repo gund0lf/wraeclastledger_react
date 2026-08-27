@@ -23,6 +23,7 @@ import {
   filterBrickModSelectOptions,
   type BrickModSelectOption,
 } from '../utils/brickModSelect';
+import { formatRegexAverageSummary } from '../utils/regexSessionPresentation';
 
 // Badge tooltips explaining how each generated regex is derived (Sad 2026-07-09).
 const RUN_TOOLTIP = 'Run = maps ready to run: floors derived from your session averages — currency and pack (both required on high-currency sessions), plus quantity/rarity riders at 60% of your averages.';
@@ -692,7 +693,7 @@ export const FromSessionTab = () => {
                 <Text className="regex-output-source" size="xs" fw={700}>Generated from {generatedRegex.n} maps (trimmed avg)</Text>
               </Group>
               <Text size="xs" c="dimmed">
-                {generatedRegex.avg.avgQuant.toFixed(0)}%Q · {generatedRegex.avg.avgRarity.toFixed(0)}%R · {generatedRegex.avg.avgPack.toFixed(0)}%P · {generatedRegex.avg.avgCurr.toFixed(0)}% Curr
+                {formatRegexAverageSummary(generatedRegex.avg)}
               </Text>
               <Stack gap={4}>
                 <RegexLine value={generatedRegex.run} badge="Run" badgeColor="green" badgeTooltip={RUN_TOOLTIP} />
@@ -747,7 +748,7 @@ export const FromSessionTab = () => {
                   )}
                 </Group>
                 <Text size="xs" c="dimmed">
-                  {loadedStrategyInfo.avgQuant.toFixed(0)}%Q · {loadedStrategyInfo.avgRarity.toFixed(0)}%R · {loadedStrategyInfo.avgPack.toFixed(0)}%P · {loadedStrategyInfo.avgCurr.toFixed(0)}% Curr
+                  {formatRegexAverageSummary(loadedStrategyInfo)}
                 </Text>
                 <Stack gap={4}>
                   <RegexLine value={run} badge="Run" badgeColor="green" badgeTooltip={RUN_TOOLTIP} />
@@ -889,7 +890,8 @@ export const FromSessionTab = () => {
               </Group>
             </Group>
 
-            <div className="regex-exclusions-summary">
+            <div className="regex-exclusions-summary"
+              data-empty={exclusions.length === 0 ? 'true' : undefined}>
               {exclusions.length > 0 && (
                 <Group className="regex-exclusion-chips" gap={4} wrap="wrap">
                   {exclusions.map((term) => (

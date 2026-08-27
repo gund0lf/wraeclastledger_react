@@ -103,6 +103,13 @@
   overflow-wrap: anywhere;
 }
 
+.regex-exclusions-summary[data-empty='true'] .regex-exclusions-exact {
+  flex-basis: 100%;
+  max-width: 100%;
+  margin-left: 0;
+  text-align: left;
+}
+
 .regex-exclusions-exact code {
   white-space: normal;
   overflow-wrap: anywhere;
