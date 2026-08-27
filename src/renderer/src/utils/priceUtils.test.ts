@@ -9,6 +9,7 @@ import {
   generateTradeRegex,
   resolveTradeRegexExclusions,
 } from './priceUtils';
+import { NIGHTMARE_DELIRIUM_FOOTER_FIXTURE } from './__fixtures__/deliriumMapFixtures';
 
 // ─── parsePriceInput ──────────────────────────────────────────────────────────
 describe('parsePriceInput', () => {
@@ -378,11 +379,25 @@ describe('Trade modal regex', () => {
   });
 
   it('adds an exact delirium percentage to the copied Trade regex', () => {
-    expect(generateTradeRegex([], 0, 0, 0, 0, 20)).toBe('"20%.+deli"');
+    expect(generateTradeRegex([], 0, 0, 0, 0, 20)).toBe('"20%.+delirious"');
   });
 
   it('uses a negative delirium term when None is selected', () => {
-    expect(generateTradeRegex([], 0, 0, 0, 0, 0)).toBe('"!deli"');
+    expect(generateTradeRegex([], 0, 0, 0, 0, 0)).toBe('"!delirious"');
+  });
+
+  it('does not confuse the Nightmare crafting footer with the Delirious map state', () => {
+    expect(NIGHTMARE_DELIRIUM_FOOTER_FIXTURE).toMatch(/20%[\s\S]+Delirium Orbs/i);
+    expect(NIGHTMARE_DELIRIUM_FOOTER_FIXTURE).not.toMatch(/Delirious/i);
+
+    const positiveClause = generateTradeRegex([], 0, 0, 0, 0, 20).slice(1, -1);
+    expect(new RegExp(positiveClause, 'is').test(NIGHTMARE_DELIRIUM_FOOTER_FIXTURE)).toBe(false);
+
+    const deliriousNightmare = NIGHTMARE_DELIRIUM_FOOTER_FIXTURE.replace(
+      'Modifiable only with Chaos Orbs',
+      'Players in Area are 20% Delirious (enchant)\n\nModifiable only with Chaos Orbs',
+    );
+    expect(new RegExp(positiveClause, 'is').test(deliriousNightmare)).toBe(true);
   });
 });
 

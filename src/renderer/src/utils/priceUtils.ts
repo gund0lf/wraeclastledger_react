@@ -149,9 +149,9 @@ export function generateTradeRegex(
   if (minIIR > 0) numericParts.push(`"m rar.*(${exactIntegerThresholdPattern(minIIR)})%"`);
   const numericRegex = numericParts.join(' ');
   const deliriumRegex = deliriousPercent === 0
-    ? '"!deli"'
+    ? '"!delirious"'
     : deliriousPercent > 0
-      ? `"${deliriousPercent}%.+deli"`
+      ? `"${deliriousPercent}%.+delirious"`
       : '';
   return [numericRegex, deliriumRegex].filter(Boolean).join(' ');
 }

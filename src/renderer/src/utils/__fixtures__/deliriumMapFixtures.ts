@@ -161,3 +161,52 @@ Corrupted
 Note: ~b/o 10 chaos`,
   },
 ] as const;
+
+/**
+ * Real Allflame 3.29 Nightmare map supplied by Sad on 2026-08-27.
+ * It is not Delirious, but its fixed crafting footer names Delirium Orbs and a
+ * separate modifier contains 20%. A broad `deli` stash term therefore produces
+ * false None and 20% matches when the item text is searched as one record.
+ */
+export const NIGHTMARE_DELIRIUM_FOOTER_FIXTURE = `Item Class: Maps
+Rarity: Rare
+Havoc Trek
+Nightmare Map
+--------
+Item Quantity: +116% (augmented)
+Item Rarity: +177% (augmented)
+Monster Pack Size: +44% (augmented)
+More Scarabs: +35% (augmented)
+More Currency: +64% (augmented)
+--------
+Item Level: 83
+--------
+Monster Level: 83
+--------
+{ Prefix Modifier "Overlord's" — Attack, Caster, Speed }
+Unique Boss deals 25% increased Damage
+Unique Boss has 30% increased Attack and Cast Speed
+{ Prefix Modifier "Magnifying" (Tier: 1) }
+Monsters have 100% increased Area of Effect
+Monsters fire 2 additional Projectiles
+{ Prefix Modifier "Impaling" }
+Monsters' Attacks have 60% chance to Impale on Hit
+(When an Impaled enemy is hit, the Impale reflects 10% of the physical damage of the Impaling hit to that enemy. Impale lasts for 5 hits or 8 seconds)
+{ Prefix Modifier "Empowered" — Elemental, Fire, Cold, Lightning, Ailment }
+Monsters have a 20% chance to Ignite, Freeze and Shock on Hit
+{ Suffix Modifier "of Impotence" (Tier: 1) }
+Players have 30(30-25)% less Area of Effect
+{ Suffix Modifier "of Miring" (Tier: 1) }
+Players have 27(30-25)% less Defences
+(Armour, Evasion Rating and Energy Shield are the standard Defences)
+{ Suffix Modifier "of Defiance" (Tier: 1) }
+Debuffs on Monsters expire 100% faster
+{ Suffix Modifier "of Carnage" }
+Monsters Maim on Hit with Attacks
+(Maimed enemies have 30% reduced Movement Speed)
+--------
+Travel to a Map of this tier or lower by using this in a personal Map Device. Maps can only be used once.
+--------
+Corrupted
+
+Modifiable only with Chaos Orbs, Vaal Orbs, Delirium Orbs and Chisels`;
