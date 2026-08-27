@@ -139,7 +139,8 @@ describe('reviewed visual alignment corrections', () => {
   it('aligns Atlas Calc and Sessions with the same refined Setup surfaces', () => {
     expect(atlasCalcSource).toContain('className="atlas-calc-card atlas-calc-refined"');
     expect(atlasCalcSource).toContain('className="atlas-calc-section-content"');
-    expect(atlasCalcCss).toContain('.atlas-calc-hero.is-configured');
+    expect(atlasCalcCss).toContain('.atlas-calc-source-list');
+    expect(atlasCalcCss).not.toContain('.atlas-calc-hero.is-configured');
     expect(sessionManagerSource).toContain('className="session-manager-overview"');
     expect(sessionManagerSource).toContain('className="session-manager-saved-section"');
     expect(sessionManagerCss).toContain('.session-manager-saved-row.is-selected');

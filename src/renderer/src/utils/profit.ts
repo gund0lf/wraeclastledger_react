@@ -196,9 +196,10 @@ type FragmentSettings = Pick<
   'multiplyingModifiersAllocated' | 'fragmentCountOverride' | 'scarabs'
 >;
 
-/** Resolve Multiplying Modifiers from one source of truth. Explicit override
- * wins; otherwise occupied Investment slots are observed when nonzero, then
- * the fully-unlocked device capacity is the documented default. */
+/** Resolve Multiplying Modifiers from one source of truth. A retained authored
+ * override is protocol evidence for legacy/imported sessions and therefore wins.
+ * Ordinary source-derived sessions have no override, so populated Investment
+ * slots are authoritative there; device capacity is the final fallback. */
 export function resolveFragmentCount(settings: FragmentSettings): FragmentCountResolution {
   if (!settings.multiplyingModifiersAllocated) return { count: 0, source: 'off', effect: 0 };
 

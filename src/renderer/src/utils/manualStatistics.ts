@@ -10,6 +10,7 @@ import type {
   SessionSettings,
 } from '../types';
 import { isPathofpathingUrl } from './atlasUrl';
+import { hasCurrentAtlasStatsRead } from './atlasStatsSync';
 
 export const MANUAL_STATISTIC_FIELDS = [
   'starfallCraters',
@@ -331,7 +332,8 @@ export function buildRunStatisticsSetupContext(
   captureSource: RunStatisticsSetupCaptureSource,
 ): RunStatisticsSetupContext {
   const atlasTreeUrl = inlineText(settings.atlasTreeUrl, 4096);
-  const hasAtlasStats = settings.bestiaryAtlasSetup !== undefined
+  const hasAtlasStats = hasCurrentAtlasStatsRead(settings)
+    && settings.bestiaryAtlasSetup !== undefined
     && settings.mercenaryAtlasSetup !== undefined
     && atlasTreeUrl !== null
     && isPathofpathingUrl(atlasTreeUrl);

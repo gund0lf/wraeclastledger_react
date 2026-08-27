@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   deriveAtlasCalcSettings,
+  deriveAtlasCalcSettingsSnapshot,
   deriveBestiaryAtlasSetup,
   deriveMercenaryAtlasSetup,
 } from '../../../shared/atlasStats';
@@ -26,6 +27,17 @@ describe('deriveAtlasCalcSettings', () => {
       title: 'Map Modifiers',
       stats: ['12% increased effect of Explicit Modifiers on your Maps'],
     }])).toEqual({ smallNodesAllocated: 6 });
+  });
+
+  it('produces a complete source-of-truth snapshot from a successful read', () => {
+    expect(deriveAtlasCalcSettingsSnapshot([{
+      title: 'Map Modifiers',
+      stats: ['12% increased effect of Explicit Modifiers on your Maps'],
+    }])).toEqual({
+      smallNodesAllocated: 6,
+      mountingModifiers: false,
+      multiplyingModifiersAllocated: false,
+    });
   });
 });
 

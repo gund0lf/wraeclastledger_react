@@ -5,33 +5,220 @@
 .atlas-calc-hero {
   background: var(--setup-surface-raised, rgba(255, 255, 255, 0.032));
   border: 1px solid var(--setup-border-strong, rgba(255, 255, 255, 0.14));
+  border-radius: 8px;
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.025);
+  overflow: hidden;
+  position: relative;
 }
 
-.atlas-calc-hero.is-configured {
-  background: rgba(17, 25, 32, 0.92);
-  border-color: rgba(77, 171, 247, 0.38);
-  box-shadow:
-    inset 0 0 0 1px rgba(77, 171, 247, 0.06),
-    inset 0 1px rgba(255, 255, 255, 0.035);
+.atlas-calc-hero-main {
+  text-align: center;
 }
 
 .atlas-calc-hero-value {
-  text-shadow: 0 0 18px rgba(77, 171, 247, 0.12);
+  color: var(--mantine-color-blue-4);
+  line-height: 1.15;
+  text-shadow: 0 0 18px rgba(77, 171, 247, 0.1);
+}
+
+.atlas-calc-hero-label {
+  font-size: 9px;
+  letter-spacing: 0.5px;
+}
+
+.atlas-calc-hero-context {
+  font-size: 10px;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.atlas-calc-hero-status {
+  max-width: 46%;
+  position: absolute;
+  right: 7px;
+  top: 7px;
+  z-index: 1;
+}
+
+.atlas-calc-bonus-row {
+  align-items: center;
+  background: var(--setup-surface, rgba(255, 255, 255, 0.018));
+  border: 1px solid var(--setup-border, rgba(255, 255, 255, 0.08));
+  border-radius: 7px;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 7px 8px;
+}
+
+.atlas-calc-source-copy {
+  min-width: 0;
+}
+
+.atlas-calc-bonus-row > div:first-child {
+  min-width: 0;
+}
+
+.atlas-calc-bonus-row .mantine-Switch-root {
+  flex: 0 0 auto;
+}
+
+.atlas-calc-bonus-row .mantine-Switch-label {
+  white-space: nowrap;
+}
+
+.atlas-calc-source-label {
+  font-size: 9px;
+  line-height: 1.25;
+}
+
+.atlas-calc-guidance {
+  background: var(--setup-surface, rgba(255, 255, 255, 0.018));
+  border: 1px solid var(--setup-border, rgba(255, 255, 255, 0.08));
+  border-radius: 7px;
+  padding: 7px 8px;
+}
+
+.atlas-calc-guidance.is-attention {
+  background: rgba(250, 176, 5, 0.045);
+  border-color: rgba(250, 176, 5, 0.18);
+}
+
+.atlas-calc-guidance.is-error {
+  background: rgba(250, 82, 82, 0.045);
+  border-color: rgba(250, 82, 82, 0.2);
+}
+
+.atlas-calc-bonus-guidance {
+  background: var(--setup-surface, rgba(255, 255, 255, 0.018));
+  border-color: var(--setup-border-strong, rgba(255, 255, 255, 0.14));
+}
+
+.atlas-calc-guidance-main,
+.atlas-calc-guidance-copy {
+  min-width: 0;
+}
+
+.atlas-calc-guidance-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.atlas-calc-guidance-detail {
+  font-size: 9px;
+  line-height: 1.25;
+}
+
+.atlas-calc-guidance-actions {
+  flex: 0 0 auto;
+}
+
+.atlas-calc-source-list {
+  background: var(--setup-surface, rgba(255, 255, 255, 0.018));
+  border: 1px solid var(--setup-border, rgba(255, 255, 255, 0.08));
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.atlas-calc-source-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-height: 39px;
+  padding: 5px 18px 5px 8px;
+}
+
+.atlas-calc-source-row + .atlas-calc-source-row {
+  border-top: 1px solid var(--setup-border, rgba(255, 255, 255, 0.08));
+}
+
+.atlas-calc-source-value {
+  color: var(--mantine-color-gray-4);
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.atlas-calc-source-value.is-active {
+  color: var(--mantine-color-blue-4);
 }
 
 .atlas-calc-section-bar {
+  align-items: center;
   background: var(--setup-surface, rgba(255, 255, 255, 0.018));
   border: 1px solid var(--setup-border, rgba(255, 255, 255, 0.08));
+  border-radius: 7px;
+  display: flex;
+  gap: 6px;
+  min-height: 28px;
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 5px 8px;
+  width: 100%;
+}
+
+.atlas-calc-section-title {
+  flex: 0 0 auto;
 }
 
 .atlas-calc-section-bar[data-open='true'] {
   background: var(--setup-surface-raised, rgba(255, 255, 255, 0.032));
   border-color: var(--setup-border-strong, rgba(255, 255, 255, 0.14));
+  border-radius: 7px 7px 0 0;
+}
+
+.atlas-calc-section-meta {
+  box-sizing: border-box;
+  flex: 1 1 0;
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  padding-right: 8px;
+  text-align: right;
+}
+
+.atlas-calc-section-meta-text {
+  display: block;
+  font-size: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .atlas-calc-section-content {
   background: var(--setup-surface-raised, rgba(255, 255, 255, 0.032));
   border: 1px solid var(--setup-border-strong, rgba(255, 255, 255, 0.14));
+  border-radius: 0 0 7px 7px;
   border-top: none;
+  padding: 8px;
+}
+
+.atlas-calc-setup-content {
+  padding: 8px;
+}
+
+.atlas-calc-calculation-list > .mantine-Group-root {
+  padding-right: 10px;
+}
+
+@container (max-width: 300px) {
+  .atlas-calc-guidance-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .atlas-calc-guidance-actions {
+    justify-content: flex-end;
+  }
+
+  .atlas-calc-guidance-actions .mantine-Button-root {
+    width: 100%;
+  }
 }

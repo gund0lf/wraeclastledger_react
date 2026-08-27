@@ -28,7 +28,7 @@ import { PublicRetrospectives } from '../components/PublicRetrospectives';
 import type { DiscordImport } from '../utils/parseDiscordExport';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { WorkingSessionGuardModal } from '../components/WorkingSessionGuardModal';
-import { deriveAtlasCalcSettings } from '../../../shared/atlasStats';
+import { applyAtlasStatsSyncPatch, buildAtlasStatsSyncPatch } from '../utils/atlasStatsSync';
 import { fingerprintSetupSnapshot, setupSnapshotFromDiscordImport } from '../utils/evidenceIdentity';
 import { usePanelMaximized, useSetupSidebarCollapsed } from '../layout/panelLayoutContext';
 import { deriveShareTags } from '../utils/shareTags';
@@ -162,25 +162,17 @@ export const StrategyBrowserModule = () => {
         setLoadedMsg(`Build loaded, but Atlas Calc could not read the Atlas Tree: ${result.error ?? 'unknown error'}.`);
         return;
       }
-      const patch = deriveAtlasCalcSettings(result.groups);
-      if (patch.smallNodesAllocated !== undefined) updateSetting('smallNodesAllocated', patch.smallNodesAllocated);
-      if (patch.mountingModifiers) updateSetting('mountingModifiers', true);
-      // A schema-v2 authored value is authoritative. Atlas stats may confirm
-      // the notable is allocated, but cannot reconstruct the authored fragment
-      // count and must never turn an explicit Off back on asynchronously.
-      if (multiplyingModifiers && multiplyingModifiers.multiplyingModifiersAllocated !== null) {
-        updateSetting(
-          'multiplyingModifiersAllocated',
-          multiplyingModifiers.multiplyingModifiersAllocated,
-        );
-        updateSetting(
-          'fragmentCountOverride',
-          multiplyingModifiers.multiplyingModifiersAllocated
-            ? multiplyingModifiers.multiplyingModifiersFragmentCount
-            : null,
-        );
-      } else if (patch.multiplyingModifiersAllocated) {
-        updateSetting('multiplyingModifiersAllocated', true);
+      const current = useSessionStore.getState();
+      const patch = buildAtlasStatsSyncPatch(
+        result.groups,
+        url,
+        current.settings.leagueName,
+      );
+      applyAtlasStatsSyncPatch(updateSetting, patch);
+      // The compact authored fragment count remains stored as a compatibility
+      // fallback. Populated Investment slots now win whenever they are present.
+      if (multiplyingModifiers?.multiplyingModifiersAllocated === false) {
+        updateSetting('fragmentCountOverride', null);
       }
     }).catch((error: unknown) => {
       if (useSessionStore.getState().sessionNonce !== targetSessionNonce) return;

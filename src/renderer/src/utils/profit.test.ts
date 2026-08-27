@@ -314,16 +314,16 @@ describe('resolveFragmentCount', () => {
     expect(result).toEqual({ count: 0, source: 'off', effect: 0 });
   });
 
-  it('uses an explicit override before observed Investment slots', () => {
+  it('preserves a legacy/imported override before observed Investment slots', () => {
     const result = resolveFragmentCount(baseSettings({
       multiplyingModifiersAllocated: true,
-      fragmentCountOverride: 2,
+      fragmentCountOverride: 4,
       scarabs: [{ name: 'Sacrifice at Dusk', cost: 1 }, { name: 'Sacrifice at Dawn', cost: 1 }],
     }));
-    expect(result).toEqual({ count: 2, source: 'override', effect: 6 });
+    expect(result).toEqual({ count: 4, source: 'override', effect: 12 });
   });
 
-  it('preserves an explicit zero as an override rather than treating it as off', () => {
+  it('preserves an explicit zero as a fallback rather than treating it as off', () => {
     const result = resolveFragmentCount(baseSettings({
       multiplyingModifiersAllocated: true,
       fragmentCountOverride: 0,

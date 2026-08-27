@@ -1,4 +1,8 @@
-import type { BestiaryAtlasSetup, MercenaryAtlasSetup } from '../../../shared/atlasStats';
+import type {
+  AtlasCalcSettingsSnapshot,
+  BestiaryAtlasSetup,
+  MercenaryAtlasSetup,
+} from '../../../shared/atlasStats';
 
 export interface ScarabSlot { name: string; cost: number; }
 export interface ScarabPreset { id: string; name: string; scarabs: ScarabSlot[]; }
@@ -225,6 +229,17 @@ export interface SessionSettings {
   evidenceTargetSetupFingerprint: string | null;
   leagueName: string;          // Current league, auto-detected from poe.ninja
   atlasDetectedTags: string[]; // Tags inferred from atlas tree node group titles
+  /** Durable identity of the last successful full setup sync. Values remain
+   * visible when the tree later changes, but are explicitly stale until the
+   * new URL is read successfully. Absence marks never-read or legacy/imported
+   * setup values whose source cannot be proven. */
+  atlasStatsRead?: {
+    schemaVersion: 1;
+    sourceUrl: string;
+    leagueName: string;
+    readAt: string;
+    calc: AtlasCalcSettingsSnapshot;
+  };
   /** Local Run Statistics inputs captured from a successful Atlas stats read.
    * Optional/additive: undefined means no authoritative scrape exists for the
    * current tree, so modelled rates must remain unavailable. */

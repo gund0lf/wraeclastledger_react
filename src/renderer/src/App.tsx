@@ -83,6 +83,9 @@ function App({ initialLayoutRawValue }: { initialLayoutRawValue: string | null }
   const [layoutError, setLayoutError] = useState<string | null>(null);
   const repositorySaveError = useSessionStore((state) => state.saveError);
   const [gameDataStatus, setGameDataStatus] = useState(getGameDataStatus);
+  const panelRequestNonce = useUIStore((state) => state.panelRequestNonce);
+  const panelRequestComponent = useUIStore((state) => state.panelRequestComponent);
+  const clearPanelRequest = useUIStore((state) => state.clearPanelRequest);
 
   const addMapRef      = useRef(useSessionStore.getState().addMap);
   const isWatchingRef  = useRef(useSessionStore.getState().isWatching);
@@ -163,6 +166,24 @@ function App({ initialLayoutRawValue }: { initialLayoutRawValue: string | null }
       model.doAction(Actions.addNode(newTab, rootId, DockLocation.RIGHT, -1));
     }
   };
+
+  useEffect(() => {
+    if (!panelRequestComponent) return;
+    let targetId: string | null = null;
+    model.visitNodes((node: Node) => {
+      if (targetId || node.getType() !== 'tab') return;
+      const tab = node as TabNode;
+      if (tab.getComponent() === panelRequestComponent) targetId = tab.getId();
+    });
+    if (targetId) {
+      model.doAction(Actions.selectTab(targetId));
+    } else {
+      const panel = ALL_PANELS.find((candidate) => candidate.component === panelRequestComponent);
+      if (panel) addPanel(panel.component, panel.name);
+    }
+    setModelVersion((version) => version + 1);
+    clearPanelRequest(panelRequestNonce);
+  }, [panelRequestNonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCheckForUpdates = () => {
     setChecking(true);

@@ -8,13 +8,8 @@ import { atlasVersionOf, retargetAtlasUrl } from '../utils/strategyCompat';
 import { isCrossLeagueSession } from '../utils/historicalSession';
 import { SectionLabel } from '../components/ui/SectionLabel';
 import { COLOR, FONT } from '../utils/uiTokens'
-import {
-  deriveAtlasCalcSettings,
-  deriveBestiaryAtlasSetup,
-  deriveMercenaryAtlasSetup,
-  type AtlasStatGroup,
-} from '../../../shared/atlasStats';
-import { deriveAtlasDetectedTags } from '../utils/atlasTags';
+import type { AtlasStatGroup } from '../../../shared/atlasStats';
+import { applyAtlasStatsSyncPatch, buildAtlasStatsSyncPatch } from '../utils/atlasStatsSync';
 import {
   atlasRemountSource,
   isPathofpathingTreeUrl,
@@ -171,10 +166,9 @@ export const AtlasTreeModule = () => {
     if (!sessionIdentityChanged) return;
     prevSessionRef.current = activeSessionId;
     prevNonceRef.current   = sessionNonce;
-    // A strategy load creates a new session and requests an Atlas Calc apply in
-    // adjacent store updates. Tie that request to the resulting session nonce so
-    // effect scheduling cannot let this reset erase a legitimate pending apply.
-    autoApplySessionRef.current = atlasApplySessionNonce === sessionNonce ? sessionNonce : null;
+    // Strategy loads perform their authoritative setup sync through the isolated
+    // reader. The visible tree only follows the requested URL here.
+    autoApplySessionRef.current = null;
     const url = useSessionStore.getState().settings.atlasTreeUrl;
     const next = atlasViewUrl(url);
     showOriginalRef.current = false;
@@ -213,19 +207,16 @@ export const AtlasTreeModule = () => {
     setRetargetActive(retargetedViewRef.current !== '');
     setSrcUrl(next);
     captureUrl(next);
-    autoApplySessionRef.current = sessionNonce; // auto-apply calc after load
+    // Persisting or displaying a new URL alone must not claim its derived inputs
+    // are current. The explicit setup sync owns that transition.
+    autoApplySessionRef.current = null;
     remountAfterLayout();
     setStatGroups([]);
   }, [atlasTreeUrl, remountAfterLayout, sessionIdentityChanged, sessionNonce, showOriginal]);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Force re-apply on Load Build even when the URL is UNCHANGED ────────────
-  // Loading the same strategy twice sets atlasTreeUrl to the same value, so the
-  // effect above (which bails on an unchanged URL) never fires — yet newSession()
-  // has already zeroed the calc config, so the calc would sit empty and the setup
-  // wizard would reappear. StrategyBrowserModule bumps this nonce on every Load
-  // Build; we honour it by forcing a webview reload + auto-apply. The request is
-  // session-bound, so either effect order reaches the same result and a stale
-  // request can never apply to a later session.
+  // ── Force the visible view to follow Load Build even when URL is unchanged ──
+  // The isolated reader owns setup sync. This request only remounts the visible
+  // Atlas Tree and remains session-bound so stale work cannot affect a later run.
   const prevApplyNonceRef = useRef(0);
   useEffect(() => {
     if (prevApplyNonceRef.current === atlasApplyNonce) return;
@@ -242,7 +233,7 @@ export const AtlasTreeModule = () => {
     setRetargetActive(retargetedViewRef.current !== '');
     setSrcUrl(next);
     captureUrl(next);
-    autoApplySessionRef.current = current.sessionNonce;
+    autoApplySessionRef.current = null;
     remountAfterLayout();
     setStatGroups([]);
   }, [atlasApplyNonce, atlasApplySessionNonce, remountAfterLayout, captureUrl]);
@@ -503,12 +494,11 @@ export const AtlasTreeModule = () => {
       setStatGroups(groups);
       setStatsOpen(mode === 'inspect');
 
-      updateSetting('atlasDetectedTags', deriveAtlasDetectedTags(groups));
-      updateSetting('bestiaryAtlasSetup', deriveBestiaryAtlasSetup(groups));
-      updateSetting('mercenaryAtlasSetup', deriveMercenaryAtlasSetup(groups));
-
-      // Auto-apply calc if triggered by an external URL load or toolbar action.
-      if (mode === 'apply' && !applyGroupsToCalc(groups)) setStatsOpen(true);
+      // Inspection is deliberately read-only. Only the clearly named setup
+      // sync refreshes Atlas Calc, Run Statistics inputs, and source identity.
+      if (mode === 'apply' && !applyGroupsToCalc(groups, capturedUrlRef.current)) {
+        setStatsOpen(true);
+      }
     } catch {
       if (!isCurrentSession()) return;
       setStatsError('Could not read stats — try navigating the tree first. If this keeps happening, pathofpathing may have changed its layout; please report it.');
@@ -594,27 +584,25 @@ export const AtlasTreeModule = () => {
   // ── Apply stats to Atlas Calc ─────────────────────────────────────────────
   // applyGroupsToCalc takes groups directly (avoids stale-state issues when
   // called right after readStats resolves)
-  const applyGroupsToCalc = (groups: AtlasStatGroup[]): boolean => {
-    const patch = deriveAtlasCalcSettings(groups);
-    const appliedParts: string[] = [];
-    if (patch.smallNodesAllocated !== undefined) {
-      updateSetting('smallNodesAllocated', patch.smallNodesAllocated);
-      appliedParts.push(`${patch.smallNodesAllocated} small nodes`);
-    }
-    if (patch.mountingModifiers) {
-      updateSetting('mountingModifiers', true);
-      appliedParts.push('Mounting Modifiers');
-    }
-    if (patch.multiplyingModifiersAllocated) {
-      updateSetting('multiplyingModifiersAllocated', true);
-      appliedParts.push('Multiplying Modifiers');
-    }
-    if (appliedParts.length > 0) {
+  const applyGroupsToCalc = (groups: AtlasStatGroup[], sourceUrl: string): boolean => {
+    try {
+      const current = useSessionStore.getState();
+      const patch = buildAtlasStatsSyncPatch(
+        groups,
+        sourceUrl,
+        current.settings.leagueName,
+      );
+      applyAtlasStatsSyncPatch(updateSetting, patch);
+      const appliedParts = [
+        `${patch.smallNodesAllocated} small nodes`,
+        `Mounting ${patch.mountingModifiers ? 'on' : 'off'}`,
+        `Multiplying ${patch.multiplyingModifiersAllocated ? 'on' : 'off'}`,
+      ];
       setCalcApplied(appliedParts.join(', '));
       setTimeout(() => setCalcApplied(null), 5000);
       return true;
-    } else {
-      setStatsError('No supported Atlas Calc stats were found in the current tree. Review the stats below or configure Atlas Calc manually.');
+    } catch (error) {
+      setStatsError(error instanceof Error ? error.message : 'Could not sync Atlas setup');
       return false;
     }
   };
@@ -623,7 +611,7 @@ export const AtlasTreeModule = () => {
   const applyToAtlasCalc = () => readStats('apply');
 
   const applyVisibleStatsToCalc = () => {
-    if (applyGroupsToCalc(statGroups)) setStatsOpen(false);
+    if (applyGroupsToCalc(statGroups, capturedUrlRef.current)) setStatsOpen(false);
   };
 
   return (
@@ -655,10 +643,10 @@ export const AtlasTreeModule = () => {
           </Button>
         )}
         {hasTree && (
-          <Tooltip label="Read the current tree and apply its node stats to Atlas Calc">
+          <Tooltip label="Read the current tree and refresh Atlas Calc plus Run Statistics setup">
             <Button size="compact-xs" variant="default"
               onClick={applyToAtlasCalc}>
-              Apply to Calc
+              Sync setup
             </Button>
           </Tooltip>
         )}
@@ -668,7 +656,7 @@ export const AtlasTreeModule = () => {
             <IconLink size={14} />
           </ActionIcon>
         </Tooltip>
-        <Tooltip label="Read allocated node stats">
+        <Tooltip label="View allocated node stats without changing setup">
           {/* Keep the click event out of readStats' mode argument. */}
           <ActionIcon size="md" variant="subtle" color="gray" onClick={() => readStats('inspect')}>
             <IconChartBar size={14} />
@@ -730,7 +718,7 @@ export const AtlasTreeModule = () => {
               {statGroups.length > 0 && (
                 <Button size="compact-xs" variant="light"
                   onClick={applyVisibleStatsToCalc}>
-                  Apply to Calc
+                  Sync setup
                 </Button>
               )}
               <ActionIcon size="xs" variant="subtle" color="gray" onClick={() => setStatsOpen(false)}><IconX size={11} /></ActionIcon>
@@ -738,7 +726,7 @@ export const AtlasTreeModule = () => {
           </Group>
           {calcApplied && (
             <Text size="xs" c="teal" px={8} pb={4} style={{ flexShrink: 0 }}>
-              Applied to Calc: {calcApplied}
+              Setup synced: {calcApplied}
             </Text>
           )}
           {statsError && (

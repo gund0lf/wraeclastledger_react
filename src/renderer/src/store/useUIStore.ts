@@ -13,14 +13,17 @@ interface UIState {
   changelogRequested: boolean;
   requestChangelog: () => void;
   clearChangelogRequest: () => void;
-  // Load Build -> force the Atlas Tree to re-apply the tree to the Atlas Calc,
-  // EVEN when the tree URL is unchanged (loading the same strategy twice). The
-  // URL-change effect in AtlasTreeModule can't see an unchanged URL, so the
-  // calc would otherwise stay empty and the wizard would (wrongly) reappear.
-  // Monotonic counter: every increment is a distinct "apply now" request.
+  // Load Build -> force the visible Atlas Tree to follow/remount the loaded URL,
+  // even when it is unchanged. The isolated reader owns the actual setup sync;
+  // persisting a URL alone must never mark derived values current.
+  // Monotonic counter: every increment is a distinct view-refresh request.
   atlasApplyNonce: number;
   atlasApplySessionNonce: number | null;
   requestAtlasApply: (sessionNonce: number) => void;
+  panelRequestNonce: number;
+  panelRequestComponent: string | null;
+  requestPanel: (component: string) => void;
+  clearPanelRequest: (requestNonce: number) => void;
 }
 
 export const useUIStore = create<UIState>()((set) => ({
@@ -36,4 +39,15 @@ export const useUIStore = create<UIState>()((set) => ({
     atlasApplyNonce: s.atlasApplyNonce + 1,
     atlasApplySessionNonce: sessionNonce,
   })),
+  panelRequestNonce: 0,
+  panelRequestComponent: null,
+  requestPanel: (component) => set((s) => ({
+    panelRequestNonce: s.panelRequestNonce + 1,
+    panelRequestComponent: component,
+  })),
+  clearPanelRequest: (requestNonce) => set((s) => (
+    s.panelRequestNonce === requestNonce
+      ? { panelRequestComponent: null }
+      : {}
+  )),
 }));

@@ -23,6 +23,17 @@ import type { SessionSettings } from '../types';
 const setupSettings = (scarabNames: string[] = []): SessionSettings => ({
   leagueName: 'Allflame',
   atlasTreeUrl: 'https://pathofpathing.com/?v=3.29.0-atlas#AAAABgAAQzIQBJgJ',
+  atlasStatsRead: {
+    schemaVersion: 1,
+    sourceUrl: 'https://pathofpathing.com/?v=3.29.0-atlas#AAAABgAAQzIQBJgJ',
+    leagueName: 'Allflame',
+    readAt: '2026-08-27T12:00:00.000Z',
+    calc: {
+      smallNodesAllocated: 16,
+      mountingModifiers: true,
+      multiplyingModifiersAllocated: true,
+    },
+  },
   atlasDetectedTags: ['trarthus', 'bestiary', 'trarthus'],
   scarabs: scarabNames.map((name) => ({ name, cost: 99 })),
   bestiaryAtlasSetup: {
@@ -166,6 +177,15 @@ describe('manual session statistics', () => {
   it('keeps Atlas setup unavailable when no safe source URL proves the scrape identity', () => {
     const settings = setupSettings(['Bestiary Scarab']);
     settings.atlasTreeUrl = 'https://example.com/not-the-atlas';
+    expect(buildRunStatisticsSetupContext(settings, 'manual-entry')).toMatchObject({
+      atlasSource: 'unavailable',
+      atlasTreeUrl: null,
+    });
+  });
+
+  it('keeps Atlas setup unavailable after the tree changes since the last successful read', () => {
+    const settings = setupSettings(['Bestiary Scarab']);
+    settings.atlasTreeUrl = 'https://pathofpathing.com/?v=3.29.0-atlas#BBBBBgAAQzIQBJgJ';
     expect(buildRunStatisticsSetupContext(settings, 'manual-entry')).toMatchObject({
       atlasSource: 'unavailable',
       atlasTreeUrl: null,

@@ -9,6 +9,12 @@ export interface AtlasCalcSettingsPatch {
   multiplyingModifiersAllocated?: true;
 }
 
+export interface AtlasCalcSettingsSnapshot {
+  smallNodesAllocated: number;
+  mountingModifiers: boolean;
+  multiplyingModifiersAllocated: boolean;
+}
+
 export interface AtlasStatsReadResult {
   groups: AtlasStatGroup[] | null;
   error: string | null;
@@ -57,6 +63,20 @@ export function deriveAtlasCalcSettings(groups: AtlasStatGroup[]): AtlasCalcSett
     patch.multiplyingModifiersAllocated = true;
   }
   return patch;
+}
+
+/** Complete result of one successful Atlas stats read. Unlike the legacy
+ * positive-only patch, absence is meaningful here: a fresh successful sync is
+ * the authority for whether each supported node is allocated. */
+export function deriveAtlasCalcSettingsSnapshot(
+  groups: AtlasStatGroup[],
+): AtlasCalcSettingsSnapshot {
+  const patch = deriveAtlasCalcSettings(groups);
+  return {
+    smallNodesAllocated: patch.smallNodesAllocated ?? 0,
+    mountingModifiers: patch.mountingModifiers === true,
+    multiplyingModifiersAllocated: patch.multiplyingModifiersAllocated === true,
+  };
 }
 
 const summedStatValue = (stats: readonly string[], pattern: RegExp): number =>
