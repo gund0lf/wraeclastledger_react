@@ -10,6 +10,18 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.88',
+    date: '2026-08-27',
+    changes: [
+      'Sessions and Strategy sharing now explain continuation, replacement, pooling, and working-session consequences more directly. Saved-session comparisons support up to six sessions with activity ordering, responsive columns, and capture-derived Pace when enough evidence exists.',
+      'Atlas Calc now presents synchronized setup results and their exact sources instead of acting as a second setup editor. Run Statistics exposes the same current, stale, previous-league, and unavailable Atlas readiness before observations and keeps overlay counter setup discoverable before a run.',
+      'Regex Builder adds a guided Magic Map Workflow with exact Currency, Pack Size, Quantity, Rarity, Maps, Scarabs, and Divination Card floors; direct modifier tokens; reusable open-prefix and open-suffix predicates; and stat-specific applied-chisel adjustments.',
+      'Delirium Trade searches now distinguish real Delirious state from Nightmare footer text, use match-any reward filters correctly, and include selected rewards in copied stash regexes. Pooled strategies also preserve repeated same-name scarab slots and their map-weighted costs instead of collapsing them.',
+      'Regex exclusions now share one reviewed Regular and Nightmare modifier catalogue with independently selectable related variants, compact removable summary pills, exact tooltips, and one consolidated Trade exclusion group. Corrupted or Nightmare-only sessions no longer suggest an unusable Slam regex, while eligible zero-Currency sessions can generate a Pack-only Slam rule.',
+      'PoE Trade Map Search keeps the familiar compact layout while using the app\'s current league automatically, retaining Any non-unique and Instant Buyout cues, grouping map and threshold controls clearly, and showing selection and regex-length review counts. Strategy tags now include Anarchy, inferred from Anarchy scarabs or meaningful Rogue Exile Atlas investment.',
+    ],
+  },
+  {
     version: '1.0.87',
     date: '2026-08-26',
     changes: [
