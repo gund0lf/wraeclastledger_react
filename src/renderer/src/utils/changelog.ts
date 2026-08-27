@@ -796,7 +796,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Map Analyzer: chisel logic corrected — both Avarice and Proliferation bonuses are flat additive after the atlas multiplier, not multiplicative',
       // PoE Trade integration
       'Regex: "Open Trade" button opens a full search modal — map type (Regular/8-mod/Nightmare/Originator), Empowered Mirage toggle, Min IIQ/IIR/Pack, pseudo currency/scarabs/maps, delirium %, reward type multiselect',
-      'Trade: delirium reward type uses OR logic (IF group) — map needs ANY of the selected types, not all',
+      'Trade: delirium reward type multiselect added to map searches',
       'Trade: delirium % filter correctly uses the enchant stat, not the explicit duplicate',
       'Trade: Originator implicit and Empowered enchant stat IDs fetched from PoE stats API at startup and cached; PoE2 groups skipped to avoid duplicates',
       'Trade: Nightmare type search uses NOT originator implicit + pseudo currency/scarabs/maps min to identify uber-mod maps',
