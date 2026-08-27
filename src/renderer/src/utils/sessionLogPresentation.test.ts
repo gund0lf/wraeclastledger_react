@@ -9,6 +9,10 @@ const cssSource = readFileSync(
   new URL('../modules/SessionLogModule.css', import.meta.url),
   'utf8',
 );
+const surfaceCss = readFileSync(
+  new URL('../ui-surfaces.css', import.meta.url),
+  'utf8',
+);
 const dashboardSource = readFileSync(
   new URL('../modules/DashboardModule.tsx', import.meta.url),
   'utf8',
@@ -39,7 +43,9 @@ describe('Map Log visual-alignment presentation contract', () => {
   it('retains the neutral refined surface and opaque sticky-header boundary', () => {
     expect(componentSource).toContain('className="session-log-card session-log-refined"');
     expect(rule('.session-log-card.session-log-refined'))
-      .toContain('background: linear-gradient(180deg, rgba(24, 24, 26, 0.98), rgba(16, 17, 19, 0.98));');
+      .toContain('background: var(--wl-data-module-surface);');
+    expect(surfaceCss)
+      .toContain('linear-gradient(180deg, rgba(24, 24, 26, 0.98), rgba(16, 17, 19, 0.98));');
     expect(rule('.session-log-card.session-log-refined'))
       .toContain('border-color: rgba(255, 255, 255, 0.09);');
     expect(rule('.session-log-table thead th'))

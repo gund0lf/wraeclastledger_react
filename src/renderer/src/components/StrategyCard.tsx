@@ -692,7 +692,7 @@ export const StrategyCard = ({
           </div>
 
           {lootSummary && (
-            <div className="strategy-card-loot-panel" style={{ padding: 8, marginBottom: 12, background: COLOR.surfaceInfoBg, border: `1px solid ${COLOR.surfaceInfoBorder}`, borderRadius: 6 }}>
+            <div className="strategy-card-loot-panel" style={{ padding: 8, marginBottom: 12, background: COLOR.surfaceSectionBg, border: `1px solid ${COLOR.border}`, borderRadius: 6 }}>
               <LootEvidenceSummary
                 summary={lootSummary}
                 divinePrice={isPooled ? null : strategy.divine_price}

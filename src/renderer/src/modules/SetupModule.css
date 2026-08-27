@@ -3,12 +3,12 @@
   height: 100%;
   overflow: auto;
   scrollbar-gutter: stable;
-  --setup-surface: rgba(255, 255, 255, 0.018);
-  --setup-surface-raised: rgba(255, 255, 255, 0.032);
-  --setup-surface-sunken: rgba(0, 0, 0, 0.14);
-  --setup-border: rgba(255, 255, 255, 0.08);
-  --setup-border-strong: rgba(255, 255, 255, 0.14);
-  --setup-divider: rgba(255, 255, 255, 0.07);
+  --setup-surface: var(--wl-surface);
+  --setup-surface-raised: var(--wl-surface-raised);
+  --setup-surface-sunken: var(--wl-surface-sunken-soft);
+  --setup-border: var(--wl-border);
+  --setup-border-strong: var(--wl-border-strong);
+  --setup-divider: var(--wl-divider);
 }
 
 .setup-panel-layout {

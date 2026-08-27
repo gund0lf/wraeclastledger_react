@@ -1,14 +1,14 @@
 .session-log-card {
   container-type: inline-size;
-  --session-log-surface: rgba(255, 255, 255, 0.018);
-  --session-log-surface-raised: rgba(255, 255, 255, 0.032);
-  --session-log-border: rgba(255, 255, 255, 0.08);
-  --session-log-border-strong: rgba(255, 255, 255, 0.14);
-  --session-log-divider: rgba(255, 255, 255, 0.07);
+  --session-log-surface: var(--wl-surface);
+  --session-log-surface-raised: var(--wl-surface-raised);
+  --session-log-border: var(--wl-border);
+  --session-log-border-strong: var(--wl-border-strong);
+  --session-log-divider: var(--wl-divider);
 }
 
 .session-log-card.session-log-refined {
-  background: linear-gradient(180deg, rgba(24, 24, 26, 0.98), rgba(16, 17, 19, 0.98));
+  background: var(--wl-data-module-surface);
   border-color: rgba(255, 255, 255, 0.09);
 }
 

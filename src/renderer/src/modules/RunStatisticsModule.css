@@ -3,12 +3,12 @@
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  --run-statistics-surface: rgba(255, 255, 255, 0.018);
-  --run-statistics-surface-raised: rgba(255, 255, 255, 0.032);
-  --run-statistics-surface-sunken: rgba(0, 0, 0, 0.16);
-  --run-statistics-border: rgba(255, 255, 255, 0.08);
-  --run-statistics-border-strong: rgba(255, 255, 255, 0.14);
-  --run-statistics-divider: rgba(255, 255, 255, 0.07);
+  --run-statistics-surface: var(--wl-surface);
+  --run-statistics-surface-raised: var(--wl-surface-raised);
+  --run-statistics-surface-sunken: var(--wl-surface-sunken);
+  --run-statistics-border: var(--wl-border);
+  --run-statistics-border-strong: var(--wl-border-strong);
+  --run-statistics-divider: var(--wl-divider);
 }
 
 .run-statistics-scroll {

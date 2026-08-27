@@ -3,9 +3,7 @@
 }
 
 .strategy-card-expanded.strategy-card-refined {
-  background:
-    radial-gradient(circle at 50% -30%, rgba(77, 171, 247, 0.12), transparent 40%),
-    linear-gradient(180deg, rgba(20, 24, 29, 0.98), rgba(14, 17, 21, 0.98));
+  background: var(--wl-detail-surface);
 }
 
 .strategy-card-header {
@@ -13,7 +11,7 @@
 }
 
 .strategy-card-expanded.strategy-card-refined .strategy-card-header {
-  border-color: rgba(116, 192, 252, 0.28) !important;
+  border-color: var(--wl-border-strong) !important;
 }
 
 .strategy-card-expanded.strategy-card-triptych .strategy-card-hero {
@@ -85,26 +83,27 @@
   .strategy-card-supporting-note,
   .strategy-card-regex-wide
 ) {
-  background: rgba(28, 33, 39, 0.96) !important;
-  border-color: rgba(116, 192, 252, 0.24) !important;
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.035);
+  background: var(--wl-surface-raised) !important;
+  border-color: var(--wl-border) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.025);
 }
 
 .strategy-card-expanded.strategy-card-refined .strategy-card-loot-panel {
-  background: rgba(20, 42, 55, 0.94) !important;
-  border-color: rgba(77, 171, 247, 0.55) !important;
-  box-shadow: inset 0 0 0 1px rgba(77, 171, 247, 0.08);
+  background: var(--wl-surface-raised) !important;
+  border-color: var(--wl-border-strong) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.012),
+    inset 0 1px rgba(255, 255, 255, 0.025);
 }
 
 .strategy-card-expanded.strategy-card-refined .loot-evidence-category {
-  background: rgba(17, 25, 32, 0.92) !important;
-  border: 1px solid rgba(116, 192, 252, 0.16);
+  background: var(--wl-surface-sunken) !important;
+  border: 1px solid var(--wl-border);
 }
 
 .strategy-card-lower-grid {
   display: grid;
   grid-template-columns: minmax(360px, 1.2fr) minmax(235px, 0.72fr) minmax(410px, 1.28fr);
-  grid-template-rows: repeat(8, auto);
   gap: 10px;
   align-items: stretch;
   margin-top: 10px;
@@ -140,6 +139,7 @@
 
 .strategy-card-setup-scarabs {
   grid-row: 1;
+  padding-top: 10px;
 }
 
 .strategy-card-setup-chisel {
@@ -167,7 +167,7 @@
   padding: 2px 6px;
   border-radius: 4px;
   align-items: flex-start;
-  background: rgba(255, 255, 255, 0.018);
+  background: var(--wl-surface);
 }
 
 .strategy-card-cost-list {
@@ -219,6 +219,7 @@
 @container (max-width: 1100px) {
   .strategy-card-expanded.strategy-card-triptych .strategy-card-hero {
     grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
   }
 
   .strategy-card-expanded.strategy-card-triptych .strategy-card-hero-identity,
@@ -226,7 +227,7 @@
   .strategy-card-expanded.strategy-card-triptych .strategy-card-hero-facts {
     grid-column: 1;
     grid-row: auto;
-    justify-self: stretch;
+    justify-self: center;
     align-items: center;
     text-align: center;
   }
@@ -244,7 +245,7 @@
 
   .strategy-card-map-panel {
     grid-column: 1 / -1;
-    grid-row: 7;
+    grid-row: auto;
   }
 
   .strategy-card-expanded.strategy-card-triptych .strategy-card-scarab-list {

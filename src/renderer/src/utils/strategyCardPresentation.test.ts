@@ -9,6 +9,10 @@ const cssSource = readFileSync(
   new URL('../components/StrategyCard.css', import.meta.url),
   'utf8',
 );
+const surfaceCss = readFileSync(
+  new URL('../ui-surfaces.css', import.meta.url),
+  'utf8',
+);
 const compactCss = cssSource.replace(/\s+/g, ' ');
 
 function rule(selector: string): string {
@@ -47,15 +51,23 @@ describe('Strategy Card production presentation contract', () => {
       .toContain('align-items: flex-start;');
   });
 
-  it('retains the exact approved refined-native visual values', () => {
+  it('keeps the expanded evidence hierarchy neutral while data retains semantic colour', () => {
+    expect(rule('.strategy-card-expanded.strategy-card-refined'))
+      .toContain('background: var(--wl-detail-surface);');
     expect(rule('.strategy-card-expanded.strategy-card-refined .strategy-card-header'))
-      .toContain('border-color: rgba(116, 192, 252, 0.28) !important;');
+      .toContain('border-color: var(--wl-border-strong) !important;');
     expect(rule('.strategy-card-expanded.strategy-card-refined .strategy-card-hero-identity > :first-child'))
       .toContain('letter-spacing: 0.012em;');
     expect(rule('.strategy-card-expanded.strategy-card-refined .strategy-card-loot-panel'))
-      .toContain('box-shadow: inset 0 0 0 1px rgba(77, 171, 247, 0.08);');
+      .toContain('background: var(--wl-surface-raised) !important;');
+    expect(rule('.strategy-card-expanded.strategy-card-refined .strategy-card-loot-panel'))
+      .toContain('border-color: var(--wl-border-strong) !important;');
     expect(rule('.strategy-card-expanded.strategy-card-refined .loot-evidence-category'))
-      .toContain('background: rgba(17, 25, 32, 0.92) !important;');
+      .toContain('background: var(--wl-surface-sunken) !important;');
+    expect(componentSource).not.toContain('background: COLOR.surfaceInfoBg');
+    expect(cssSource).not.toContain('rgba(77, 171, 247');
+    expect(cssSource).not.toContain('rgba(116, 192, 252');
+    expect(surfaceCss).toContain('--wl-detail-surface:');
   });
 
   it('keeps pooled and per-run loot grids plus the audited responsive collapse', () => {
@@ -66,6 +78,21 @@ describe('Strategy Card production presentation contract', () => {
     );
     expect(compactCss).not.toContain(
       'grid-template-columns: minmax(330px, 1.2fr) minmax(250px, 0.8fr);',
+    );
+  });
+
+  it('keeps the responsive hero and lower detail grid compact and aligned', () => {
+    expect(rule('.strategy-card-lower-grid')).not.toContain('grid-template-rows');
+    expect(rule('.strategy-card-regex-wide')).toContain('margin-top: 10px;');
+    expect(rule('.strategy-card-setup-scarabs')).toContain('padding-top: 10px;');
+    expect(compactCss).toContain(
+      '@container (max-width: 1100px) { .strategy-card-expanded.strategy-card-triptych .strategy-card-hero { grid-template-columns: minmax(0, 1fr); gap: 8px; }',
+    );
+    expect(compactCss).toContain(
+      '.strategy-card-expanded.strategy-card-triptych .strategy-card-hero-identity, .strategy-card-expanded.strategy-card-triptych .strategy-card-hero-attribution, .strategy-card-expanded.strategy-card-triptych .strategy-card-hero-facts { grid-column: 1; grid-row: auto; justify-self: center; align-items: center; text-align: center; }',
+    );
+    expect(compactCss).toContain(
+      '.strategy-card-map-panel { grid-column: 1 / -1; grid-row: auto; }',
     );
   });
 });

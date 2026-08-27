@@ -3,9 +3,8 @@
 }
 
 .dashboard-card.dashboard-refined {
-  background:
-    radial-gradient(circle at 50% -24%, rgba(77, 171, 247, 0.08), transparent 34%),
-    linear-gradient(180deg, rgba(20, 24, 29, 0.98), rgba(14, 17, 21, 0.98));
+  background: var(--wl-module-surface);
+  border-color: var(--wl-border);
 }
 
 .dashboard-loot-panel {
@@ -14,17 +13,17 @@
   display: flex;
   flex-direction: column;
   padding: 8px;
-  background: rgba(17, 25, 32, 0.92);
-  border: 1px solid rgba(116, 192, 252, 0.24);
+  background: var(--wl-surface);
+  border: 1px solid var(--wl-border);
   border-radius: 6px;
   box-shadow:
-    inset 0 0 0 1px rgba(77, 171, 247, 0.08),
-    inset 0 1px rgba(255, 255, 255, 0.035);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.012),
+    inset 0 1px rgba(255, 255, 255, 0.025);
 }
 
 .dashboard-loot-header {
   padding-bottom: 6px;
-  border-bottom: 1px solid rgba(116, 192, 252, 0.16);
+  border-bottom: 1px solid var(--wl-divider);
 }
 
 .dashboard-loot-title-row {
@@ -81,19 +80,19 @@
 .dashboard-loot-summary {
   flex-shrink: 0;
   padding: 4px 4px 0;
-  border-top: 1px solid #444;
-  background: #16171a;
+  border-top: 1px solid var(--wl-border-strong);
+  background: var(--wl-surface-sunken);
 }
 
 .dashboard-loot-category {
-  background: rgba(28, 33, 39, 0.96);
-  border: 1px solid rgba(116, 192, 252, 0.16);
+  background: var(--wl-surface-raised);
+  border: 1px solid var(--wl-border);
   border-radius: 6px;
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.025);
 }
 
 .dashboard-pace-row {
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--wl-divider);
 }
 
 .dashboard-pace-pending {
@@ -103,8 +102,8 @@
 .dashboard-map-empty {
   margin-block: 2px;
   padding: 7px 8px;
-  background: rgba(255, 255, 255, 0.018);
-  border: 1px solid rgba(255, 255, 255, 0.065);
+  background: var(--wl-surface);
+  border: 1px solid var(--wl-border);
   border-radius: 6px;
 }
 

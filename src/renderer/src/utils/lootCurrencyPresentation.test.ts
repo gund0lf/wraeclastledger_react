@@ -45,12 +45,15 @@ describe('shared loot currency presentation contract', () => {
     );
   });
 
-  it('keeps the Dashboard loot surface responsive and visually tied to the refined card', () => {
+  it('keeps the Dashboard loot surface responsive within the shared neutral hierarchy', () => {
     expect(dashboardSource).toContain('className="dashboard-loot-panel"');
     expect(dashboardSource).toContain('className="dashboard-loot-status-grid"');
     expect(dashboardSource).toContain('compact');
-    expect(dashboardCss).toContain('background: rgba(17, 25, 32, 0.92);');
-    expect(dashboardCss).toContain('border: 1px solid rgba(116, 192, 252, 0.24);');
+    expect(dashboardCss).toContain('background: var(--wl-module-surface);');
+    expect(dashboardCss).toContain('background: var(--wl-surface);');
+    expect(dashboardCss).toContain('border: 1px solid var(--wl-border);');
+    expect(dashboardCss).not.toContain('rgba(77, 171, 247');
+    expect(dashboardCss).not.toContain('rgba(116, 192, 252');
     expect(dashboardCss).toContain('@container (max-width: 540px)');
     expect(dashboardCss).toContain(
       'grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));',

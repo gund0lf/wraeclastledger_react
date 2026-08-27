@@ -10,6 +10,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.89',
+    date: '2026-08-28',
+    changes: [
+      'The app now uses one restrained neutral surface system across Setup, Notes, Run Statistics, Regex, Dashboard, Map Log framing, and expanded Strategy cards. Broad Dashboard blue-black and Strategy evidence teal treatments are removed while selection, interaction, profit/loss, mechanic, synchronization, and loot-data colours retain their semantic roles.',
+      'Expanded Strategy cards now keep their title, tags, author, and run facts on one center axis when both side panels are open. Scarab headings align with adjacent detail panels, and responsive Notes, optional evidence, Map Requirements, and Regex sections no longer reserve oversized empty gaps.',
+    ],
+  },
+  {
     version: '1.0.88',
     date: '2026-08-27',
     changes: [

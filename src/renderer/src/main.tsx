@@ -6,6 +6,7 @@ import OverlayApp from './OverlayApp'
 import { appTheme } from './utils/uiTokens'
 // Import Mantine core styles
 import '@mantine/core/styles.css'
+import './ui-surfaces.css'
 // Import FlexLayout styles (Light or Dark)
 import 'flexlayout-react/style/dark.css' 
 import './flexlayout-overrides.css'

@@ -3,12 +3,12 @@
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  --regex-surface: rgba(255, 255, 255, 0.018);
-  --regex-surface-raised: rgba(255, 255, 255, 0.032);
-  --regex-surface-sunken: rgba(0, 0, 0, 0.16);
-  --regex-border: rgba(255, 255, 255, 0.08);
-  --regex-border-strong: rgba(255, 255, 255, 0.14);
-  --regex-divider: rgba(255, 255, 255, 0.07);
+  --regex-surface: var(--wl-surface);
+  --regex-surface-raised: var(--wl-surface-raised);
+  --regex-surface-sunken: var(--wl-surface-sunken);
+  --regex-border: var(--wl-border);
+  --regex-border-strong: var(--wl-border-strong);
+  --regex-divider: var(--wl-divider);
 }
 
 .regex-panel-tabs {

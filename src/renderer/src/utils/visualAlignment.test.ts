@@ -57,6 +57,10 @@ const flexLayoutCss = readFileSync(
   new URL('../flexlayout-overrides.css', import.meta.url),
   'utf8',
 );
+const surfaceCss = readFileSync(
+  new URL('../ui-surfaces.css', import.meta.url),
+  'utf8',
+);
 
 describe('reviewed visual alignment corrections', () => {
   it('protects compact loot status actions before dropping optional detail', () => {
@@ -105,7 +109,10 @@ describe('reviewed visual alignment corrections', () => {
     expect(setupSource.split('className="setup-panel-section"').length - 1).toBe(3);
     expect(setupSource).toContain("usePanelMaximized('setup')");
     expect(setupCss).toContain(".setup-panel-section[data-open='true']");
-    expect(setupCss).toContain('--setup-surface: rgba(255, 255, 255, 0.018);');
+    expect(setupCss).toContain('--setup-surface: var(--wl-surface);');
+    expect(setupCss).toContain('--setup-surface-raised: var(--wl-surface-raised);');
+    expect(surfaceCss).toContain('--wl-surface: rgba(255, 255, 255, 0.018);');
+    expect(surfaceCss).toContain('--wl-surface-raised: rgba(255, 255, 255, 0.032);');
     expect(setupCss).toContain('background: var(--setup-surface-raised);');
     expect(setupCss).toContain('.setup-panel-root.is-maximized .setup-panel-layout');
     expect(setupCss).toContain('grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);');
