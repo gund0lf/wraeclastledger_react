@@ -95,6 +95,12 @@ export type DeliriumTradeStatFilter = {
   filters: { id: string; value?: { min: number; max: number } }[];
 };
 
+export type DeliriumRewardTradeStatFilter = {
+  type: 'count';
+  value: { min: 1 };
+  filters: { id: string }[];
+};
+
 /**
  * Delirium is a state selector, not a minimum slider: -1 omits the filter,
  * 0 excludes every delirious map, and a positive supported tier is exact.
@@ -111,6 +117,19 @@ export function buildDeliriumTradeStatFilter(
   return {
     type: 'and',
     filters: [{ id: statId, value: { min: deliriousPercent, max: deliriousPercent } }],
+  };
+}
+
+/** Match at least one selected Delirium reward type. */
+export function buildDeliriumRewardTradeStatFilter(
+  statIds: readonly (string | undefined)[],
+): DeliriumRewardTradeStatFilter | null {
+  const uniqueIds = [...new Set(statIds.filter((id): id is string => !!id))];
+  if (uniqueIds.length === 0) return null;
+  return {
+    type: 'count',
+    value: { min: 1 },
+    filters: uniqueIds.map((id) => ({ id })),
   };
 }
 

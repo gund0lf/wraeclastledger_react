@@ -20,6 +20,7 @@ import {
   type ClipboardBridgeStatus,
 } from '../shared/protonClipboardBridge'
 import {
+  buildDeliriumRewardTradeStatFilter,
   buildDeliriumTradeStatFilter,
   SPECIAL_MAP_STAT_TEXT,
   resolveOrdinaryMapSpecialStatIds,
@@ -907,11 +908,10 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
   }
 
   if (deliRewardTypes.length > 0) {
-    const resolvedIds = deliRewardTypes
-      .map((key) => STATS_CACHE.get(key))
-      .filter((id): id is string => !!id)
-      .map((id) => ({ id }));
-    if (resolvedIds.length > 0) statsArray.push({ type: 'if', filters: resolvedIds });
+    const rewardFilter = buildDeliriumRewardTradeStatFilter(
+      deliRewardTypes.map((key) => STATS_CACHE.get(key)),
+    );
+    if (rewardFilter) statsArray.push(rewardFilter);
   }
 
   if (brickExclusions.length > 0) {

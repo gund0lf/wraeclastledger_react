@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildDeliriumRewardTradeStatFilter,
   buildDeliriumTradeStatFilter,
   ORDINARY_MAP_EXCLUDED_SPECIAL_STATS,
   SPECIAL_MAP_STAT_TEXT,
@@ -175,5 +176,32 @@ describe('Delirium Trade filtering', () => {
   it('fails loudly when a requested Delirium stat is unavailable', () => {
     expect(() => buildDeliriumTradeStatFilter(undefined, 20))
       .toThrow('Delirium Trade stat is unavailable');
+  });
+
+  it('uses Count 1 when one or more reward types are selected', () => {
+    expect(buildDeliriumRewardTradeStatFilter([
+      'enchant.reward-currency',
+      'enchant.reward-jewellery',
+    ])).toEqual({
+      type: 'count',
+      value: { min: 1 },
+      filters: [
+        { id: 'enchant.reward-currency' },
+        { id: 'enchant.reward-jewellery' },
+      ],
+    });
+  });
+
+  it('omits an empty reward-type group and de-duplicates resolved stats', () => {
+    expect(buildDeliriumRewardTradeStatFilter([])).toBeNull();
+    expect(buildDeliriumRewardTradeStatFilter([
+      'enchant.reward-currency',
+      undefined,
+      'enchant.reward-currency',
+    ])).toEqual({
+      type: 'count',
+      value: { min: 1 },
+      filters: [{ id: 'enchant.reward-currency' }],
+    });
   });
 });

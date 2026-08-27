@@ -40,28 +40,32 @@ const MAP_TYPE_OPTIONS: { value: MapType; label: string; description: string }[]
 ];
 
 const DELI_REWARD_OPTIONS = [
-  { value: 'deli_currency',   label: 'Currency' },
-  { value: 'deli_scarabs',    label: 'Scarabs' },
-  { value: 'deli_fragments',  label: 'Fragments' },
-  { value: 'deli_divcards',   label: 'Divination Cards' },
-  { value: 'deli_maps',       label: 'Map Items' },
-  { value: 'deli_essences',   label: 'Essences' },
-  { value: 'deli_unique',     label: 'Unique Items' },
-  { value: 'deli_expedition', label: 'Expedition Items' },
-  { value: 'deli_breach',     label: 'Breach Items' },
-  { value: 'deli_delirium',   label: 'Delirium' },
-  { value: 'deli_blight',     label: 'Blight Items' },
-  { value: 'deli_abyss',      label: 'Abyss Items' },
-  { value: 'deli_gems',       label: 'Gems' },
-  { value: 'deli_fossils',    label: 'Fossils' },
-  { value: 'deli_armour',     label: 'Armour' },
-  { value: 'deli_weapons',    label: 'Weapons' },
-  { value: 'deli_jewellery',  label: 'Jewellery' },
-  { value: 'deli_incubators', label: 'Incubators' },
-  { value: 'deli_labyrinth',  label: 'Labyrinth Items' },
-  { value: 'deli_catalysts',  label: 'Catalysts' },
-  { value: 'deli_talismans',  label: 'Talismans' },
+  { value: 'deli_currency',   label: 'Currency',         stashTerm: 'curr' },
+  { value: 'deli_scarabs',    label: 'Scarabs',          stashTerm: 'scar' },
+  { value: 'deli_fragments',  label: 'Fragments',        stashTerm: 'frag' },
+  { value: 'deli_divcards',   label: 'Divination Cards', stashTerm: 'div' },
+  { value: 'deli_maps',       label: 'Map Items',        stashTerm: 'map' },
+  { value: 'deli_essences',   label: 'Essences',         stashTerm: 'ess' },
+  { value: 'deli_unique',     label: 'Unique Items',     stashTerm: 'uniq' },
+  { value: 'deli_expedition', label: 'Expedition Items', stashTerm: 'exp' },
+  { value: 'deli_breach',     label: 'Breach Items',     stashTerm: 'brea' },
+  { value: 'deli_delirium',   label: 'Delirium',         stashTerm: 'deli' },
+  { value: 'deli_blight',     label: 'Blight Items',     stashTerm: 'blig' },
+  { value: 'deli_abyss',      label: 'Abyss Items',      stashTerm: 'aby' },
+  { value: 'deli_gems',       label: 'Gems',             stashTerm: 'gems' },
+  { value: 'deli_fossils',    label: 'Fossils',          stashTerm: 'foss' },
+  { value: 'deli_armour',     label: 'Armour',           stashTerm: 'armo' },
+  { value: 'deli_weapons',    label: 'Weapons',          stashTerm: 'weap' },
+  { value: 'deli_jewellery',  label: 'Jewellery',        stashTerm: 'jew' },
+  { value: 'deli_incubators', label: 'Incubators',       stashTerm: 'incu' },
+  { value: 'deli_labyrinth',  label: 'Labyrinth Items',  stashTerm: 'laby' },
+  { value: 'deli_catalysts',  label: 'Catalysts',        stashTerm: 'cata' },
+  { value: 'deli_talismans',  label: 'Talismans',        stashTerm: 'tali' },
 ] as const;
+
+const DELI_REWARD_STASH_TERMS: ReadonlyMap<string, string> = new Map(
+  DELI_REWARD_OPTIONS.map((option) => [option.value, option.stashTerm]),
+);
 
 const TAG_TO_MAP_TYPE: Record<string, MapType> = {
   regular: 'regular', originator: 'originator', nightmare: 'nightmare',
@@ -491,7 +495,7 @@ export const FromSessionTab = () => {
                   setTradeMinDelirious(next);
                   if (next === 0) setTradeDeliRewards([]);
                 }} />
-              <MultiSelect size="xs" label="Reward types (optional)" placeholder="Any"
+              <MultiSelect size="xs" label="Reward types (match any)" placeholder="Any reward"
                 clearable searchable
                 disabled={tradeMinDelirious === 0}
                 data={DELI_REWARD_OPTIONS}
@@ -608,6 +612,10 @@ export const FromSessionTab = () => {
                 tradeMinCurrency,
                 tradeMinIIR,
                 tradeMinDelirious,
+                tradeDeliRewards.flatMap((key) => {
+                  const term = DELI_REWARD_STASH_TERMS.get(key);
+                  return term ? [term] : [];
+                }),
               );
               if (!r) return null;
               return (

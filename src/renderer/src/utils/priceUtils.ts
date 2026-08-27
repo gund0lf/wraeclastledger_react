@@ -135,6 +135,7 @@ export function generateTradeRegex(
   minCurr: number,
   minIIR: number,
   deliriousPercent = -1,
+  deliriumRewardTerms: readonly string[] = [],
 ): string {
   const numericParts: string[] = [];
   const cleanExclusions = sanitizeExclusionTerms(exclusions);
@@ -153,7 +154,15 @@ export function generateTradeRegex(
     : deliriousPercent > 0
       ? `"${deliriousPercent}%.+delirious"`
       : '';
-  return [numericRegex, deliriumRegex].filter(Boolean).join(' ');
+  const rewardTerms = [...new Set(deliriumRewardTerms
+    .map((term) => term.trim().toLocaleLowerCase('en-US'))
+    .filter((term) => /^[a-z0-9 ]+$/.test(term)))];
+  const rewardRegex = rewardTerms.length === 0
+    ? ''
+    : rewardTerms.length === 1
+      ? `": ${rewardTerms[0]}"`
+      : `": (${rewardTerms.join('|')})"`;
+  return [numericRegex, deliriumRegex, rewardRegex].filter(Boolean).join(' ');
 }
 
 export const generateSlamRegex = (avg: MapAverages, exclusions?: string[]): string => {

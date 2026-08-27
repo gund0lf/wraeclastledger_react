@@ -9,7 +9,10 @@ import {
   generateTradeRegex,
   resolveTradeRegexExclusions,
 } from './priceUtils';
-import { NIGHTMARE_DELIRIUM_FOOTER_FIXTURE } from './__fixtures__/deliriumMapFixtures';
+import {
+  DELIRIUM_REWARD_REGEX_FIXTURES,
+  NIGHTMARE_DELIRIUM_FOOTER_FIXTURE,
+} from './__fixtures__/deliriumMapFixtures';
 
 // ─── parsePriceInput ──────────────────────────────────────────────────────────
 describe('parsePriceInput', () => {
@@ -398,6 +401,40 @@ describe('Trade modal regex', () => {
       'Players in Area are 20% Delirious (enchant)\n\nModifiable only with Chaos Orbs',
     );
     expect(new RegExp(positiveClause, 'is').test(deliriousNightmare)).toBe(true);
+  });
+
+  it('copies one selected Delirium reward type as a required stash clause', () => {
+    const regex = generateTradeRegex([], 0, 0, 0, 0, 20, ['curr']);
+    expect(regex).toBe('"20%.+delirious" ": curr"');
+
+    const clauses = [...regex.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    expect(clauses.every((clause) => new RegExp(clause, 'is')
+      .test(DELIRIUM_REWARD_REGEX_FIXTURES.currency))).toBe(true);
+    expect(clauses.every((clause) => new RegExp(clause, 'is')
+      .test(DELIRIUM_REWARD_REGEX_FIXTURES.jewellery))).toBe(false);
+  });
+
+  it('copies multiple Delirium rewards as one match-any clause', () => {
+    const regex = generateTradeRegex([], 0, 0, 0, 0, 20, [
+      'curr',
+      'jew',
+    ]);
+    expect(regex).toBe('"20%.+delirious" ": (curr|jew)"');
+
+    const clauses = [...regex.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    for (const fixture of Object.values(DELIRIUM_REWARD_REGEX_FIXTURES)) {
+      expect(clauses.every((clause) => new RegExp(clause, 'is').test(fixture))).toBe(true);
+    }
+  });
+
+  it('does not confuse real More Currency or Currency quality lines with a reward', () => {
+    const jewelleryWithCurrencyQuality = DELIRIUM_REWARD_REGEX_FIXTURES.jewellery.replace(
+      'Item Quantity:',
+      'Quality (Currency): +20% (augmented)\nItem Quantity:',
+    );
+    const rewardClause = generateTradeRegex([], 0, 0, 0, 0, -1, ['curr'])
+      .slice(1, -1);
+    expect(new RegExp(rewardClause, 'is').test(jewelleryWithCurrencyQuality)).toBe(false);
   });
 });
 

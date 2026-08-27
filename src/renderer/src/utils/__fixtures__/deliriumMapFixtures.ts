@@ -210,3 +210,58 @@ Travel to a Map of this tier or lower by using this in a personal Map Device. Ma
 Corrupted
 
 Modifiable only with Chaos Orbs, Vaal Orbs, Delirium Orbs and Chisels`;
+
+/** Real 20% Delirious reward-type comparison supplied by Sad on 2026-08-27. */
+export const DELIRIUM_REWARD_REGEX_FIXTURES = {
+  currency: `Item Class: Maps
+Rarity: Rare
+Loath Stone
+Map (Tier 16)
+-------------
+Item Quantity: +84% (augmented)
+Item Rarity: +97% (augmented)
+Monster Pack Size: +61% (augmented)
+More Currency: +47% (augmented)
+-------------------------------
+Item Level: 85
+Monster Level: 83
+Delirium Reward Type: Currency (enchant)
+Players in Area are 20% Delirious (enchant)
+-------------------------------------------
+Area is Influenced by the Originator's Memories — Unscalable Value
+Area contains Runes of the Searing Exarch
+Rare Monsters have Physical Thorns reflecting 1500 Physical Damage
+Rare Monsters have Elemental Thorns reflecting 2500 Elemental Damage
+27(25-30)% increased Monster Movement Speed
+38(35-45)% increased Monster Attack Speed
+41(35-45)% increased Monster Cast Speed
+Players have -20% to all maximum Resistances
+Monsters Maim on Hit with Attacks
+Players gain 50% reduced Flask Charges
+Travel to a Map of this tier or lower by using this in a personal Map Device. Maps can only be used once.`,
+  jewellery: `Item Class: Maps
+Rarity: Rare
+Ghastly Journey
+Map (Tier 16)
+-------------
+Item Quantity: +84% (augmented)
+Item Rarity: +118% (augmented)
+Monster Pack Size: +47% (augmented)
+More Maps: +35% (augmented)
+More Currency: +64% (augmented)
+-------------------------------
+Item Level: 84
+Monster Level: 83
+Delirium Reward Type: Jewellery (enchant)
+Players in Area are 20% Delirious (enchant)
+-------------------------------------------
+Area is Influenced by the Originator's Memories — Unscalable Value
+Rare monsters in area are Shaper-Touched
+60% less effect of Curses on Monsters
+Monsters gain 184(180-200)% of their Physical Damage as Extra Damage of a random Element
+Debuffs on Monsters expire 100% faster
+Monsters have +1 to Maximum Power Charges
+Monsters gain a Power Charge on Hit
+Monsters have 100% increased Area of Effect
+Travel to a Map of this tier or lower by using this in a personal Map Device. Maps can only be used once.`,
+} as const;
