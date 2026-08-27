@@ -8,6 +8,7 @@
  */
 
 import { MOD_TOKENS } from './modTokens';
+import { OPEN_PREFIX_PATTERN, OPEN_SUFFIX_PATTERN } from './regexBuilder';
 
 export interface NamedMod {
   id: string;
@@ -253,12 +254,28 @@ export const MAPS_MODS: NamedMod[] = [
   },
 ];
 
+export const OPEN_AFFIX_MODS: NamedMod[] = [
+  {
+    id: 'open-prefix',
+    label: 'Open prefix',
+    token: OPEN_PREFIX_PATTERN,
+    detail: 'Matches a magic map named "Map of …", which has a suffix but still has room for a prefix.',
+  },
+  {
+    id: 'open-suffix',
+    label: 'Open suffix',
+    token: OPEN_SUFFIX_PATTERN,
+    detail: 'Matches a magic map named "… Map (Tier …)", which has a prefix but still has room for a suffix.',
+  },
+];
+
 export const PRESET_GROUPS = [
   { id: 'packsize', label: 'Pack Size Mods',  mods: PACK_SIZE_MODS },
   { id: 'currency', label: 'Currency Mods',   mods: CURRENCY_MODS },
   { id: 'quantity', label: 'Quantity Mods',   mods: QUANTITY_MODS },
   { id: 'scarabs',  label: 'Scarab Mods',     mods: SCARAB_MODS  },
   { id: 'maps',     label: 'Maps Mods',       mods: MAPS_MODS    },
+  { id: 'open-affixes', label: 'Open Affixes', mods: OPEN_AFFIX_MODS },
 ];
 
 /** The builder's persisted workspace: one editable K-of-N mod group. */

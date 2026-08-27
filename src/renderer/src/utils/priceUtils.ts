@@ -1,5 +1,6 @@
 import { getCurrentLeague } from './league';
 import { MOD_TOKENS } from './modTokens';
+import { exactIntegerThresholdPattern } from './regexThreshold';
 
 export const parsePriceInput = (raw: string, divinePrice: number): number => {
   let s = raw.trim().toLowerCase().replace(/,/g, '');
@@ -59,37 +60,6 @@ function thresholdPat(floor: number): string {
     return tens >= 9 ? `9.|\\d..` : `[${tens}-9].|\\d..`;
   }
   return `[${f}-9]|[1-9].|\\d..`;
-}
-
-/** Exact integer floor for Trade modal controls, including non-round values. */
-function minimumThresholdPat(floor: number): string {
-  if (floor <= 0) return '\\d..';
-  const f = Math.floor(floor);
-  const range = (from: number, to = 9): string => from === to ? `${from}` : `[${from}-${to}]`;
-  if (f >= 1000) return '\\d{4,}';
-  if (f >= 100) {
-    const hundreds = Math.floor(f / 100);
-    const remainder = f % 100;
-    if (remainder === 0) return hundreds === 1 ? '\\d..' : `${range(hundreds)}..`;
-    const tens = Math.floor(remainder / 10);
-    const ones = remainder % 10;
-    const parts = [
-      ones === 0 ? `${hundreds}${range(tens)}.` : `${hundreds}${tens}${range(ones)}`,
-      ...(ones > 0 && tens < 9 ? [`${hundreds}${range(tens + 1)}.`] : []),
-    ];
-    if (hundreds < 9) parts.push(`${range(hundreds + 1)}..`);
-    return parts.join('|');
-  }
-  if (f >= 10) {
-    const tens = Math.floor(f / 10);
-    const ones = f % 10;
-    return [
-      ones === 0 ? `${range(tens)}.` : `${tens}${range(ones)}`,
-      ...(ones > 0 && tens < 9 ? [`${range(tens + 1)}.`] : []),
-      '\\d..',
-    ].join('|');
-  }
-  return `${range(f)}|[1-9].|\\d..`;
 }
 
 interface MapAverages {
@@ -173,10 +143,10 @@ export function generateTradeRegex(
   // Do not route them through generateRunRegex: that function deliberately
   // derives lenient thresholds from session averages (including a 60% IIQ/IIR
   // factor and a default Pack gate), which changes the user's Trade inputs.
-  if (minCurr > 0) numericParts.push(`"urr.*(${minimumThresholdPat(minCurr)})%"`);
-  if (minPack > 0) numericParts.push(`"ack.*(${minimumThresholdPat(minPack)})%"`);
-  if (minIIQ > 0) numericParts.push(`"m q.*(${minimumThresholdPat(minIIQ)})%"`);
-  if (minIIR > 0) numericParts.push(`"m rar.*(${minimumThresholdPat(minIIR)})%"`);
+  if (minCurr > 0) numericParts.push(`"urr.*(${exactIntegerThresholdPattern(minCurr)})%"`);
+  if (minPack > 0) numericParts.push(`"ack.*(${exactIntegerThresholdPattern(minPack)})%"`);
+  if (minIIQ > 0) numericParts.push(`"m q.*(${exactIntegerThresholdPattern(minIIQ)})%"`);
+  if (minIIR > 0) numericParts.push(`"m rar.*(${exactIntegerThresholdPattern(minIIR)})%"`);
   const numericRegex = numericParts.join(' ');
   const deliriumRegex = deliriousPercent === 0
     ? '"!deli"'

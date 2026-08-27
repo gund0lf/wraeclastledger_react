@@ -1,7 +1,10 @@
 import type { ModGroupState } from './regexBuilderPresets';
+import { exactIntegerThresholdPattern } from './regexThreshold';
 
 export const REGEX_CHAR_LIMIT = 250;
-export const ALT_AUG_OPEN_SLOT_PATTERNS = ' Map \\(Tier|^Map of';
+export const OPEN_PREFIX_PATTERN = '^Map of';
+export const OPEN_SUFFIX_PATTERN = 'Map \\(Tier';
+export const OPEN_EITHER_PATTERN = `${OPEN_PREFIX_PATTERN}|${OPEN_SUFFIX_PATTERN}`;
 
 const combinations = <T>(values: T[], count: number): T[][] => {
   if (count === 0) return [[]];
@@ -98,59 +101,106 @@ export const getAvailablePresetIds = (
   return presets.map((preset) => preset.id).filter((id) => !used.has(id));
 };
 
-const currencyNumberPattern = (minimum: number): string => {
-  if (minimum <= 0) return '\\d..';
-  const floor = Math.floor(minimum / 10) * 10;
-  if (floor >= 200) return '[2-9]..';
-  if (floor >= 100) {
-    const tens = Math.floor((floor % 100) / 10);
-    return tens === 0 ? '\\d..' : `1[${tens}-9].|[2-9]..`;
-  }
-  const tens = Math.floor(floor / 10);
-  return tens >= 9 ? '9.|\\d..' : `[${tens}-9].|\\d..`;
+export type MagicMapNumericStat =
+  | 'moreCurrency'
+  | 'packSize'
+  | 'quantity'
+  | 'rarity'
+  | 'moreMaps'
+  | 'moreScarabs'
+  | 'moreDivCards';
+
+export const MAGIC_MAP_STAT_LABELS: Record<MagicMapNumericStat, string> = {
+  moreCurrency: 'More Currency',
+  packSize: 'Pack Size',
+  quantity: 'Item Quantity',
+  rarity: 'Item Rarity',
+  moreMaps: 'More Maps',
+  moreScarabs: 'More Scarabs',
+  moreDivCards: 'More Divination Cards',
 };
 
-const packSizeNumberPattern = (minimum: number): string => {
-  if (minimum <= 0) return '\\d+';
-  const tens = Math.floor(minimum / 10);
-  return tens <= 0 ? '[1-9].|\\d..' : tens >= 9 ? '9.|\\d..' : `[${tens}-9].|\\d..`;
+const MAGIC_MAP_STAT_ANCHORS: Record<MagicMapNumericStat, string> = {
+  moreCurrency: 'curr',
+  packSize: 'size',
+  quantity: 'm q',
+  rarity: 'm rar',
+  moreMaps: 'maps',
+  moreScarabs: 'scarabs',
+  moreDivCards: 'divi',
 };
 
-export interface AltAugSettings {
-  currencyMin: number;
-  packMin: number;
-  gigaMin: number;
-  chiseled: boolean;
+export type MagicMapPredicate =
+  | { kind: 'stat'; stat: MagicMapNumericStat; minimum: number }
+  | { kind: 'token'; token: string }
+  | { kind: 'open-affix'; side: 'prefix' | 'suffix' | 'either' };
+
+export interface MagicMapChiselAdjustment {
+  stat: MagicMapNumericStat;
+  bonus: number;
+  applied: boolean;
 }
 
-export interface GeneratedAltAugRegex {
+export interface MagicMapWorkflowSettings {
+  required: MagicMapPredicate[];
+  alternatives: MagicMapPredicate[];
+  chisel?: MagicMapChiselAdjustment;
+}
+
+export interface GeneratedMagicMapRegex {
   regex: string;
   charCount: number;
+  blockCount: number;
+  invalidCount: number;
 }
 
-export const generateAltAugRegex = ({
-  currencyMin,
-  packMin,
-  gigaMin,
-}: AltAugSettings): GeneratedAltAugRegex => {
-  const currencyGate = `"curr.*(${currencyNumberPattern(currencyMin)})"`;
-  const packGate =
-    `"size.*(${packSizeNumberPattern(packMin)})%|${ALT_AUG_OPEN_SLOT_PATTERNS}` +
-    `${gigaMin > currencyMin ? `|curr.*(${currencyNumberPattern(gigaMin)})` : ''}"`;
-  const regex = `${currencyGate} ${packGate}`;
-  return { regex, charCount: regex.length };
+const normalizeDirectToken = (token: string): string | null => {
+  const trimmed = token.trim();
+  const withoutOuterQuotes = trimmed.startsWith('"') && trimmed.endsWith('"')
+    ? trimmed.slice(1, -1).trim()
+    : trimmed;
+  return withoutOuterQuotes && !withoutOuterQuotes.includes('"') ? withoutOuterQuotes : null;
 };
 
-export const adjustAltAugChisel = (
-  settings: AltAugSettings,
-  chiseled: boolean,
-): AltAugSettings => {
-  if (settings.chiseled === chiseled) return settings;
-  const adjustment = chiseled ? 50 : -50;
+export const compileMagicMapPredicate = (
+  predicate: MagicMapPredicate,
+  chisel?: MagicMapChiselAdjustment,
+): string | null => {
+  if (predicate.kind === 'token') return normalizeDirectToken(predicate.token);
+  if (predicate.kind === 'open-affix') {
+    if (predicate.side === 'prefix') return OPEN_PREFIX_PATTERN;
+    if (predicate.side === 'suffix') return OPEN_SUFFIX_PATTERN;
+    return OPEN_EITHER_PATTERN;
+  }
+  if (!Number.isFinite(predicate.minimum) || predicate.minimum <= 0) return null;
+  const appliedBonus = chisel && chisel.applied && chisel.stat === predicate.stat
+    ? chisel.bonus
+    : 0;
+  const effectiveMinimum = Math.floor(predicate.minimum) + appliedBonus;
+  return `${MAGIC_MAP_STAT_ANCHORS[predicate.stat]}.*(${exactIntegerThresholdPattern(effectiveMinimum)})%`;
+};
+
+export const generateMagicMapRegex = ({
+  required,
+  alternatives,
+  chisel,
+}: MagicMapWorkflowSettings): GeneratedMagicMapRegex => {
+  const compiledRequired = required.map((predicate) => compileMagicMapPredicate(predicate, chisel));
+  const compiledAlternatives = alternatives.map((predicate) => compileMagicMapPredicate(predicate, chisel));
+  const requiredBlocks = compiledRequired
+    .filter((predicate): predicate is string => predicate !== null && predicate !== '')
+    .map((predicate) => `"${predicate}"`);
+  const validAlternatives = compiledAlternatives
+    .filter((predicate): predicate is string => predicate !== null && predicate !== '');
+  const alternativeBlock = validAlternatives.length > 0
+    ? [`"${validAlternatives.join('|')}"`]
+    : [];
+  const regex = [...requiredBlocks, ...alternativeBlock].join(' ');
   return {
-    ...settings,
-    currencyMin: Math.max(0, settings.currencyMin + adjustment),
-    gigaMin: Math.max(0, settings.gigaMin + adjustment),
-    chiseled,
+    regex,
+    charCount: regex.length,
+    blockCount: requiredBlocks.length + alternativeBlock.length,
+    invalidCount: [...compiledRequired, ...compiledAlternatives]
+      .filter((predicate) => predicate === null).length,
   };
 };

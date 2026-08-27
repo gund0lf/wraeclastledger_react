@@ -13,7 +13,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Text, Group, Stack, Button, TextInput, ActionIcon,
   NumberInput, Tooltip, CopyButton, ScrollArea, Collapse,
-  Switch, Badge, Modal, Menu, Progress, SegmentedControl, Alert,
+  Switch, Badge, Modal, Menu, Progress, SegmentedControl, Alert, Select,
 } from '@mantine/core';
 import {
   IconCheck,
@@ -27,13 +27,16 @@ import {
 import { useSessionKeys } from '../store/useSessionStore';
 import { PRESET_GROUPS, type ModGroupState } from '../utils/regexBuilderPresets';
 import {
-  adjustAltAugChisel,
+  type MagicMapNumericStat,
+  type MagicMapPredicate,
   findPresetIdForGroup,
-  generateAltAugRegex,
   generateBuilderRegex,
+  generateMagicMapRegex,
   getAvailablePresetIds,
+  MAGIC_MAP_STAT_LABELS,
   REGEX_CHAR_LIMIT,
 } from '../utils/regexBuilder';
+import { activeChiselTypes } from '../utils/gameData';
 import { COLOR, FONT } from '../utils/uiTokens';
 
 // ─── POS Algorithm ────────────────────────────────────────────────────────────
@@ -323,93 +326,322 @@ const ModGroupEditor = ({
   );
 };
 
-// ─── Alt/Aug Crafting ─────────────────────────────────────────────────────────
+// ─── Magic-map workflow ───────────────────────────────────────────────────────
 
-const AltAugSection = ({ onCharCountChange }: { onCharCountChange: (count: number) => void }) => {
-  const [currencyMin, setCurrencyMin] = useState(90);
-  const [packMin,     setPackMin]     = useState(20);
-  const [gigaMin,     setGigaMin]     = useState(150);
-  const [chiseled,    setChiseled]    = useState(true);
+type EditableMagicMapPredicate = MagicMapPredicate & { id: string };
 
-  // When toggling chisel, adjust the number boxes directly so the user sees the change
-  const handleChiselToggle = (nowChiseled: boolean) => {
-    const adjusted = adjustAltAugChisel(
-      { currencyMin, packMin, gigaMin, chiseled },
-      nowChiseled,
-    );
-    setCurrencyMin(adjusted.currencyMin);
-    setGigaMin(adjusted.gigaMin);
-    setChiseled(adjusted.chiseled);
+const MAGIC_MAP_STAT_OPTIONS = Object.entries(MAGIC_MAP_STAT_LABELS)
+  .map(([value, label]) => ({ value: `stat:${value}`, label: `${label} threshold` }));
+const MAGIC_MAP_CONDITION_OPTIONS = [
+  ...MAGIC_MAP_STAT_OPTIONS,
+  { value: 'token', label: 'Text / regex token' },
+  { value: 'open:either', label: 'Either open affix' },
+  { value: 'open:prefix', label: 'Open prefix' },
+  { value: 'open:suffix', label: 'Open suffix' },
+];
+
+const chiselTypes = activeChiselTypes();
+const MAGIC_MAP_CHISELS = Object.entries(chiselTypes).flatMap(([name, chisel]) =>
+  chisel.statKey in MAGIC_MAP_STAT_LABELS
+    ? [{
+        value: name,
+        label: chisel.label,
+        stat: chisel.statKey as MagicMapNumericStat,
+        bonus: chisel.bonusAt20,
+      }]
+    : []);
+const MAGIC_MAP_CHISEL_OPTIONS = [
+  { value: '', label: 'No chisel adjustment' },
+  ...MAGIC_MAP_CHISELS.map(({ value, label }) => ({ value, label })),
+];
+
+const conditionTypeValue = (condition: EditableMagicMapPredicate): string => {
+  if (condition.kind === 'stat') return `stat:${condition.stat}`;
+  if (condition.kind === 'open-affix') return `open:${condition.side}`;
+  return 'token';
+};
+
+const replaceConditionType = (
+  condition: EditableMagicMapPredicate,
+  value: string,
+): EditableMagicMapPredicate => {
+  if (value.startsWith('stat:')) {
+    return {
+      id: condition.id,
+      kind: 'stat',
+      stat: value.slice(5) as MagicMapNumericStat,
+      minimum: condition.kind === 'stat' ? condition.minimum : 20,
+    };
+  }
+  if (value.startsWith('open:')) {
+    return {
+      id: condition.id,
+      kind: 'open-affix',
+      side: value.slice(5) as 'prefix' | 'suffix' | 'either',
+    };
+  }
+  return {
+    id: condition.id,
+    kind: 'token',
+    token: condition.kind === 'token' ? condition.token : '',
   };
+};
 
-  // Both open-slot patterns combined — no toggle needed:
-  //   " Map \(Tier" → prefix-only (open suffix): "Punishing Map (Tier 16)"
-  //   "^Map of"     → suffix-only (open prefix): "Map of Defiance (Tier 16)"
-  // A full 2-mod map like "Punishing Map of Defiance" matches NEITHER → no false positives.
-  // ^ anchor confirmed working in PoE stash search.
-  const { regex, charCount } = generateAltAugRegex({
-    currencyMin,
-    packMin,
-    gigaMin,
-    chiseled,
+const predicateWithoutId = ({ id: _id, ...predicate }: EditableMagicMapPredicate): MagicMapPredicate =>
+  predicate as MagicMapPredicate;
+
+const conditionDescription = (condition: EditableMagicMapPredicate): string => {
+  if (condition.kind === 'stat') {
+    return `${MAGIC_MAP_STAT_LABELS[condition.stat]} ≥${condition.minimum}%`;
+  }
+  if (condition.kind === 'token') return condition.token.trim() ? `“${condition.token.trim()}”` : 'unfinished token';
+  if (condition.side === 'either') return 'either open affix';
+  return `open ${condition.side}`;
+};
+
+const MagicMapConditionEditor = ({
+  condition,
+  onChange,
+  onRemove,
+}: {
+  condition: EditableMagicMapPredicate;
+  onChange: (condition: EditableMagicMapPredicate) => void;
+  onRemove: () => void;
+}) => (
+  <Group className="regex-magic-condition" gap={6} wrap="wrap" align="flex-end">
+    <Select
+      size="xs"
+      label="Condition"
+      data={MAGIC_MAP_CONDITION_OPTIONS}
+      value={conditionTypeValue(condition)}
+      allowDeselect={false}
+      style={{ flex: 1.15, minWidth: 150 }}
+      onChange={(value) => value && onChange(replaceConditionType(condition, value))}
+    />
+    {condition.kind === 'stat' && (
+      <NumberInput
+        size="xs"
+        label="Minimum"
+        min={1}
+        max={999}
+        step={1}
+        suffix="%"
+        value={condition.minimum}
+        style={{ width: 112 }}
+        onChange={(value) => onChange({
+          ...condition,
+          minimum: Math.max(0, Number(value) || 0),
+        })}
+      />
+    )}
+    {condition.kind === 'token' && (
+      <TextInput
+        size="xs"
+        label="Token"
+        description="e.g. deb or size.+40"
+        placeholder="deb"
+        value={condition.token}
+        style={{ flex: 1, minWidth: 130 }}
+        onChange={(event) => onChange({ ...condition, token: event.currentTarget.value })}
+      />
+    )}
+    {condition.kind === 'open-affix' && (
+      <Text size="xs" c="dimmed" style={{ flex: 1, minWidth: 130, paddingBottom: 6, fontSize: FONT.label }}>
+        {condition.side === 'prefix'
+          ? 'Map of …'
+          : condition.side === 'suffix'
+            ? '… Map (Tier …)'
+            : 'Map of … or … Map (Tier …)'}
+      </Text>
+    )}
+    <Tooltip label="Remove condition">
+      <ActionIcon
+        className="regex-destructive-icon"
+        size="sm"
+        variant="default"
+        aria-label="Remove condition"
+        onClick={onRemove}
+        style={{ marginBottom: 2 }}
+      >
+        <IconX size={13} />
+      </ActionIcon>
+    </Tooltip>
+  </Group>
+);
+
+const MagicMapWorkflowSection = ({ onCharCountChange }: { onCharCountChange: (count: number) => void }) => {
+  const [required, setRequired] = useState<EditableMagicMapPredicate[]>([
+    { id: 'required-pack-20', kind: 'stat', stat: 'packSize', minimum: 20 },
+  ]);
+  const [alternatives, setAlternatives] = useState<EditableMagicMapPredicate[]>([
+    { id: 'alternative-open', kind: 'open-affix', side: 'either' },
+    { id: 'alternative-deb', kind: 'token', token: 'deb' },
+    { id: 'alternative-pack-40', kind: 'stat', stat: 'packSize', minimum: 40 },
+  ]);
+  const [chiselName, setChiselName] = useState('');
+  const [chiselApplied, setChiselApplied] = useState(true);
+  const nextConditionId = useRef(0);
+
+  const selectedChisel = MAGIC_MAP_CHISELS.find((chisel) => chisel.value === chiselName);
+  const generated = generateMagicMapRegex({
+    required: required.map(predicateWithoutId),
+    alternatives: alternatives.map(predicateWithoutId),
+    chisel: selectedChisel
+      ? { stat: selectedChisel.stat, bonus: selectedChisel.bonus, applied: chiselApplied }
+      : undefined,
   });
+  const { regex, charCount, blockCount, invalidCount } = generated;
+  const overLimit = charCount > REGEX_CHAR_LIMIT;
+  const canCopy = !!regex && invalidCount === 0 && !overLimit;
 
   useEffect(() => onCharCountChange(charCount), [charCount, onCharCountChange]);
 
+  const updateCondition = (
+    list: EditableMagicMapPredicate[],
+    setList: (conditions: EditableMagicMapPredicate[]) => void,
+    id: string,
+    condition: EditableMagicMapPredicate,
+  ) => setList(list.map((entry) => entry.id === id ? condition : entry));
+  const removeCondition = (
+    list: EditableMagicMapPredicate[],
+    setList: (conditions: EditableMagicMapPredicate[]) => void,
+    id: string,
+  ) => setList(list.filter((entry) => entry.id !== id));
+  const addCondition = (
+    list: EditableMagicMapPredicate[],
+    setList: (conditions: EditableMagicMapPredicate[]) => void,
+  ) => {
+    nextConditionId.current += 1;
+    setList([...list, {
+      id: `magic-condition-${nextConditionId.current}`,
+      kind: 'stat',
+      stat: 'moreCurrency',
+      minimum: 20,
+    }]);
+  };
+
   return (
-    <Stack gap={8}>
+    <Stack gap={10}>
       <Text size="xs" c="dimmed" style={{ fontSize: FONT.small, lineHeight: 1.5 }}>
-        Highlights maps that: (1) have ≥{currencyMin}% currency AND ≥{packMin}% pack size,
-        or (2) have currency as their ONLY mod (open slot — Augment it){gigaMin > currencyMin ? `, or (3) ≥${gigaMin}% currency regardless of pack (keeper)` : ''}.
-      </Text>
-      <Text size="xs" c="dimmed" style={{ fontSize: FONT.label, lineHeight: 1.6 }}>
-        Open suffix: <Text span style={{ fontFamily: 'monospace', fontSize: FONT.label, color: COLOR.accent }}> Map \(Tier</Text>
-        {'  '}Open prefix: <Text span style={{ fontFamily: 'monospace', fontSize: FONT.label, color: COLOR.accent }}>^Map of</Text>
-        {'  '}Neither matches a full 2-mod map → no false positives.
+        Every required condition must match. The map must then match at least one highlight condition.
+        Use an exact numeric floor or a shorter known mod token such as <Text span c="teal" ff="monospace">deb</Text>.
       </Text>
 
-      <Group gap="md" wrap="wrap" align="flex-end">
-        <NumberInput size="xs" label="Min currency %" value={currencyMin} min={0} max={400} step={10}
-          style={{ width: 120 }}
-          onChange={(v) => setCurrencyMin(Number(v) || 0)} />
-        <NumberInput size="xs" label="Min pack size %" value={packMin} min={0} max={100} step={5}
-          style={{ width: 120 }}
-          onChange={(v) => setPackMin(Number(v) || 0)} />
-        <NumberInput size="xs" label="Currency Floor (Ignore Pack Size)" description="Highlight regardless of pack"
-          value={gigaMin} min={0} max={500} step={10}
-          style={{ width: 200 }}
-          onChange={(v) => setGigaMin(Number(v) || 0)} />
-      </Group>
+      <Stack className="regex-magic-rule" gap={7} p="sm">
+        <Group justify="space-between" gap={8}>
+          <div>
+            <Text size="xs" fw={700}>Required baseline</Text>
+            <Text size="xs" c="dimmed" style={{ fontSize: FONT.label }}>Every row is required (AND).</Text>
+          </div>
+          <Button size="compact-xs" variant="default" leftSection={<IconPlus size={11} />}
+            onClick={() => addCondition(required, setRequired)}>
+            condition
+          </Button>
+        </Group>
+        {required.map((condition) => (
+          <MagicMapConditionEditor
+            key={condition.id}
+            condition={condition}
+            onChange={(updated) => updateCondition(required, setRequired, condition.id, updated)}
+            onRemove={() => removeCondition(required, setRequired, condition.id)}
+          />
+        ))}
+        {required.length === 0 && (
+          <Text size="xs" c="dimmed" style={{ fontSize: FONT.label }}>No universal baseline.</Text>
+        )}
+      </Stack>
 
-      <Group gap={8} align="center">
-        <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>Avarice chisel already applied?</Text>
-        <Switch size="sm" checked={chiseled} onChange={(e) => handleChiselToggle(e.currentTarget.checked)} />
-        <Text size="xs" c={chiseled ? 'green' : 'orange'} style={{ fontSize: FONT.small }}>
-          {chiseled
-            ? 'Yes — showing post-chisel values'
-            : 'No — thresholds already adjusted -50 for pre-chisel rolls'}
+      <Stack className="regex-magic-rule" gap={7} p="sm">
+        <Group justify="space-between" gap={8}>
+          <div>
+            <Text size="xs" fw={700}>Highlight when any</Text>
+            <Text size="xs" c="dimmed" style={{ fontSize: FONT.label }}>These rows share one OR block.</Text>
+          </div>
+          <Button size="compact-xs" variant="default" leftSection={<IconPlus size={11} />}
+            onClick={() => addCondition(alternatives, setAlternatives)}>
+            condition
+          </Button>
+        </Group>
+        {alternatives.map((condition) => (
+          <MagicMapConditionEditor
+            key={condition.id}
+            condition={condition}
+            onChange={(updated) => updateCondition(alternatives, setAlternatives, condition.id, updated)}
+            onRemove={() => removeCondition(alternatives, setAlternatives, condition.id)}
+          />
+        ))}
+        {alternatives.length === 0 && (
+          <Text size="xs" c="dimmed" style={{ fontSize: FONT.label }}>No alternative highlight condition.</Text>
+        )}
+      </Stack>
+
+      <Stack className="regex-magic-rule" gap={7} p="sm">
+        <Group gap={8} align="flex-end" wrap="wrap">
+          <Select
+            size="xs"
+            label="Optional chisel adjustment"
+            data={MAGIC_MAP_CHISEL_OPTIONS}
+            value={chiselName}
+            allowDeselect={false}
+            style={{ flex: 1, minWidth: 220 }}
+            onChange={(value) => setChiselName(value ?? '')}
+          />
+          {selectedChisel && (
+            <Switch
+              size="sm"
+              label="Applied to maps"
+              checked={chiselApplied}
+              onChange={(event) => setChiselApplied(event.currentTarget.checked)}
+              style={{ paddingBottom: 4 }}
+            />
+          )}
+        </Group>
+        {selectedChisel && (
+          <Text size="xs" c={chiselApplied ? 'dimmed' : 'orange'} style={{ fontSize: FONT.label }}>
+            {chiselApplied
+              ? `Searching chiseled maps: ${MAGIC_MAP_STAT_LABELS[selectedChisel.stat]} floors include the +${selectedChisel.bonus}% chisel bonus.`
+              : `Searching unchiseled maps: the entered ${MAGIC_MAP_STAT_LABELS[selectedChisel.stat]} minimum is used exactly.`}
+          </Text>
+        )}
+      </Stack>
+
+      <Stack className="regex-builder-output" gap={7} p="sm">
+        <Group justify="space-between" wrap="nowrap">
+          <div>
+            <Text size="xs" fw={700}>Generated Regex</Text>
+            <Text size="xs" c="dimmed" style={{ fontSize: FONT.label }}>
+              {required.map(conditionDescription).join(' AND ') || 'No baseline'}
+              {alternatives.length > 0 ? ` · then any: ${alternatives.map(conditionDescription).join(', ')}` : ''}
+            </Text>
+          </div>
+          <Badge size="xs" color={charCountColor(charCount)} variant="light">
+            {charCount} / {REGEX_CHAR_LIMIT}
+          </Badge>
+        </Group>
+        <Text style={{ fontFamily: 'monospace', fontSize: FONT.label, color: regex ? COLOR.accent : COLOR.textFaint, wordBreak: 'break-all', lineHeight: 1.6 }}>
+          {regex || 'Add at least one complete condition.'}
         </Text>
-      </Group>
-
-      <Stack gap={2}>
-        <Group justify="space-between">
-          <Text size="xs" c="dimmed" style={{ fontSize: FONT.label }}>
-            {charCount} chars
-            {charCount > REGEX_CHAR_LIMIT && <Text span c="red"> over limit</Text>}
+        <Progress value={Math.min(100, (charCount / REGEX_CHAR_LIMIT) * 100)}
+          color={charCountColor(charCount)} size="xs" radius="xl" />
+        <Group justify="space-between" gap={8}>
+          <Text size="xs" c={invalidCount > 0 || overLimit ? 'red' : 'dimmed'} style={{ fontSize: FONT.label }}>
+            {invalidCount > 0
+              ? `${invalidCount} unfinished condition${invalidCount === 1 ? '' : 's'}`
+              : overLimit
+                ? `${charCount - REGEX_CHAR_LIMIT} chars over the stash limit`
+                : `${blockCount} AND block${blockCount === 1 ? '' : 's'}`}
           </Text>
           <CopyButton value={regex} timeout={2000}>
             {({ copied, copy }) => (
               <Button size="xs" variant="light" color={copied ? 'teal' : 'orange'}
                 leftSection={copied ? <IconCheck size={11} /> : <IconCopy size={11} />}
-                onClick={copy} style={{ minWidth: 90 }}>
-                {copied ? 'Copied!' : 'Copy'}
+                disabled={!canCopy}
+                onClick={copy} style={{ minWidth: 100 }}>
+                {copied ? 'Copied!' : 'Copy Regex'}
               </Button>
             )}
           </CopyButton>
         </Group>
-        <Text style={{ fontFamily: 'monospace', fontSize: FONT.label, color: COLOR.accent, wordBreak: 'break-all', lineHeight: 1.6 }}>
-          {regex}
-        </Text>
       </Stack>
     </Stack>
   );
@@ -481,12 +713,12 @@ export const BuilderTab = () => {
     useSessionKeys('regexBuilderGroups', 'setRegexBuilderGroups', 'saveExclusionPreset');
   const groups = regexBuilderGroups;
   const rootRef = useRef<HTMLDivElement>(null);
-  const [craftingOpen, setCraftingOpen] = useState(false);
-  const [builderOpen, setBuilderOpen] = useState(true);
+  const [craftingOpen, setCraftingOpen] = useState(true);
+  const [builderOpen, setBuilderOpen] = useState(false);
   const [howOpen, setHowOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
-  const [altAugCharCount, setAltAugCharCount] = useState(84);
+  const [magicMapCharCount, setMagicMapCharCount] = useState(0);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(
     () => groups[0]?.id ?? null,
   );
@@ -588,9 +820,26 @@ export const BuilderTab = () => {
         <Stack className="regex-tab-content" gap={10}>
           <Alert className="regex-builder-intro" color="gray" variant="light" p="xs">
             <Text size="xs">
-              This crafting and threshold builder is intended for Originator maps. Groups are ANDed together; within a group, Any/All/At least N controls its OR logic.
+              Magic Map Workflow combines exact thresholds, open affixes, and known mod tokens.
+              K-of-N groups remain available for symmetric mod-count rules.
             </Text>
           </Alert>
+          <Stack gap={0}>
+            <SectionBar
+              open={craftingOpen}
+              title="Magic Map Workflow"
+              description="build candidate and keeper rules for rolling blue maps"
+              meta={`${magicMapCharCount} chars`}
+              onToggle={() => setCraftingOpen((open) => !open)}
+            />
+            <Collapse in={craftingOpen}>
+              <div
+                className="regex-builder-section-content"
+              >
+                <MagicMapWorkflowSection onCharCountChange={setMagicMapCharCount} />
+              </div>
+            </Collapse>
+          </Stack>
           <Stack gap={0}>
             <SectionBar
               open={builderOpen}
@@ -776,22 +1025,6 @@ export const BuilderTab = () => {
             </Collapse>
           </Stack>
 
-          <Stack gap={0}>
-            <SectionBar
-              open={craftingOpen}
-              title="Alt/Aug Magic Map Crafting"
-              description="dynamic regex for rolling blue Originator maps"
-              meta={`${altAugCharCount} chars`}
-              onToggle={() => setCraftingOpen((open) => !open)}
-            />
-            <Collapse in={craftingOpen}>
-              <div
-                className="regex-builder-section-content"
-              >
-                <AltAugSection onCharCountChange={setAltAugCharCount} />
-              </div>
-            </Collapse>
-          </Stack>
         </Stack>
       </ScrollArea>
     </div>

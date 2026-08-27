@@ -86,13 +86,14 @@ describe('Regex visual-alignment presentation contract', () => {
       .toContain('background: var(--regex-surface-raised);');
   });
 
-  it('keeps Trade and generation behavior entry points unchanged', () => {
+  it('keeps Trade and both builder generation paths wired', () => {
     expect(sessionSource).toContain('title="PoE Trade Map Search"');
     expect(sessionSource).toContain('generateRunRegex(');
     expect(sessionSource).toContain('generateSlamRegex(');
     expect(sessionSource).toContain('generateTradeRegex(');
     expect(builderSource).toContain('generateBuilderRegex(groups)');
-    expect(builderSource).toContain('generateAltAugRegex(');
+    expect(builderSource).toContain('generateMagicMapRegex({');
+    expect(builderSource).toContain('title="Magic Map Workflow"');
     expect(panelSource).toContain('clearDefaultPreset');
   });
 });
