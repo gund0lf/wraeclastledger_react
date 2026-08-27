@@ -82,12 +82,19 @@ export default function OverlayApp() {
   const live = snapshot.lifecycle === 'live';
   const showTimer = snapshot.preferences.mode !== 'counters';
   const showCounters = snapshot.preferences.mode !== 'timer';
+  const minimal = snapshot.preferences.minimal;
 
   return (
     <Paper
       withBorder
       radius="md"
-      p="xs"
+      p={minimal ? 4 : 'xs'}
+      onPointerDown={minimal
+        ? (event) => beginBoundsInteraction('move', event)
+        : undefined}
+      onPointerMove={minimal ? updateBoundsInteraction : undefined}
+      onPointerUp={minimal ? endBoundsInteraction : undefined}
+      onPointerCancel={minimal ? endBoundsInteraction : undefined}
       style={{
         position: 'relative',
         height: '100vh',
@@ -95,10 +102,13 @@ export default function OverlayApp() {
         background: COLOR.bgPanel,
         borderColor: snapshot.timer.running ? COLOR.accentStrong : COLOR.border,
         opacity: window.api.usesManagedOverlayBounds ? snapshot.preferences.opacity : undefined,
+        ...(!window.api.usesManagedOverlayBounds && minimal && !snapshot.preferences.locked
+          ? dragStyle
+          : {}),
       }}
     >
-      <Stack gap="xs" h="100%">
-        <Group
+      <Stack gap={minimal ? 4 : 'xs'} h="100%">
+        {!minimal && <Group
           justify="space-between"
           wrap="nowrap"
           gap={4}
@@ -144,10 +154,10 @@ export default function OverlayApp() {
               </ActionIcon>
             </Tooltip>
           </Group>
-        </Group>
+        </Group>}
 
         {showTimer && (
-          <Box style={noDragStyle}>
+          <Box style={minimal ? undefined : noDragStyle}>
             <Text
               ta="center"
               fw={800}
@@ -160,7 +170,7 @@ export default function OverlayApp() {
             >
               {formatStopwatch(elapsed)}
             </Text>
-            <Group justify="center" gap={4} mt={4}>
+            <Group justify="center" gap={4} mt={4} style={noDragStyle} data-overlay-control>
               <Button
                 size="compact-xs"
                 variant={snapshot.timer.running ? 'light' : 'filled'}
@@ -190,7 +200,7 @@ export default function OverlayApp() {
             className="overlay-counter-list"
             gap={4}
             style={{
-              ...noDragStyle,
+              ...(minimal ? {} : noDragStyle),
               minHeight: 0,
               overflowY: 'auto',
             }}
@@ -207,7 +217,9 @@ export default function OverlayApp() {
               >
                 <Text size="xs" truncate>{counter.label}</Text>
                 <Box
+                  data-overlay-control
                   style={{
+                    ...noDragStyle,
                     display: 'grid',
                     gridTemplateColumns: '22px 56px 22px',
                     alignItems: 'center',

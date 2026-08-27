@@ -3,7 +3,13 @@
  * Pure function over parsedAt timestamps; no store, no React.
  */
 import { describe, it, expect } from 'vitest';
-import { computeTimeEstimate, formatActiveTime, MIN_TIMESTAMPED_MAPS, MIN_ACTIVE_MS } from './timeEstimate';
+import {
+  automaticPaceStatus,
+  computeTimeEstimate,
+  formatActiveTime,
+  MIN_TIMESTAMPED_MAPS,
+  MIN_ACTIVE_MS,
+} from './timeEstimate';
 
 const MIN = 60_000;
 /** Build maps from gap minutes: gaps [2,2,2] -> 4 maps at t=0,2,4,6 min. */
@@ -92,5 +98,19 @@ describe('formatActiveTime', () => {
     expect(formatActiveTime(42 * MIN)).toBe('42m');
     expect(formatActiveTime(20_000)).toBe('<1m');
     expect(formatActiveTime(60 * MIN)).toBe('1h 0m');
+  });
+});
+
+describe('automaticPaceStatus', () => {
+  it('describes the shared ready, collecting, sampling, and estimating states', () => {
+    expect(automaticPaceStatus(null, 0)).toMatchObject({ badge: 'Ready', color: 'gray' });
+    expect(automaticPaceStatus(null, 3)).toMatchObject({ badge: '3/5 captures', color: 'yellow' });
+    expect(automaticPaceStatus(null, 5)).toMatchObject({ badge: 'Sampling', color: 'yellow' });
+    const estimate = computeTimeEstimate(mapsFromGaps([3, 3, 3, 30, 3]));
+    expect(automaticPaceStatus(estimate, 6)).toEqual({
+      badge: 'Estimating',
+      color: 'blue',
+      detail: '20.0 maps/h · 12m active · 1 break excluded',
+    });
   });
 });

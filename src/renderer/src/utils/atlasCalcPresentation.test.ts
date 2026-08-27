@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '../store/useSessionStore';
 import {
+  atlasSyncPresentation,
   atlasSyncState,
   describeMapModifierSource,
   fragmentSourceLabel,
@@ -53,6 +54,14 @@ describe('Atlas Calc provenance presentation', () => {
       .toBe('changed-since-read');
     expect(atlasSyncState(settings(), 'live')).toBe('never-read');
     expect(atlasSyncState(settings({ mountingModifiers: true }), 'live')).toBe('legacy-imported');
+  });
+
+  it('shares the same concise status presentation across setup consumers', () => {
+    expect(atlasSyncPresentation('current')).toMatchObject({ label: 'Synced', color: 'green' });
+    expect(atlasSyncPresentation('changed-since-read')).toMatchObject({ label: 'Tree changed', color: 'yellow' });
+    expect(atlasSyncPresentation('never-read')).toMatchObject({ label: 'Not synced', color: 'gray' });
+    expect(atlasSyncPresentation('previous-league')).toMatchObject({ label: 'Previous league', color: 'yellow' });
+    expect(atlasSyncPresentation('legacy-imported')).toMatchObject({ label: 'Legacy / imported', color: 'yellow' });
   });
 
   it('uses exact Map Log evidence only with complete bounded coverage', () => {

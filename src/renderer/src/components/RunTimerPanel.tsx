@@ -18,7 +18,7 @@ import { useDisclosure } from '@mantine/hooks';
 import { IconAdjustments, IconClock, IconPlayerPause, IconPlayerPlay, IconSquare, IconTrash } from '@tabler/icons-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useSessionKeys } from '../store/useSessionStore';
-import { computeTimeEstimate, formatActiveTime } from '../utils/timeEstimate';
+import { automaticPaceStatus, computeTimeEstimate } from '../utils/timeEstimate';
 import { formatStopwatch, manualRunTimerElapsed } from '../utils/manualRunTimer';
 import { OVERLAY_COUNTER_OPTIONS, overlayCounterSnapshot } from '../utils/overlayCounters';
 import { FONT } from '../utils/uiTokens';
@@ -61,6 +61,11 @@ export function RunTimerPanel() {
   const [adjustOpen, adjustDisclosure] = useDisclosure(false);
   const [adjustMinutes, setAdjustMinutes] = useState<number | string>(0);
   const clipboardTime = useMemo(() => computeTimeEstimate(maps), [maps]);
+  const timestampedMaps = useMemo(
+    () => maps.filter((map) => typeof map.parsedAt === 'number' && Number.isFinite(map.parsedAt)).length,
+    [maps],
+  );
+  const clipboardStatus = automaticPaceStatus(clipboardTime, timestampedMaps);
   const running = manualRunTimer.runningSince !== null;
 
   useEffect(() => {
@@ -89,7 +94,7 @@ export function RunTimerPanel() {
                 {running && <Badge size="xs" color="blue">Running</Badge>}
               </Group>
               <Text size="xs" c="dimmed">
-                For pre-imported runs; automatic clipboard Pace remains the default.
+                Automatic capture comes from Map Log; the stopwatch is optional for imported runs.
               </Text>
             </div>
           </Group>
@@ -148,15 +153,21 @@ export function RunTimerPanel() {
               leftSection={<IconAdjustments size={13} />}
               onClick={settingsDisclosure.open}
             >
-              Overlay
+              Overlay counters ({overlayPreferences.counterIds.length})
             </Button>
           </Group>
 
           <Group className="run-timer-meta" justify="space-between" gap="xs" wrap="wrap">
-            <Text size="xs" c="dimmed">
-              Clipboard estimate: {clipboardTime ? formatActiveTime(clipboardTime.activeMs) : 'not available'}
-            </Text>
-            <Text size="xs" c="dimmed">Manual: {formatStopwatch(elapsedMs)}</Text>
+            <div className="run-timer-automatic">
+              <Group gap={6} wrap="nowrap">
+                <Text size="xs" fw={700}>Automatic pace</Text>
+                <Badge size="xs" variant="outline" color={clipboardStatus.color}>
+                  {clipboardStatus.badge}
+                </Badge>
+              </Group>
+              <Text size="xs" c="dimmed">{clipboardStatus.detail}</Text>
+            </div>
+            <Text size="xs" c="dimmed">Manual stopwatch: {formatStopwatch(elapsedMs)}</Text>
           </Group>
           {!live && (
             <Text className="run-timer-history-note" size="xs" c="dimmed">
@@ -219,10 +230,12 @@ export function RunTimerPanel() {
         </Stack>
       </Modal>
 
-      <Modal opened={settingsOpen} onClose={settingsDisclosure.close} title="Pinned overlay" size="lg">
+      <Modal opened={settingsOpen} onClose={settingsDisclosure.close} title="Timer / counters overlay" size="lg">
         <Stack gap="md">
           <Text size="sm" c="dimmed">
-            The overlay is a separate, subtle window. Its buttons update the current live session through the main app; it never opens a second repository.
+            Configure this before your run if you want quick counters. Selected counters begin at zero,
+            stay available across sessions, and update the current live session through the main app.
+            The overlay never opens a second repository.
           </Text>
           <Group justify="space-between">
             <Button
@@ -248,7 +261,7 @@ export function RunTimerPanel() {
 
           <MultiSelect
             label="Counters"
-            description="Choose up to eight raw counters. Percentages remain in the full Run Statistics panel."
+            description="Choose up to eight raw counters. This is a global overlay preference; unrecorded counters start at zero and percentages remain in Run Statistics."
             searchable
             clearable
             maxValues={8}
@@ -272,7 +285,7 @@ export function RunTimerPanel() {
           <Group grow align="start">
             <Switch
               label="Lock position and size"
-              description="Disables both header dragging and edge resizing."
+              description="Disables overlay dragging and edge resizing."
               checked={overlayPreferences.locked}
               onChange={(event) => setOverlayPreferences({ locked: event.currentTarget.checked })}
             />
@@ -283,6 +296,13 @@ export function RunTimerPanel() {
               onChange={(event) => setOverlayPreferences({ clickThrough: event.currentTarget.checked })}
             />
           </Group>
+
+          <Switch
+            label="Minimal chrome"
+            description="Show only the timer and/or counters. Drag a non-button area; return here to lock, hide, or disable click-through."
+            checked={overlayPreferences.minimal}
+            onChange={(event) => setOverlayPreferences({ minimal: event.currentTarget.checked })}
+          />
 
           <TextInput
             label="Start / Pause shortcut"

@@ -9,6 +9,14 @@ const timerSource = readFileSync(
   new URL('../components/RunTimerPanel.tsx', import.meta.url),
   'utf8',
 );
+const readinessSource = readFileSync(
+  new URL('../components/RunStatisticsSetupReadiness.tsx', import.meta.url),
+  'utf8',
+);
+const overlaySource = readFileSync(
+  new URL('../OverlayApp.tsx', import.meta.url),
+  'utf8',
+);
 const cssSource = readFileSync(
   new URL('../modules/RunStatisticsModule.css', import.meta.url),
   'utf8',
@@ -64,8 +72,22 @@ describe('Run Statistics visual-alignment presentation contract', () => {
     expect(timerSource).toContain('className="run-timer-layout"');
     expect(timerSource).toContain('className="run-timer-value"');
     expect(timerSource).toContain('className="run-timer-controls"');
-    expect(timerSource).toContain('automatic clipboard Pace remains the default');
+    expect(timerSource).toContain('Automatic capture comes from Map Log');
     expect(cssSource).toContain("'heading value controls'");
+  });
+
+  it('makes Atlas freshness and zero-start overlay setup visible before a run', () => {
+    expect(moduleSource).toContain('<RunStatisticsSetupReadiness />');
+    expect(readinessSource).toContain('atlasSyncState(settings, sessionLifecycle)');
+    expect(readinessSource).toContain('Sync before entering observations');
+    expect(readinessSource).toContain("requestPanel('atlas-tree')");
+    expect(timerSource).toContain('Overlay counters ({overlayPreferences.counterIds.length})');
+    expect(timerSource).toContain('Selected counters begin at zero');
+    expect(timerSource).toContain('This is a global overlay preference');
+    expect(timerSource).toContain('automaticPaceStatus(clipboardTime, timestampedMaps)');
+    expect(timerSource).toContain('Minimal chrome');
+    expect(overlaySource).toContain('{!minimal && <Group');
+    expect(overlaySource).toContain("p={minimal ? 4 : 'xs'}");
   });
 
   it('retains the existing statistics and timer behavior entry points', () => {

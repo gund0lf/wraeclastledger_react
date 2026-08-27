@@ -37,6 +37,51 @@ export interface TimeEstimate {
   excludedGaps: number;
 }
 
+export interface AutomaticPaceStatus {
+  badge: string;
+  color: 'blue' | 'gray' | 'yellow';
+  detail: string;
+}
+
+/** One shared readiness presentation for every surface that explains the
+ * capture-derived clock. This keeps Map Log and Run Statistics from describing
+ * the same timestamps as if they were different timers. */
+export function automaticPaceStatus(
+  estimate: TimeEstimate | null,
+  timestampedMaps: number,
+): AutomaticPaceStatus {
+  if (estimate) {
+    return {
+      badge: 'Estimating',
+      color: 'blue',
+      detail: `${estimate.mapsPerHour.toFixed(1)} maps/h · ${formatActiveTime(estimate.activeMs)} active${
+        estimate.excludedGaps > 0
+          ? ` · ${estimate.excludedGaps} break${estimate.excludedGaps === 1 ? '' : 's'} excluded`
+          : ''
+      }`,
+    };
+  }
+  if (timestampedMaps === 0) {
+    return {
+      badge: 'Ready',
+      color: 'gray',
+      detail: 'Copy a map before entering; the next capture completes its timer.',
+    };
+  }
+  if (timestampedMaps < MIN_TIMESTAMPED_MAPS) {
+    return {
+      badge: `${timestampedMaps}/${MIN_TIMESTAMPED_MAPS} captures`,
+      color: 'yellow',
+      detail: 'Timing started — keep capturing once before each map.',
+    };
+  }
+  return {
+    badge: 'Sampling',
+    color: 'yellow',
+    detail: `Keep capturing until at least ${MIN_ACTIVE_MS / 60_000} minutes of usable activity are measured.`,
+  };
+}
+
 /**
  * Returns null when there is not enough data for a meaningful estimate:
  * fewer than MIN_TIMESTAMPED_MAPS timestamped maps, or less than

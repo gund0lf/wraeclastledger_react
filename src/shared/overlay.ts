@@ -10,6 +10,7 @@ export interface OverlayBounds {
 export interface OverlayPreferences {
   visible: boolean;
   mode: OverlayMode;
+  minimal: boolean;
   opacity: number;
   locked: boolean;
   clickThrough: boolean;
@@ -36,7 +37,7 @@ export interface OverlaySnapshot {
     capturedAt: number;
   };
   counters: OverlayCounterSnapshot[];
-  preferences: Pick<OverlayPreferences, 'mode' | 'opacity' | 'locked' | 'clickThrough'>;
+  preferences: Pick<OverlayPreferences, 'mode' | 'minimal' | 'opacity' | 'locked' | 'clickThrough'>;
 }
 
 export type OverlayAction =
@@ -68,10 +69,15 @@ export const DEFAULT_OVERLAY_COUNTER_IDS = [
 ] as const;
 
 export const OVERLAY_PLACEMENT_REVISION = 2;
+export const OVERLAY_MIN_WIDTH = 220;
+export const OVERLAY_MIN_HEIGHT = 90;
+export const OVERLAY_MINIMAL_WIDTH = 180;
+export const OVERLAY_MINIMAL_HEIGHT = 72;
 
 export const DEFAULT_OVERLAY_PREFERENCES: OverlayPreferences = {
   visible: false,
   mode: 'both',
+  minimal: false,
   opacity: 0.92,
   locked: false,
   clickThrough: false,
@@ -121,12 +127,18 @@ export function normalizeOverlayPreferences(value: unknown): OverlayPreferences 
     ? input.bounds as Record<string, unknown> : null;
   const x = rawBounds ? boundedNumber(rawBounds.x, -100_000, 100_000) : null;
   const y = rawBounds ? boundedNumber(rawBounds.y, -100_000, 100_000) : null;
-  const width = rawBounds ? boundedNumber(rawBounds.width, 220, 800) : null;
-  const height = rawBounds ? boundedNumber(rawBounds.height, 90, 900) : null;
+  const minimal = input.minimal === true;
+  const width = rawBounds
+    ? boundedNumber(rawBounds.width, minimal ? OVERLAY_MINIMAL_WIDTH : OVERLAY_MIN_WIDTH, 800)
+    : null;
+  const height = rawBounds
+    ? boundedNumber(rawBounds.height, minimal ? OVERLAY_MINIMAL_HEIGHT : OVERLAY_MIN_HEIGHT, 900)
+    : null;
   return {
     visible: input.visible === true,
     mode: input.mode === 'timer' || input.mode === 'counters' || input.mode === 'both'
       ? input.mode : DEFAULT_OVERLAY_PREFERENCES.mode,
+    minimal,
     opacity: boundedNumber(input.opacity, 0.4, 1) ?? DEFAULT_OVERLAY_PREFERENCES.opacity,
     locked: input.locked === true,
     clickThrough: input.clickThrough === true,

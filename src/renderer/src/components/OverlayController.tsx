@@ -24,6 +24,7 @@ function publishSnapshot(state: SessionStoreState): void {
       .filter((entry) => entry !== null),
     preferences: {
       mode: state.overlayPreferences.mode,
+      minimal: state.overlayPreferences.minimal,
       opacity: state.overlayPreferences.opacity,
       locked: state.overlayPreferences.locked,
       clickThrough: state.overlayPreferences.clickThrough,

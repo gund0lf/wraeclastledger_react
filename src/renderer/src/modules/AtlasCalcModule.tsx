@@ -21,11 +21,11 @@ import { confirmedLeagueSync } from '../utils/league';
 import { COLOR, FONT } from '../utils/uiTokens';
 import { isPathofpathingTreeUrl } from '../utils/atlasUrl';
 import {
+  atlasSyncPresentation,
   atlasSyncState,
   describeMapModifierSource,
   fragmentSourceLabel,
   shouldShowAtlasSyncGuidance,
-  type AtlasSyncState,
 } from '../utils/atlasCalcPresentation';
 import { applyAtlasStatsSyncPatch, buildAtlasStatsSyncPatch } from '../utils/atlasStatsSync';
 import { MULTIPLYING_EFFECT_PER_FRAGMENT } from '../../../shared/mapDevice';
@@ -74,25 +74,6 @@ const SourceRow = ({ name, value, source, detail, active = false }: {
     </div>
   </Tooltip>
 );
-
-const syncPresentation = (state: AtlasSyncState): {
-  label: string;
-  color: 'green' | 'yellow' | 'gray';
-  detail: string;
-} => {
-  switch (state) {
-    case 'current':
-      return { label: 'Synced', color: 'green', detail: 'Derived inputs match the saved Atlas Tree.' };
-    case 'changed-since-read':
-      return { label: 'Tree changed', color: 'yellow', detail: 'The tree URL changed after the last successful setup sync.' };
-    case 'previous-league':
-      return { label: 'Previous league', color: 'yellow', detail: 'This setup belongs to a previous league session.' };
-    case 'legacy-imported':
-      return { label: 'Legacy / imported', color: 'yellow', detail: 'Stored values are retained, but no successful Atlas sync identity exists.' };
-    case 'never-read':
-      return { label: 'Not synced', color: 'gray', detail: 'No successful Atlas setup sync has been recorded for this session.' };
-  }
-};
 
 const fmt1 = (value: number): string => Number.isInteger(value) ? String(value) : value.toFixed(1);
 
@@ -165,7 +146,7 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
 
   const mapSource = describeMapModifierSource(maps, settings.mapType);
   const syncState = atlasSyncState(settings, sessionLifecycle);
-  const syncStatus = syncPresentation(syncState);
+  const syncStatus = atlasSyncPresentation(syncState);
   const hasTree = isPathofpathingTreeUrl(settings.atlasTreeUrl);
   const riskScarabs = scarabOfRiskMods / 2;
   const atlasSource = syncState === 'current'

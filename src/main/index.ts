@@ -39,6 +39,10 @@ import {
 } from './sessionRepositoryClose'
 import {
   DEFAULT_OVERLAY_PREFERENCES,
+  OVERLAY_MIN_HEIGHT,
+  OVERLAY_MIN_WIDTH,
+  OVERLAY_MINIMAL_HEIGHT,
+  OVERLAY_MINIMAL_WIDTH,
   normalizeOverlayBoundsInteraction,
   normalizeOverlayPreferences,
   type OverlayAction,
@@ -270,8 +274,10 @@ function visibleOverlayBounds(preferences: OverlayPreferences): OverlayBounds {
     y: initialDisplay.workArea.y + 80,
   };
   const display = screen.getDisplayMatching(requested);
-  const width = Math.min(display.workArea.width, Math.max(220, requested.width));
-  const height = Math.min(display.workArea.height, Math.max(90, requested.height));
+  const minWidth = preferences.minimal ? OVERLAY_MINIMAL_WIDTH : OVERLAY_MIN_WIDTH;
+  const minHeight = preferences.minimal ? OVERLAY_MINIMAL_HEIGHT : OVERLAY_MIN_HEIGHT;
+  const width = Math.min(display.workArea.width, Math.max(minWidth, requested.width));
+  const height = Math.min(display.workArea.height, Math.max(minHeight, requested.height));
   return {
     width,
     height,

@@ -12,6 +12,27 @@ export type AtlasSyncState =
   | 'previous-league'
   | 'legacy-imported';
 
+export interface AtlasSyncPresentation {
+  label: string;
+  color: 'green' | 'yellow' | 'gray';
+  detail: string;
+}
+
+export function atlasSyncPresentation(state: AtlasSyncState): AtlasSyncPresentation {
+  switch (state) {
+    case 'current':
+      return { label: 'Synced', color: 'green', detail: 'Derived inputs match the saved Atlas Tree.' };
+    case 'changed-since-read':
+      return { label: 'Tree changed', color: 'yellow', detail: 'The tree URL changed after the last successful setup sync.' };
+    case 'previous-league':
+      return { label: 'Previous league', color: 'yellow', detail: 'This setup belongs to a previous league session.' };
+    case 'legacy-imported':
+      return { label: 'Legacy / imported', color: 'yellow', detail: 'Stored values are retained, but no successful Atlas sync identity exists.' };
+    case 'never-read':
+      return { label: 'Not synced', color: 'gray', detail: 'No successful Atlas setup sync has been recorded for this session.' };
+  }
+}
+
 export function shouldShowAtlasSyncGuidance(
   state: AtlasSyncState,
   options: {

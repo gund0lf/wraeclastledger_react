@@ -17,10 +17,8 @@ import { markPossibleDuplicates } from '../utils/mapDuplicates';
 import { usePanelMaximized } from '../layout/panelLayoutContext';
 import { formatDeliriumRewards, useDedicatedDeliriumColumn } from '../utils/deliriumMetadata';
 import {
+  automaticPaceStatus,
   computeTimeEstimate,
-  formatActiveTime,
-  MIN_ACTIVE_MS,
-  MIN_TIMESTAMPED_MAPS,
 } from '../utils/timeEstimate';
 import type { MapData } from '../types';
 import './SessionLogModule.css';
@@ -69,33 +67,7 @@ const AutomaticPaceGuide = ({ maps }: { maps: MapData[] }) => {
     [maps],
   );
 
-  const status = pace
-    ? {
-        badge: 'Estimating',
-        color: 'blue',
-        detail: `${pace.mapsPerHour.toFixed(1)} maps/h · ${formatActiveTime(pace.activeMs)} active${
-          pace.excludedGaps > 0
-            ? ` · ${pace.excludedGaps} break${pace.excludedGaps === 1 ? '' : 's'} excluded`
-            : ''
-        }`,
-      }
-    : timestampedMaps === 0
-      ? {
-          badge: 'Ready',
-          color: 'gray',
-          detail: 'Copy a map before entering; the next capture completes its timer.',
-        }
-      : timestampedMaps < MIN_TIMESTAMPED_MAPS
-        ? {
-            badge: `${timestampedMaps}/${MIN_TIMESTAMPED_MAPS} captures`,
-            color: 'yellow',
-            detail: 'Timing started — keep capturing once before each map.',
-          }
-        : {
-            badge: 'Sampling',
-            color: 'yellow',
-            detail: `Keep capturing until at least ${MIN_ACTIVE_MS / 60_000} minutes of usable activity are measured.`,
-          };
+  const status = automaticPaceStatus(pace, timestampedMaps);
 
   return (
     <Group className="session-log-pace-guide" justify="space-between" gap="sm" wrap="nowrap">

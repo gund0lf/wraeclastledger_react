@@ -21,6 +21,7 @@ import { useDisclosure } from '@mantine/hooks';
 import { IconChevronDown, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { RunTimerPanel } from '../components/RunTimerPanel';
+import { RunStatisticsSetupReadiness } from '../components/RunStatisticsSetupReadiness';
 import type {
   RunStatisticsSetupAttribution,
   RunStatisticsSetupCategory,
@@ -556,6 +557,8 @@ export const RunStatisticsModule = () => {
           </Group>
 
           <RunTimerPanel />
+
+          {!isGlobal && <RunStatisticsSetupReadiness />}
 
           {!manualStatistics.infoDismissed && (
             <Alert

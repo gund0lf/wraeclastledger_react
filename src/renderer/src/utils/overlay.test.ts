@@ -13,6 +13,7 @@ describe('overlay preferences', () => {
     const normalized = normalizeOverlayPreferences({
       visible: true,
       mode: 'both',
+      minimal: true,
       opacity: 4,
       locked: true,
       clickThrough: true,
@@ -23,17 +24,19 @@ describe('overlay preferences', () => {
     });
     expect(normalized).toMatchObject({
       visible: true,
+      minimal: true,
       opacity: 1,
       locked: true,
       clickThrough: true,
       timerShortcut: 'CommandOrControl+Shift+T',
-      bounds: { x: 20, y: 30, width: 220, height: 900 },
+      bounds: { x: 20, y: 30, width: 180, height: 900 },
       placementRevision: 1,
     });
     expect(normalized.counterIds).toHaveLength(8);
     expect(normalized.counterShortcuts['stat:starfallCraters']).toBe('Ctrl+1');
     expect(normalizeOverlayPreferences(null).placementRevision)
       .toBe(OVERLAY_PLACEMENT_REVISION);
+    expect(normalizeOverlayPreferences(null).minimal).toBe(false);
     expect(normalizeOverlayPreferences({ placementRevision: 99 }).placementRevision)
       .toBe(OVERLAY_PLACEMENT_REVISION);
   });
