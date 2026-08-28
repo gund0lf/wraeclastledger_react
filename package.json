@@ -1,6 +1,6 @@
 {
   "name": "WraeclastLedger",
-  "version": "1.0.89",
+  "version": "1.0.90",
   "description": "WraeclastLedger",
   "license": "PolyForm-Noncommercial-1.0.0",
   "main": "./out/main/index.js",

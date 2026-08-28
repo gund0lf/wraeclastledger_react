@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createKeyedSerialTask, isAllowedPathOfPathingUrl } from '../../../shared/atlasReaderSafety';
+import {
+  createKeyedSerialTask,
+  isAllowedExternalUrl,
+  isAllowedPathOfPathingUrl,
+  isSafeStrategyAtlasUrl,
+} from '../../../shared/atlasReaderSafety';
 
 const deferred = <T>() => {
   let resolve!: (value: T) => void;
@@ -17,7 +22,35 @@ describe('isAllowedPathOfPathingUrl', () => {
     expect(isAllowedPathOfPathingUrl('http://pathofpathing.com/')).toBe(false);
     expect(isAllowedPathOfPathingUrl('https://www.pathofpathing.com/')).toBe(false);
     expect(isAllowedPathOfPathingUrl('https://pathofpathing.com.evil.example/')).toBe(false);
+    expect(isAllowedPathOfPathingUrl('https://user@pathofpathing.com/')).toBe(false);
+    expect(isAllowedPathOfPathingUrl('https://pathofpathing.com:444/')).toBe(false);
+    expect(isAllowedPathOfPathingUrl(`https://pathofpathing.com/#${'A'.repeat(2_100)}`)).toBe(false);
     expect(isAllowedPathOfPathingUrl('not a URL')).toBe(false);
+  });
+});
+
+describe('community and OS external URL validation', () => {
+  it('keeps legacy official Atlas links while rejecting attacker-controlled origins', () => {
+    expect(isSafeStrategyAtlasUrl('https://pathofpathing.com/#AAAA')).toBe(true);
+    expect(isSafeStrategyAtlasUrl(
+      'https://pathofpathing.com/?v=3.29.0-atlas#AAAABgAADAsAJMFG',
+    )).toBe(true);
+    expect(isSafeStrategyAtlasUrl('https://attacker.example/#AAAA')).toBe(false);
+    expect(isSafeStrategyAtlasUrl('http://pathofpathing.com/#AAAA')).toBe(false);
+    expect(isSafeStrategyAtlasUrl('https://pathofpathing.com/')).toBe(false);
+  });
+
+  it('allows only the external destinations used by the app', () => {
+    expect(isAllowedExternalUrl('https://pathofpathing.com/#AAAA')).toBe(true);
+    expect(isAllowedExternalUrl(
+      'https://www.pathofexile.com/trade/search/Mirage/abc',
+    )).toBe(true);
+    expect(isAllowedExternalUrl('https://wealthyexile.com')).toBe(true);
+    expect(isAllowedExternalUrl('discord://discord.com/channels/1/2/3')).toBe(true);
+    expect(isAllowedExternalUrl('https://attacker.example/')).toBe(false);
+    expect(isAllowedExternalUrl('file:///C:/Windows/System32/calc.exe')).toBe(false);
+    expect(isAllowedExternalUrl('javascript:alert(1)')).toBe(false);
+    expect(isAllowedExternalUrl('discord://attacker.example/channels/1/2/3')).toBe(false);
   });
 });
 

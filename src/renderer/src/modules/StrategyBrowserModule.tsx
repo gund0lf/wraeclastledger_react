@@ -26,6 +26,7 @@ import { ImportModal } from '../components/ImportModal';
 import { PersonalRetrospectives } from '../components/PersonalRetrospectives';
 import { PublicRetrospectives } from '../components/PublicRetrospectives';
 import type { DiscordImport } from '../utils/parseDiscordExport';
+import { isSafeStrategyAtlasUrl } from '../utils/atlasUrl';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { WorkingSessionGuardModal } from '../components/WorkingSessionGuardModal';
 import { applyAtlasStatsSyncPatch, buildAtlasStatsSyncPatch } from '../utils/atlasStatsSync';
@@ -265,7 +266,7 @@ export const StrategyBrowserModule = () => {
         updateScarab(i, 'cost', scarab.cost);
       });
     }
-    if (s.atlas_tree_url) {
+    if (s.atlas_tree_url && isSafeStrategyAtlasUrl(s.atlas_tree_url)) {
       updateSetting('atlasTreeUrl', s.atlas_tree_url);
       // Force the Atlas Tree to re-apply the tree to the Atlas Calc even when the
       // URL is unchanged (loading the SAME strategy twice). newSession() zeroed the
@@ -437,7 +438,7 @@ export const StrategyBrowserModule = () => {
           : null,
       );
     }
-    if (parsed.atlasTreeUrl) {
+    if (parsed.atlasTreeUrl && isSafeStrategyAtlasUrl(parsed.atlasTreeUrl)) {
       updateSetting('atlasTreeUrl', parsed.atlasTreeUrl);
       requestCurrentAtlasApply(parsed.atlasTreeUrl, parsed);
     }

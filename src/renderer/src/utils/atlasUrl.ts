@@ -1,18 +1,11 @@
-const PATH_OF_PATHING_HOST = 'pathofpathing.com';
+import { isAllowedPathOfPathingUrl, isSafeStrategyAtlasUrl } from '../../../shared/atlasReaderSafety';
+
+export { isSafeStrategyAtlasUrl };
 
 /** Navigation allow-list. Requiring HTTPS is important: URL accepts strings
  * such as `ttps://pathofpathing.com` as a custom protocol with this hostname. */
 export function isPathofpathingUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:'
-      && url.hostname === PATH_OF_PATHING_HOST
-      && url.port === ''
-      && url.username === ''
-      && url.password === '';
-  } catch {
-    return false;
-  }
+  return isAllowedPathOfPathingUrl(value);
 }
 
 /** An import needs an Atlas version and an allocation hash in addition to a

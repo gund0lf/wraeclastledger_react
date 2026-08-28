@@ -10,6 +10,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.90',
+    date: '2026-08-29',
+    changes: [
+      'Community Atlas Tree links now require the official secure Path of Pathing origin before they can be imported, loaded, shared, or opened. The main process independently restricts every external link to the exact Path of Pathing, Path of Exile Trade, WealthyExile, or Discord destination the app expects.',
+      'The matching strategy service rejects unsafe Atlas links at submission and API boundaries, hides invalid historical values, and caps each strategy revision at 100 immutable evidence runs so pooled aggregation and storage remain bounded without constraining ordinary multi-run use.',
+    ],
+  },
+  {
     version: '1.0.89',
     date: '2026-08-28',
     changes: [

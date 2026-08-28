@@ -35,7 +35,12 @@ Free for personal use — see LICENSE
 - **Sessions** — integrity-checked local file auto-save with bounded Version history, contextual Undo, and Recently Deleted recovery. Recorded field changes open by default and can be collapsed; New Session and Strategy Browser build loads ask before replacing meaningful unnamed work, even while you are viewing a historical session. Compare up to six saved sessions side by side, including capture-derived Pace where available, or use portable JSON export/import. The Sessions panel shows save status and repository size and can open the complete local data folder for backup. Panels are draggable and the layout persists there too.
 - **Run Statistics (optional)** — an Add Panel-only local tracker for selected Kalguuran, Wildwood, Atlas anomaly, valuable-beast, and Mercenary outcomes. Collapsed headers show count/rate summaries, Session stays editable, and All sessions combines explicitly reported outcomes across saved runs without double-counting the active session. A per-session stopwatch and draggable always-on-top Timer/Counters companion window support pre-imported-map workflows, with optional user-defined shortcuts; clipboard-derived time remains the automatic Share default unless manual time is explicitly selected. None of this is included in shared strategies.
 
-The app auto-updates from GitHub releases.
+The app auto-updates from GitHub releases. Windows installers and Linux
+AppImages are currently unsigned, so install only from this repository's
+[official GitHub Releases](https://github.com/gund0lf/wraeclastledger_react/releases).
+Update authenticity currently depends on the integrity of the GitHub release
+account/channel plus updater metadata checksums; there is no independent
+publisher-signature trust root yet.
 
 ## More screenshots
 

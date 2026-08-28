@@ -35,6 +35,7 @@ import { COLOR, FONT } from '../utils/uiTokens';
 import { formatRelativeAge, latestStrategyActivity } from '../utils/relativeTime';
 import { computePublishedSetupCostBreakdown } from '../utils/strategySetupCosts';
 import { CHISEL_TYPES } from '../utils/constants';
+import { isSafeStrategyAtlasUrl } from '../utils/atlasUrl';
 import './StrategyCard.css';
 
 const EconomicTile = ({
@@ -195,6 +196,10 @@ export const StrategyCard = ({
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
 }) => {
+  const safeAtlasTreeUrl = strategy.atlas_tree_url
+    && isSafeStrategyAtlasUrl(strategy.atlas_tree_url)
+    ? strategy.atlas_tree_url
+    : null;
   const browserCols = maximized ? BROWSER_MAXIMIZED_COLS : BROWSER_COLS;
   const browserActivityWidth = maximized
     ? BROWSER_MAXIMIZED_ACTIVITY_WIDTH
@@ -417,10 +422,10 @@ export const StrategyCard = ({
       <Button size="xs" variant="light" color="blue" onClick={(e) => { e.stopPropagation(); onLoadBuild(strategy); }}>
         {frozen ? 'Load Frozen Build' : 'Load Build Settings'}
       </Button>
-      {strategy.atlas_tree_url && (
+      {safeAtlasTreeUrl && (
         <Tooltip label="Open atlas tree in browser">
           <Button size="xs" variant="default" rightSection={<IconExternalLink size={11} />}
-            onClick={(e) => { e.stopPropagation(); window.open(strategy.atlas_tree_url!, '_blank'); }}>
+            onClick={(e) => { e.stopPropagation(); window.open(safeAtlasTreeUrl, '_blank'); }}>
             Atlas Tree
           </Button>
         </Tooltip>

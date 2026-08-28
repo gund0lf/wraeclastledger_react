@@ -86,6 +86,12 @@ describe('parseDiscordExport', () => {
     expect(result!.mapCount).toBe(42);
   });
 
+  it('does not import an Atlas allocation from an attacker-controlled host', () => {
+    const result = parseDiscordExport(`${FULL_EXPORT}\nAtlas Tree: https://attacker.example/#AAAA`);
+    expect(result).not.toBeNull();
+    expect(result!.atlasTreeUrl).toBe('');
+  });
+
   it('parses core numeric fields from a full export', () => {
     const r = parseDiscordExport(FULL_EXPORT);
     expect(r).not.toBeNull();

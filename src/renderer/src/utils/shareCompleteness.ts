@@ -1,4 +1,5 @@
 import type { DiscordImport } from './parseDiscordExport';
+import { isSafeStrategyAtlasUrl } from './atlasUrl';
 
 type ShareCompletenessFields = Pick<DiscordImport,
   'atlasTreeUrl' | 'totalInvest' | 'totalReturn' | 'mapCount'>;
@@ -7,7 +8,7 @@ type ShareCompletenessFields = Pick<DiscordImport,
 export function missingShareFields(parsed: ShareCompletenessFields | null): string[] {
   if (!parsed) return ['A parseable WraeclastLedger export'];
   const missing: string[] = [];
-  if (!parsed.atlasTreeUrl || !parsed.atlasTreeUrl.includes('#')) {
+  if (!isSafeStrategyAtlasUrl(parsed.atlasTreeUrl)) {
     missing.push('Atlas tree with an allocation hash');
   }
   if (!Number.isFinite(parsed.totalInvest) || parsed.totalInvest <= 0) {

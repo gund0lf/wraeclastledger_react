@@ -19,6 +19,7 @@ import { generateRunRegex, trimmedMean } from './priceUtils';
 import { computeProfit, computeMultiplier, resolveFragmentCount } from './profit';
 import { EXPORT_EMOJI as E } from './discordEmoji';
 import { buildLootSummary, lootSummaryWireLine } from './lootSummary';
+import { isSafeStrategyAtlasUrl } from './atlasUrl';
 import {
   formatObservedDeliriumLine,
   summarizeObservedDelirium,
@@ -146,7 +147,7 @@ export function buildDiscordExport(input: DiscordExportInput): string {
     ? E.astrolabe.uni + ' **Astrolabe:** ' + compactAstrolabeType(settings.advAstrolabeType) +
       ' \u00B7 ' + settings.advAstrolabeCount + 'x @ ' + compactPrice(settings.advAstrolabePrice) + 'c ea'
     : null;
-  const atlasUrl = settings.atlasTreeUrl?.includes('#') ? settings.atlasTreeUrl : null;
+  const atlasUrl = isSafeStrategyAtlasUrl(settings.atlasTreeUrl) ? settings.atlasTreeUrl : null;
 
   let regexBlock = '';
   if (n > 0) {

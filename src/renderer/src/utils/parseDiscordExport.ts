@@ -12,6 +12,7 @@ import {
   type ObservedDeliriumSummary,
 } from './deliriumMetadata';
 import { formatChaosValue } from './currencyDisplay';
+import { isSafeStrategyAtlasUrl } from './atlasUrl';
 
 export interface DiscordImport {
   mapCount: number; mapType: string; multiplier: number;
@@ -180,7 +181,8 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     const chisel      = chiselRaw.replace(/\(.*/, '').replace(/[^\x00-\x7F]/g, '').trim();
     const chiselPriceMatch = chiselRaw.match(/\(([\d.]+)c(?:\s+each)?\)/i);
     const chiselPrice = chiselPriceMatch ? parseFloat(chiselPriceMatch[1]) : 0;
-    const atlasTreeUrl = str([/Atlas Tree:\s*(https?:\/\/\S+)/]);
+    const parsedAtlasTreeUrl = str([/Atlas Tree:\s*(https?:\/\/\S+)/]);
+    const atlasTreeUrl = isSafeStrategyAtlasUrl(parsedAtlasTreeUrl) ? parsedAtlasTreeUrl : '';
     const stripBt     = (s: string) => s.trim().replace(/^`+|`+$/g, '').trim();
     // Decoration already stripped above, so key purely on the label.
     const runMatch    = text.match(/Run:\s+(.+)/);

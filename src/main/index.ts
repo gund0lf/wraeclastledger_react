@@ -12,7 +12,11 @@ import {
 } from '../shared/brickMods'
 import type { ResolvedBrickTradeStat, UnavailableBrickTradeStat } from '../shared/brickMods'
 import type { AtlasStatGroup, AtlasStatsReadResult } from '../shared/atlasStats'
-import { createKeyedSerialTask, isAllowedPathOfPathingUrl } from '../shared/atlasReaderSafety'
+import {
+  createKeyedSerialTask,
+  isAllowedExternalUrl,
+  isAllowedPathOfPathingUrl,
+} from '../shared/atlasReaderSafety'
 import { resolveUserDataPath } from '../shared/appProfile'
 import { resolveAutoUpdatePolicy } from '../shared/updatePolicy'
 import {
@@ -1159,7 +1163,16 @@ function createWindow(): void {
       resolve({ requestId, ok: true })
     }
   });
-  mainWindow.webContents.setWindowOpenHandler((details) => { shell.openExternal(details.url); return { action: 'deny' }; });
+  mainWindow.webContents.setWindowOpenHandler((details) => {
+    if (isAllowedExternalUrl(details.url)) void shell.openExternal(details.url)
+    return { action: 'deny' }
+  });
+  // A <webview> is separate guest webContents: the host handler above does not
+  // govern its window.open calls. Path of Pathing never needs popups, so deny
+  // every guest-created window at the main-process boundary as well.
+  mainWindow.webContents.on('did-attach-webview', (_event, guestWebContents) => {
+    guestWebContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  });
 
   // Clipboard polling no longer auto-starts — the renderer drives it via
   // 'clipboard:set-watch' when the Capture toggle changes (WP13).

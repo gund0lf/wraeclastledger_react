@@ -762,8 +762,6 @@ export const AtlasTreeModule = () => {
             ref={webviewRef}
             src={srcUrl}
             style={{ flex: 1 }}
-            // @ts-ignore — webview is Electron-only JSX
-            allowpopups="false"
           />
         )}
       </div>

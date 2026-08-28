@@ -33,4 +33,11 @@ describe('missingShareFields', () => {
     ]);
     expect(missingShareFields(complete)).toEqual([]);
   });
+
+  it('rejects an allocation fragment on an attacker-controlled host', () => {
+    expect(missingShareFields({
+      ...complete,
+      atlasTreeUrl: 'https://attacker.example/#AAAA',
+    })).toContain('Atlas tree with an allocation hash');
+  });
 });
