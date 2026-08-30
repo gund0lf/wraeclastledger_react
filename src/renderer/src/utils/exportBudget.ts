@@ -14,11 +14,11 @@
  * count UTF-16 code units, so every figure here uses plain JS `.length`.
  * Astral-plane emoji count as 2 units - consistent on both sides.
  *
- * The header/versionLine templates MIRROR bot/card.js buildCard() as deployed
- * 2026-07-20 (instruction line removed, version line slimmed, short emote
- * refs). If the bot header changes again, update the templates here in the
- * same batch - exportBudget.test.ts pins the derived allowance so a drift is
- * loud.
+ * The header/versionLine and pooled-results templates MIRROR bot/card.js.
+ * The allowance reserves whichever presentation is longer, so an export that
+ * fits when first published cannot become unrenderable when later evidence
+ * turns it into a pooled card. If either bot template changes, update it here
+ * in the same batch - exportBudget.test.ts pins the derived allowance.
  *
  * ASCII-source rule: no raw emoji/middot literals - escapes only.
  */
@@ -32,9 +32,8 @@ export const DISCORD_MSG_LIMIT = 2000;
 export const STRAT_NAME_MAX = 80;
 
 // ── Bot card header allowance (mirrors bot/card.js buildCard) ───────────────
-// Worst case: 32-char username, 20-digit snowflake, update-run version line
-// with a 2-digit revision and a "28 Sep"-style stamp. Mirrors the bot header
-// as deployed 2026-07-20 (instruction line removed, version line slimmed).
+// Normal header worst case: 32-char username, 20-digit snowflake, update-run
+// version line with a 2-digit revision and a "28 Sep"-style stamp.
 // 📨 = envelope-with-arrow header emoji; · = middot.
 const WORST_USERNAME = 'x'.repeat(32);
 const WORST_SNOWFLAKE = '9'.repeat(20);
@@ -43,7 +42,23 @@ const WORST_HEADER =
   '*v99 \u00B7 updated 28 Sep*\n' +
   '\n';
 
-export const CARD_HEADER_ALLOWANCE = WORST_HEADER.length;
+// Pooled cards can drop attribution/version before dropping evidence metadata.
+// Reserve that minimal fallback too. Evidence is capped at 100 runs and each
+// compact run at 100,000 maps; fixed-point JS numbers are longest immediately
+// below 1e21 (larger magnitudes switch to shorter exponent notation).
+const WORST_FIXED_INTEGER = '9'.repeat(21);
+const WORST_POOLED_HEADER =
+  '**Pooled results:** 10000000 maps \u00B7 100 runs \u00B7 +'
+  + WORST_FIXED_INTEGER + '.999d net/map\n'
+  + '**Totals:** Invest ' + WORST_FIXED_INTEGER + '.9d'
+  + ' \u00B7 Return -' + WORST_FIXED_INTEGER + '.9d'
+  + ' \u00B7 Net +' + WORST_FIXED_INTEGER + '.9d\n'
+  + '\n';
+
+export const CARD_HEADER_ALLOWANCE = Math.max(
+  WORST_HEADER.length,
+  WORST_POOLED_HEADER.length,
+);
 
 // ── Emote decoration projection (mirrors bot/card.js decorate) ──────────────
 // The bot emits SHORT refs since 2026-07-20: `<:wl:` + 19-digit id + `>` =

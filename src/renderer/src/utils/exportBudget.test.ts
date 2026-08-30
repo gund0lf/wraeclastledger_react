@@ -11,18 +11,18 @@ import {
 } from './exportBudget';
 
 describe('exportBudget', () => {
-  it('pins the worst-case bot header allowance so template drift is loud', () => {
-    // Mirrors bot/card.js buildCard as deployed 2026-07-20: header emoji +
-    // 32-char username + 20-digit snowflake mention + slimmed version line +
-    // blank separator (the instruction line is gone).
-    const worstHeader =
-      '📨 **Shared by:** ' + 'x'.repeat(32) + ' (<@' + '9'.repeat(20) + '>)\n' +
-      '*v99 · updated 28 Sep*\n' +
-      '\n';
-    expect(CARD_HEADER_ALLOWANCE).toBe(worstHeader.length);
-    // Sanity envelope: a header can never plausibly leave this band.
-    expect(CARD_HEADER_ALLOWANCE).toBeGreaterThan(80);
-    expect(CARD_HEADER_ALLOWANCE).toBeLessThan(150);
+  it('pins the worst-case pooled-card allowance so later evidence still fits', () => {
+    const worstFixedInteger = '9'.repeat(21);
+    const worstPooledHeader =
+      '**Pooled results:** 10000000 maps · 100 runs · +'
+      + worstFixedInteger + '.999d net/map\n'
+      + '**Totals:** Invest ' + worstFixedInteger + '.9d'
+      + ' · Return -' + worstFixedInteger + '.9d'
+      + ' · Net +' + worstFixedInteger + '.9d\n'
+      + '\n';
+    expect(CARD_HEADER_ALLOWANCE).toBe(worstPooledHeader.length);
+    expect(CARD_HEADER_ALLOWANCE).toBeGreaterThan(150);
+    expect(CARD_HEADER_ALLOWANCE).toBeLessThan(250);
   });
 
   it('projects short-ref decoration cost per occurrence, including VS16 markers', () => {

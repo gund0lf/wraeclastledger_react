@@ -123,6 +123,21 @@ describe('parseDiscordExport', () => {
     expect(r!.divPerMap).toBe(0.66);
   });
 
+  it('ignores pooled economics while importing the published run beneath it', () => {
+    const pooledCard = [
+      '**Pooled results:** 380 maps · 5 runs · +1.006d net/map',
+      '**Totals:** Invest 125.4d · Return 507.7d · Net +382.3d',
+      FULL_EXPORT,
+    ].join('\n');
+    const r = parseDiscordExport(pooledCard);
+    expect(r).not.toBeNull();
+    expect(r!.mapCount).toBe(42);
+    expect(r!.totalInvest).toBe(1197);
+    expect(r!.totalReturn).toBe(9840);
+    expect(r!.netProfit).toBe(8643);
+    expect(r!.divPerMap).toBe(0.66);
+  });
+
   it('isGroupPlay is false when Party Play is absent or No', () => {
     const r = parseDiscordExport(FULL_EXPORT);
     expect(r!.isGroupPlay).toBe(false);
