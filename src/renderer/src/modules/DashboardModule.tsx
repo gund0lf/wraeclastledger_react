@@ -16,6 +16,20 @@ import {
 } from '@tabler/icons-react';
 import { getItemIcons, chiselItemName } from '../utils/itemIcons';
 import type { ItemIdentity } from '../utils/itemIcons';
+import {
+  EQUIPMENT_GROUP_LABEL,
+  SYNDICATE_MEMBERS,
+  ITEM_INFLUENCES,
+  manualLootIdentityArtName,
+  manualLootIdentityCategory,
+  manualLootIdentityName,
+  normalizeManualLootIdentity,
+  normalizeTradeItemCatalog,
+  type EquipmentCatalogGroup,
+  type ItemInfluence,
+  type ManualLootIdentity,
+  type TradeItemCatalog,
+} from '../../../shared/manualLoot';
 import { PoeItemIcon } from '../components/ui/PoeItemIcon';
 import { LootCategoryGlyph, LootCategoryIcon } from '../components/ui/LootCategoryIcon';
 import { computeProfit, computeMultiplier } from '../utils/profit';
@@ -35,9 +49,10 @@ import {
   LootCurrencyValue,
 } from '../components/ui/LootCurrencyDisplay';
 import {
-  manualLootEntryValue,
+  formatManualLootValueInput,
   manualLootTotalAfterQuantityChange,
   manualLootTotalFromEntry,
+  parseManualLootValueInput,
   type ManualLootValueMode,
 } from '../utils/manualLootValue';
 import './DashboardModule.css';
@@ -69,6 +84,7 @@ interface ManualLootDraft {
   total: number;
   category: LootCategory;
   note: string;
+  identity?: ManualLootIdentity;
 }
 
 const EMPTY_MANUAL_LOOT: ManualLootDraft = {
@@ -76,7 +92,9 @@ const EMPTY_MANUAL_LOOT: ManualLootDraft = {
 };
 
 type IconResolver = (name: string) => string | undefined;
+type IdentityResolver = (name: string) => ItemIdentity | undefined;
 type NameSuggestionResolver = (name: string) => ItemIdentity | undefined;
+type ManualLootMode = 'free' | ManualLootIdentity['kind'];
 
 const LootCategoryFallback = ({
   name, tab, category,
@@ -189,7 +207,13 @@ export const DashboardModule = () => {
   const [search,    setSearch]    = useState('');
   const [diffTab,   setDiffTab]   = useState<'gains' | 'losses'>('gains');
   const [resolver,  setResolver]  = useState<IconResolver | null>(null);
+  const [identityResolver, setIdentityResolver] = useState<IdentityResolver | null>(null);
   const [nameSuggester, setNameSuggester] = useState<NameSuggestionResolver | null>(null);
+  const [manualCatalog, setManualCatalog] = useState<TradeItemCatalog>(
+    () => normalizeTradeItemCatalog(null),
+  );
+  const [manualCatalogLoading, setManualCatalogLoading] = useState(false);
+  const [manualCatalogError, setManualCatalogError] = useState<string | null>(null);
   const [iconsLoading, setIconsLoading] = useState(false);
   const [visibleListRows, setVisibleListRows] = useState(INITIAL_ROWS);
   const [visibleDiffRows, setVisibleDiffRows] = useState(INITIAL_ROWS);
@@ -198,20 +222,59 @@ export const DashboardModule = () => {
   const [editingManualId, setEditingManualId] = useState<string | null>(null);
   const [manualDraft, setManualDraft] = useState<ManualLootDraft>(EMPTY_MANUAL_LOOT);
   const [manualValueMode, setManualValueMode] = useState<ManualLootValueMode>('total');
+  const [manualValueText, setManualValueText] = useState('0');
 
   const hasBaseline = baselineItems.length > 0 || baselineTotal > 0;
   const hasCurrent  = lootItems.length > 0;
   const hasBoth     = hasBaseline && hasCurrent;
   const divPrice = hasDivinePrice(settings.divinePrice) ? settings.divinePrice : null;
+  const manualValueParse = useMemo(
+    () => parseManualLootValueInput(manualValueText, divPrice),
+    [manualValueText, divPrice],
+  );
+  const manualCanonicalTotal = manualValueParse.ok
+    ? manualLootTotalFromEntry(manualValueParse.chaos, manualDraft.quantity, manualValueMode)
+    : 0;
+  const manualValueError = manualValueParse.ok || manualValueText.trim().length === 0
+    ? undefined
+    : manualValueParse.reason === 'divine-price'
+      ? 'Set a valid session Divine price before entering a Divine value.'
+      : 'Enter Chaos as 100 or 100c, or Divines as 0.4d or .4d.';
 
   useEffect(() => {
     if (!hasCurrent && !hasBaseline) return;
     setIconsLoading(true);
     getItemIcons().then((catalog) => {
       setResolver(() => catalog.resolve);
+      setIdentityResolver(() => catalog.resolveIdentity);
       setNameSuggester(() => catalog.suggestName);
     }).catch(() => {}).finally(() => setIconsLoading(false));
   }, [hasCurrent, hasBaseline, settings.leagueName, leagueOverride]);
+
+  useEffect(() => {
+    if (!manualOpen || !window.api?.fetchTradeItemCatalog) return;
+    let alive = true;
+    setManualCatalogLoading(true);
+    setManualCatalogError(null);
+    window.api.fetchTradeItemCatalog()
+      .then((result) => {
+        if (!alive || !result?.catalog) return;
+        setManualCatalog(result.catalog);
+        const hasEquipment = result.catalog.groups.some((group) => (
+          group.id !== 'chart' && group.entries.length > 0
+        ));
+        if (!hasEquipment) {
+          setManualCatalogError('The official base catalogue is unavailable. Reopen this window to retry.');
+        }
+      })
+      .catch(() => {
+        if (alive) {
+          setManualCatalogError('The official base catalogue is unavailable. Reopen this window to retry.');
+        }
+      })
+      .finally(() => { if (alive) setManualCatalogLoading(false); });
+    return () => { alive = false; };
+  }, [manualOpen]);
 
   // Search filters the complete imported list before pagination. Preserve the
   // user's accumulated "Show more" allowance while searching/clearing so a
@@ -269,15 +332,59 @@ export const DashboardModule = () => {
   }, [lootItems, search]);
   const inclTotal = useMemo(() => lootItems.filter((i) => !i.excluded).reduce((a, b) => a + b.total, 0), [lootItems]);
   const manualTotal = useMemo(() => manualLootItems.reduce((sum, item) => sum + item.total, 0), [manualLootItems]);
-  const manualNameSuggestion = useMemo(
-    () => nameSuggester?.(manualDraft.name.trim()),
-    [manualDraft.name, nameSuggester],
+  const manualMode: ManualLootMode = manualDraft.identity?.kind ?? 'free';
+  const manualExactIdentity = useMemo(
+    () => manualMode === 'free' ? identityResolver?.(manualDraft.name.trim()) : undefined,
+    [identityResolver, manualDraft.name, manualMode],
   );
+  const manualNameSuggestion = useMemo(
+    () => manualMode === 'free' ? nameSuggester?.(manualDraft.name.trim()) : undefined,
+    [manualDraft.name, manualMode, nameSuggester],
+  );
+  const manualEffectiveCategory = manualDraft.identity
+    ? manualLootIdentityCategory(manualDraft.identity)
+    : manualExactIdentity?.category ?? manualDraft.category;
+  const normalizedDraftIdentity = normalizeManualLootIdentity(manualDraft.identity);
+  const manualIdentityReady = manualMode === 'free'
+    ? manualDraft.name.trim().length > 0
+    : normalizedDraftIdentity !== undefined;
+  const catalogEntries = (id: EquipmentCatalogGroup | 'chart'): string[] => (
+    manualCatalog.groups.find((group) => group.id === id)?.entries ?? []
+  );
+  const setManualMode = (mode: ManualLootMode) => {
+    setManualDraft((draft) => {
+      if (mode === 'free') return { ...draft, name: '', category: 'Other', identity: undefined };
+      if (mode === 'quality-base') return {
+        ...draft,
+        name: '',
+        category: 'Other',
+        identity: { kind: 'quality-base', equipmentGroup: 'armour', base: '', quality: 20 },
+      };
+      if (mode === 'chart') return {
+        ...draft,
+        name: 'Charts',
+        category: 'League',
+        identity: { kind: 'chart', chart: null },
+      };
+      return {
+        ...draft,
+        name: '',
+        category: 'League',
+        identity: {
+          kind: 'syndicate-reward',
+          member: '',
+          reward: '',
+          equipmentGroup: 'armour',
+        },
+      };
+    });
+  };
 
   const startAddManual = () => {
     setEditingManualId(null);
     setManualDraft(EMPTY_MANUAL_LOOT);
     setManualValueMode('total');
+    setManualValueText('0');
     openManual();
   };
   const startEditManual = (item: ManualLootItem) => {
@@ -288,23 +395,33 @@ export const DashboardModule = () => {
       total: item.total,
       category: item.category,
       note: item.note,
+      identity: item.identity,
     });
     setManualValueMode('total');
+    setManualValueText(formatManualLootValueInput(item.total, item.quantity, 'total', 'chaos', divPrice));
     openManual();
   };
   const saveManual = () => {
+    const identity = normalizeManualLootIdentity(manualDraft.identity);
+    const exactIdentity = identity ? undefined : identityResolver?.(manualDraft.name.trim());
     const item = {
-      name: manualDraft.name.trim().slice(0, MANUAL_LOOT_NAME_MAX),
+      name: (identity
+        ? manualLootIdentityName(identity)
+        : exactIdentity?.name ?? manualDraft.name.trim()).slice(0, MANUAL_LOOT_NAME_MAX),
       quantity: Math.max(1, Math.round(manualDraft.quantity || 1)),
-      total: Math.max(0, manualDraft.total || 0),
-      category: manualDraft.category,
+      total: manualCanonicalTotal,
+      category: identity
+        ? manualLootIdentityCategory(identity)
+        : exactIdentity?.category ?? manualDraft.category,
       note: manualDraft.note.trim().slice(0, MANUAL_LOOT_NOTE_MAX),
+      ...(identity ? { identity } : {}),
     };
     if (!item.name || item.total <= 0) return;
     if (editingManualId) updateManualLootItem(editingManualId, item);
     else addManualLootItem(item);
     setEditingManualId(null);
     setManualDraft(EMPTY_MANUAL_LOOT);
+    setManualValueText('0');
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -320,6 +437,7 @@ export const DashboardModule = () => {
     try {
       const catalog = await getItemIcons();
       setResolver(() => catalog.resolve);
+      setIdentityResolver(() => catalog.resolveIdentity);
       setNameSuggester(() => catalog.suggestName);
       return assignLootCategories(parsed, catalog.resolveCategory);
     } catch {
@@ -463,12 +581,21 @@ export const DashboardModule = () => {
                 <Group key={item.id} justify="space-between" wrap="nowrap" p={6}
                   style={{ border: `1px solid ${COLOR.border}`, borderRadius: 6 }}>
                   <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
-                    <PoeItemIcon name={item.name} size={ICON_SIZE}
+                    <PoeItemIcon name={manualLootIdentityArtName(item.identity) ?? item.name} size={ICON_SIZE}
                       fallback={<LootCategoryGlyph category={item.category} size={ICON_SIZE} />} />
                     <Stack gap={0} style={{ minWidth: 0 }}>
                       <Group gap={4} wrap="nowrap">
                         <Text size="xs" fw={600} lineClamp={1}>{item.name}</Text>
                         <Badge color="yellow" variant="outline" size="xs">Manual</Badge>
+                        {item.identity && (
+                          <Badge color="gray" variant="light" size="xs">
+                            {item.identity.kind === 'quality-base'
+                              ? 'Quality base'
+                              : item.identity.kind === 'chart'
+                                ? 'Chart'
+                                : 'Syndicate'}
+                          </Badge>
+                        )}
                       </Group>
                       <Text size="xs" c="dimmed" lineClamp={1} style={{ fontSize: FONT.small }}>
                         {item.quantity} item{item.quantity === 1 ? '' : 's'} / {item.category}{item.note ? ` / ${item.note}` : ''}
@@ -500,28 +627,214 @@ export const DashboardModule = () => {
           )}
 
           <Text size="xs" fw={700}>{editingManualId ? 'Edit addition' : 'Add a missing drop'}</Text>
-          <TextInput label="Item name" placeholder="e.g. Unidentified unique ring"
-            value={manualDraft.name} maxLength={MANUAL_LOOT_NAME_MAX}
-            onChange={(event) => {
-              const name = event.currentTarget.value;
-              setManualDraft((draft) => ({ ...draft, name }));
-            }} />
-          {manualNameSuggestion && (
-            <Group gap={4} mt={-6}>
-              <Text size="xs" c="dimmed">Did you mean</Text>
-              <Button
-                size="compact-xs"
-                variant="subtle"
-                onClick={() => setManualDraft((draft) => ({
-                  ...draft,
-                  name: manualNameSuggestion.name,
-                  category: manualNameSuggestion.category,
-                }))}
-              >
-                {manualNameSuggestion.name}?
-              </Button>
-            </Group>
+          <SegmentedControl
+            size="xs"
+            fullWidth
+            aria-label="Custom loot identity type"
+            value={manualMode}
+            data={[
+              { value: 'free', label: 'Item' },
+              { value: 'quality-base', label: 'Quality base' },
+              { value: 'chart', label: 'Chart' },
+              { value: 'syndicate-reward', label: 'Syndicate' },
+            ]}
+            onChange={(value) => setManualMode(value as ManualLootMode)}
+          />
+          {manualCatalogError && (manualMode === 'quality-base' || manualMode === 'syndicate-reward') && (
+            <Text size="xs" c="red">{manualCatalogError}</Text>
           )}
+
+          {manualMode === 'free' && (
+            <>
+              <TextInput label="Item name" placeholder="e.g. Unidentified unique ring"
+                value={manualDraft.name} maxLength={MANUAL_LOOT_NAME_MAX}
+                onChange={(event) => {
+                  const name = event.currentTarget.value;
+                  setManualDraft((draft) => ({ ...draft, name }));
+                }} />
+              {manualExactIdentity && (
+                <Text size="xs" c="teal" mt={-6}>
+                  Known item — saves as {manualExactIdentity.name} / {manualExactIdentity.category}.
+                </Text>
+              )}
+              {manualNameSuggestion && (
+                <Group gap={4} mt={-6}>
+                  <Text size="xs" c="dimmed">Did you mean</Text>
+                  <Button
+                    size="compact-xs"
+                    variant="subtle"
+                    onClick={() => setManualDraft((draft) => ({
+                      ...draft,
+                      name: manualNameSuggestion.name,
+                      category: manualNameSuggestion.category,
+                    }))}
+                  >
+                    {manualNameSuggestion.name}?
+                  </Button>
+                </Group>
+              )}
+            </>
+          )}
+
+          {manualDraft.identity?.kind === 'quality-base' && (
+            <Stack gap="xs">
+              <SimpleGrid cols={2} spacing="sm">
+                <Select
+                  label="Equipment category"
+                  data={[
+                    { value: 'armour', label: 'Armour' },
+                    { value: 'weapon', label: 'Weapons' },
+                  ]}
+                  value={manualDraft.identity.equipmentGroup}
+                  onChange={(value) => setManualDraft((draft) => {
+                    if (draft.identity?.kind !== 'quality-base') return draft;
+                    return {
+                      ...draft,
+                      identity: {
+                        ...draft.identity,
+                        equipmentGroup: (value === 'weapon' ? 'weapon' : 'armour'),
+                        base: '',
+                      },
+                    };
+                  })}
+                />
+                <Select
+                  label="Exact base"
+                  placeholder={manualCatalogLoading ? 'Loading official bases…' : 'Choose a base'}
+                  searchable
+                  nothingFoundMessage="No exact base found"
+                  data={catalogEntries(manualDraft.identity.equipmentGroup)}
+                  value={manualDraft.identity.base || null}
+                  onChange={(value) => setManualDraft((draft) => {
+                    if (draft.identity?.kind !== 'quality-base') return draft;
+                    return { ...draft, identity: { ...draft.identity, base: value ?? '' } };
+                  })}
+                />
+              </SimpleGrid>
+              <SimpleGrid cols={2} spacing="sm">
+                <NumberInput
+                  label="Quality"
+                  suffix="%"
+                  min={1}
+                  max={30}
+                  allowDecimal={false}
+                  value={manualDraft.identity.quality}
+                  onChange={(value) => setManualDraft((draft) => {
+                    if (draft.identity?.kind !== 'quality-base') return draft;
+                    return {
+                      ...draft,
+                      identity: {
+                        ...draft.identity,
+                        quality: Math.max(1, Math.min(30, Math.round(Number(value) || 1))),
+                      },
+                    };
+                  })}
+                />
+                <Select
+                  label="Influence (optional)"
+                  placeholder="None"
+                  clearable
+                  data={ITEM_INFLUENCES.map((value) => ({ value, label: value }))}
+                  value={manualDraft.identity.influence ?? null}
+                  onChange={(value) => setManualDraft((draft) => {
+                    if (draft.identity?.kind !== 'quality-base') return draft;
+                    return {
+                      ...draft,
+                      identity: {
+                        ...draft.identity,
+                        influence: (value || undefined) as ItemInfluence | undefined,
+                      },
+                    };
+                  })}
+                />
+              </SimpleGrid>
+              <Text size="xs" c="dimmed">
+                Artwork follows the exact base; quality and influence stay in the visible label.
+              </Text>
+            </Stack>
+          )}
+
+          {manualDraft.identity?.kind === 'chart' && (
+            <Select
+              label="Chart type"
+              description="Choose the exact Chart when known; the generic option still uses reviewed Chart artwork."
+              searchable
+              data={[
+                { value: '__generic_chart__', label: 'Charts (type unknown)' },
+                ...catalogEntries('chart').map((value) => ({ value, label: value })),
+              ]}
+              value={manualDraft.identity.chart ?? '__generic_chart__'}
+              onChange={(value) => setManualDraft((draft) => {
+                if (draft.identity?.kind !== 'chart') return draft;
+                return {
+                  ...draft,
+                  identity: {
+                    kind: 'chart',
+                    chart: !value || value === '__generic_chart__' ? null : value,
+                  },
+                };
+              })}
+            />
+          )}
+
+          {manualDraft.identity?.kind === 'syndicate-reward' && (
+            <Stack gap="xs">
+              <SimpleGrid cols={2} spacing="sm">
+                <Select
+                  label="Syndicate member"
+                  searchable
+                  data={SYNDICATE_MEMBERS.map((value) => ({ value, label: value }))}
+                  value={manualDraft.identity.member || null}
+                  onChange={(value) => setManualDraft((draft) => {
+                    if (draft.identity?.kind !== 'syndicate-reward') return draft;
+                    return { ...draft, identity: { ...draft.identity, member: value ?? '' } };
+                  })}
+                />
+                <TextInput
+                  label="Target reward / modifier"
+                  placeholder="e.g. Rarity from slain Rare or Unique enemies"
+                  maxLength={100}
+                  value={manualDraft.identity.reward}
+                  onChange={(event) => {
+                    const reward = event.currentTarget.value;
+                    setManualDraft((draft) => draft.identity?.kind === 'syndicate-reward'
+                      ? { ...draft, identity: { ...draft.identity, reward } }
+                      : draft);
+                  }}
+                />
+              </SimpleGrid>
+              <SimpleGrid cols={2} spacing="sm">
+                <Select
+                  label="Item category"
+                  data={(Object.entries(EQUIPMENT_GROUP_LABEL) as [EquipmentCatalogGroup, string][])
+                    .map(([value, label]) => ({ value, label }))}
+                  value={manualDraft.identity.equipmentGroup}
+                  onChange={(value) => setManualDraft((draft) => {
+                    if (draft.identity?.kind !== 'syndicate-reward') return draft;
+                    const equipmentGroup = (value ?? 'armour') as EquipmentCatalogGroup;
+                    return { ...draft, identity: { ...draft.identity, equipmentGroup, base: undefined } };
+                  })}
+                />
+                <Select
+                  label="Exact base (optional)"
+                  placeholder={manualCatalogLoading ? 'Loading official bases…' : 'Use category only'}
+                  clearable
+                  searchable
+                  nothingFoundMessage="No exact base found"
+                  data={catalogEntries(manualDraft.identity.equipmentGroup)}
+                  value={manualDraft.identity.base ?? null}
+                  onChange={(value) => setManualDraft((draft) => {
+                    if (draft.identity?.kind !== 'syndicate-reward') return draft;
+                    return { ...draft, identity: { ...draft.identity, base: value || undefined } };
+                  })}
+                />
+              </SimpleGrid>
+              <Text size="xs" c="dimmed">
+                This records a member-specific dropped reward, not a full Betrayal board setup.
+              </Text>
+            </Stack>
+          )}
+
           <SegmentedControl
             size="xs"
             fullWidth
@@ -531,7 +844,18 @@ export const DashboardModule = () => {
               { value: 'total', label: 'Enter total value' },
               { value: 'perItem', label: 'Enter value per item' },
             ]}
-            onChange={(value) => setManualValueMode(value as ManualLootValueMode)}
+            onChange={(value) => {
+              const nextMode = value as ManualLootValueMode;
+              const unit = manualValueParse.ok ? manualValueParse.unit : 'chaos';
+              setManualValueMode(nextMode);
+              setManualValueText(formatManualLootValueInput(
+                manualCanonicalTotal,
+                manualDraft.quantity,
+                nextMode,
+                unit,
+                divPrice,
+              ));
+            }}
           />
           <SimpleGrid cols={2} spacing="sm">
             <NumberInput
@@ -556,39 +880,41 @@ export const DashboardModule = () => {
                   ),
                 };
               })} />
-            <NumberInput
+            <TextInput
               label={
                 <Group justify="space-between" gap={6} wrap="nowrap" style={{ width: '100%' }}>
                   <Text span size="sm" fw={500}>
-                    {manualValueMode === 'perItem' ? 'Value per item (chaos)' : 'Total value (chaos)'}
+                    {manualValueMode === 'perItem' ? 'Value per item (c or d)' : 'Total value (c or d)'}
                   </Text>
                   {manualValueMode === 'perItem' && (
                     <Text span size="xs" c="dimmed" fw={400} style={{ whiteSpace: 'nowrap' }}>
-                      Saved total: {fcSep(manualDraft.total, false, 1)}
+                      Saved total: {fcSep(manualCanonicalTotal, false, 1)}c
                     </Text>
                   )}
                 </Group>
               }
               styles={{ label: { display: 'block', width: '100%' } }}
-              min={0}
-              decimalScale={1}
-              value={manualLootEntryValue(
-                manualDraft.total,
-                manualDraft.quantity,
-                manualValueMode,
-              )}
-              onChange={(value) => setManualDraft((draft) => ({
-                ...draft,
-                total: manualLootTotalFromEntry(
-                  Number(value) || 0,
-                  draft.quantity,
-                  manualValueMode,
-                ),
-              }))}
+              placeholder="e.g. 100c or .4d"
+              value={manualValueText}
+              error={manualValueError}
+              onChange={(event) => {
+                const text = event.currentTarget.value;
+                const parsed = parseManualLootValueInput(text, divPrice);
+                setManualValueText(text);
+                if (parsed.ok) {
+                  setManualDraft((draft) => ({
+                    ...draft,
+                    total: manualLootTotalFromEntry(parsed.chaos, draft.quantity, manualValueMode),
+                  }));
+                }
+              }}
             />
           </SimpleGrid>
-          <Select label="Category" data={ITEM_CATEGORIES} value={manualDraft.category}
-            description="League is for named league-mechanic items such as Astrolabes, Allflames, Omens, tattoos, fossils and resonators. Other is the honest catch-all when no specific category fits."
+          <Select label="Category" data={ITEM_CATEGORIES} value={manualEffectiveCategory}
+            disabled={manualMode !== 'free' || manualExactIdentity !== undefined}
+            description={manualMode !== 'free' || manualExactIdentity
+              ? 'Category is determined by the exact structured/catalog identity.'
+              : 'League is for named league-mechanic items such as Astrolabes, Allflames, Omens, tattoos, fossils and resonators. Other is the honest catch-all when no specific category fits.'}
             onChange={(value) => setManualDraft((draft) => ({ ...draft, category: (value as LootCategory | null) ?? 'Other' }))} />
           <Textarea label="Reason / note (optional)" placeholder="Why WealthyExile missed or underpriced it"
             value={manualDraft.note} maxLength={MANUAL_LOOT_NOTE_MAX} autosize minRows={2} maxRows={4}
@@ -606,10 +932,11 @@ export const DashboardModule = () => {
                   setEditingManualId(null);
                   setManualDraft(EMPTY_MANUAL_LOOT);
                   setManualValueMode('total');
+                  setManualValueText('0');
                 }}>Cancel edit</Button>
               )}
               <Button leftSection={<IconPlus size={14} />} onClick={saveManual}
-                disabled={!manualDraft.name.trim() || manualDraft.total <= 0
+                disabled={!manualIdentityReady || manualCanonicalTotal <= 0
                   || (!editingManualId && manualLootItems.length >= LOOT_SUMMARY_ROW_LIMIT)}>
                 {editingManualId ? 'Save change' : 'Add item'}
               </Button>

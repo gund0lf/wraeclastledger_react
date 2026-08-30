@@ -57,6 +57,8 @@ import {
   type OverlayShortcutStatus,
   type OverlaySnapshot,
 } from '../shared/overlay'
+import { normalizeTradeItemCatalog } from '../shared/manualLoot'
+import type { TradeItemCatalog } from '../shared/manualLoot'
 
 // The installed build and `npm run dev` used to share one Chromium profile.
 // Their file:// and localhost origins could then touch the same LevelDB while
@@ -1142,6 +1144,40 @@ ipcMain.handle('poeninja:economy-icons', async (_event, family: 'exchange' | 'st
     clearTimeout(timeoutId);
   }
 });
+
+const TRADE_ITEM_CATALOG_TTL_MS = 6 * 60 * 60 * 1000
+let tradeItemCatalogCache: { value: TradeItemCatalog; expiresAt: number } | null = null
+
+// Official Trade item catalogue for structured manual loot. Only the bounded
+// weapon/armour/accessory/Chart groups leave main; normalizeTradeItemCatalog
+// also supplies the reviewed Chart fallback if the live category is absent.
+ipcMain.handle('poe:trade-item-catalog', async () => {
+  if (tradeItemCatalogCache && tradeItemCatalogCache.expiresAt > Date.now()) {
+    return { catalog: tradeItemCatalogCache.value, error: null }
+  }
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 5_000)
+  try {
+    const res = await fetch('https://www.pathofexile.com/api/trade/data/items', {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'WraeclastLedger-item-catalog/1.0' },
+    })
+    if (!res.ok) return {
+      catalog: normalizeTradeItemCatalog(null),
+      error: `Path of Exile item catalogue ${res.status}`,
+    }
+    const catalog = normalizeTradeItemCatalog(await res.json())
+    tradeItemCatalogCache = { value: catalog, expiresAt: Date.now() + TRADE_ITEM_CATALOG_TTL_MS }
+    return { catalog, error: null }
+  } catch (err: unknown) {
+    return {
+      catalog: tradeItemCatalogCache?.value ?? normalizeTradeItemCatalog(null),
+      error: err instanceof Error ? err.message : 'item catalogue fetch failed',
+    }
+  } finally {
+    clearTimeout(timeoutId)
+  }
+})
 
 function createWindow(): void {
   rendererFlushUnavailable = false

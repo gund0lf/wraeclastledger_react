@@ -25,6 +25,7 @@ const CHISEL_URL = 'https://web.poecdn.com/gen/image/scarab-chisel.png';
 const BLUNDERBORE_URL = 'https://web.poecdn.com/gen/image/blunderbore.png';
 const RALAKESH_URL = 'https://web.poecdn.com/gen/image/ralakesh.png';
 const MALACHAIS_MARK_URL = 'https://web.poecdn.com/gen/image/malachais-mark.png';
+const KAOMS_HEART_URL = 'https://web.poecdn.com/gen/image/kaoms-heart.png';
 const EPHEMERAL_URL = 'https://web.poecdn.com/gen/image/ephemeral-edge.png';
 const DISSOLUTION_URL = 'https://web.poecdn.com/gen/image/dissolution.png';
 const INVITATION_URL = 'https://web.poecdn.com/gen/image/incandescent-invitation.png';
@@ -111,6 +112,7 @@ beforeAll(() => {
           { name: 'Blunderbore', icon: BLUNDERBORE_URL },
           { name: "Ralakesh's Impatience", icon: RALAKESH_URL },
           { name: "Malachai's Mark", icon: MALACHAIS_MARK_URL },
+          { name: "Kaom's Heart", icon: KAOMS_HEART_URL },
         ], slugs: [] };
         if (type === 'UniqueWeapon') return { icons: [
           { name: 'Ephemeral Edge', icon: EPHEMERAL_URL },
@@ -359,7 +361,7 @@ describe('itemIcons resolve()', () => {
   });
 
   it('offers one bounded explicit spelling suggestion without silently matching', async () => {
-    const { resolve, resolveCategory, suggestName } = await getItemIcons();
+    const { resolve, resolveIdentity, resolveCategory, suggestName } = await getItemIcons();
     expect(resolve("Malachi's Mark gloves")).toBeUndefined();
     expect(resolveCategory("Malachi's Mark gloves")).toBeUndefined();
     expect(suggestName("Malachi's Mark gloves")).toEqual({
@@ -368,6 +370,28 @@ describe('itemIcons resolve()', () => {
     });
     expect(suggestName("Malachai's Mark")).toBeUndefined();
     expect(suggestName('Completely unrelated gloves')).toBeUndefined();
+    expect(resolveIdentity('kaoms heart')).toEqual({
+      name: "Kaom's Heart",
+      category: 'Unique Armours',
+    });
+    expect(resolve('kaoms heart')).toBe(KAOMS_HEART_URL);
+  });
+
+  it('uses reviewed Chart artwork for exact and collective Chart identities', async () => {
+    const { resolve, resolveIdentity } = await getItemIcons();
+    expect(resolve('Coral Forest Chart')).toBe(
+      'https://web.poecdn.com/image/Art/2DItems/Currency/Deepwater/DeepwaterTornMap2.png',
+    );
+    expect(resolve('Charts')).toBe(
+      'https://web.poecdn.com/image/Art/2DItems/Currency/Deepwater/DeepwaterTornMap1.png',
+    );
+    expect(resolve('Charts 44')).toBe(
+      'https://web.poecdn.com/image/Art/2DItems/Currency/Deepwater/DeepwaterTornMap1.png',
+    );
+    expect(resolveIdentity('Chart (Abyssal Plain)')).toEqual({
+      name: 'Chart (Abyssal Plain)',
+      category: 'League',
+    });
   });
 
   it('REGRESSION: pickGeneric keywords are whole-word, not substrings', async () => {

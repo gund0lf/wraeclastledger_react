@@ -1,6 +1,7 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type { AtlasStatsReadResult } from '../shared/atlasStats'
 import type { ClipboardBridgeStatus } from '../shared/protonClipboardBridge'
+import type { TradeItemCatalog } from '../shared/manualLoot'
 import type {
   OverlayAction,
   OverlayBounds,
@@ -51,6 +52,7 @@ declare global {
       getBrickMods:        () => Promise<BrickModResult>
       fetchCurrencyOverview: (league: string) => Promise<{ lines: { id: string; primaryValue?: number }[] | null; error: string | null }>
       fetchEconomyIcons: (family: 'exchange' | 'stash', league: string, type: string) => Promise<{ icons: { name: string; icon: string }[] | null; slugs: string[]; names: string[]; error: string | null }>
+      fetchTradeItemCatalog: () => Promise<{ catalog: TradeItemCatalog; error: string | null }>
       fetchLeagueIndex: () => Promise<{ leagues: string[] | null; error: string | null }>
       readGameDataCache: () => Promise<{ manifest: unknown | null; error: string | null }>
       writeGameDataCache: (manifest: unknown) => Promise<{ ok: boolean; error: string | null }>

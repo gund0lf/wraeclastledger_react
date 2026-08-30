@@ -20,6 +20,7 @@ import {
   LootCurrencyValue,
 } from './ui/LootCurrencyDisplay';
 import { useSessionKeys } from '../store/useSessionStore';
+import { manualLootIdentityArtName } from '../../../shared/manualLoot';
 
 export const LootEvidenceSummary = ({
   summary,
@@ -144,7 +145,7 @@ export const LootEvidenceSummary = ({
                 <Table.Tr key={`${row.source}-${row.name}-${index}`}>
                   <Table.Td>
                     <Group gap={6} wrap="nowrap">
-                      <PoeItemIcon name={row.name} size={22}
+                      <PoeItemIcon name={manualLootIdentityArtName(row.identity) ?? row.name} size={22}
                         fallback={<LootCategoryGlyph category={row.category} size={22} />} />
                       <Stack gap={0} style={{ minWidth: 0 }}>
                         <Group gap={4} wrap="nowrap">
@@ -153,6 +154,9 @@ export const LootEvidenceSummary = ({
                             <Tooltip label={row.note || 'Manually added by the strategy author'} withArrow>
                               <Badge size="xs" color="yellow" variant="outline" style={{ cursor: 'help' }}>Manual</Badge>
                             </Tooltip>
+                          )}
+                          {row.identity?.kind === 'syndicate-reward' && (
+                            <Badge size="xs" color="gray" variant="light">Syndicate</Badge>
                           )}
                           {row.valuation && (
                             <Tooltip

@@ -3,6 +3,7 @@ import type {
   BestiaryAtlasSetup,
   MercenaryAtlasSetup,
 } from '../../../shared/atlasStats';
+import type { ManualLootIdentity } from '../../../shared/manualLoot';
 
 export interface ScarabSlot { name: string; cost: number; }
 export interface ScarabPreset { id: string; name: string; scarabs: ScarabSlot[]; }
@@ -45,6 +46,8 @@ export interface ManualLootItem {
   total: number;
   category: LootCategory;
   note: string;
+  /** Structured display/art identity for bases, Charts and Syndicate drops. */
+  identity?: ManualLootIdentity;
 }
 
 /** A counted Mercenary archetype authored by the user. Attribute alignment and

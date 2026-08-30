@@ -21,7 +21,15 @@ describe('WP14 session payload codec', () => {
       lootItems: [],
       baselineItems: [],
       baselineTotal: 17,
-      manualLootItems: [],
+      manualLootItems: [{
+        id: 'manual-chart',
+        name: 'Chart (Abyssal Plain)',
+        quantity: 1,
+        total: 120,
+        category: 'League',
+        note: '',
+        identity: { kind: 'chart', chart: 'Chart (Abyssal Plain)' },
+      }],
       manualStatistics: {
         wildwoodEncounters: 3,
         setupProvenance: {
@@ -59,6 +67,10 @@ describe('WP14 session payload codec', () => {
       .toBe(SESSION_PAYLOAD_KEYS.length);
     expect(decodeSessionPayload(encoded, DEFAULT_SETTINGS)).toMatchObject({
       baselineTotal: 17,
+      manualLootItems: [{
+        id: 'manual-chart',
+        identity: { kind: 'chart', chart: 'Chart (Abyssal Plain)' },
+      }],
       manualStatistics: {
         wildwoodEncounters: 3,
         setupProvenance: {

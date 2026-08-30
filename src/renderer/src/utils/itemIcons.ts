@@ -39,6 +39,7 @@
 
 import { getCurrentLeague, KNOWN_LEAGUES } from './league';
 import type { LootCategory } from '../types';
+import { BUNDLED_CHART_NAMES } from '../../../shared/manualLoot';
 
 // exchange family: names + relative image paths live in the top-level items[]
 const EXCHANGE_TYPES = [
@@ -144,6 +145,16 @@ const GENERIC_DIV_CARD = 'https://web.poecdn.com/image/Art/2DItems/Divination/In
 // uses this one bounded generic identity instead of a Wiki/runtime dependency.
 export const GENERIC_BLUEPRINT = 'https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvSGVpc3QvQmx1ZXByaW50Tm90QXBwcm92ZWQ3IiwidyI6MSwiaCI6MSwic2NhbGUiOjF9XQ/bafd718e24/BlueprintNotApproved7.png';
 
+// Reviewed current Chart inventory art from the official PoE CDN. Special
+// location Charts share the bounded generic torn-chart art; the three normal
+// bases retain their exact artwork.
+export const CHART_ART = Object.freeze({
+  generic: 'https://web.poecdn.com/image/Art/2DItems/Currency/Deepwater/DeepwaterTornMap1.png',
+  'Sandy Seabed Chart': 'https://web.poecdn.com/image/Art/2DItems/Currency/Deepwater/DeepwaterTornMap1.png',
+  'Coral Forest Chart': 'https://web.poecdn.com/image/Art/2DItems/Currency/Deepwater/DeepwaterTornMap2.png',
+  'Coral Reef Chart': 'https://web.poecdn.com/image/Art/2DItems/Currency/Deepwater/DeepwaterTornMap3.png',
+});
+
 // ─── Normalisation ────────────────────────────────────────────────────────────
 function norm(s: string): string {
   return s
@@ -212,6 +223,11 @@ function pickGeneric(name: string): string | undefined {
   // explicit whole-word identity is trustworthy even though the numeric
   // suffix alone is not (it is also used for gems).
   if (/\bblueprints?\b/.test(n)) return GENERIC_BLUEPRINT;
+
+  // Manual authors historically used both "Chart"/"Charts" and labels such
+  // as "Charts 44". The leading whole-word class is unambiguous even when the
+  // exact Deepwater location was not recorded.
+  if (/^charts?\b/.test(n)) return CHART_ART.generic;
 
   const collectionKey = GENERIC_COLLECTION_KEYS[n];
   if (collectionKey && GENERIC[collectionKey]) return GENERIC[collectionKey];
@@ -430,6 +446,16 @@ async function buildCache(challenge: string): Promise<void> {
     });
   }
 
+  for (const chart of BUNDLED_CHART_NAMES) {
+    const chartUrl = CHART_ART[chart as keyof typeof CHART_ART] ?? CHART_ART.generic;
+    add(chart, chartUrl);
+    addIdentity(chart, 'League');
+  }
+  for (const collective of ['Chart', 'Charts']) {
+    add(collective, CHART_ART.generic);
+    addIdentity(collective, 'League');
+  }
+
   // ── Seed category fallbacks ──────────────────────────────────────────────
   // Keyword seeding: the first cached item matching the predicate sets the icon.
   // Robust to league-specific naming since it only needs ONE item of the type.
@@ -523,6 +549,7 @@ async function buildCache(challenge: string): Promise<void> {
 // ─── Public API ───────────────────────────────────────────────────────────────
 export async function getItemIcons(): Promise<{
   resolve: (name: string) => string | undefined;
+  resolveIdentity: (name: string) => ItemIdentity | undefined;
   resolveCategory: (name: string) => LootCategory | undefined;
   suggestName: (name: string) => ItemIdentity | undefined;
 }> {
@@ -538,6 +565,32 @@ export async function getItemIcons(): Promise<{
     // rebuild for the latest context rather than exposing the intermediate one.
     if (cacheLeague !== league) return getItemIcons();
   }
+
+  const resolveIdentity = (name: string): ItemIdentity | undefined => {
+    if (!identityMap) return undefined;
+    const direct = identityMap.get(norm(name));
+    if (direct) return direct;
+
+    if (/ - \d+\/\d+/.test(name)) {
+      const base = name.split(' - ')[0].trim();
+      const hit = identityMap.get(norm(base));
+      if (hit) return hit;
+    }
+    const linkedBase = name.replace(/\s+\d+L$/i, '').trim();
+    if (linkedBase !== name) {
+      const hit = identityMap.get(norm(linkedBase));
+      if (hit) return hit;
+    }
+    if (name.includes(',')) {
+      for (const segment of name.split(',').reverse()) {
+        const candidate = segment.trim();
+        if (candidate.split(' ').length < 2) continue;
+        const hit = identityMap.get(norm(candidate));
+        if (hit) return hit;
+      }
+    }
+    return undefined;
+  };
 
   return {
     resolve(name: string): string | undefined {
@@ -641,30 +694,9 @@ export async function getItemIcons(): Promise<{
 
       return undefined;
     },
+    resolveIdentity,
     resolveCategory(name: string): LootCategory | undefined {
-      if (!identityMap) return undefined;
-      const direct = identityMap.get(norm(name));
-      if (direct) return direct.category;
-
-      if (/ - \d+\/\d+/.test(name)) {
-        const base = name.split(' - ')[0].trim();
-        const hit = identityMap.get(norm(base));
-        if (hit) return hit.category;
-      }
-      const linkedBase = name.replace(/\s+\d+L$/i, '').trim();
-      if (linkedBase !== name) {
-        const hit = identityMap.get(norm(linkedBase));
-        if (hit) return hit.category;
-      }
-      if (name.includes(',')) {
-        for (const segment of name.split(',').reverse()) {
-          const candidate = segment.trim();
-          if (candidate.split(' ').length < 2) continue;
-          const hit = identityMap.get(norm(candidate));
-          if (hit) return hit.category;
-        }
-      }
-      return undefined;
+      return resolveIdentity(name)?.category;
     },
     suggestName(name: string): ItemIdentity | undefined {
       if (!identityMap) return undefined;

@@ -95,6 +95,45 @@ describe('buildLootSummary', () => {
     });
   });
 
+  it('round-trips structured manual identities through the compact Discord wire', () => {
+    const manualLootItems: ManualLootItem[] = [
+      {
+        ...manual('Elder Giantslayer Helmet · 27% quality', 100),
+        identity: {
+          kind: 'quality-base', equipmentGroup: 'armour', base: 'Giantslayer Helmet',
+          quality: 27, influence: 'Elder',
+        },
+      },
+      {
+        ...manual('Chart (Abyssal Plain)', 80),
+        category: 'League',
+        identity: { kind: 'chart', chart: 'Chart (Abyssal Plain)' },
+      },
+      {
+        ...manual('Janus Perandus · Rarity from slain Rare or Unique enemies · Helmet', 120),
+        category: 'League',
+        identity: {
+          kind: 'syndicate-reward', member: 'Janus Perandus',
+          reward: 'Rarity from slain Rare or Unique enemies',
+          equipmentGroup: 'armour', base: 'Giantslayer Helmet',
+        },
+      },
+    ];
+    const summary = buildLootSummary({
+      baselineItems: [],
+      lootItems: [item('Chaos Orb', 100, '100', 'curr', false, 'Currency')],
+      baselineTotal: 0,
+      manualLootItems,
+      gemCorrection: 0,
+      investmentCorrection: 0,
+      reportedReturn: 400,
+    })!;
+    const token = encodeLootSummary(summary);
+    expect(token.length).toBeLessThan(LOOT_SUMMARY_TOKEN_MAX);
+    expect(decodeLootSummary(token)).toEqual(summary);
+    expect(summary.rows.filter((row) => row.identity)).toHaveLength(3);
+  });
+
   it('rejects forged valuation proof but still accepts legacy compact totals', () => {
     const summary = buildLootSummary({
       baselineItems: [item('Held item', 100, '5')],

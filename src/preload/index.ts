@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { AtlasStatsReadResult } from '../shared/atlasStats'
 import type { ClipboardBridgeStatus } from '../shared/protonClipboardBridge'
+import type { TradeItemCatalog } from '../shared/manualLoot'
 import type {
   OverlayAction,
   OverlayBounds,
@@ -88,6 +89,8 @@ const api = {
     ipcRenderer.invoke('poeninja:currency-overview', league),
   fetchEconomyIcons: (family: 'exchange' | 'stash', league: string, type: string): Promise<{ icons: { name: string; icon: string }[] | null; slugs: string[]; names: string[]; error: string | null }> =>
     ipcRenderer.invoke('poeninja:economy-icons', family, league, type),
+  fetchTradeItemCatalog: (): Promise<{ catalog: TradeItemCatalog; error: string | null }> =>
+    ipcRenderer.invoke('poe:trade-item-catalog'),
   // League-override dropdown data (league.ts fetchSelectableLeagues).
   fetchLeagueIndex: (): Promise<{ leagues: string[] | null; error: string | null }> =>
     ipcRenderer.invoke('poeninja:league-index'),

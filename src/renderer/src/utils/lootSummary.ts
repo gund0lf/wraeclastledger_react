@@ -1,4 +1,9 @@
 import type { LootCategory, LootItem, ManualLootItem } from '../types';
+import {
+  normalizeManualLootIdentity,
+  type EquipmentCatalogGroup,
+  type ManualLootIdentity,
+} from '../../../shared/manualLoot';
 import { strFromU8, strToU8, unzlibSync, zlibSync } from 'fflate';
 import { categorise, ITEM_CATEGORIES } from './lootCategories';
 import { diffLootItems } from './lootUtils';
@@ -33,6 +38,7 @@ export interface LootSummaryRow {
   tab?: string;
   note?: string;
   valuation?: LootValuationProof;
+  identity?: ManualLootIdentity;
 }
 
 export interface LootSummaryCategory {
@@ -92,11 +98,24 @@ type CompactLootTotals = [
   number,
 ];
 
+type CompactManualLootIdentity =
+  | [0, 0 | 1, string, number, string?]
+  | [1, string?]
+  | [2, string, string, 0 | 1 | 2, string?];
+
+type CompactManualLootRow = [
+  string, LootCategory, 1, number, number,
+  string | undefined, string | undefined,
+  null, null, null, null, null,
+  CompactManualLootIdentity,
+];
+
 export type CompactLootSummary = {
   v: number;
   r: ([string, LootCategory, 0 | 1, number, number, string?, string?]
     | [string, LootCategory, 0, number, number, string | undefined, string | undefined,
-      1, number, number, number, number])[];
+      1, number, number, number, number]
+    | CompactManualLootRow)[];
   c: [LootCategory, number][];
   t: CompactLootTotalsLegacy | CompactLootTotals;
 };
@@ -117,12 +136,61 @@ const approximately = (left: number, right: number, strict = false): boolean => 
   Math.abs(left - right) <= (strict ? 0.11 : Math.max(0.5, Math.abs(right) * 0.001))
 );
 
+const EQUIPMENT_GROUP_CODE: Readonly<Record<EquipmentCatalogGroup, 0 | 1 | 2>> = {
+  weapon: 0,
+  armour: 1,
+  accessory: 2,
+};
+const EQUIPMENT_GROUP_BY_CODE: readonly EquipmentCatalogGroup[] = ['weapon', 'armour', 'accessory'];
+
+const compactManualIdentity = (identity: ManualLootIdentity): CompactManualLootIdentity => {
+  if (identity.kind === 'quality-base') return [
+    0,
+    EQUIPMENT_GROUP_CODE[identity.equipmentGroup] as 0 | 1,
+    identity.base,
+    identity.quality,
+    identity.influence,
+  ];
+  if (identity.kind === 'chart') return [1, identity.chart ?? undefined];
+  return [
+    2,
+    identity.member,
+    identity.reward,
+    EQUIPMENT_GROUP_CODE[identity.equipmentGroup],
+    identity.base,
+  ];
+};
+
+const expandManualIdentity = (value: unknown): ManualLootIdentity | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  if (value[0] === 0) return normalizeManualLootIdentity({
+    kind: 'quality-base',
+    equipmentGroup: EQUIPMENT_GROUP_BY_CODE[Number(value[1])],
+    base: value[2],
+    quality: value[3],
+    influence: value[4],
+  });
+  if (value[0] === 1) return normalizeManualLootIdentity({
+    kind: 'chart',
+    chart: value[1] ?? null,
+  });
+  if (value[0] === 2) return normalizeManualLootIdentity({
+    kind: 'syndicate-reward',
+    member: value[1],
+    reward: value[2],
+    equipmentGroup: EQUIPMENT_GROUP_BY_CODE[Number(value[3])],
+    base: value[4],
+  });
+  return undefined;
+};
+
 const isValidCompactLootRow = (row: unknown): row is CompactLootSummary['r'][number] => {
   if (!Array.isArray(row) || row.length < 5
     || typeof row[0] !== 'string' || !isLootCategory(row[1])
     || (row[2] !== 0 && row[2] !== 1)
     || !Number.isFinite(Number(row[3])) || Number(row[3]) <= 0
     || !Number.isFinite(Number(row[4])) || Number(row[4]) <= 0) return false;
+  if (row[12] != null && (row[2] !== 1 || expandManualIdentity(row[12]) === undefined)) return false;
   if (row[7] == null) return true;
   if (row[7] !== 1 || row[2] !== 0 || row.length < 12) return false;
   const baselineQuantity = Number(row[8]);
@@ -142,6 +210,10 @@ const compactLootRow = (row: LootSummaryRow): CompactLootSummary['r'][number] =>
   const base: [string, LootCategory, 0 | 1, number, number, string?, string?] = [
     row.name, row.category, row.source === 'manual' ? 1 : 0,
     row.quantity, row.value, row.tab, row.note,
+  ];
+  if (row.identity) return [
+    row.name, row.category, 1, row.quantity, row.value, row.tab, row.note,
+    null, null, null, null, null, compactManualIdentity(row.identity),
   ];
   if (!row.valuation) return base;
   return [
@@ -206,6 +278,7 @@ export function expandCompactLootSummary(value: unknown): LootSummary | null {
         baselineValue: rounded(Number(row[10])),
         currentValue: rounded(Number(row[11])),
       } : undefined;
+      const identity = expandManualIdentity(row[12]);
       return {
         name: cleanText(String(row[0] ?? ''), MANUAL_LOOT_NAME_MAX),
         category: row[1],
@@ -215,6 +288,7 @@ export function expandCompactLootSummary(value: unknown): LootSummary | null {
         tab: row[5] ? cleanText(String(row[5]), 40) : undefined,
         note: row[6] ? cleanText(String(row[6]), MANUAL_LOOT_NOTE_MAX) : undefined,
         valuation,
+        ...(identity ? { identity } : {}),
       };
     }).filter((row) => row.name.length > 0 && row.value > 0
       && (row.quantity > 0 || row.valuation !== undefined));
@@ -290,14 +364,18 @@ export function buildLootSummary(input: BuildLootSummaryInput): LootSummary | nu
 
   const manualRows: LootSummaryRow[] = input.manualLootItems
     .filter((item) => item.total > 0 && item.name.trim().length > 0)
-    .map((item) => ({
-      name: cleanText(item.name, MANUAL_LOOT_NAME_MAX),
-      category: item.category,
-      source: 'manual' as const,
-      quantity: Math.max(1, Math.round(finite(item.quantity))),
-      value: rounded(Math.max(0, item.total)),
-      note: cleanText(item.note, MANUAL_LOOT_NOTE_MAX) || undefined,
-    }))
+    .map((item) => {
+      const identity = normalizeManualLootIdentity(item.identity);
+      return {
+        name: cleanText(item.name, MANUAL_LOOT_NAME_MAX),
+        category: item.category,
+        source: 'manual' as const,
+        quantity: Math.max(1, Math.round(finite(item.quantity))),
+        value: rounded(Math.max(0, item.total)),
+        note: cleanText(item.note, MANUAL_LOOT_NOTE_MAX) || undefined,
+        ...(identity ? { identity } : {}),
+      };
+    })
     .sort((a, b) => b.value - a.value);
 
   const csvRows: LootSummaryRow[] = gains.map((row) => {

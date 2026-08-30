@@ -71,8 +71,10 @@ describe('reviewed visual alignment corrections', () => {
   });
 
   it('keeps the per-item saved total in the label row instead of shifting one input', () => {
-    expect(dashboardSource).toContain('Saved total: {fcSep(manualDraft.total, false, 1)}');
+    expect(dashboardSource).toContain('Saved total: {fcSep(manualCanonicalTotal, false, 1)}c');
     expect(dashboardSource).not.toContain("description={manualValueMode === 'perItem'");
+    expect(dashboardSource).not.toContain('Plain values are Chaos');
+    expect(dashboardSource).not.toContain('Divine input requires a valid session Divine price');
     expect(
       dashboardSource.split("styles={{ label: { display: 'block', width: '100%' } }}").length - 1,
     ).toBe(2);

@@ -10,6 +10,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.92',
+    date: '2026-08-31',
+    changes: [
+      'Custom loot additions now support structured Quality Bases, Charts, and Syndicate rewards. Quality Bases retain their exact equipment base, quality, and optional influence; Charts can use an exact or generic identity; and Syndicate rewards retain the member, target reward, item category, and optional exact base. These identities survive saved sessions and shared evidence while driving accurate labels, categories, pooling, and artwork.',
+      'Official equipment-base identities power the new pickers without mixing in unique-item display rows. Reviewed Chart artwork covers exact normal Charts, generic and special-location Charts, and compatible legacy Chart labels, while exact Syndicate reward bases use their real item artwork.',
+      'Manual Total and Per-item values now accept explicit Chaos or Divine input such as 100c, 0.4d, or .4d. Divine values use the session Divine-price snapshot and show the converted saved total live while storage and shared evidence remain canonical Chaos.',
+    ],
+  },
+  {
     version: '1.0.91',
     date: '2026-08-30',
     changes: [
