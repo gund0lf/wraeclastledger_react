@@ -52,33 +52,43 @@ describe('Regex visual-alignment presentation contract', () => {
     expect(sessionSource).toContain('an Exalted Orb cannot add a modifier');
   });
 
-  it('provides a structured no-output state and accurate exclusions label', () => {
+  it('provides a structured no-output state and accurate modifier-filter label', () => {
     expect(sessionSource).toContain('No session regex yet');
     expect(sessionSource).toContain('Capture maps or load a strategy');
-    expect(sessionSource).toContain('Exclusions &amp; presets');
+    expect(sessionSource).toContain('Modifier filters &amp; presets');
     expect(sessionSource).not.toContain('>Your Regex</Text>');
   });
 
-  it('keeps removable exclusions and the exact copied value above the catalogues', () => {
+  it('keeps removable modifier filters and the exact copied value above the catalogues', () => {
     const summaryIndex = sessionSource.indexOf('className="regex-exclusions-summary"');
     const catalogueIndex = sessionSource.indexOf('className="regex-exclusion-catalogues"');
     expect(summaryIndex).toBeGreaterThanOrEqual(0);
     expect(catalogueIndex).toBeGreaterThan(summaryIndex);
     expect(sessionSource).toContain('className="regex-exclusion-chips"');
+    expect(sessionSource).toContain('className="regex-inclusion-chips"');
+    expect(sessionSource).toContain('inclusions anchored on the');
+    expect(sessionSource).toContain('additional inclusions grow inward and wrap');
     expect(sessionSource).toContain('selectedCatalogueMods.map((mod) =>');
     expect(sessionSource).toContain('aria-label={`Remove ${mod.label} exclusion`}');
+    expect(sessionSource).toContain('aria-label={`Remove ${mod.label} inclusion`}');
     expect(sessionSource).toContain('onClick={() => toggleSelectedMod(mod.id)}');
     expect(sessionSource).toContain('{mod.summaryLabel ?? mod.label}');
     expect(sessionSource).toContain('component="div" className="regex-exclusions-exact"');
-    expect(sessionSource).toContain('Exclusion regex: <Code');
+    expect(sessionSource).toContain('Modifier regex: <Code');
     expect(sessionSource).not.toContain('Preview: <Code');
     expect(rule('.regex-exclusions-exact')).toContain('margin-left: auto !important;');
     expect(rule('.regex-exclusions-exact')).toContain('text-align: right;');
     expect(rule('.regex-exclusions-exact')).toContain('text-wrap: balance;');
+    expect(rule('.regex-exclusions-summary'))
+      .toContain('grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);');
+    expect(rule('.regex-exclusion-chips')).toContain('justify-self: start;');
+    expect(rule('.regex-inclusion-chips')).toContain('justify-self: end;');
+    expect(rule('.regex-inclusion-chips')).toContain('justify-content: flex-end;');
+    expect(rule('.regex-exclusions-exact')).toContain('grid-column: 1 / -1;');
   });
 
   it('keeps the exact value right-aligned and growing left even when empty', () => {
-    expect(sessionSource).toContain("data-empty={!exclusionBlock ? 'true' : undefined}");
+    expect(sessionSource).toContain("data-empty={!modifierBlock ? 'true' : undefined}");
     const emptyRule = rule(".regex-exclusions-summary[data-empty='true'] .regex-exclusions-exact");
     expect(emptyRule).toContain('flex-basis: 100%;');
     expect(emptyRule).toContain('max-width: 100%;');
@@ -101,13 +111,14 @@ describe('Regex visual-alignment presentation contract', () => {
     expect(sessionSource).toContain('options={brickModCatalogues.regular}');
     expect(sessionSource).toContain('options={brickModCatalogues.nightmare}');
     expect(sessionSource).toContain('>Shared</Badge>');
-    expect(sessionSource).toContain('Each checkbox is independent');
-    expect(sessionSource).toContain('Selecting a Shared row pins and marks its related variants');
+    expect(sessionSource).toContain('Left-click excludes. Right-click includes');
+    expect(sessionSource).not.toContain('Shift+Enter');
+    expect(sessionSource).toContain('Shared rows only pin related variants');
     expect(sessionSource).toContain('>How this works</span>');
     expect(sessionSource.match(/>How this works<\/span>/g)).toHaveLength(1);
     expect(sessionSource).not.toContain('>?</Badge>');
     expect(sessionSource.indexOf('>How this works</span>'))
-      .toBeLessThan(sessionSource.indexOf('>Exclusions &amp; presets</Text>'));
+      .toBeLessThan(sessionSource.indexOf('>Modifier filters &amp; presets</Text>'));
     expect(sessionSource).toContain('Shared means related, not automatically selected');
     expect(sessionSource).toContain('aria-label="Clear modifier search"');
     expect(sessionSource).toContain("onClick={() => setBrickSearch('')}");
@@ -119,18 +130,19 @@ describe('Regex visual-alignment presentation contract', () => {
     expect(sessionSource).toContain('nightmare ? COLOR.nightmare : COLOR.text');
     expect(sessionSource).not.toContain('nightmare && !option.shared');
     expect(sessionSource).toContain('prioritizeActiveFamilyOptions(');
-    expect(sessionSource).toContain('allSelected={selectedCatalogueIds}');
-    expect(sessionSource).toContain('border: `1px solid ${checked ? outlineColor : COLOR.border}`');
+    expect(sessionSource).toContain('allSelected={allSelectedCatalogueIds}');
+    expect(sessionSource).toContain('border: `1px solid ${checked ? stateColor : COLOR.border}`');
     expect(sessionSource).toContain('borderLeft: related && nightmare ? `2px solid ${outlineColor}`');
     expect(sessionSource).toContain('borderRight: related && !nightmare ? `2px solid ${outlineColor}`');
-    expect(sessionSource).toContain("color={nightmare ? 'grape' : 'blue'}");
+    expect(sessionSource).toContain("color={isIncluded ? 'teal' : nightmare ? 'grape' : 'blue'}");
     expect(sessionSource).toContain('wrap="nowrap" justify="space-between"');
     expect(sessionSource).toContain('Related variant — select separately');
   });
 
-  it('keeps Trade exclusions display-only and catalogue-authoritative', () => {
-    expect(sessionSource).toContain('Read-only from Exclusions &amp; presets.');
+  it('keeps Trade modifier filters display-only and catalogue-authoritative', () => {
+    expect(sessionSource).toContain('Read-only from Modifier filters &amp; presets.');
     expect(sessionSource).toContain('selectedCatalogueMods.map');
+    expect(sessionSource).toContain('includedCatalogueMods.map');
     expect(sessionSource).not.toContain('selectedTradeBrickMods');
     expect(sessionSource).not.toContain('selectedRegularBrickMods');
     expect(sessionSource).not.toContain('selectedNightmareBrickMods');
@@ -153,7 +165,7 @@ describe('Regex visual-alignment presentation contract', () => {
     const deliriumIndex = tradeModal.indexOf('label="Delirium"');
     const mapFiltersIndex = tradeModal.indexOf('label="Map filters"');
     const pseudoIndex = tradeModal.indexOf('label="Pseudo stat filters"');
-    const exclusionsIndex = tradeModal.indexOf('label="Brick exclusions (NOT filter)"');
+    const exclusionsIndex = tradeModal.indexOf('label="Modifier filters"');
 
     expect(tradeModal).toContain('size="md"');
     expect(tradeModal).toContain('Any non-unique maps');
@@ -180,7 +192,7 @@ describe('Regex visual-alignment presentation contract', () => {
 
   it('shows live 250-character counts and blocks over-limit copies', () => {
     expect(sessionSource).toContain('charLimit={250}');
-    expect(sessionSource).toContain('{exclusionBlock.length} / 250');
+    expect(sessionSource).toContain('{modifierBlock.length} / 250');
     expect(sessionSource).toContain('disabled={generatedRegex.run.length > 250}');
     expect(sessionSource).toContain('{tradeRegex.length} / 250');
     expect(sessionSource).not.toContain('{r.length} / 250');

@@ -57,6 +57,7 @@ export const FIELD_OWNERSHIP = {
   onboardingDismissed: 'user-preference-cache',
   lootCurrencyMode: 'user-preference-cache',
   defaultExclusionPreset: 'user-preference-cache',
+  defaultInclusionPreset: 'user-preference-cache',
   exclusionPresets: 'user-preference-cache',
   divinePriceFetchedAt: 'user-preference-cache',
   overlayPreferences: 'user-preference-cache',

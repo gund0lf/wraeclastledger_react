@@ -105,6 +105,7 @@ describe('isWorkingSessionMeaningful', () => {
     ['atlas calculation', { fragmentsUsed: 2 }],
     ['investment', { baseMapCost: 20 }],
     ['regex exclusions', { regexExclusions: ['reflect'] }],
+    ['regex inclusions', { regexInclusions: ['brick:increased_rare_monsters'] }],
     ['strategy update target', { updateTargetStrategyId: 'strategy-1' }],
   ])('guards changed %s settings even without maps', (_label, settingsPatch) => {
     expect(isWorkingSessionMeaningful(candidate({
@@ -146,6 +147,7 @@ describe('isWorkingPayloadMeaningful', () => {
         divinePrice: 208,
         divinePriceQuotedAt: '2026-08-23T13:16:00.000Z',
         regexExclusions: ['reflect'],
+        regexInclusions: ['brick:increased_rare_monsters'],
         atlasTreeUrl: 'https://pathofpathing.com/?v=3.28.0-atlas-league#',
         atlasPoints: 0,
         atlasPointsMax: 138,
@@ -154,7 +156,7 @@ describe('isWorkingPayloadMeaningful', () => {
       investmentNeutralization: 0,
       investmentDismissed: false,
       strategySourceContext: null,
-    }, DEFAULT_SETTINGS, ['reflect'])).toBe(false);
+    }, DEFAULT_SETTINGS, ['reflect'], ['brick:increased_rare_monsters'])).toBe(false);
   });
 
   it('fails safe for meaningful, unknown, or malformed payload data', () => {

@@ -13,6 +13,8 @@ export interface ExclusionPreset {
   id: string;
   name: string;
   terms: string[];
+  /** Curated positive modifier markers. Missing on legacy presets. */
+  inclusions?: string[];
   /** Missing on legacy records, which are structured exclusion lists. */
   kind?: 'structured' | 'literal';
   /** Complete copy-only regex. Never combined with generated thresholds. */
@@ -22,6 +24,9 @@ export interface ExclusionPreset {
 export interface LootItem {
   id: string; name: string; tab: string;
   quantity: string; price: string; total: number; excluded: boolean;
+  /** Exact economy-catalog category captured when the CSV was imported.
+   *  Missing on older sessions, whose rows use the bounded name fallback. */
+  category?: LootCategory;
 }
 
 export type LootCategory =
@@ -198,6 +203,8 @@ export interface SessionSettings {
   advGemName: string;      // optional: used to auto-exclude matching items from loot CSV
   // Regex exclusion terms (editable, used in generated regex)
   regexExclusions: string[];
+  // Curated positive modifier terms (required/match-any in generated regex)
+  regexInclusions: string[];
   // regexSets and discordTag moved to TOP-LEVEL store state in v16 — they are
   // user-scoped, not session-scoped (loadSession used to revert them).
   atlasTreeUrl: string;

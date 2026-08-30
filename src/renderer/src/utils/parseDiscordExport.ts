@@ -169,13 +169,20 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     const avgRarity   = num([/Avg Rarity:\s*(\d+)%/]);
     const avgPack     = num([/Avg Pack:\s*(\d+)%/]);
     const avgCurr     = num([/Avg Currency:\s*(\d+)%/]);
-    const perMapCost  = num([/Per Map Cost:\s*([\d.]+)c/]);
-    const totalInvest = num([/Total Invest:\s*([\d.]+)c/]);
-    const totalReturn = num([/Total Return:\s*([\d.]+)c/]);
-    const divPerMap   = num([/Profit\/map:\s*([\d.]+)d/, /Div \/ Map:\s*([\d.]+)d/]);
     const divPrice    = num([/Divine Price:\s*([\d.]+)c/]);
-    const profitMatch = text.match(/Net Profit:\s*([+-]?[\d.]+)c/);
-    const netProfit   = profitMatch ? parseFloat(profitMatch[1]) : 0;
+    const authoredTotal = (label: string): number => {
+      const match = text.match(new RegExp(`${label}:\\s*([+-]?[\\d.]+)([cd])`, 'i'));
+      if (!match) return 0;
+      const amount = Number(match[1]);
+      if (!Number.isFinite(amount)) return 0;
+      if (match[2].toLowerCase() === 'c') return amount;
+      return divPrice > 0 ? amount * divPrice : 0;
+    };
+    const perMapCost  = num([/Per Map Cost:\s*([\d.]+)c/]);
+    const totalInvest = authoredTotal('Total Invest');
+    const totalReturn = authoredTotal('Total Return');
+    const divPerMap   = num([/Profit\/map:\s*([\d.]+)d/, /Div \/ Map:\s*([\d.]+)d/]);
+    const netProfit   = authoredTotal('Net Profit');
     const mapType     = str([/Type:\s*([68]-mod)/]);
     const chiselRaw   = str([/Chisel:\s*([^\n]+)/]);
     const chisel      = chiselRaw.replace(/\(.*/, '').replace(/[^\x00-\x7F]/g, '').trim();

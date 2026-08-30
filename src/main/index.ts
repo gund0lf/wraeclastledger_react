@@ -6,6 +6,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { autoUpdater } from 'electron-updater'
 import {
+  buildBrickTradeInclusionStatGroup,
   buildBrickTradeStatGroups,
   brickRegexTerm,
   resolveBrickTradeStats,
@@ -805,6 +806,7 @@ ipcMain.handle('trade:get-brick-mods', async () => {
       regexTerm: brickRegexTerm(def),
       category:  def.category,
       familyId:  def.familyId,
+      inclusionEligible: def.inclusionEligible === true,
       affixLines: def.affixLines ? [...def.affixLines] : undefined,
       tradeTexts: def.tradePatterns.map((pattern) => pattern.text),
     }));
@@ -825,6 +827,7 @@ interface TradeParams {
   minDelirious:    number;   // -1 = any, 0 = none, positive tiers = exact
   deliRewardTypes: string[];
   brickExclusions: string[];
+  brickInclusions: string[];
   minTier:         number;   // 0 = any, 16 = T16+
   corruptedFilter: 'any' | 'yes' | 'no';
 }
@@ -833,7 +836,7 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
   await ensureStatsLoaded();
 
   const { league, minIIQ, minPack, minIIR, minCurrency, minScarabs, minMaps,
-          mapType, empowered, minDelirious, deliRewardTypes, brickExclusions,
+          mapType, empowered, minDelirious, deliRewardTypes, brickExclusions, brickInclusions,
           minTier, corruptedFilter } = params;
 
   // Corrupted: explicit override wins, else mapType default
@@ -928,6 +931,11 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
     );
     statsArray.push(...brickGroups);
   }
+  const brickInclusionGroup = buildBrickTradeInclusionStatGroup(
+    brickInclusions,
+    BRICK_MOD_RESOLVED,
+  );
+  if (brickInclusionGroup) statsArray.push(brickInclusionGroup);
 
   const itemType = tradeItemTypeForMapType(mapType);
   const query = {

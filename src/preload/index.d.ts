@@ -17,10 +17,10 @@ type TradeParams = {
   minTier: number; corruptedFilter: 'any' | 'yes' | 'no';
   mapType: 'any' | 'regular' | '8mod' | 'nightmare' | 'originator';
   empowered: boolean; minDelirious: number;
-  deliRewardTypes: string[]; brickExclusions: string[];
+  deliRewardTypes: string[]; brickExclusions: string[]; brickInclusions: string[];
 };
 
-type BrickMod = { id: string; label: string; summaryLabel?: string; regexTerm: string; category: 'regular' | 'nightmare'; familyId?: string; affixLines?: string[]; tradeTexts: string[] };
+type BrickMod = { id: string; label: string; summaryLabel?: string; regexTerm: string; category: 'regular' | 'nightmare'; familyId?: string; inclusionEligible?: boolean; affixLines?: string[]; tradeTexts: string[] };
 type UnavailableBrickMod = { id: string; label: string; expectedCount: number; actualCount: number };
 type BrickModResult = { mods: BrickMod[]; unavailable: UnavailableBrickMod[]; error: string | null };
 type RepositoryFlushRequest = { requestId: string; mode: 'flush' | 'export-recovery' };

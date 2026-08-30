@@ -4,6 +4,7 @@ import { exactIntegerThresholdPattern } from './regexThreshold';
 import {
   brickExclusionMarker,
   compileBrickExclusionPattern,
+  compileBrickInclusionPattern,
   normalizeBrickExclusionEntries,
 } from '../../../shared/brickMods';
 
@@ -60,6 +61,14 @@ export function buildExclusionRegexBlock(exclusions: readonly string[]): string 
   return pattern ? `"!${pattern}"` : '';
 }
 
+/** Positive stash requirement: one selected modifier is a required term; two
+ * or more are one OR clause so any selected target can satisfy the search. */
+export function buildInclusionRegexBlock(inclusions: readonly string[]): string {
+  const pattern = compileBrickInclusionPattern(sanitizeExclusionTerms([...inclusions]));
+  if (!pattern) return '';
+  return pattern.includes('|') ? `"(${pattern})"` : `"${pattern}"`;
+}
+
 // ─── Regex helpers ────────────────────────────────────────────────────────────
 function thresholdPat(floor: number): string {
   if (floor <= 0) return '\\d..';
@@ -82,10 +91,16 @@ interface MapAverages {
   avgRarity: number; avgScarabs: number;
 }
 
-export const generateRunRegex = (avg: MapAverages, exclusions?: string[]): string => {
+export const generateRunRegex = (
+  avg: MapAverages,
+  exclusions: string[] = [],
+  inclusions: string[] = [],
+): string => {
   const parts: string[] = [];
-  const exclusionBlock = buildExclusionRegexBlock(exclusions ?? []);
+  const exclusionBlock = buildExclusionRegexBlock(exclusions);
   if (exclusionBlock) parts.push(exclusionBlock);
+  const inclusionBlock = buildInclusionRegexBlock(inclusions);
+  if (inclusionBlock) parts.push(inclusionBlock);
 
   const packFloor = Math.max(Math.floor(avg.avgPack / 10) * 10, 20);
 
@@ -147,6 +162,7 @@ export function resolveTradeRegexExclusions(
 /** Generate the modal's approximate stash regex from its live controls. */
 export function generateTradeRegex(
   exclusions: string[],
+  inclusions: string[],
   minIIQ: number,
   minPack: number,
   minCurr: number,
@@ -157,6 +173,8 @@ export function generateTradeRegex(
   const numericParts: string[] = [];
   const exclusionBlock = buildExclusionRegexBlock(exclusions);
   if (exclusionBlock) numericParts.push(exclusionBlock);
+  const inclusionBlock = buildInclusionRegexBlock(inclusions);
+  if (inclusionBlock) numericParts.push(inclusionBlock);
   // These controls are labelled Min, so their values are literal floors.
   // Do not route them through generateRunRegex: that function deliberately
   // derives lenient thresholds from session averages (including a 60% IIQ/IIR
@@ -182,10 +200,16 @@ export function generateTradeRegex(
   return [numericRegex, deliriumRegex, rewardRegex].filter(Boolean).join(' ');
 }
 
-export const generateSlamRegex = (avg: MapAverages, exclusions?: string[]): string => {
+export const generateSlamRegex = (
+  avg: MapAverages,
+  exclusions: string[] = [],
+  inclusions: string[] = [],
+): string => {
   const parts: string[] = [];
-  const exclusionBlock = buildExclusionRegexBlock(exclusions ?? []);
+  const exclusionBlock = buildExclusionRegexBlock(exclusions);
   if (exclusionBlock) parts.push(exclusionBlock);
+  const inclusionBlock = buildInclusionRegexBlock(inclusions);
+  if (inclusionBlock) parts.push(inclusionBlock);
   const packFloor = Math.max(Math.floor(avg.avgPack * 0.75 / 10) * 10, 15);
   const packTerm = `ack.*(${thresholdPat(packFloor)})%`;
   if (avg.avgCurr > 0) {

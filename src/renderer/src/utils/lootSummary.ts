@@ -304,7 +304,7 @@ export function buildLootSummary(input: BuildLootSummaryInput): LootSummary | nu
     const quantityDelta = row.currQty - row.baseQty;
     return {
       name: cleanText(row.name, MANUAL_LOOT_NAME_MAX),
-      category: categorise(row.name, row.tab),
+      category: row.category ?? categorise(row.name, row.tab),
       source: 'wealthyexile' as const,
       quantity: quantityDelta > 0 ? quantityDelta : row.currQty,
       value: rounded(row.delta),

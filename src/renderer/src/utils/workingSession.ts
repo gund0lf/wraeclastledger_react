@@ -31,6 +31,7 @@ export interface WorkingSessionCandidate {
   loadedStrategyInfo: unknown | null;
   settings: SessionSettings;
   defaultExclusionPreset?: string[];
+  defaultInclusionPreset?: string[];
 }
 
 const AUTO_MANAGED_SETTINGS = new Set<keyof SessionSettings>([
@@ -171,6 +172,10 @@ export function isWorkingSessionMeaningful(
       state.settings.regexExclusions,
       state.defaultExclusionPreset ?? defaults.regexExclusions,
     )) continue;
+    if (key === 'regexInclusions' && valuesEqual(
+      state.settings.regexInclusions,
+      state.defaultInclusionPreset ?? defaults.regexInclusions,
+    )) continue;
     if (!valuesEqual(state.settings[key], defaults[key])) return true;
   }
   return false;
@@ -185,6 +190,7 @@ export function isWorkingPayloadMeaningful(
   payload: JsonObject,
   defaults: SessionSettings,
   defaultExclusionPreset: string[] = [],
+  defaultInclusionPreset: string[] = [],
 ): boolean {
   if (Object.keys(payload).some((key) => !SESSION_PAYLOAD_KEY_SET.has(key))) return true;
 
@@ -239,5 +245,6 @@ export function isWorkingPayloadMeaningful(
     loadedStrategyInfo: isPlainObject(payload.strategySourceContext)
       ? payload.strategySourceContext : null,
     defaultExclusionPreset,
+    defaultInclusionPreset,
   }, defaults);
 }

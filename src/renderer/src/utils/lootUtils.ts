@@ -6,7 +6,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { LootItem } from '../types';
+import { LootCategory, LootItem } from '../types';
 
 export interface DiffRow {
   name: string;
@@ -16,6 +16,7 @@ export interface DiffRow {
   currQty: number;
   baseTotal: number;
   currTotal: number;
+  category?: LootCategory;
 }
 
 /**
@@ -65,6 +66,7 @@ export function diffLootItems(baseline: LootItem[], current: LootItem[]): DiffRo
       currQty: parseInt(c?.quantity ?? '0') || 0,
       baseTotal: b?.total ?? 0,
       currTotal: c?.total ?? 0,
+      category: c?.category ?? b?.category,
     });
   }
   return rows.sort((a, b) => b.delta - a.delta);

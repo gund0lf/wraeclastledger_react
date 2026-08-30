@@ -14,6 +14,7 @@ export interface BrickModSelectSource {
   affixLines?: string[];
   category: BrickModCatalogueContext;
   familyId?: string;
+  inclusionEligible?: boolean;
 }
 
 export interface BrickModSelectOption {
@@ -28,6 +29,7 @@ export interface BrickModSelectOption {
   searchText: string;
   shared: boolean;
   familyId?: string;
+  inclusionEligible: boolean;
 }
 
 const toOption = (mod: BrickModSelectSource): BrickModSelectOption => {
@@ -43,6 +45,7 @@ const toOption = (mod: BrickModSelectSource): BrickModSelectOption => {
     searchText: `${mod.label} ${tradeLabel}`,
     shared: !!mod.familyId,
     familyId: mod.familyId,
+    inclusionEligible: mod.inclusionEligible === true,
   };
 };
 
@@ -122,6 +125,42 @@ export function toggleBrickExclusion(
   else selected.add(id);
 
   return entriesForSelection(mods, selected, customTerms);
+}
+
+export type BrickSelectionTarget = 'exclude' | 'include';
+
+/** One leaf has exactly three states: neutral, excluded, or included. Toggling
+ * the opposite intent switches state atomically; toggling the active intent
+ * returns to neutral. Inclusion is restricted to curated eligible leaves. */
+export function toggleBrickSelectionState(
+  mods: BrickModSelectSource[],
+  exclusions: readonly string[],
+  inclusions: readonly string[],
+  id: string,
+  target: BrickSelectionTarget,
+): { exclusions: string[]; inclusions: string[] } {
+  const mod = mods.find((candidate) => candidate.id === id);
+  if (!mod || (target === 'include' && !mod.inclusionEligible)) {
+    return { exclusions: [...exclusions], inclusions: [...inclusions] };
+  }
+
+  const normalizedExclusions = normalizeBrickExclusionEntries(exclusions);
+  const normalizedInclusions = normalizeBrickExclusionEntries(inclusions);
+  const excluded = new Set(normalizedExclusions.selectedIds);
+  const included = new Set(normalizedInclusions.selectedIds);
+  const active = target === 'exclude' ? excluded : included;
+  const opposite = target === 'exclude' ? included : excluded;
+
+  if (active.has(id)) active.delete(id);
+  else {
+    active.add(id);
+    opposite.delete(id);
+  }
+
+  return {
+    exclusions: entriesForSelection(mods, excluded, normalizedExclusions.customTerms),
+    inclusions: entriesForSelection(mods, included, []),
+  };
 }
 /** Shared-search matcher for one native catalogue. */
 export function filterBrickModSelectOptions(

@@ -16,6 +16,7 @@ import {
   BRICK_MOD_FAMILIES,
   BRICK_MOD_DEFS,
   brickRegexTerm,
+  buildBrickTradeInclusionStatGroup,
   buildBrickTradeStatGroups,
   compileBrickExclusionPattern,
   compileBrickExclusionTerms,
@@ -556,6 +557,42 @@ describe('exact Trade-stat resolution', () => {
         { id: 'explicit.stat_es', value: { min: 70, max: 80 } },
       ] },
     ]);
+  });
+
+  it('requires one positive target with AND and several with COUNT >= 1', () => {
+    const rare = byId('increased_rare_monsters');
+    const magic = byId('increased_magic_monsters');
+    const resolved = [
+      { def: rare, filters: [{ id: 'explicit.stat_rare' }] },
+      { def: magic, filters: [{ id: 'explicit.stat_magic' }] },
+    ];
+    expect(buildBrickTradeInclusionStatGroup([rare.id], resolved)).toEqual({
+      type: 'and',
+      filters: [{ id: 'explicit.stat_rare' }],
+    });
+    expect(buildBrickTradeInclusionStatGroup([rare.id, magic.id], resolved)).toEqual({
+      type: 'count',
+      value: { min: 1 },
+      filters: [{ id: 'explicit.stat_rare' }, { id: 'explicit.stat_magic' }],
+    });
+  });
+
+  it('limits positive selection to the three reviewed farming targets', () => {
+    expect(BRICK_MOD_DEFS
+      .filter((def) => def.inclusionEligible)
+      .map((def) => def.id)).toEqual([
+      'increased_rare_monsters',
+      'increased_magic_monsters',
+      'uber_rare_monsters_fracture_on_death',
+    ]);
+  });
+
+  it('omits positive selections that are not curated or resolved', () => {
+    const noRegen = byId('cannot_regenerate_life_mana_es');
+    expect(buildBrickTradeInclusionStatGroup([noRegen.id], [
+      { def: noRegen, filters: [{ id: 'explicit.stat_no_regen' }] },
+    ])).toBeNull();
+    expect(buildBrickTradeInclusionStatGroup(['increased_rare_monsters'], [])).toBeNull();
   });
 
   it('defines exactly the nine approved linked families and 21 leaves', () => {

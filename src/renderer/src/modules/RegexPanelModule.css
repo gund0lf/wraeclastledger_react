@@ -83,19 +83,26 @@
 }
 
 .regex-exclusions-summary {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: flex-start;
-  gap: 6px 12px;
-  flex-wrap: wrap;
+  gap: 4px 12px;
 }
 
 .regex-exclusion-chips {
-  flex: 1 1 360px;
   min-width: 0;
+  justify-self: start;
+}
+
+.regex-inclusion-chips {
+  min-width: 0;
+  justify-self: end;
+  justify-content: flex-end;
 }
 
 .regex-exclusions-exact {
-  flex: 0 1 640px;
+  grid-column: 1 / -1;
+  justify-self: end;
   max-width: 58%;
   min-width: 0;
   /* Mantine Text applies its own margin reset after module CSS. The important
@@ -231,8 +238,17 @@
     padding-inline: 7px;
   }
 
+  .regex-exclusions-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .regex-exclusion-chips,
+  .regex-inclusion-chips,
   .regex-exclusions-exact {
-    flex-basis: 100%;
+    grid-column: 1;
+  }
+
+  .regex-exclusions-exact {
     max-width: 100%;
   }
 }

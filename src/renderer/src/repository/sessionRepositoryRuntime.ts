@@ -20,6 +20,7 @@ import { confirmedLeagueSync, getCurrentLeague, setLeagueOverrideValue } from '.
 import { isWorkingPayloadMeaningful, isWorkingSessionMeaningful } from '../utils/workingSession';
 import { recoverManualRunTimer } from '../utils/manualRunTimer';
 import { normalizeOverlayPreferences } from '../../../shared/overlay';
+import { sanitizeBrickInclusionEntries } from '../../../shared/brickMods';
 import { normalizeLootCurrencyMode } from '../utils/currencyDisplay';
 import { isAutomaticSessionMutation } from '../utils/sessionMutationOrigin';
 import {
@@ -248,6 +249,8 @@ function applyPreferences(preferences: JsonObject): Partial<SessionState> {
     lootCurrencyMode: normalizeLootCurrencyMode(preferences.lootCurrencyMode),
     defaultExclusionPreset: Array.isArray(preferences.defaultExclusionPreset)
       ? preferences.defaultExclusionPreset as string[] : [],
+    defaultInclusionPreset: Array.isArray(preferences.defaultInclusionPreset)
+      ? sanitizeBrickInclusionEntries(preferences.defaultInclusionPreset as string[]) : [],
     exclusionPresets: Array.isArray(preferences.exclusionPresets)
       ? preferences.exclusionPresets as unknown as SessionState['exclusionPresets'] : [],
     overlayPreferences: normalizeOverlayPreferences(preferences.overlayPreferences),
@@ -306,6 +309,7 @@ function preferencePayload(state = useSessionStore.getState()): JsonObject {
     onboardingDismissed: state.onboardingDismissed,
     lootCurrencyMode: state.lootCurrencyMode,
     defaultExclusionPreset: state.defaultExclusionPreset,
+    defaultInclusionPreset: state.defaultInclusionPreset,
     exclusionPresets: state.exclusionPresets,
     overlayPreferences: state.overlayPreferences,
     lastDivineFetchAt: state.divinePriceFetchedAt,
@@ -692,6 +696,7 @@ export async function inspectWorkingReplacement(): Promise<WorkingReplacementIns
     working.payload,
     DEFAULT_SETTINGS,
     preferences.defaultExclusionPreset,
+    preferences.defaultInclusionPreset,
   );
   const workingSemanticHash = await computeSemanticHash(working.payload);
   let activeNamedSemanticHash: string | null = null;
@@ -862,6 +867,7 @@ function freshWorkingPayload(): JsonObject {
       leagueName: known ?? '',
       atlasBonus: known ? (state.atlasBonusByLeague[known] ?? false) : false,
       regexExclusions: [...state.defaultExclusionPreset],
+      regexInclusions: [...state.defaultInclusionPreset],
     },
     sessionNotes: '',
     investmentNeutralization: 0,
@@ -904,6 +910,7 @@ export async function startWorking(replaceExisting = false): Promise<void> {
       working.payload,
       DEFAULT_SETTINGS,
       preferences.defaultExclusionPreset,
+      preferences.defaultInclusionPreset,
     )) {
       // Phase 5 introduced the explicit fresh-empty marker. Adopt an older
       // semantically empty working slot before replacement so legacy/autopriced
@@ -1018,6 +1025,7 @@ function installStoreSubscription(): void {
       state.onboardingDismissed !== previous.onboardingDismissed ||
       state.lootCurrencyMode !== previous.lootCurrencyMode ||
       state.defaultExclusionPreset !== previous.defaultExclusionPreset ||
+      state.defaultInclusionPreset !== previous.defaultInclusionPreset ||
       state.exclusionPresets !== previous.exclusionPresets ||
       state.overlayPreferences !== previous.overlayPreferences ||
       state.divinePriceFetchedAt !== previous.divinePriceFetchedAt;

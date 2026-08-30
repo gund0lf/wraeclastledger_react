@@ -5,6 +5,7 @@ import {
   prioritizeActiveFamilyOptions,
   selectedBrickIdsForContext,
   toggleBrickExclusion,
+  toggleBrickSelectionState,
 } from './brickModSelect';
 
 const mods = [
@@ -16,6 +17,7 @@ const mods = [
     tradeTexts: ['Rare Monsters have Physical Thorns reflecting # Physical Damage'],
     category: 'regular',
     familyId: 'thorns',
+    inclusionEligible: true,
   },
   {
     id: 'brick_thorns_elemental_regular',
@@ -127,6 +129,45 @@ describe('brick modifier select presentation', () => {
       ['custom'],
       'brick_thorns_elemental_regular',
     )).toEqual(['custom', 'brick:brick_thorns_elemental_regular']);
+  });
+
+  it('enforces neutral/excluded/included as mutually exclusive states', () => {
+    const id = 'brick_thorns_physical_regular';
+    const included = toggleBrickSelectionState(mods, [], [], id, 'include');
+    expect(included).toEqual({
+      exclusions: [],
+      inclusions: ['brick:brick_thorns_physical_regular'],
+    });
+
+    const switched = toggleBrickSelectionState(
+      mods,
+      included.exclusions,
+      included.inclusions,
+      id,
+      'exclude',
+    );
+    expect(switched).toEqual({
+      exclusions: ['brick:brick_thorns_physical_regular'],
+      inclusions: [],
+    });
+
+    expect(toggleBrickSelectionState(
+      mods,
+      switched.exclusions,
+      switched.inclusions,
+      id,
+      'exclude',
+    )).toEqual({ exclusions: [], inclusions: [] });
+  });
+
+  it('keeps non-curated brick rows exclusion-only', () => {
+    expect(toggleBrickSelectionState(
+      mods,
+      [],
+      [],
+      'uber_triple_curse_vuln_temporal_elem',
+      'include',
+    )).toEqual({ exclusions: [], inclusions: [] });
   });
 
   it('searches catalogue names and value-aware mod text', () => {

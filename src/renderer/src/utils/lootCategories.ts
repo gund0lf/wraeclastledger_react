@@ -25,14 +25,7 @@ export const CAT_COLORS: Partial<Record<ItemCategory, string>> = {
   Deliriums: 'indigo',
 };
 
-const RULES: [RegExp | ((name: string, tab: string) => boolean), ItemCategory][] = [
-  [(_, t) => t === 'curr',  'Currency'],
-  [(_, t) => t === 'ess',   'Essences'],
-  [(_, t) => t === 'oil',   'Oils'],
-  [(_, t) => t === 'inc',   'Incubators'],
-  [(_, t) => t === 'card',  'Divination Cards'],
-  [(_, t) => t === 'gem',   'Gems'],
-  [(_, t) => t === 'map',   'Maps'],
+const RULES: [RegExp | ((name: string) => boolean), ItemCategory][] = [
   [/scarab/i,               'Scarabs'],
   [/delirium orb/i,         'Deliriums'],
   [/\boil\b/i,              'Oils'],
@@ -50,21 +43,37 @@ const RULES: [RegExp | ((name: string, tab: string) => boolean), ItemCategory][]
   [/support$|^vaal |awakened /i, 'Gems'],
 ];
 
-export function categorise(name: string, tab: string): ItemCategory {
+/** Bounded legacy/name fallback. WealthyExile's Tab column is the literal
+ * tracked stash tab, not item taxonomy, so it must never decide a category. */
+export function categorise(name: string, _tab: string): ItemCategory {
   for (const [rule, cat] of RULES) {
-    if (typeof rule === 'function') { if (rule(name, tab)) return cat; }
+    if (typeof rule === 'function') { if (rule(name)) return cat; }
     else if (rule.test(name)) return cat;
   }
   return 'Other';
 }
 
+export type LootCategoryResolver = (name: string) => LootCategory | undefined;
+
+/** Attach the exact catalog category to a newly imported snapshot. Unknown
+ * identities retain the bounded name fallback; the stash tab stays provenance. */
+export function assignLootCategories<T extends { name: string; tab: string }>(
+  items: T[],
+  resolveCategory?: LootCategoryResolver,
+): (T & { category: LootCategory })[] {
+  return items.map((item) => ({
+    ...item,
+    category: resolveCategory?.(item.name) ?? categorise(item.name, item.tab),
+  }));
+}
+
 export function buildCategoryBreakdown(
-  items: { name: string; tab: string; total: number; excluded: boolean }[]
+  items: { name: string; tab: string; total: number; excluded: boolean; category?: LootCategory }[]
 ): Map<ItemCategory, number> {
   const map = new Map<ItemCategory, number>();
   for (const item of items) {
     if (item.excluded) continue;
-    const cat = categorise(item.name, item.tab);
+    const cat = item.category ?? categorise(item.name, item.tab);
     map.set(cat, (map.get(cat) ?? 0) + item.total);
   }
   return map;

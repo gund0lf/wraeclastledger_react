@@ -109,6 +109,20 @@ describe('parseDiscordExport', () => {
     expect(r!.divPerMap).toBe(0.66);
   });
 
+  it('imports presentation-only Divine session totals using the authored quote', () => {
+    const displayed = FULL_EXPORT
+      .replace('Total Invest: 1197c', 'Total Invest: 3.9d')
+      .replace('Total Return: 9840c', 'Total Return: 31.7d')
+      .replace('Net Profit: +8643c', 'Net Profit: +27.9d');
+    const r = parseDiscordExport(displayed);
+    expect(r).not.toBeNull();
+    expect(r!.totalInvest).toBeCloseTo(1209, 8);
+    expect(r!.totalReturn).toBeCloseTo(9827, 8);
+    expect(r!.netProfit).toBeCloseTo(8649, 8);
+    expect(r!.perMapCost).toBe(28.5);
+    expect(r!.divPrice).toBe(310);
+  });
+
   it('parses string fields', () => {
     const r = parseDiscordExport(FULL_EXPORT);
     expect(r!.mapType).toBe('8-mod');

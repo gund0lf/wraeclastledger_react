@@ -10,6 +10,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.91',
+    date: '2026-08-30',
+    changes: [
+      'Regex modifier filters now support three deliberately bounded farming inclusions: Increased Rare Monsters, Increased Magic Monsters, and Rare Monsters Fracture on Death. Left-click still excludes, right-click includes with a distinct teal state, one inclusion is required, and several use one match-any group in both stash regexes and Trade searches. The same release corrects reviewed modifier tokens, Trade identities, ranges, and complete compound-affix descriptions.',
+      'WealthyExile stash-tab names are now treated only as import provenance. Exact catalog identity drives automatic loot category and artwork regardless of the user\'s tab names, Brother\'s Gift resolves correctly from arbitrary tabs, and likely manual Malachai\'s Mark misspellings receive an explicit correction choice instead of silent fuzzy matching.',
+      'Discord strategy sharing accepts both Chaos and Divine presentation for authored Invest, Return, and Net totals while retaining exact Chaos values in the readable and compact share formats. Pooled strategy cards distinguish pooled maps, runs, net per map, and complete historical totals from the published run beneath them without making the loot image denser.',
+    ],
+  },
+  {
     version: '1.0.90',
     date: '2026-08-29',
     changes: [

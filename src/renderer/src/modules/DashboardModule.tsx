@@ -15,12 +15,13 @@ import {
   IconSearch, IconTrash,
 } from '@tabler/icons-react';
 import { getItemIcons, chiselItemName } from '../utils/itemIcons';
+import type { ItemIdentity } from '../utils/itemIcons';
 import { PoeItemIcon } from '../components/ui/PoeItemIcon';
 import { LootCategoryGlyph, LootCategoryIcon } from '../components/ui/LootCategoryIcon';
 import { computeProfit, computeMultiplier } from '../utils/profit';
 import { fcSep } from '../utils/parseDiscordExport';
 import { computeTimeEstimate, formatActiveTime } from '../utils/timeEstimate';
-import { buildCategoryBreakdown, categorise, ITEM_CATEGORIES, ItemCategory, CAT_COLORS } from '../utils/lootCategories';
+import { assignLootCategories, buildCategoryBreakdown, categorise, ITEM_CATEGORIES, ItemCategory, CAT_COLORS } from '../utils/lootCategories';
 import { LOOT_SUMMARY_ROW_LIMIT, MANUAL_LOOT_NAME_MAX, MANUAL_LOOT_NOTE_MAX } from '../utils/lootSummary';
 import { StatTile } from '../components/ui/StatTile';
 import { GettingStartedCard } from '../components/GettingStartedCard';
@@ -75,24 +76,31 @@ const EMPTY_MANUAL_LOOT: ManualLootDraft = {
 };
 
 type IconResolver = (name: string) => string | undefined;
+type NameSuggestionResolver = (name: string) => ItemIdentity | undefined;
 
-const LootCategoryFallback = ({ name, tab }: { name: string; tab: string }) => {
-  const category = categorise(name, tab);
-  return <LootCategoryGlyph category={category} size={ICON_SIZE} />;
-};
-
-const ResolvedLootIcon = ({
-  name, tab, resolver, loading,
+const LootCategoryFallback = ({
+  name, tab, category,
 }: {
   name: string;
   tab: string;
+  category?: LootCategory;
+}) => {
+  return <LootCategoryGlyph category={category ?? categorise(name, tab)} size={ICON_SIZE} />;
+};
+
+const ResolvedLootIcon = ({
+  name, tab, category, resolver, loading,
+}: {
+  name: string;
+  tab: string;
+  category?: LootCategory;
   resolver: IconResolver | null;
   loading: boolean;
 }) => {
   const url = resolver?.(name);
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   if (!resolver && loading) return <Skeleton w={ICON_SIZE} h={ICON_SIZE} radius="xs" />;
-  if (!url || failedUrl === url) return <LootCategoryFallback name={name} tab={tab} />;
+  if (!url || failedUrl === url) return <LootCategoryFallback name={name} tab={tab} category={category} />;
   return (
     <Tooltip label={name} openDelay={500} withinPortal>
       <Image src={url} w={ICON_SIZE} h={ICON_SIZE} fit="contain"
@@ -181,6 +189,7 @@ export const DashboardModule = () => {
   const [search,    setSearch]    = useState('');
   const [diffTab,   setDiffTab]   = useState<'gains' | 'losses'>('gains');
   const [resolver,  setResolver]  = useState<IconResolver | null>(null);
+  const [nameSuggester, setNameSuggester] = useState<NameSuggestionResolver | null>(null);
   const [iconsLoading, setIconsLoading] = useState(false);
   const [visibleListRows, setVisibleListRows] = useState(INITIAL_ROWS);
   const [visibleDiffRows, setVisibleDiffRows] = useState(INITIAL_ROWS);
@@ -198,7 +207,10 @@ export const DashboardModule = () => {
   useEffect(() => {
     if (!hasCurrent && !hasBaseline) return;
     setIconsLoading(true);
-    getItemIcons().then((c) => setResolver(() => c.resolve)).catch(() => {}).finally(() => setIconsLoading(false));
+    getItemIcons().then((catalog) => {
+      setResolver(() => catalog.resolve);
+      setNameSuggester(() => catalog.suggestName);
+    }).catch(() => {}).finally(() => setIconsLoading(false));
   }, [hasCurrent, hasBaseline, settings.leagueName, leagueOverride]);
 
   // Search filters the complete imported list before pagination. Preserve the
@@ -235,7 +247,13 @@ export const DashboardModule = () => {
   const detectedTotal = detectedMatches.reduce((a, m) => a + m.value, 0);
 
   const categoryBreakdown = useMemo(() => {
-    const gi = gains.map((r) => ({ name: r.name, tab: r.tab, total: r.delta, excluded: false }));
+    const gi = gains.map((r) => ({
+      name: r.name,
+      tab: r.tab,
+      total: r.delta,
+      excluded: false,
+      category: r.category,
+    }));
     const breakdown = buildCategoryBreakdown(hasBoth && gi.length > 0 ? gi : lootItems);
     for (const item of manualLootItems) {
       breakdown.set(item.category, (breakdown.get(item.category) ?? 0) + item.total);
@@ -251,6 +269,10 @@ export const DashboardModule = () => {
   }, [lootItems, search]);
   const inclTotal = useMemo(() => lootItems.filter((i) => !i.excluded).reduce((a, b) => a + b.total, 0), [lootItems]);
   const manualTotal = useMemo(() => manualLootItems.reduce((sum, item) => sum + item.total, 0), [manualLootItems]);
+  const manualNameSuggestion = useMemo(
+    () => nameSuggester?.(manualDraft.name.trim()),
+    [manualDraft.name, nameSuggester],
+  );
 
   const startAddManual = () => {
     setEditingManualId(null);
@@ -291,12 +313,27 @@ export const DashboardModule = () => {
     processCsvFile(file);
     e.target.value = '';
   };
+  const parseClassifiedCsv = async (csv: string): Promise<LootItem[]> => {
+    const parsed = parseLootCsv(csv);
+    if (!parsed.length) return [];
+    setIconsLoading(true);
+    try {
+      const catalog = await getItemIcons();
+      setResolver(() => catalog.resolve);
+      setNameSuggester(() => catalog.suggestName);
+      return assignLootCategories(parsed, catalog.resolveCategory);
+    } catch {
+      return assignLootCategories(parsed);
+    } finally {
+      setIconsLoading(false);
+    }
+  };
   // Shared by the file picker and drag-and-drop. Role comes from
   // pendingRoleRef: null -> the "baseline or loot?" modal asks.
   const processCsvFile = (file: File) => {
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      const items = parseLootCsv(ev.target?.result as string);
+    reader.onload = async (ev) => {
+      const items = await parseClassifiedCsv(ev.target?.result as string);
       if (!items.length) return;
       const total = items.reduce((a, b) => a + b.total, 0);
       if (pendingRoleRef.current === 'baseline') { setBaselineItems(items); pendingRoleRef.current = null; if (hasCurrent) { setLootView('diff'); setDiffTab('gains'); } return; }
@@ -307,8 +344,8 @@ export const DashboardModule = () => {
   };
   const readCsvCandidate = (file: File): Promise<CsvCandidate | null> => new Promise((resolve) => {
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      const items = parseLootCsv(ev.target?.result as string);
+    reader.onload = async (ev) => {
+      const items = await parseClassifiedCsv(ev.target?.result as string);
       resolve(items.length > 0
         ? { name: file.name, items, total: items.reduce((sum, item) => sum + item.total, 0) }
         : null);
@@ -469,6 +506,22 @@ export const DashboardModule = () => {
               const name = event.currentTarget.value;
               setManualDraft((draft) => ({ ...draft, name }));
             }} />
+          {manualNameSuggestion && (
+            <Group gap={4} mt={-6}>
+              <Text size="xs" c="dimmed">Did you mean</Text>
+              <Button
+                size="compact-xs"
+                variant="subtle"
+                onClick={() => setManualDraft((draft) => ({
+                  ...draft,
+                  name: manualNameSuggestion.name,
+                  category: manualNameSuggestion.category,
+                }))}
+              >
+                {manualNameSuggestion.name}?
+              </Button>
+            </Group>
+          )}
           <SegmentedControl
             size="xs"
             fullWidth
@@ -897,7 +950,7 @@ export const DashboardModule = () => {
                             return (
                             <Table.Tr key={item.id} style={{ opacity: item.excluded ? 0.4 : 1 }}>
                               <Table.Td><Checkbox checked={!item.excluded} onChange={() => toggleLootItemExcluded(item.id)} size="xs" /></Table.Td>
-                              <Table.Td><Group gap={6} wrap="nowrap"><ResolvedLootIcon name={item.name} tab={item.tab} resolver={resolver} loading={iconsLoading} /><Text size="xs" lineClamp={1}>{item.name}</Text></Group></Table.Td>
+                              <Table.Td><Group gap={6} wrap="nowrap"><ResolvedLootIcon name={item.name} tab={item.tab} category={item.category} resolver={resolver} loading={iconsLoading} /><Text size="xs" lineClamp={1}>{item.name}</Text></Group></Table.Td>
                               <Table.Td><Text size="xs">{item.quantity}</Text></Table.Td>
                               <Table.Td ta="right">
                                 <LootCurrencyValue
@@ -947,7 +1000,7 @@ export const DashboardModule = () => {
                           {activeDiff.slice(0, visibleDiffRows).map((r) => {
                             return (
                             <Table.Tr key={r.name}>
-                              <Table.Td><Group gap={6} wrap="nowrap"><ResolvedLootIcon name={r.name} tab={r.tab} resolver={resolver} loading={iconsLoading} /><Text size="xs" lineClamp={1}>{r.name}</Text></Group></Table.Td>
+                              <Table.Td><Group gap={6} wrap="nowrap"><ResolvedLootIcon name={r.name} tab={r.tab} category={r.category} resolver={resolver} loading={iconsLoading} /><Text size="xs" lineClamp={1}>{r.name}</Text></Group></Table.Td>
                               <Table.Td><Text size="xs" c="dimmed">{r.baseQty} → {r.currQty}</Text></Table.Td>
                               <Table.Td ta="right">
                                 <LootCurrencyValue

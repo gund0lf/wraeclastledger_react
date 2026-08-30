@@ -7,8 +7,15 @@ import {
   LOOT_SUMMARY_ROW_LIMIT, LOOT_SUMMARY_TOKEN_MAX,
 } from './lootSummary';
 
-const item = (name: string, total: number, quantity: string, tab = 'curr', excluded = false): LootItem => ({
-  id: `${name}-${total}`, name, total, quantity, tab, excluded, price: '1',
+const item = (
+  name: string,
+  total: number,
+  quantity: string,
+  tab = 'curr',
+  excluded = false,
+  category?: LootItem['category'],
+): LootItem => ({
+  id: `${name}-${total}`, name, total, quantity, tab, excluded, price: '1', category,
 });
 
 const manual = (name: string, total: number, note = ''): ManualLootItem => ({
@@ -69,6 +76,23 @@ describe('buildLootSummary', () => {
       },
     });
     expect(decodeLootSummary(encodeLootSummary(summary!))).toEqual(summary);
+  });
+
+  it('uses the exact persisted category instead of interpreting the stash tab', () => {
+    const summary = buildLootSummary({
+      baselineItems: [],
+      lootItems: [item("Brother's Gift", 120, '1', 'curr', false, 'Divination Cards')],
+      baselineTotal: 0,
+      manualLootItems: [],
+      gemCorrection: 0,
+      investmentCorrection: 0,
+      reportedReturn: 120,
+    });
+    expect(summary?.rows[0]).toMatchObject({
+      name: "Brother's Gift",
+      category: 'Divination Cards',
+      tab: 'curr',
+    });
   });
 
   it('rejects forged valuation proof but still accepts legacy compact totals', () => {

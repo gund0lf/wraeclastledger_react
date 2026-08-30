@@ -1,32 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { categorise, buildCategoryBreakdown } from './lootCategories';
+import { assignLootCategories, categorise, buildCategoryBreakdown } from './lootCategories';
 
 // The categorise rules cascade in order — first rule that matches wins.
-// Tests reflect that ordering: anything with a tab hint short-circuits the
-// regex rules; otherwise name-based regex rules apply in declaration order.
+// WealthyExile's Tab value is provenance only. Name-based fallback rules apply
+// in declaration order when an exact economy-catalog identity is unavailable.
 
-describe('categorise — by tab hint', () => {
-  // The five tab-typed rules at the top of RULES win immediately when set.
-  it('routes to Currency when tab is "curr"', () => {
-    expect(categorise('Whatever', 'curr')).toBe('Currency');
+describe('categorise — stash tab provenance', () => {
+  it('never treats user-named stash tabs as item taxonomy', () => {
+    for (const tab of ['curr', 'ess', 'oil', 'inc', 'card', 'gem', 'map']) {
+      expect(categorise('Whatever', tab)).toBe('Other');
+    }
   });
-  it('routes to Essences when tab is "ess"', () => {
-    expect(categorise('Whatever', 'ess')).toBe('Essences');
-  });
-  it('routes to Oils when tab is "oil"', () => {
-    expect(categorise('Whatever', 'oil')).toBe('Oils');
-  });
-  it('routes to Incubators when tab is "inc"', () => {
-    expect(categorise('Whatever', 'inc')).toBe('Incubators');
-  });
-  it('routes to Divination Cards when tab is "card"', () => {
-    expect(categorise('Whatever', 'card')).toBe('Divination Cards');
-  });
-  it('routes to Gems when tab is "gem"', () => {
-    expect(categorise('Whatever', 'gem')).toBe('Gems');
-  });
-  it('routes to Maps when tab is "map"', () => {
-    expect(categorise('Whatever', 'map')).toBe('Maps');
+
+  it('uses the item name even when the stash tab suggests another category', () => {
+    expect(categorise('Divine Orb', 'card')).toBe('Currency');
   });
 });
 
@@ -111,11 +98,6 @@ describe('categorise — by name regex', () => {
 });
 
 describe('categorise — rule ordering', () => {
-  it('tab hint wins over name pattern', () => {
-    // Name "Divine Orb" would match Currency by regex, but tab='card' wins first.
-    expect(categorise('Divine Orb', 'card')).toBe('Divination Cards');
-  });
-
   it('scarab regex wins over generic Currency regex', () => {
     // /scarab/i is declared before /chisel|orb|chaos|.../i, so a scarab name
     // doesn't get pulled into Currency by accident.
@@ -166,5 +148,30 @@ describe('buildCategoryBreakdown', () => {
     ];
     const breakdown = buildCategoryBreakdown(items);
     expect(breakdown.get('Other')).toBe(250);
+  });
+
+  it('uses a persisted exact category before the legacy name fallback', () => {
+    const breakdown = buildCategoryBreakdown([{
+      name: "Brother's Gift",
+      tab: 'curr',
+      total: 120,
+      excluded: false,
+      category: 'Divination Cards',
+    }]);
+    expect(breakdown.get('Divination Cards')).toBe(120);
+    expect(breakdown.get('Other')).toBeUndefined();
+  });
+});
+
+describe('assignLootCategories', () => {
+  it('persists exact catalog authority and ignores the tracked stash tab', () => {
+    const items = assignLootCategories(
+      [{ name: "Brother's Gift", tab: 'curr' }, { name: 'Unknown Prize', tab: 'card' }],
+      (name) => name === "Brother's Gift" ? 'Divination Cards' : undefined,
+    );
+    expect(items).toEqual([
+      { name: "Brother's Gift", tab: 'curr', category: 'Divination Cards' },
+      { name: 'Unknown Prize', tab: 'card', category: 'Other' },
+    ]);
   });
 });

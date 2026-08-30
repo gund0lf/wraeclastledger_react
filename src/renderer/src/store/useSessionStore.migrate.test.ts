@@ -184,6 +184,22 @@ describe('migrateState — exclusion sanitization', () => {
     }));
     expect(out.savedSessions.s1.settings.regexExclusions).toEqual(['vola']);
   });
+
+  it('retains only curated positive modifier markers', () => {
+    const out = migrateState(persisted({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        regexInclusions: [
+          'brick:increased_rare_monsters',
+          'brick:cannot_regenerate_life_mana_es',
+          'custom-term',
+        ],
+      },
+      defaultInclusionPreset: ['brick:increased_magic_monsters', 'brick:unknown'],
+    }));
+    expect(out.settings.regexInclusions).toEqual(['brick:increased_rare_monsters']);
+    expect(out.defaultInclusionPreset).toEqual(['brick:increased_magic_monsters']);
+  });
 });
 
 describe('migrateState — v14 -> v15 investment sentinel', () => {

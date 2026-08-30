@@ -19,9 +19,10 @@ import { useSessionStore, DEFAULT_SETTINGS } from './useSessionStore';
 /** Reset the slices these tests touch to a clean baseline. */
 const resetStore = (): void => {
   useSessionStore.setState({
-    settings: { ...DEFAULT_SETTINGS, regexExclusions: [] },
+    settings: { ...DEFAULT_SETTINGS, regexExclusions: [], regexInclusions: [] },
     exclusionPresets: [],
     defaultExclusionPreset: [],
+    defaultInclusionPreset: [],
     activeSessionId: null,
     activeSessionName: null,
     loadedStrategyInfo: null,
@@ -31,6 +32,12 @@ const resetStore = (): void => {
 const setExclusions = (terms: string[]): void => {
   useSessionStore.setState((s) => ({
     settings: { ...s.settings, regexExclusions: terms },
+  }));
+};
+
+const setInclusions = (terms: string[]): void => {
+  useSessionStore.setState((s) => ({
+    settings: { ...s.settings, regexInclusions: terms },
   }));
 };
 
@@ -87,12 +94,16 @@ describe('named exclusion presets', () => {
 
   it('loadExclusionPreset replaces session exclusions with a copy of the preset', () => {
     setExclusions(['deto', 'burn']);
+    setInclusions(['brick:increased_rare_monsters']);
     state().saveExclusionPreset('rotation A');
     const id = state().exclusionPresets[0].id;
 
     setExclusions(['something-else']);
+    setInclusions([]);
     state().loadExclusionPreset(id);
     expect(state().settings.regexExclusions).toEqual(['deto', 'burn']);
+    expect(state().settings.regexInclusions).toEqual(['brick:increased_rare_monsters']);
+    expect(state().exclusionPresets[0].inclusions).toEqual(['brick:increased_rare_monsters']);
 
     // mutating the session afterwards must not mutate the stored preset
     setExclusions([...state().settings.regexExclusions, 'extra']);
@@ -124,13 +135,16 @@ describe('default exclusion preset', () => {
 
   it('applies the default preset to a new session before any maps exist', () => {
     setExclusions(['deto', 'burn']);
+    setInclusions(['brick:increased_magic_monsters']);
     state().setDefaultPreset();
     setExclusions(['unrelated']);
+    setInclusions([]);
 
     state().newSession();
 
     expect(state().maps).toEqual([]);
     expect(state().settings.regexExclusions).toEqual(['deto', 'burn']);
+    expect(state().settings.regexInclusions).toEqual(['brick:increased_magic_monsters']);
 
     setExclusions([...state().settings.regexExclusions, 'extra']);
     expect(state().defaultExclusionPreset).toEqual(['deto', 'burn']);
@@ -138,8 +152,10 @@ describe('default exclusion preset', () => {
 
   it('setDefaultPreset copies the current exclusions; clearDefaultPreset empties it', () => {
     setExclusions(['deto', 'burn']);
+    setInclusions(['brick:uber_rare_monsters_fracture_on_death']);
     state().setDefaultPreset();
     expect(state().defaultExclusionPreset).toEqual(['deto', 'burn']);
+    expect(state().defaultInclusionPreset).toEqual(['brick:uber_rare_monsters_fracture_on_death']);
 
     // it is a copy, not a reference
     setExclusions(['deto', 'burn', 'extra']);
@@ -147,6 +163,7 @@ describe('default exclusion preset', () => {
 
     state().clearDefaultPreset();
     expect(state().defaultExclusionPreset).toEqual([]);
+    expect(state().defaultInclusionPreset).toEqual([]);
   });
 
   it('allows only a structured named preset to become the default', () => {
@@ -162,8 +179,10 @@ describe('default exclusion preset', () => {
 
   it('setLoadedStrategyInfo applies the default preset to the session exclusions', () => {
     setExclusions(['deto']);
+    setInclusions(['brick:increased_rare_monsters']);
     state().setDefaultPreset();
     setExclusions(['unrelated']);
+    setInclusions([]);
 
     state().setLoadedStrategyInfo({
       authorName: 'tester', mapCount: 10,
@@ -172,6 +191,7 @@ describe('default exclusion preset', () => {
     } as any);
 
     expect(state().settings.regexExclusions).toEqual(['deto']);
+    expect(state().settings.regexInclusions).toEqual(['brick:increased_rare_monsters']);
     // clearing the loaded strategy (null) leaves settings untouched
     state().setLoadedStrategyInfo(null);
     expect(state().settings.regexExclusions).toEqual(['deto']);

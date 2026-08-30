@@ -34,6 +34,8 @@ export interface BrickModDef {
   /** Every player-facing line owned by the affix. Trade resolution may use one
    *  unique sentinel, but the catalogue must never hide its companion lines. */
   affixLines?: readonly string[];
+  /** Curated positive target. Most dangerous brick rows remain exclusion-only. */
+  inclusionEligible?: boolean;
 }
 
 export interface BrickTradePattern {
@@ -58,8 +60,9 @@ export interface BrickTradeFilter {
 }
 
 export interface BrickTradeStatGroup {
-  type: 'not';
+  type: 'not' | 'and' | 'count';
   filters: BrickTradeFilter[];
+  value?: { min: number };
 }
 
 export interface UnavailableBrickTradeStat {
@@ -166,8 +169,8 @@ export const BRICK_MOD_DEFS: BrickModDef[] = [
   { id: 'inhabited_by_abominations', label: 'Inhabited by Abominations', tradePatterns: [{ text: "Area is inhabited by Abominations" }], category: 'regular' },
   { id: 'inhabited_by_animals', label: 'Inhabited by Animals', tradePatterns: [{ text: "Area is inhabited by Animals" }], category: 'regular' },
   { id: 'inhabited_by_ghosts', label: 'Inhabited by Ghosts', tradePatterns: [{ text: "Area is inhabited by Ghosts" }], category: 'regular' },
-  { id: 'increased_rare_monsters', label: 'Increased Rare Monsters', tradePatterns: [{ text: "#% increased number of Rare Monsters" }], category: 'regular' },
-  { id: 'increased_magic_monsters', label: 'Increased Magic Monsters', tradePatterns: [{ text: "#% increased Magic Monsters" }], category: 'regular' },
+  { id: 'increased_rare_monsters', label: 'Increased Rare Monsters', tradePatterns: [{ text: "#% increased number of Rare Monsters" }], category: 'regular', inclusionEligible: true },
+  { id: 'increased_magic_monsters', label: 'Increased Magic Monsters', tradePatterns: [{ text: "#% increased Magic Monsters" }], category: 'regular', inclusionEligible: true },
 
   // ── Nightmare ──
   { id: 'brick_thorns_combined_nightmare', label: 'Thorns Reflection', summaryLabel: 'Thorns 1500/2500', affixLines: ['Rare Monsters have Physical Thorns reflecting 1500 Physical Damage', 'Rare Monsters have Elemental Thorns reflecting 2500 Elemental Damage'], tradePatterns: [{ text: "Rare Monsters have Elemental Thorns reflecting # Elemental Damage", statId: 'explicit.stat_3938822425', value: { min: 2500, max: 2500 } }], category: 'nightmare', familyId: 'thorns' },
@@ -213,7 +216,7 @@ export const BRICK_MOD_DEFS: BrickModDef[] = [
   { id: 'uber_debuffs_expire_faster', label: 'Debuffs Expire Faster', tradePatterns: [{ text: "Debuffs on Monsters expire #% faster" }], category: 'nightmare' },
   // FIXED: 'each re' was wrong ('Leech' is e,e,c,h — no 'a'). 'eech' from 'Leech' — aligns with uber token.
   { id: 'uber_reduced_leech_recovery', label: 'Reduced Leech Recovery', tradePatterns: [{ text: "Players have #% increased Maximum total Life, Mana and Energy Shield Recovery per second from Leech" }], category: 'nightmare' },
-  { id: 'uber_rare_monsters_fracture_on_death', label: 'Rare Monsters Fracture on Death', tradePatterns: [{ text: "#% chance for Rare Monsters to Fracture on death" }], category: 'nightmare' },
+  { id: 'uber_rare_monsters_fracture_on_death', label: 'Rare Monsters Fracture on Death', tradePatterns: [{ text: "#% chance for Rare Monsters to Fracture on death" }], category: 'nightmare', inclusionEligible: true },
   { id: 'uber_flask_triggers_meteor', label: 'Flask Triggers Meteor', tradePatterns: [{ text: "Players have #% chance to be targeted by a Meteor when they use a Flask" }], category: 'nightmare' },
   { id: 'uber_players_less_defences', label: 'Players Less Defences', tradePatterns: [{ text: "Players have #% more Defences" }], category: 'nightmare' },
   { id: 'uber_extra_projectiles_massive_aoe', label: 'Extra Projectiles + Massive AoE', affixLines: ['Monsters have 100% increased Area of Effect', 'Monsters fire 2 additional Projectiles'], tradePatterns: [{ text: "Monsters fire # additional Projectiles" }], category: 'nightmare' },
@@ -429,6 +432,24 @@ export function normalizeBrickExclusionEntries(
   return { selectedIds: [...selected], customTerms, ordered };
 }
 
+/** Positive selections are deliberately narrower than exclusions. Persist only
+ * curated semantic markers; unknown, custom, and exclusion-only entries are
+ * inert rather than broadening the search unexpectedly. */
+export function sanitizeBrickInclusionEntries(entries: readonly string[]): string[] {
+  const { selectedIds } = normalizeBrickExclusionEntries(entries);
+  return selectedIds
+    .filter((id) => BRICK_DEF_BY_ID.get(id)?.inclusionEligible === true)
+    .map(brickExclusionMarker);
+}
+
+/** Compile only the curated positive targets into a stash-search body. */
+export function compileBrickInclusionPattern(entries: readonly string[]): string {
+  const selectedIds = sanitizeBrickInclusionEntries(entries)
+    .map((entry) => brickIdFromExclusionMarker(entry))
+    .filter((id): id is string => id !== null);
+  return compileBrickExclusionTerms(selectedIds).join('|');
+}
+
 /** Compile semantic leaves into the shortest reviewed exact-cover terms. */
 export function compileBrickExclusionTerms(selectedIds: readonly string[]): string[] {
   const selected = new Set(selectedIds.filter((id) => BRICK_DEF_BY_ID.has(id)));
@@ -590,4 +611,33 @@ export function buildBrickTradeStatGroups(
   return combined.size > 0
     ? [{ type: 'not', filters: [...combined.values()] }]
     : [];
+}
+
+/** Positive brick targets are ANDed with the rest of the Trade query. One
+ * selected target is a normal required group; several mean match any one via
+ * COUNT >= 1. The curated eligible definitions each resolve to one exact
+ * filter, so COUNT cannot accidentally accept only half of a compound affix. */
+export function buildBrickTradeInclusionStatGroup(
+  selectedBrickIds: readonly string[],
+  resolved: readonly Pick<ResolvedBrickTradeStat, 'def' | 'filters'>[],
+): BrickTradeStatGroup | null {
+  const selected = new Set(selectedBrickIds);
+  const combined = new Map<string, BrickTradeFilter>();
+  let matchedSelections = 0;
+
+  for (const { def, filters } of resolved) {
+    if (!def.inclusionEligible || !selected.has(def.id)) continue;
+    matchedSelections += 1;
+    filters.forEach((filter) => {
+      const value = filter.value ? { ...filter.value } : undefined;
+      const key = `${filter.id}:${JSON.stringify(value ?? null)}`;
+      combined.set(key, { id: filter.id, ...(value ? { value } : {}) });
+    });
+  }
+
+  const filters = [...combined.values()];
+  if (filters.length === 0) return null;
+  return matchedSelections === 1
+    ? { type: 'and', filters }
+    : { type: 'count', value: { min: 1 }, filters };
 }

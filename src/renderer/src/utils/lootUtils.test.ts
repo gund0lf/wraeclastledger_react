@@ -137,6 +137,13 @@ describe('diffLootItems', () => {
     expect(gone[0].tab).toBe('OldTab');
   });
 
+  it('carries the exact current category and falls back to the baseline category', () => {
+    const base = [{ ...makeItem("Brother's Gift", 100), category: 'Divination Cards' as const }];
+    const current = [{ ...makeItem("Brother's Gift", 200), category: 'Other' as const }];
+    expect(diffLootItems(base, current)[0].category).toBe('Other');
+    expect(diffLootItems(base, [])[0].category).toBe('Divination Cards');
+  });
+
   it('handles multiple items with mixed gains and losses', () => {
     const baseline = [makeItem('A', 100), makeItem('B', 200), makeItem('C', 50)];
     const current  = [makeItem('A', 150), makeItem('C', 30),  makeItem('D', 80)];

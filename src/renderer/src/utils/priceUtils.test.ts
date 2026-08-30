@@ -216,6 +216,35 @@ describe('generateRunRegex', () => {
     });
   });
 
+  describe('inclusions', () => {
+    it('requires one selected positive modifier as an AND clause', () => {
+      const r = generateRunRegex(
+        { ...baseAvg, avgPack: 50, avgCurr: 60 },
+        [],
+        ['brick:increased_rare_monsters'],
+      );
+      expect(r).toContain('"rare mo"');
+    });
+
+    it('joins multiple positive modifiers into one match-any clause', () => {
+      const r = generateRunRegex(
+        { ...baseAvg, avgPack: 50, avgCurr: 60 },
+        [],
+        ['brick:increased_rare_monsters', 'brick:increased_magic_monsters'],
+      );
+      expect(r).toContain('"(rare mo|agic mo)"');
+    });
+
+    it('keeps positive and negative modifier clauses separate', () => {
+      const r = generateRunRegex(
+        { ...baseAvg, avgPack: 50, avgCurr: 60 },
+        ['brick:cannot_regenerate_life_mana_es'],
+        ['brick:increased_rare_monsters'],
+      );
+      expect(r).toContain('"!reg" "rare mo"');
+    });
+  });
+
   describe('high-currency branch (avgCurr >= 80)', () => {
     it('produces SEPARATE currency and pack quotes (AND semantics)', () => {
       // avgCurr=120, avgPack=50 → currFloor=120, packFloor=50
@@ -338,33 +367,49 @@ describe('Trade modal regex', () => {
     expect(generateTradeRegex([
       'brick:brick_max_res_regular',
       'brick:cannot_regenerate_life_mana_es',
-    ], 0, 0, 0, 0)).toBe('"!-(9|1[0-2])% to all|reg"');
+    ], [], 0, 0, 0, 0)).toBe('"!-(9|1[0-2])% to all|reg"');
   });
 
   it('copies exclusions even when every numeric Trade threshold is zero', () => {
-    expect(generateTradeRegex(['reg', 'ss acc'], 0, 0, 0, 0)).toBe('"!reg|ss acc"');
+    expect(generateTradeRegex(['reg', 'ss acc'], [], 0, 0, 0, 0)).toBe('"!reg|ss acc"');
   });
 
   it('hides Copy Regex only when exclusions and thresholds are both empty', () => {
-    expect(generateTradeRegex([], 0, 0, 0, 0)).toBe('');
+    expect(generateTradeRegex([], [], 0, 0, 0, 0)).toBe('');
+  });
+
+  it('copies one positive modifier as a required clause', () => {
+    expect(generateTradeRegex(
+      [],
+      ['brick:increased_rare_monsters'],
+      0, 0, 0, 0,
+    )).toBe('"rare mo"');
+  });
+
+  it('copies multiple positive modifiers as one match-any clause', () => {
+    expect(generateTradeRegex(
+      [],
+      ['brick:increased_rare_monsters', 'brick:increased_magic_monsters'],
+      0, 0, 0, 0,
+    )).toBe('"(rare mo|agic mo)"');
   });
 
   it('uses the Item Quantity anchor for the modal IIQ floor', () => {
-    const regex = generateTradeRegex(['reg'], 100, 40, 0, 0);
+    const regex = generateTradeRegex(['reg'], [], 100, 40, 0, 0);
     expect(regex).toBe(
       '"!reg" "ack.*([4-9].|\\d..)%" "m q.*(\\d..)%"',
     );
   });
 
   it('uses literal Trade minimums instead of applying session-average heuristics', () => {
-    expect(generateTradeRegex([], 110, 45, 0, 5)).toBe(
+    expect(generateTradeRegex([], [], 110, 45, 0, 5)).toBe(
       '"ack.*(4[5-9]|[5-9].|\\d..)%" "m q.*(1[1-9].|[2-9]..)%" "m rar.*([5-9]|[1-9].|\\d..)%"',
     );
-    expect(generateTradeRegex([], 110, 0, 0, 0)).not.toContain('ack.*');
+    expect(generateTradeRegex([], [], 110, 0, 0, 0)).not.toContain('ack.*');
   });
 
   it('matches a real 110 IIQ map without needing an IIR clause', () => {
-    const regex = generateTradeRegex([], 110, 45, 0, 0, 20);
+    const regex = generateTradeRegex([], [], 110, 45, 0, 0, 20);
     const mapText = [
       'Item Quantity: +110%',
       'Item Rarity: +0%',
@@ -378,33 +423,33 @@ describe('Trade modal regex', () => {
   });
 
   it('keeps positive currency and pack minimums as separate AND clauses', () => {
-    expect(generateTradeRegex([], 0, 40, 60, 0)).toBe(
+    expect(generateTradeRegex([], [], 0, 40, 60, 0)).toBe(
       '"urr.*([6-9].|\\d..)%" "ack.*([4-9].|\\d..)%"',
     );
   });
 
   it('keeps exact unit floors across two- and three-digit boundaries', () => {
-    expect(generateTradeRegex([], 115, 0, 0, 0)).toBe(
+    expect(generateTradeRegex([], [], 115, 0, 0, 0)).toBe(
       '"m q.*(11[5-9]|1[2-9].|[2-9]..)%"',
     );
-    expect(generateTradeRegex([], 0, 0, 145, 0)).toBe(
+    expect(generateTradeRegex([], [], 0, 0, 145, 0)).toBe(
       '"urr.*(14[5-9]|1[5-9].|[2-9]..)%"',
     );
   });
 
   it('adds an exact delirium percentage to the copied Trade regex', () => {
-    expect(generateTradeRegex([], 0, 0, 0, 0, 20)).toBe('"20%.+delirious"');
+    expect(generateTradeRegex([], [], 0, 0, 0, 0, 20)).toBe('"20%.+delirious"');
   });
 
   it('uses a negative delirium term when None is selected', () => {
-    expect(generateTradeRegex([], 0, 0, 0, 0, 0)).toBe('"!delirious"');
+    expect(generateTradeRegex([], [], 0, 0, 0, 0, 0)).toBe('"!delirious"');
   });
 
   it('does not confuse the Nightmare crafting footer with the Delirious map state', () => {
     expect(NIGHTMARE_DELIRIUM_FOOTER_FIXTURE).toMatch(/20%[\s\S]+Delirium Orbs/i);
     expect(NIGHTMARE_DELIRIUM_FOOTER_FIXTURE).not.toMatch(/Delirious/i);
 
-    const positiveClause = generateTradeRegex([], 0, 0, 0, 0, 20).slice(1, -1);
+    const positiveClause = generateTradeRegex([], [], 0, 0, 0, 0, 20).slice(1, -1);
     expect(new RegExp(positiveClause, 'is').test(NIGHTMARE_DELIRIUM_FOOTER_FIXTURE)).toBe(false);
 
     const deliriousNightmare = NIGHTMARE_DELIRIUM_FOOTER_FIXTURE.replace(
@@ -415,7 +460,7 @@ describe('Trade modal regex', () => {
   });
 
   it('copies one selected Delirium reward type as a required stash clause', () => {
-    const regex = generateTradeRegex([], 0, 0, 0, 0, 20, ['curr']);
+    const regex = generateTradeRegex([], [], 0, 0, 0, 0, 20, ['curr']);
     expect(regex).toBe('"20%.+delirious" ": curr"');
 
     const clauses = [...regex.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
@@ -426,7 +471,7 @@ describe('Trade modal regex', () => {
   });
 
   it('copies multiple Delirium rewards as one match-any clause', () => {
-    const regex = generateTradeRegex([], 0, 0, 0, 0, 20, [
+    const regex = generateTradeRegex([], [], 0, 0, 0, 0, 20, [
       'curr',
       'jew',
     ]);
@@ -443,7 +488,7 @@ describe('Trade modal regex', () => {
       'Item Quantity:',
       'Quality (Currency): +20% (augmented)\nItem Quantity:',
     );
-    const rewardClause = generateTradeRegex([], 0, 0, 0, 0, -1, ['curr'])
+    const rewardClause = generateTradeRegex([], [], 0, 0, 0, 0, -1, ['curr'])
       .slice(1, -1);
     expect(new RegExp(rewardClause, 'is').test(jewelleryWithCurrencyQuality)).toBe(false);
   });
@@ -484,5 +529,14 @@ describe('generateSlamRegex', () => {
   it('includes sanitised exclusions when provided', () => {
     const r = generateSlamRegex({ ...baseAvg, avgCurr: 80, avgPack: 50 }, ['eche']);
     expect(r).toContain('"!eche"');
+  });
+
+  it('includes positive modifier selections when provided', () => {
+    const r = generateSlamRegex(
+      { ...baseAvg, avgCurr: 80, avgPack: 50 },
+      [],
+      ['brick:uber_rare_monsters_fracture_on_death'],
+    );
+    expect(r).toContain('"ractu"');
   });
 });

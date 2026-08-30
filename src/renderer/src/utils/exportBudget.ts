@@ -112,6 +112,28 @@ const visibleCardExport = (exportText: string): string => exportText
   .replace(new RegExp(`^${LOOT_EVIDENCE_LABEL}:\\s*\\S+\\s*(?:\\r?\\n|$)`, 'gim'), '')
   .trimEnd();
 
+/** Presentation-only Discord-card compaction. The canonical readable export
+ * and compact wl2 payload retain their authored Chaos values; only the posted
+ * card (and its desktop preview/budget) changes units. Per-map cost and Divine
+ * price intentionally stay in Chaos, while the three session totals switch at
+ * one Divine. */
+export function presentAuthoredTotals(exportText: string): string {
+  const divinePriceMatch = exportText.match(/Divine Price:\*{0,2}\s*([\d.]+)c/i);
+  const divinePrice = divinePriceMatch ? Number(divinePriceMatch[1]) : 0;
+  if (!Number.isFinite(divinePrice) || divinePrice <= 0) return exportText;
+
+  return exportText.replace(
+    /(Total Invest|Total Return|Net Profit):(\*{0,2}\s*)([+-]?[\d.]+)c/gi,
+    (matched, label: string, separator: string, rawAmount: string) => {
+      const chaos = Number(rawAmount);
+      const divines = chaos / divinePrice;
+      if (!Number.isFinite(divines) || Math.abs(divines) < 1) return matched;
+      const explicitPlus = rawAmount.startsWith('+') && divines >= 0 ? '+' : '';
+      return `${label}:${separator}${explicitPlus}${divines.toFixed(1)}d`;
+    },
+  );
+}
+
 const lootCaption = (summary: LootSummary | null): string => {
   if (!summary) return '';
   const manualCount = summary.rows.filter((row) => row.source === 'manual').length;
@@ -128,7 +150,8 @@ export function compactPostedCardPreview(
   summary: LootSummary | null,
 ): string {
   const caption = lootCaption(summary);
-  return `${caption}${caption ? '\n' : ''}${visibleCardExport(exportText)}`;
+  const visible = presentAuthoredTotals(visibleCardExport(exportText));
+  return `${caption}${caption ? '\n' : ''}${visible}`;
 }
 
 /**
@@ -141,11 +164,13 @@ export function computeShareBudget(
   exportTextNoNotes: string,
   notesLength: number,
 ): ShareBudget {
-  const plainCardLength = CARD_HEADER_ALLOWANCE + exportText.length;
-  const decoratedCardLength = CARD_HEADER_ALLOWANCE + projectDecoratedLength(exportText);
+  const presented = presentAuthoredTotals(exportText);
+  const presentedNoNotes = presentAuthoredTotals(exportTextNoNotes);
+  const plainCardLength = CARD_HEADER_ALLOWANCE + presented.length;
+  const decoratedCardLength = CARD_HEADER_ALLOWANCE + projectDecoratedLength(presented);
   const budgetForNotes = DISCORD_MSG_LIMIT
     - CARD_HEADER_ALLOWANCE
-    - exportTextNoNotes.length
+    - presentedNoNotes.length
     - NOTES_LINE_OVERHEAD;
   return {
     wireLength: exportText.length,
@@ -169,8 +194,8 @@ export function computeCompactShareBudget(
   notesLength: number,
   summary: LootSummary | null,
 ): ShareBudget {
-  const visible = visibleCardExport(exportText);
-  const visibleNoNotes = visibleCardExport(exportTextNoNotes);
+  const visible = presentAuthoredTotals(visibleCardExport(exportText));
+  const visibleNoNotes = presentAuthoredTotals(visibleCardExport(exportTextNoNotes));
   const caption = lootCaption(summary);
   const plainCardLength = CARD_HEADER_ALLOWANCE + caption.length + visible.length;
   const decoratedCardLength = CARD_HEADER_ALLOWANCE + caption.length + projectDecoratedLength(visible);

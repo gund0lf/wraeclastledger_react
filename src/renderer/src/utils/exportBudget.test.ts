@@ -7,10 +7,32 @@ import {
   compactPostedCardPreview,
   computeCompactShareBudget,
   computeShareBudget,
+  presentAuthoredTotals,
   projectDecoratedLength,
 } from './exportBudget';
 
 describe('exportBudget', () => {
+  it('presents only authored session totals in Divines at the one-Divine boundary', () => {
+    const raw = [
+      '**Per Map Cost:** 70.8c | **Total Invest:** 1415.0c',
+      '**Total Return:** 4044.8c | **Net Profit:** +2629.8c',
+      '**Div / Map:** 0.606d | **Divine Price:** 217c',
+    ].join('\n');
+    expect(presentAuthoredTotals(raw)).toBe([
+      '**Per Map Cost:** 70.8c | **Total Invest:** 6.5d',
+      '**Total Return:** 18.6d | **Net Profit:** +12.1d',
+      '**Div / Map:** 0.606d | **Divine Price:** 217c',
+    ].join('\n'));
+  });
+
+  it('retains Chaos for authored totals below one Divine or without a valid quote', () => {
+    const below = 'Total Invest: 216c | Total Return: 217c | Net Profit: -216c\nDivine Price: 217c';
+    expect(presentAuthoredTotals(below)).toBe(
+      'Total Invest: 216c | Total Return: 1.0d | Net Profit: -216c\nDivine Price: 217c',
+    );
+    expect(presentAuthoredTotals('Total Invest: 1415c')).toBe('Total Invest: 1415c');
+  });
+
   it('pins the worst-case pooled-card allowance so later evidence still fits', () => {
     const worstFixedInteger = '9'.repeat(21);
     const worstPooledHeader =

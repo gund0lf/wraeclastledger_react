@@ -38,6 +38,7 @@
  */
 
 import { getCurrentLeague, KNOWN_LEAGUES } from './league';
+import type { LootCategory } from '../types';
 
 // exchange family: names + relative image paths live in the top-level items[]
 const EXCHANGE_TYPES = [
@@ -87,6 +88,51 @@ const STASH_TYPES = [
   'IncursionTemple',
   'Wombgift',
 ];
+
+// Exact source-family -> public loot taxonomy. This is the same catalog pass
+// used for artwork; the WealthyExile Tab column is never consulted because it
+// is only the tracked stash tab name. Families without an honest destination
+// in the bounded public taxonomy intentionally remain unclassified.
+const ECONOMY_TYPE_CATEGORY: Readonly<Partial<Record<string, LootCategory>>> = {
+  Currency: 'Currency',
+  Fragment: 'Fragments',
+  Omen: 'League',
+  Tattoo: 'League',
+  Artifact: 'League',
+  DeliriumOrb: 'Deliriums',
+  Scarab: 'Scarabs',
+  Essence: 'Essences',
+  Oil: 'Oils',
+  DivinationCard: 'Divination Cards',
+  DjinnCoin: 'League',
+  Ducat: 'League',
+  EnshroudingCrystal: 'League',
+  AllflameEmber: 'League',
+  Runegraft: 'League',
+  Resonator: 'League',
+  Fossil: 'League',
+  Astrolabe: 'League',
+  Incubator: 'Incubators',
+  UniqueWeapon: 'Unique Weapons',
+  UniqueArmour: 'Unique Armours',
+  UniqueAccessory: 'Unique Accessories',
+  UniqueFlask: 'Unique Flasks',
+  UniqueJewel: 'Unique Jewels',
+  UniqueMap: 'Maps',
+  Map: 'Maps',
+  BlightedMap: 'Maps',
+  BlightRavagedMap: 'Maps',
+  ValdoMap: 'Maps',
+  SkillGem: 'Gems',
+  ImbuedGem: 'Gems',
+  Beast: 'Beasts',
+  Invitation: 'Fragments',
+  Vial: 'Fragments',
+  UniqueRelic: 'Fragments',
+  UniqueTincture: 'League',
+  IncursionTemple: 'League',
+  Wombgift: 'League',
+};
 
 // Normal shared divination-card inventory art (all cards use this same icon).
 // Used once a name matches the known card list; if it ever 404s the UI falls
@@ -259,6 +305,7 @@ async function fetchCategory(
 // ─── Cache ────────────────────────────────────────────────────────────────────
 let exactMap:  Map<string, string> | null = null;
 let normMap:   Map<string, string> | null = null;
+let identityMap: Map<string, ItemIdentity> | null = null;
 let fetchProm: Promise<void>       | null = null;
 let cacheLeague: string | null = null;
 // Tier -> signed, fully rendered MapNumbersN art whose descriptor has no
@@ -266,9 +313,46 @@ let cacheLeague: string | null = null;
 // the map frame, so they must never be substituted for a generated image.
 let mapTierIcons: Map<number, string> = new Map();
 
+export interface ItemIdentity {
+  name: string;
+  category: LootCategory;
+}
+
+function withinOneEdit(left: string, right: string): boolean {
+  if (Math.abs(left.length - right.length) > 1) return false;
+  if (left === right) return true;
+  if (left.length === right.length) {
+    let differences = 0;
+    for (let i = 0; i < left.length; i++) {
+      if (left[i] !== right[i] && ++differences > 1) return false;
+    }
+    return true;
+  }
+  const shorter = left.length < right.length ? left : right;
+  const longer = left.length < right.length ? right : left;
+  let shortIndex = 0;
+  let longIndex = 0;
+  let skipped = false;
+  while (shortIndex < shorter.length && longIndex < longer.length) {
+    if (shorter[shortIndex] === longer[longIndex]) {
+      shortIndex++;
+      longIndex++;
+      continue;
+    }
+    if (skipped) return false;
+    skipped = true;
+    longIndex++;
+  }
+  return true;
+}
+
+const MANUAL_TYPE_SUFFIX = /\s+(?:gloves?|mitts?|gauntlets?|boots?|helmet|helm|body armour|armour|weapon|ring|amulet|belt|jewel|flask|map|card)$/;
+
 async function buildCache(challenge: string): Promise<void> {
   const exact      = new Map<string, string>();
   const normalized = new Map<string, string>();
+  const identities = new Map<string, ItemIdentity>();
+  const identityConflicts = new Set<string>();
   divCardSet.clear();
 
   const keyLeague = new Map<string, number>(); // norm key -> league fetch index (0 = challenge)
@@ -284,6 +368,18 @@ async function buildCache(challenge: string): Promise<void> {
     if (!exact.has(name)) exact.set(name, url);
     const nn = norm(name);
     if (!normalized.has(nn)) { normalized.set(nn, url); keyLeague.set(nn, leagueIdx); }
+  };
+  const addIdentity = (name: string, category: LootCategory | undefined) => {
+    if (!category) return;
+    const key = norm(name);
+    if (!key || identityConflicts.has(key)) return;
+    const existing = identities.get(key);
+    if (existing && existing.category !== category) {
+      identities.delete(key);
+      identityConflicts.add(key);
+      return;
+    }
+    if (!existing) identities.set(key, { name, category });
   };
 
   // Detect current challenge league, then also pull every KNOWN_LEAGUES entry
@@ -306,11 +402,17 @@ async function buildCache(challenge: string): Promise<void> {
     );
     exchRes.forEach((r, i) => {
       if (r.status !== 'fulfilled') return;
-      r.value.pairs.forEach(([k, v]) => add(k, v));
+      const type = EXCHANGE_TYPES[i];
+      const category = ECONOMY_TYPE_CATEGORY[type];
+      r.value.pairs.forEach(([k, v]) => {
+        add(k, v);
+        addIdentity(k, category);
+      });
+      for (const name of r.value.names) addIdentity(name, category);
       // Actual items[] display names are authoritative. Slug reconstruction is
       // only a fallback: live example `the-reflection-of-the-heart` has display
       // name `Reflection of the Heart` (the extra article must not be invented).
-      if (EXCHANGE_TYPES[i] === 'DivinationCard') {
+      if (type === 'DivinationCard') {
         for (const name of r.value.names) divCardSet.add(norm(name));
         for (const slug of r.value.slugs) divCardSet.add(slug.replace(/-/g, ' '));
       }
@@ -320,8 +422,11 @@ async function buildCache(challenge: string): Promise<void> {
     const stashRes = await Promise.allSettled(
       STASH_TYPES.map((t) => fetchCategory('stash', t, league))
     );
-    stashRes.forEach((r) => {
-      if (r.status === 'fulfilled') r.value.pairs.forEach(([k, v]) => add(k, v));
+    stashRes.forEach((r, i) => {
+      if (r.status === 'fulfilled') r.value.pairs.forEach(([k, v]) => {
+        add(k, v);
+        addIdentity(k, ECONOMY_TYPE_CATEGORY[STASH_TYPES[i]]);
+      });
     });
   }
 
@@ -408,15 +513,18 @@ async function buildCache(challenge: string): Promise<void> {
 
   exactMap = exact;
   normMap  = normalized;
+  identityMap = identities;
 
   console.log(
-    `[Icons] Cache built: ${exact.size} items, ${divCardSet.size} div cards, leagues: ${leagues.join(' + ')}`
+    `[Icons] Cache built: ${exact.size} items, ${identities.size} identities, ${divCardSet.size} div cards, leagues: ${leagues.join(' + ')}`
   );
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 export async function getItemIcons(): Promise<{
   resolve: (name: string) => string | undefined;
+  resolveCategory: (name: string) => LootCategory | undefined;
+  suggestName: (name: string) => ItemIdentity | undefined;
 }> {
   const league = await getCurrentLeague();
   if (!exactMap || cacheLeague !== league) {
@@ -533,12 +641,54 @@ export async function getItemIcons(): Promise<{
 
       return undefined;
     },
+    resolveCategory(name: string): LootCategory | undefined {
+      if (!identityMap) return undefined;
+      const direct = identityMap.get(norm(name));
+      if (direct) return direct.category;
+
+      if (/ - \d+\/\d+/.test(name)) {
+        const base = name.split(' - ')[0].trim();
+        const hit = identityMap.get(norm(base));
+        if (hit) return hit.category;
+      }
+      const linkedBase = name.replace(/\s+\d+L$/i, '').trim();
+      if (linkedBase !== name) {
+        const hit = identityMap.get(norm(linkedBase));
+        if (hit) return hit.category;
+      }
+      if (name.includes(',')) {
+        for (const segment of name.split(',').reverse()) {
+          const candidate = segment.trim();
+          if (candidate.split(' ').length < 2) continue;
+          const hit = identityMap.get(norm(candidate));
+          if (hit) return hit.category;
+        }
+      }
+      return undefined;
+    },
+    suggestName(name: string): ItemIdentity | undefined {
+      if (!identityMap) return undefined;
+      const raw = norm(name);
+      if (raw.length < 4 || identityMap.has(raw)) return undefined;
+      const candidateName = raw.replace(MANUAL_TYPE_SUFFIX, '');
+      if (candidateName.length < 4) return undefined;
+
+      let match: ItemIdentity | undefined;
+      for (const [knownName, identity] of identityMap) {
+        if (Math.abs(knownName.length - candidateName.length) > 1) continue;
+        if (!withinOneEdit(candidateName, knownName)) continue;
+        if (match && norm(match.name) !== knownName) return undefined;
+        match = identity;
+      }
+      return match;
+    },
   };
 }
 
 export function clearIconCache(): void {
   exactMap  = null;
   normMap   = null;
+  identityMap = null;
   fetchProm = null;
   cacheLeague = null;
   mapTierIcons = new Map();

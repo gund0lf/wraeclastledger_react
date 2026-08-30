@@ -402,6 +402,9 @@ export async function migrateSessionEnvelope(
     scarabPresets: requireArray(state.scarabPresets, 'state.scarabPresets'),
     onboardingDismissed: booleanValue(state.onboardingDismissed, false, 'state.onboardingDismissed'),
     defaultExclusionPreset: requireArray(state.defaultExclusionPreset, 'state.defaultExclusionPreset'),
+    defaultInclusionPreset: Array.isArray(state.defaultInclusionPreset)
+      ? state.defaultInclusionPreset
+      : [],
     exclusionPresets: requireArray(state.exclusionPresets, 'state.exclusionPresets'),
     lastDivineFetchAt: finiteNumber(state.divinePriceFetchedAt, 0, 'state.divinePriceFetchedAt'),
     lastSeenChangelogVersion: snapshot.changelog.rawValue,

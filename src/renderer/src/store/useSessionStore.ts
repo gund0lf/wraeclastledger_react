@@ -7,6 +7,7 @@ import { confirmedLeagueSync, getCurrentLeague, normalizeLeagueOverride, setLeag
 import { ModGroupState, cloneDefaultGroups } from '../utils/regexBuilderPresets';
 import { isRetrospectiveLeague, normalizeLeagueKey } from '../utils/retrospectives';
 import { MAP_DEVICE_SLOT_COUNT } from '../../../shared/mapDevice';
+import { sanitizeBrickInclusionEntries } from '../../../shared/brickMods';
 import type {
   RepositoryCheckpointSummary,
   RepositorySessionSummary,
@@ -91,6 +92,7 @@ export const DEFAULT_SETTINGS: SessionSettings = {
   advAstrolabeType: '', advAstrolabePrice: 0, advAstrolabeCount: 0,
   advGemCount: 0, advGemBuyPrice: 0, advGemSellPrice: 0, advGemName: '',
   regexExclusions: [],
+  regexInclusions: [],
   atlasTreeUrl: 'https://pathofpathing.com',
   atlasPoints: null, atlasPointsMax: null, // captured by AtlasTreeModule; null = no tree read yet
   // Versioning client half: null = normal session; uuid = update run (see types/index.ts)
@@ -206,11 +208,17 @@ export function migrateLegacyStore(persisted: any): any {
   if (Array.isArray(merged['regexExclusions'])) {
     merged['regexExclusions'] = sanitizeExclusionTerms(merged['regexExclusions']);
   }
+  if (Array.isArray(merged['regexInclusions'])) {
+    merged['regexInclusions'] = sanitizeBrickInclusionEntries(merged['regexInclusions']);
+  }
 
   // Sanitize defaultExclusionPreset too
   if (Array.isArray(persisted?.defaultExclusionPreset)) {
     persisted.defaultExclusionPreset = sanitizeExclusionTerms(persisted.defaultExclusionPreset);
   }
+  persisted.defaultInclusionPreset = Array.isArray(persisted?.defaultInclusionPreset)
+    ? sanitizeBrickInclusionEntries(persisted.defaultInclusionPreset)
+    : [];
 
   const savedSessions: Record<string, any> = persisted?.savedSessions ?? {};
   for (const id of Object.keys(savedSessions)) {
@@ -235,6 +243,9 @@ export function migrateLegacyStore(persisted: any): any {
     // Sanitize saved session regexExclusions
     if (Array.isArray(mergedSs['regexExclusions'])) {
       mergedSs['regexExclusions'] = sanitizeExclusionTerms(mergedSs['regexExclusions']);
+    }
+    if (Array.isArray(mergedSs['regexInclusions'])) {
+      mergedSs['regexInclusions'] = sanitizeBrickInclusionEntries(mergedSs['regexInclusions']);
     }
     savedSessions[id] = { ...savedSessions[id], settings: mergedSs };
   }
@@ -315,6 +326,8 @@ export interface SessionState {
   lootCurrencyMode: LootCurrencyMode;
   // Persistent default exclusion preset — applied to fresh sessions and strategy loads
   defaultExclusionPreset: string[];
+  // Persistent curated inclusions — applied alongside the default exclusions.
+  defaultInclusionPreset: string[];
   // Named exclusion presets for rotation (Sad 2026-07-09). User-scoped,
   // top-level + additive — persist's shallow merge defaults [] (no migration).
   exclusionPresets: ExclusionPreset[];
@@ -410,7 +423,7 @@ export interface SessionState {
    *  names are immutable through this path; historical reassignment remains
    *  deliberately unsupported. */
   assignMissingSessionLeague: (league: string) => void;
-  setDefaultPreset: () => void; // saves current regexExclusions as persistent default
+  setDefaultPreset: () => void; // saves current modifier selections as persistent defaults
   clearDefaultPreset: () => void;
   saveExclusionPreset: (name: string, literalRegex?: string) => void;
   updateExclusionPreset: (id: string, name: string, literalRegex?: string) => void;
@@ -468,7 +481,7 @@ export const useSessionStore = create<SessionStoreState>()(
       isWatching: false, savedSessions: {},
       activeSessionId: null, activeSessionName: null, scarabPresets: [], sessionNonce: 0,
       divinePriceFetchedAt: 0,
-      sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, onboardingDismissed: false, lootCurrencyMode: 'chaos', loadedStrategyInfo: null, defaultExclusionPreset: [], exclusionPresets: [],
+      sessionNotes: '', investmentNeutralization: 0, investmentDismissed: false, onboardingDismissed: false, lootCurrencyMode: 'chaos', loadedStrategyInfo: null, defaultExclusionPreset: [], defaultInclusionPreset: [], exclusionPresets: [],
       overlayPreferences: { ...DEFAULT_OVERLAY_PREFERENCES, counterIds: [...DEFAULT_OVERLAY_PREFERENCES.counterIds] },
       overlayShortcutStatus: null,
       repositoryStatus: 'dormant', repositoryError: null, repositorySessions: [], repositorySizeBytes: 0,
@@ -952,6 +965,7 @@ export const useSessionStore = create<SessionStoreState>()(
             leagueName: known ?? '',
             atlasBonus: seededBonus,
             regexExclusions: [...s.defaultExclusionPreset],
+            regexInclusions: [...s.defaultInclusionPreset],
           },
           pendingAtlasBonusSeed: known === null,
           pendingAtlasBonusValue: null,
@@ -1090,14 +1104,18 @@ export const useSessionStore = create<SessionStoreState>()(
         });
       },
       setDefaultPreset: () =>
-        // Save current session exclusions as the persistent default
-        set((s) => ({ defaultExclusionPreset: [...s.settings.regexExclusions] })),
-      clearDefaultPreset: () => set({ defaultExclusionPreset: [] }),
+        // Save current session modifier selections as the persistent default.
+        set((s) => ({
+          defaultExclusionPreset: [...s.settings.regexExclusions],
+          defaultInclusionPreset: sanitizeBrickInclusionEntries(s.settings.regexInclusions),
+        })),
+      clearDefaultPreset: () => set({ defaultExclusionPreset: [], defaultInclusionPreset: [] }),
       saveExclusionPreset: (name, literalRegex) => {
         const literal = literalRegex?.trim();
         const p: ExclusionPreset = {
           id: uuidv4(), name,
           terms: literal ? [] : sanitizeExclusionTerms(get().settings.regexExclusions),
+          inclusions: literal ? [] : sanitizeBrickInclusionEntries(get().settings.regexInclusions),
           kind: literal ? 'literal' : 'structured',
           ...(literal ? { literalRegex: literal } : {}),
         };
@@ -1110,6 +1128,7 @@ export const useSessionStore = create<SessionStoreState>()(
             ...preset,
             name,
             terms: literal ? [] : sanitizeExclusionTerms(s.settings.regexExclusions),
+            inclusions: literal ? [] : sanitizeBrickInclusionEntries(s.settings.regexInclusions),
             kind: literal ? 'literal' : 'structured',
             ...(literal ? { literalRegex: literal } : { literalRegex: undefined }),
           }),
@@ -1118,12 +1137,19 @@ export const useSessionStore = create<SessionStoreState>()(
       loadExclusionPreset: (id) => {
         const p = get().exclusionPresets.find((p) => p.id === id);
         if (!p || p.kind === 'literal') return;
-        set((s) => ({ settings: { ...s.settings, regexExclusions: [...p.terms] } }));
+        set((s) => ({ settings: {
+          ...s.settings,
+          regexExclusions: [...p.terms],
+          regexInclusions: sanitizeBrickInclusionEntries(p.inclusions ?? []),
+        } }));
       },
       setExclusionPresetDefault: (id) => {
         const p = get().exclusionPresets.find((preset) => preset.id === id);
         if (!p || p.kind === 'literal') return;
-        set({ defaultExclusionPreset: [...p.terms] });
+        set({
+          defaultExclusionPreset: [...p.terms],
+          defaultInclusionPreset: sanitizeBrickInclusionEntries(p.inclusions ?? []),
+        });
       },
       deleteExclusionPreset: (id) =>
         set((s) => ({ exclusionPresets: s.exclusionPresets.filter((p) => p.id !== id) })),
@@ -1162,9 +1188,13 @@ export const useSessionStore = create<SessionStoreState>()(
       setLoadedStrategyInfo: (info) =>
         set((s) => ({
           loadedStrategyInfo: info,
-          // Apply persistent default exclusions when a strategy is loaded
+          // Apply persistent default modifier selections when a strategy is loaded.
           settings: info
-            ? { ...s.settings, regexExclusions: [...s.defaultExclusionPreset] }
+            ? {
+              ...s.settings,
+              regexExclusions: [...s.defaultExclusionPreset],
+              regexInclusions: [...s.defaultInclusionPreset],
+            }
             : s.settings,
         })),
     })

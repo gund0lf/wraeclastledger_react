@@ -24,6 +24,7 @@ const GEM_URL    = 'https://web.poecdn.com/gen/image/empower-support.png';
 const CHISEL_URL = 'https://web.poecdn.com/gen/image/scarab-chisel.png';
 const BLUNDERBORE_URL = 'https://web.poecdn.com/gen/image/blunderbore.png';
 const RALAKESH_URL = 'https://web.poecdn.com/gen/image/ralakesh.png';
+const MALACHAIS_MARK_URL = 'https://web.poecdn.com/gen/image/malachais-mark.png';
 const EPHEMERAL_URL = 'https://web.poecdn.com/gen/image/ephemeral-edge.png';
 const DISSOLUTION_URL = 'https://web.poecdn.com/gen/image/dissolution.png';
 const INVITATION_URL = 'https://web.poecdn.com/gen/image/incandescent-invitation.png';
@@ -94,8 +95,8 @@ beforeAll(() => {
         ], slugs: [] };
         if (type === 'DivinationCard') return {
           icons: [],
-          slugs: ['the-doctor', 'darker-half', 'time-lost-relic', 'the-reflection-of-the-heart'],
-          names: ['The Doctor', 'Darker Half', 'Time-Lost Relic', 'Reflection of the Heart'],
+          slugs: ['the-doctor', 'darker-half', 'time-lost-relic', 'the-reflection-of-the-heart', 'brothers-gift'],
+          names: ['The Doctor', 'Darker Half', 'Time-Lost Relic', 'Reflection of the Heart', "Brother's Gift"],
         };
         if (type === 'Astrolabe') return { icons: ASTROLABE_NAMES.map((name) => ({
           name, icon: ASTROLABE_URL,
@@ -109,6 +110,7 @@ beforeAll(() => {
         if (type === 'UniqueArmour') return { icons: [
           { name: 'Blunderbore', icon: BLUNDERBORE_URL },
           { name: "Ralakesh's Impatience", icon: RALAKESH_URL },
+          { name: "Malachai's Mark", icon: MALACHAIS_MARK_URL },
         ], slugs: [] };
         if (type === 'UniqueWeapon') return { icons: [
           { name: 'Ephemeral Edge', icon: EPHEMERAL_URL },
@@ -344,6 +346,28 @@ describe('itemIcons resolve()', () => {
     expect(resolve('Time-Lost Relic')).toContain('Divination');
     // Live slug includes an extra leading article; only items[].name is exact.
     expect(resolve('Reflection of the Heart')).toContain('Divination');
+    expect(resolve("Brother's Gift")).toContain('Divination');
+  });
+
+  it('uses the exact artwork catalog as category authority, independent of stash tabs', async () => {
+    const { resolveCategory } = await getItemIcons();
+    expect(resolveCategory("Brother's Gift")).toBe('Divination Cards');
+    expect(resolveCategory('Chaos Orb')).toBe('Currency');
+    expect(resolveCategory("Malachai's Mark")).toBe('Unique Armours');
+    expect(resolveCategory('Incandescent Invitation')).toBe('Fragments');
+    expect(resolveCategory('Croaker Talisman')).toBeUndefined();
+  });
+
+  it('offers one bounded explicit spelling suggestion without silently matching', async () => {
+    const { resolve, resolveCategory, suggestName } = await getItemIcons();
+    expect(resolve("Malachi's Mark gloves")).toBeUndefined();
+    expect(resolveCategory("Malachi's Mark gloves")).toBeUndefined();
+    expect(suggestName("Malachi's Mark gloves")).toEqual({
+      name: "Malachai's Mark",
+      category: 'Unique Armours',
+    });
+    expect(suggestName("Malachai's Mark")).toBeUndefined();
+    expect(suggestName('Completely unrelated gloves')).toBeUndefined();
   });
 
   it('REGRESSION: pickGeneric keywords are whole-word, not substrings', async () => {
