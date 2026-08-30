@@ -100,7 +100,7 @@ export const CURRENCY_MODS: NamedMod[] = [
     id: 'tunn', tier: 'A',
     label: 'Juggernaut — Cannot Be Stunned (+47%)',
     token: MOD_TOKENS.uber_stunned_action_move_speed_floor,
-    detail: '"Monsters cannot be Stunned · Action Speed cannot be modified to below Base Value" · +47% Currency · 13% Quant · ⚠ Same text exists on top tier Unwavering (no currency reward) — no single token can distinguish these',
+    detail: '"Monsters cannot be Stunned · Action Speed cannot be modified to below Base Value" · +47% Currency · 13% Quant · The "tun" stash token intentionally also catches Unwavering because both affixes contain Cannot Be Stunned; Trade uses Juggernaut\'s distinct one-line Action Speed stat',
   },
   {
     id: 'eteor', tier: 'B',
@@ -128,7 +128,7 @@ export const QUANTITY_MODS: NamedMod[] = [
     id: 'aoe', tier: 'S',
     label: 'Magnifying — 100% AoE + Projectiles (19% quant)',
     token: MOD_TOKENS.uber_extra_projectiles_massive_aoe,
-    detail: '"Monsters fire 2 additional Projectiles · Monsters\' skills Chain 3 additional times" · 19% Quant · 56% Rarity · 7% Pack · ⚠ "2 a" also matches top tier Splitting and Chaining (same individual lines, uber combines both)',
+    detail: '"Monsters have 100% increased Area of Effect · Monsters fire 2 additional Projectiles" · 19% Quant · 56% Rarity · 7% Pack · "2 a" targets the projectile mechanic and intentionally also catches standalone Splitting',
   },
   {
     id: 'mondam', tier: 'S',

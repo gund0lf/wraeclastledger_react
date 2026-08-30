@@ -161,9 +161,14 @@ const FullscreenBrickModList = ({
                   style={{ pointerEvents: 'none', marginTop: 2, flexShrink: 0 }}
                 />
                 <Stack gap={2} style={{ minWidth: 0, flex: 1 }}>
-                  <Text size="sm" style={{ color: nightmare ? COLOR.nightmare : COLOR.text }}>
-                    {option.tradeLabel}
-                  </Text>
+                  <Stack gap={0}>
+                    {option.affixLines.map((line) => (
+                      <Text key={line} size="sm"
+                        style={{ color: nightmare ? COLOR.nightmare : COLOR.text }}>
+                        {line}
+                      </Text>
+                    ))}
+                  </Stack>
                   {(option.label !== option.tradeLabel || option.shared) && (
                     <Group gap={5} wrap="nowrap" justify="space-between">
                       <Group gap={5} wrap="nowrap" style={{ minWidth: 0 }}>
@@ -564,7 +569,7 @@ export const FromSessionTab = () => {
           {selectedCatalogueMods.length > 0 ? (
             <Group gap={5} wrap="wrap" style={{ minWidth: 0 }}>
               {selectedCatalogueMods.map((mod) => (
-                <Tooltip key={mod.id} label={mod.displayText ?? mod.tradeTexts.join(' / ')} withArrow>
+                <Tooltip key={mod.id} label={(mod.affixLines ?? mod.tradeTexts).join(' · ')} withArrow>
                   <Badge size="xs" variant="light"
                     color={mod.category === 'nightmare' ? 'grape' : 'gray'}>
                     {mod.label}
@@ -795,14 +800,14 @@ export const FromSessionTab = () => {
                       <div>
                         <Text size="sm" fw={700}>Shared means related, not automatically selected</Text>
                         <Text size="xs" c="dimmed">
-                          Every checkbox excludes only that exact modifier and numeric range. Selecting one Shared row pins its family to the top and marks unchecked counterparts Related.
+                          Every checkbox excludes the shown mechanic and numeric range. When PoE reuses one stat line across affixes, that shared reach is intentional; selecting a Shared row pins its family to the top and marks unchecked counterparts Related.
                         </Text>
                       </div>
                       <Text size="xs">
                         Regular modifiers can still roll on Nightmare and Originator maps. Nightmare Thorns combines the separate Regular Physical and Elemental rows; Protected similarly combines Regular Armoured and Resistant.
                       </Text>
                       <Text size="xs" c="dimmed">
-                        PoE Trade receives exact stat IDs and numeric bounds. Copy Regex uses the reviewed stash expression shown above and enforces the 250-character limit.
+                        PoE Trade receives exact stat IDs and numeric bounds, while each catalogue row shows every line of the underlying affix. Copy Regex uses the reviewed stash expression shown above and enforces the 250-character limit.
                       </Text>
                       <Text size="xs" c="dimmed">
                         Presets can store these dynamic exclusions or a complete literal regex. Literal presets are copied exactly and never mixed with generated output.
@@ -887,7 +892,7 @@ export const FromSessionTab = () => {
                 <Group className="regex-exclusion-chips" gap={4} wrap="wrap">
                   {selectedCatalogueMods.map((mod) => (
                     <Tooltip key={mod.id}
-                      label={mod.displayText ?? mod.tradeTexts.join(' / ')} withArrow>
+                      label={(mod.affixLines ?? mod.tradeTexts).join(' · ')} withArrow>
                       <Badge size="sm"
                         color={mod.category === 'nightmare' ? 'grape' : 'gray'} variant="light"
                         rightSection={

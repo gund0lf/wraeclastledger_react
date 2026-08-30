@@ -80,7 +80,9 @@ export const MOD_TOKENS = {
   players_less_accuracy: 'ss acc',  // [V:py] Players Less Accuracy
   monsters_steal_charges: 'teal p',  // [V:py] Monsters Steal Charges
   monsters_gain_frenzy_charges: 'renz',  // [V:py] Monsters Gain Frenzy Charges
-  monsters_gain_endurance_charges: 'ndur',  // [V:py] Monsters Gain Endurance Charges
+  // "gain an" keeps the Endurance line while avoiding the separate
+  // "Frenzy and Endurance" steal-charges modifier.
+  monsters_gain_endurance_charges: 'gain an',  // [V:game] Monsters Gain Endurance Charges
   monsters_gain_power_charges: 'ower c',  // [V:py] Monsters Gain Power Charges
   monsters_maim_on_hit: 'aim on',  // [V:py] Monsters Maim on Hit
   monsters_hinder_on_hit: 'inder',  // [V:py] Monsters Hinder on Hit

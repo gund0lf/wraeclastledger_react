@@ -805,7 +805,7 @@ ipcMain.handle('trade:get-brick-mods', async () => {
       regexTerm: brickRegexTerm(def),
       category:  def.category,
       familyId:  def.familyId,
-      displayText: def.displayText,
+      affixLines: def.affixLines ? [...def.affixLines] : undefined,
       tradeTexts: def.tradePatterns.map((pattern) => pattern.text),
     }));
   return { mods, unavailable: BRICK_MOD_UNAVAILABLE, error: statsLoadError };

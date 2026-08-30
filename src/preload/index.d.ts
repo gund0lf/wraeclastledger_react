@@ -20,7 +20,7 @@ type TradeParams = {
   deliRewardTypes: string[]; brickExclusions: string[];
 };
 
-type BrickMod = { id: string; label: string; summaryLabel?: string; regexTerm: string; category: 'regular' | 'nightmare'; familyId?: string; displayText?: string; tradeTexts: string[] };
+type BrickMod = { id: string; label: string; summaryLabel?: string; regexTerm: string; category: 'regular' | 'nightmare'; familyId?: string; affixLines?: string[]; tradeTexts: string[] };
 type UnavailableBrickMod = { id: string; label: string; expectedCount: number; actualCount: number };
 type BrickModResult = { mods: BrickMod[]; unavailable: UnavailableBrickMod[]; error: string | null };
 type RepositoryFlushRequest = { requestId: string; mode: 'flush' | 'export-recovery' };

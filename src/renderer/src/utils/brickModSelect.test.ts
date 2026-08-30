@@ -12,7 +12,7 @@ const mods = [
     id: 'brick_thorns_physical_regular',
     label: 'Physical Thorns',
     regexTerm: 'ting 800 p',
-    displayText: 'Rare Monsters have Physical Thorns reflecting 800 Physical Damage',
+    affixLines: ['Rare Monsters have Physical Thorns reflecting 800 Physical Damage'],
     tradeTexts: ['Rare Monsters have Physical Thorns reflecting # Physical Damage'],
     category: 'regular',
     familyId: 'thorns',
@@ -21,7 +21,7 @@ const mods = [
     id: 'brick_thorns_elemental_regular',
     label: 'Elemental Thorns',
     regexTerm: 'ting 1500 e',
-    displayText: 'Rare Monsters have Elemental Thorns reflecting 1500 Elemental Damage',
+    affixLines: ['Rare Monsters have Elemental Thorns reflecting 1500 Elemental Damage'],
     tradeTexts: ['Rare Monsters have Elemental Thorns reflecting # Elemental Damage'],
     category: 'regular',
     familyId: 'thorns',
@@ -30,7 +30,10 @@ const mods = [
     id: 'brick_thorns_combined_nightmare',
     label: 'Thorns Reflection',
     regexTerm: 'ting 2500 e',
-    displayText: 'Rare Monsters have Physical Thorns reflecting 1500 Physical Damage / Rare Monsters have Elemental Thorns reflecting 2500 Elemental Damage',
+    affixLines: [
+      'Rare Monsters have Physical Thorns reflecting 1500 Physical Damage',
+      'Rare Monsters have Elemental Thorns reflecting 2500 Elemental Damage',
+    ],
     tradeTexts: ['Rare Monsters have Elemental Thorns reflecting # Elemental Damage'],
     category: 'nightmare',
     familyId: 'thorns',
@@ -59,8 +62,13 @@ describe('brick modifier select presentation', () => {
     expect(catalogues.regular[0]).toMatchObject({
       label: 'Physical Thorns',
       tradeLabel: 'Rare Monsters have Physical Thorns reflecting 800 Physical Damage',
+      affixLines: ['Rare Monsters have Physical Thorns reflecting 800 Physical Damage'],
       shared: true,
     });
+    expect(catalogues.nightmare[0].tradeLabel).toBe(
+      'Rare Monsters have Physical Thorns reflecting 1500 Physical Damage · ' +
+      'Rare Monsters have Elemental Thorns reflecting 2500 Elemental Damage',
+    );
   });
 
   it('keeps every Regular and Nightmare checkbox semantically independent', () => {

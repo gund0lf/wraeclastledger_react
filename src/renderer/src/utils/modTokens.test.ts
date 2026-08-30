@@ -90,6 +90,30 @@ describe('stash-token collision guards', () => {
       expect(token.test(decoy), decoy).toBe(false);
     }
   });
+
+  it('matches gain-an-Endurance without matching steal, other charges, or Extra ES', () => {
+    const token = new RegExp(MOD_TOKENS.monsters_gain_endurance_charges, 'i');
+
+    expect(token.test('Monsters gain an Endurance Charge on Hit')).toBe(true);
+    expect(token.test('Monsters gain an Endurance Charge when hit')).toBe(true);
+    expect(token.test(
+      'Monsters steal Power, Frenzy and Endurance charges on Hit',
+    )).toBe(false);
+    expect(token.test('Monsters gain a Frenzy Charge on Hit')).toBe(false);
+    expect(token.test('Monsters gain a Power Charge on Hit')).toBe(false);
+    expect(token.test(
+      'Monsters gain 80% of Maximum Life as Extra Maximum Energy Shield',
+    )).toBe(false);
+
+    const matchedIds = BRICK_MOD_DEFS
+      .filter((def) => (def.affixLines ?? def.tradePatterns.map((pattern) => pattern.text))
+        .some((line) => token.test(line)))
+      .map((def) => def.id);
+    expect(matchedIds).toEqual([
+      'monsters_gain_endurance_charges',
+      'uber_endurance_charges_max_endurance',
+    ]);
+  });
 });
 
 // --- WP12 brick-mod alignment guard ---
@@ -153,7 +177,7 @@ const BRICK_REGEX_SNAPSHOT: Record<string, string> = {
   'Players Less Accuracy': 'ss acc',
   'Monsters Steal Charges': 'teal p',
   'Monsters Gain Frenzy Charges': 'renz',
-  'Monsters Gain Endurance Charges': 'ndur',
+  'Monsters Gain Endurance Charges': 'gain an',
   'Monsters Gain Power Charges': 'ower c',
   'Players Less Area of Effect': 'ss are',
   'Monsters Maim on Hit': 'aim on',
@@ -194,7 +218,7 @@ const BRICK_REGEX_SNAPSHOT: Record<string, string> = {
   'Endurance Charges + Max Endurance': 'm End',
   'Shrine Buff on Unique Monsters': 'ne b',
   'Triple Curse (Vuln/Temporal/Elem)': 'oral',
-  'Stunned + Action/Move Speed Floor': 'tun',
+  'Juggernaut — Cannot Be Stunned + Action Speed Floor': 'tun',
   'Searing Exarch Runes': 'rch',
   'Rare Monsters Temporarily Revive': 'evive',
   'Poison + Duration + All Can Poison': 'an Poi',
@@ -356,6 +380,119 @@ describe('exact Trade-stat resolution', () => {
     expect(monsterAccuracy.tradePatterns[0].text).toBe('Monsters have #% increased Accuracy Rating');
   });
 
+  it('uses the Juggernaut-only Action Speed stat instead of Unstoppable Action plus Movement', () => {
+    const juggernaut = byId('uber_stunned_action_move_speed_floor');
+    const unstoppable = byId('cannot_be_taunted_slowed');
+
+    expect(juggernaut.tradePatterns).toEqual([{
+      text: "Monsters' Action Speed cannot be modified to below Base Value",
+      statId: 'explicit.stat_2758454849',
+    }]);
+    expect(unstoppable.tradePatterns[0].text).toBe('Monsters cannot be Taunted');
+    expect(juggernaut.affixLines).toEqual([
+      'Monsters cannot be Stunned',
+      "Monsters' Action Speed cannot be modified to below Base Value",
+    ]);
+    expect(unstoppable.affixLines).toEqual([
+      'Monsters cannot be Taunted',
+      "Monsters' Action Speed cannot be modified to below Base Value",
+      "Monsters' Movement Speed cannot be modified to below Base Value",
+    ]);
+  });
+
+  it('presents every audited compound affix line, not only its Trade sentinel', () => {
+    const expected = {
+      brick_crit_regular: [
+        'Monsters have 360–400% increased Critical Strike Chance',
+        '+41–45% to Monster Critical Strike Multiplier',
+      ],
+      extra_chaos_damage_withered: [
+        'Monsters gain #% of their Physical Damage as Extra Chaos Damage',
+        'Monsters Inflict Withered for 2 seconds on Hit',
+      ],
+      boss_damage_attack_speed: [
+        'Unique Boss deals 25% increased Damage',
+        'Unique Boss has 30% increased Attack and Cast Speed',
+      ],
+      monster_speed_move_attack_cast: [
+        '25–30% increased Monster Movement Speed',
+        '35–45% increased Monster Attack Speed',
+        '35–45% increased Monster Cast Speed',
+      ],
+      boss_more_life_aoe: [
+        'Unique Boss has 35% increased Life',
+        'Unique Boss has 70% increased Area of Effect',
+      ],
+      reduced_block_less_armour: [
+        'Players have 30% less Armour',
+        'Players have 40% reduced Chance to Block',
+      ],
+      players_less_suppressed_spell_damage: [
+        'Monsters have 50% increased Accuracy Rating',
+        'Players have -20% to amount of Suppressed Spell Damage Prevented',
+      ],
+      monsters_increased_accuracy_rating: [
+        'Monsters have 50% increased Accuracy Rating',
+        'Players have -20% to amount of Suppressed Spell Damage Prevented',
+      ],
+      brick_monster_life_low_regular: [
+        '25–30% more Monster Life',
+        'Monsters cannot be Stunned',
+      ],
+      cannot_be_taunted_slowed: [
+        'Monsters cannot be Taunted',
+        "Monsters' Action Speed cannot be modified to below Base Value",
+        "Monsters' Movement Speed cannot be modified to below Base Value",
+      ],
+      brick_crit_nightmare: [
+        'Monsters have 650–700% increased Critical Strike Chance',
+        '+70–75% to Monster Critical Strike Multiplier',
+      ],
+      uber_frenzy_charge_max_frenzy: [
+        'Monsters have +1 to Maximum Frenzy Charges',
+        'Monsters gain a Frenzy Charge on Hit',
+      ],
+      uber_skills_chain_terrain_chain: [
+        "Monsters' skills Chain 3 additional times",
+        "Monsters' Projectiles have 100% chance to be able to Chain when colliding with Terrain",
+      ],
+      uber_all_damage_can_ignite_freeze_shock: [
+        'All Monster Damage can Ignite, Freeze and Shock',
+        'Monsters Ignite, Freeze and Shock on Hit',
+      ],
+      uber_endurance_charges_max_endurance: [
+        'Monsters have +1 to Maximum Endurance Charges',
+        'Monsters gain an Endurance Charge when hit',
+      ],
+      uber_triple_curse_vuln_temporal_elem: [
+        'Players are Cursed with Vulnerability',
+        'Players are Cursed with Temporal Chains',
+        'Players are Cursed with Elemental Weakness',
+      ],
+      uber_stunned_action_move_speed_floor: [
+        'Monsters cannot be Stunned',
+        "Monsters' Action Speed cannot be modified to below Base Value",
+      ],
+      uber_poison_duration_all_can_poison: [
+        'Monsters Poison on Hit',
+        "All Damage from Monsters' Hits can Poison",
+        'Monsters have 100% increased Poison Duration',
+      ],
+      uber_extra_projectiles_massive_aoe: [
+        'Monsters have 100% increased Area of Effect',
+        'Monsters fire 2 additional Projectiles',
+      ],
+      uber_power_charges_max_power: [
+        'Monsters have +1 to Maximum Power Charges',
+        'Monsters gain a Power Charge on Hit',
+      ],
+    } as const;
+
+    for (const [id, lines] of Object.entries(expected)) {
+      expect(byId(id).affixLines, id).toEqual(lines);
+    }
+  });
+
   it('fails a brick closed when an exact pattern is missing or ambiguous', () => {
     const maxRes = byId('brick_max_res_regular');
     expect(resolveBrickTradeStats([], [maxRes]).unavailable).toEqual([{
@@ -380,7 +517,7 @@ describe('exact Trade-stat resolution', () => {
   it('pins the complete exact-pattern registry', () => {
     const snapshot = BRICK_MOD_DEFS.map(({ id, tradePatterns }) => ({ id, tradePatterns }));
     expect(createHash('sha256').update(JSON.stringify(snapshot)).digest('hex')).toBe(
-      'cb0f794947bb5c0f106765677dd1c447079a11e01f56dec3a104e12d8c513787',
+      'c3e3507269f819dfb261671751b9c5ec3956e7becd0926f86a2583b08c1dd7f8',
     );
   });
 
@@ -526,12 +663,13 @@ describe('exact Trade-stat resolution', () => {
   it('migrates broad legacy tokens to their historical reach', () => {
     expect(compileBrickExclusionPattern(['ster da', 'ore mo', 'ppress', 'ysic']))
       .toBe('d monster d|ore mo|e to sup|duct');
+    expect(compileBrickExclusionPattern(['ndur'])).toBe('gain an');
   });
 
   it('keeps every optimized family cover collision-free across the full catalogue', () => {
     const renderedCatalogue = BRICK_MOD_DEFS.map((def) => ({
       id: def.id,
-      text: `${def.label}\n${def.displayText ?? def.tradePatterns
+      text: `${def.label}\n${def.affixLines?.join('\n') ?? def.tradePatterns
         .map((pattern) => pattern.text.replaceAll('#', '42'))
         .join('\n')}`,
     }));

@@ -11,7 +11,7 @@ export interface BrickModSelectSource {
   summaryLabel?: string;
   regexTerm: string;
   tradeTexts: string[];
-  displayText?: string;
+  affixLines?: string[];
   category: BrickModCatalogueContext;
   familyId?: string;
 }
@@ -22,6 +22,8 @@ export interface BrickModSelectOption {
   label: string;
   /** Exact value-aware wording shown in the catalogue. */
   tradeLabel: string;
+  /** Complete visible affix, including companion lines omitted by Trade sentinels. */
+  affixLines: string[];
   /** Both names remain searchable even though only one is selected/displayed. */
   searchText: string;
   shared: boolean;
@@ -29,12 +31,15 @@ export interface BrickModSelectOption {
 }
 
 const toOption = (mod: BrickModSelectSource): BrickModSelectOption => {
-  const tradeLabel = mod.displayText ??
-    (mod.tradeTexts.length > 0 ? mod.tradeTexts.join(' / ') : mod.label);
+  const affixLines = mod.affixLines?.length
+    ? mod.affixLines
+    : (mod.tradeTexts.length > 0 ? mod.tradeTexts : [mod.label]);
+  const tradeLabel = affixLines.join(' · ');
   return {
     value: mod.id,
     label: mod.label,
     tradeLabel,
+    affixLines,
     searchText: `${mod.label} ${tradeLabel}`,
     shared: !!mod.familyId,
     familyId: mod.familyId,
