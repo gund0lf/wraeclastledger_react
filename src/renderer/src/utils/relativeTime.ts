@@ -3,9 +3,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const latestStrategyActivity = (
   postedAt: string,
   updatedAt: string | null | undefined,
-  revision: number | null | undefined,
 ): { kind: 'Published' | 'Updated'; timestamp: string } =>
-  (revision ?? 1) > 1 && updatedAt
+  updatedAt
     ? { kind: 'Updated', timestamp: updatedAt }
     : { kind: 'Published', timestamp: postedAt };
 

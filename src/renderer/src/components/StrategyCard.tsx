@@ -234,9 +234,9 @@ export const StrategyCard = ({
     && strategy.discord_username?.toLowerCase() === discordTag.trim().toLowerCase()
   );
   const publishedDate = (() => { try { return new Date(strategy.posted_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }); } catch { return '—'; } })();
-  // Versioning display: vN badge only when the strategy has actually been
-  // updated (revision 1 = original post, no badge). updated_at may be null on
-  // pre-versioning rows even if revision were >1 — render defensively.
+  // Versioning display: vN remains revision-only. Activity is broader:
+  // appending compatible pooled evidence updates updated_at without creating a
+  // new strategy revision, so revision 1 can still have real recent activity.
   const revision = strategy.current_revision ?? 1;
   const updatedDate = (() => {
     if (!strategy.updated_at) return null;
@@ -245,7 +245,6 @@ export const StrategyCard = ({
   const activity = latestStrategyActivity(
     strategy.posted_at,
     strategy.updated_at,
-    revision,
   );
   const activityRelative = formatRelativeAge(activity.timestamp);
   const activityDate = activity.kind === 'Updated' ? updatedDate : publishedDate;
@@ -628,7 +627,7 @@ export const StrategyCard = ({
               <Stack className="strategy-card-hero-attribution" gap={2}>
                 <Text size="sm" c="dimmed">by <Text span fw={600} c="gray.3">{strategy.discord_username}</Text></Text>
                 <Text size="xs" c="dimmed">Published {publishedDate}</Text>
-                {revision > 1 && updatedDate && <Text size="xs" c="dimmed">Last updated {updatedDate}</Text>}
+                {updatedDate && <Text size="xs" c="dimmed">Last updated {updatedDate}</Text>}
               </Stack>
               <Stack className="strategy-card-hero-facts" gap={2}>
                 <Text size="xs" c="dimmed" tt="uppercase">

@@ -10,6 +10,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.93',
+    date: '2026-08-31',
+    changes: [
+      'Strategy Browser activity now follows every real strategy update, including compatible evidence appended while the authored strategy remains revision 1. These strategies display Updated and sort by their latest evidence activity, while version badges remain reserved for authored revisions.',
+    ],
+  },
+  {
     version: '1.0.92',
     date: '2026-08-31',
     changes: [

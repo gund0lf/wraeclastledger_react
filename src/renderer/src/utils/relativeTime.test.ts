@@ -30,19 +30,15 @@ describe('formatRelativeAge', () => {
 });
 
 describe('latestStrategyActivity', () => {
-  it('uses the update timestamp only for a genuinely revised strategy', () => {
+  it('uses any real update timestamp, including evidence added to revision 1', () => {
     const postedAt = daysAgo(14);
     const updatedAt = daysAgo(2);
 
-    expect(latestStrategyActivity(postedAt, updatedAt, 2)).toEqual({
+    expect(latestStrategyActivity(postedAt, updatedAt)).toEqual({
       kind: 'Updated',
       timestamp: updatedAt,
     });
-    expect(latestStrategyActivity(postedAt, updatedAt, 1)).toEqual({
-      kind: 'Published',
-      timestamp: postedAt,
-    });
-    expect(latestStrategyActivity(postedAt, null, 3)).toEqual({
+    expect(latestStrategyActivity(postedAt, null)).toEqual({
       kind: 'Published',
       timestamp: postedAt,
     });
