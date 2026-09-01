@@ -16,7 +16,8 @@ Available as a Windows installer and x86_64 Linux AppImage. The Linux capture
 and update path is validated on CachyOS with KDE Wayland and Steam Proton. The
 AppImage uses XWayland inside a Wayland desktop so Electron can keep the optional
 Timer/Counters window above Path of Exile; other distributions and desktop
-environments are currently best-effort until tested.
+environments are currently best-effort until tested. See the
+[Linux AppImage notes](docs/LINUX.md) for requirements and current limitations.
 
 [**Download the latest release**](https://github.com/gund0lf/wraeclastledger_react/releases/latest)
 Free for personal use — see LICENSE
