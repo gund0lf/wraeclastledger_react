@@ -14,7 +14,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-09-01',
     changes: [
       'Discord strategy sharing now uses a smaller wl3 submission while preserving readable posted cards and complete legacy wl2/import compatibility. Short submissions still paste directly, while larger evidence-rich runs can use the new /wledger-share command up to Discord\'s 6,000-character command limit.',
-      'The Share preview now reports the author submission, current posted card, and future pooled-card safety separately. Posted cards retain as many application emotes as fit instead of dropping every custom marker when only a small amount of space is needed.',
+      'The Share preview now gives a simple confirmation for ordinary shares and labels the exact submission, posted Discord card, and future pooled-card counts only when they need attention. Posted cards retain as many application emotes as fit instead of dropping every custom marker when only a small amount of space is needed.',
+      'Fresh sessions reuse a successful Divine-price quote fetched moments earlier instead of remaining at 0c during the retry cooldown, including sessions started by loading Strategy Browser build settings. Failed quotes and quotes from another league are never reused.',
     ],
   },
   {

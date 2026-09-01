@@ -223,25 +223,38 @@ export const generateSlamRegex = (
 
 // ─── Divine price fetching ────────────────────────────────────────────────────
 //
-// fetchDivinePrice always fetches and is short-timeout-bounded. It updates a
-// module-level "last attempt" timestamp regardless of success, so the
-// cooldown wrapper (tryFetchDivinePrice) can rate-limit auto-init paths
-// without rate-limiting an explicit user-triggered refresh.
+// fetchDivinePrice always fetches and is short-timeout-bounded. The cooldown
+// wrapper remembers the result of the latest attempt for that league. A fresh
+// session can therefore reuse a quote fetched moments ago instead of being
+// stranded at 0c, while a failed attempt still remains a real failure.
 
 const DIVINE_PRICE_COOLDOWN_MS = 60_000;
 let lastDivineFetchAttempt = 0;
+let lastDivineFetchLeague: string | null = null;
+let lastDivineFetchResult: number | null = null;
 
-export async function fetchDivinePrice(): Promise<number | null> {
+async function fetchDivinePriceForLeague(league: string): Promise<number | null> {
   lastDivineFetchAttempt = Date.now();
+  lastDivineFetchLeague = league;
+  lastDivineFetchResult = null;
   try {
-    const league = await getCurrentLeague();
     // poe.ninja is fetched via the main process to avoid renderer CORS.
     const res = await window.api?.fetchCurrencyOverview(league);
     const lines = res?.lines ?? [];
     const divine = lines.find((l) => l.id === 'divine');
-    return divine?.primaryValue ?? null;
+    const price = Number(divine?.primaryValue);
+    lastDivineFetchResult = Number.isFinite(price) && price > 0 ? price : null;
+    return lastDivineFetchResult;
   } catch {
     // AbortError or network error — caller treats null as "no price".
+    return null;
+  }
+}
+
+export async function fetchDivinePrice(): Promise<number | null> {
+  try {
+    return await fetchDivinePriceForLeague(await getCurrentLeague());
+  } catch {
     return null;
   }
 }
@@ -249,18 +262,26 @@ export async function fetchDivinePrice(): Promise<number | null> {
 /**
  * Cooldown-gated wrapper around fetchDivinePrice.
  *
- * Returns null without making a network call if the last attempt (success or
- * failure) was within the cooldown window. Pass `force: true` for explicit
- * user-triggered refreshes — those should never be rate-limited.
+ * Reuses the latest result without making a network call when an attempt for
+ * the same league is still inside the cooldown window. A successful result is
+ * safe to seed another fresh session; a failed result stays null. Pass
+ * `force: true` for explicit user-triggered refreshes — those should never be
+ * rate-limited. A league change also fetches immediately because the previous
+ * quote belongs to a different market.
  *
  * The store's `initDivinePrice` uses this to prevent retry storms when
  * panels remount and the price keeps coming back as 0 due to an offline
  * network or a poe.ninja outage.
  */
 export async function tryFetchDivinePrice(force = false): Promise<number | null> {
-  if (!force) {
-    const elapsed = Date.now() - lastDivineFetchAttempt;
-    if (elapsed < DIVINE_PRICE_COOLDOWN_MS) return null;
+  try {
+    const league = await getCurrentLeague();
+    if (!force && lastDivineFetchLeague === league) {
+      const elapsed = Date.now() - lastDivineFetchAttempt;
+      if (elapsed < DIVINE_PRICE_COOLDOWN_MS) return lastDivineFetchResult;
+    }
+    return await fetchDivinePriceForLeague(league);
+  } catch {
+    return null;
   }
-  return fetchDivinePrice();
 }

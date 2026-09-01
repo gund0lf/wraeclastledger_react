@@ -346,6 +346,20 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     stratNotes.length,
     parsedDiscordExport?.lootSummary ?? null,
   );
+  const submissionLimit = budget.fitsDirectWire
+    ? DISCORD_MSG_LIMIT
+    : DISCORD_SHARE_COMMAND_MAX;
+  const budgetNearLimit = budget.wireLength >= submissionLimit * 0.9
+    || budget.postedCardLength >= DISCORD_MSG_LIMIT * 0.9
+    || budget.pooledPlainCardLength >= DISCORD_MSG_LIMIT * 0.9;
+  const showBudgetDetails = Boolean(
+    discordWireError
+    || !budget.fitsWire
+    || !budget.fitsPlain
+    || !budget.fitsDirectWire
+    || budget.decorationMode !== 'full'
+    || budgetNearLimit,
+  );
   const postedCardPreview = compactPostedCardPreview(
     discordExport,
     parsedDiscordExport?.lootSummary ?? null,
@@ -658,10 +672,12 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
           </Text>
         </Stack>
         <Divider label="Posted card preview" labelPosition="left" />
-        <Text size="xs" c={discordWireError || !budget.fitsWire || !budget.fitsPlain ? 'red' : budget.fitsDirectWire && budget.decorationMode === 'full' ? 'dimmed' : 'orange'} style={{ fontSize: FONT.small }}>
+        <Text size="xs" c={discordWireError || !budget.fitsWire || !budget.fitsPlain ? 'red' : showBudgetDetails ? 'orange' : 'dimmed'} style={{ fontSize: FONT.small }}>
           {discordWireResult.pending
             ? 'Preparing compact submission...'
-            : `Submission: ${budget.wireLength}/${budget.fitsDirectWire ? DISCORD_MSG_LIMIT : DISCORD_SHARE_COMMAND_MAX} ${budget.fitsDirectWire ? 'message' : 'slash command'} | current card: ${budget.postedCardLength}/${DISCORD_MSG_LIMIT} ${budget.decorationMode === 'full' ? 'with app emotes' : budget.decorationMode === 'mixed' ? 'with mixed emotes' : 'with Unicode'} | pooled safety: ${budget.pooledPlainCardLength}/${DISCORD_MSG_LIMIT} — `}
+            : showBudgetDetails
+              ? `Submission: ${budget.wireLength}/${submissionLimit} ${budget.fitsDirectWire ? 'message' : 'slash command'} | posted Discord card: ${budget.postedCardLength}/${DISCORD_MSG_LIMIT} ${budget.decorationMode === 'full' ? 'with app emotes' : budget.decorationMode === 'mixed' ? 'with mixed emotes' : 'with Unicode'} | future pooled card: ${budget.pooledPlainCardLength}/${DISCORD_MSG_LIMIT} — `
+              : ''}
           {!discordWireResult.pending && (discordWireError
             ? 'compact submission unavailable.'
             : !budget.fitsWire
@@ -671,7 +687,9 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
             : !budget.fitsDirectWire
               ? 'copy it into the payload field of /wledger-share.'
               : budget.decorationMode === 'full'
-                ? 'fits directly with app emotes.'
+                ? showBudgetDetails
+                  ? 'fits directly with app emotes.'
+                  : 'Fits Discord directly with app emotes and remains safe for future pooled results.'
                 : 'fits directly; only the emotes needed to stay under Discord\'s limit fall back.')}
         </Text>
         {discordWireError && !previewWithheld && (
