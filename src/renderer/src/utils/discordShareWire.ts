@@ -11,12 +11,17 @@ import type { DiscordImport } from './parseDiscordExport';
 import type { ObservedDeliriumSummary } from './deliriumMetadata';
 import {
   compactLootSummary,
+  compactShareLootSummary,
   expandCompactLootSummary,
+  expandCompactShareLootSummary,
   type CompactLootSummary,
 } from './lootSummary';
 
 export const DISCORD_SHARE_WIRE_PREFIX = 'wl2.';
 export const DISCORD_SHARE_WIRE_VERSION = 3 as const;
+export const DISCORD_SHARE_BROTLI_PREFIX = 'wl3.';
+export const DISCORD_SHARE_BROTLI_VERSION = 4 as const;
+export const DISCORD_SHARE_COMMAND_MAX = 6000;
 const LEGACY_DISCORD_SHARE_WIRE_VERSION = 2 as const;
 export const DISCORD_SHARE_WIRE_MAX = 2000;
 const DISCORD_SHARE_OUTPUT_MAX = 128 * 1024;
@@ -30,6 +35,19 @@ type ObservedDeliriumWire = [
   number,
   [number, number][],
   [string, number][],
+];
+
+const DELIRIUM_REWARD_NAMES = [
+  'Armour', 'Blight Items', 'Currency', 'Divination Cards', 'Essences',
+  'Fossils', 'Fragments', 'Gems', 'Harbinger', 'Incubators', 'Jewellery',
+  'Labyrinth Items', 'Map Items', 'Scarabs', 'Unique Items', 'Weapons',
+] as const;
+
+type CompactAtlasWire = string | [string, string];
+type CompactObservedDeliriumWire = [
+  number,
+  [number, number][],
+  [number | string, number][],
 ];
 
 type DiscordShareWireV3 = [
@@ -102,6 +120,124 @@ function encodeOperation(parsed: DiscordImport): OperationWire {
     ];
   }
   return 0;
+}
+
+const compactAtlasUrl = (url: string): CompactAtlasWire => {
+  const match = /^https:\/\/pathofpathing\.com\/\?v=([^#\r\n]{1,80})-atlas#([A-Za-z0-9_-]{1,800})$/.exec(url);
+  return match ? [match[1], match[2]] : url;
+};
+
+const expandAtlasUrl = (value: unknown): string | null => {
+  if (typeof value === 'string') return value;
+  if (!tuple(value, 2) || !text(value[0], 80) || !text(value[1], 800)
+    || !/^[A-Za-z0-9._-]+$/.test(value[0]) || !/^[A-Za-z0-9_-]+$/.test(value[1])) return null;
+  return `https://pathofpathing.com/?v=${value[0]}-atlas#${value[1]}`;
+};
+
+const compactObservedDelirium = (
+  observed: ObservedDeliriumSummary | null,
+): CompactObservedDeliriumWire | null => observed ? [
+  observed.sampleSize,
+  observed.levelCounts.map((level) => [level.percentage, level.count]),
+  observed.rewardCounts.map((reward) => {
+    const code = DELIRIUM_REWARD_NAMES.indexOf(reward.name as typeof DELIRIUM_REWARD_NAMES[number]);
+    return [code >= 0 ? code : reward.name, reward.count];
+  }),
+] : null;
+
+const expandObservedDelirium = (value: unknown): ObservedDeliriumWire | null | false => {
+  if (value === null) return null;
+  if (!tuple(value, 3) || !Array.isArray(value[2])) return false;
+  const rewards: [string, number][] = [];
+  for (const candidate of value[2]) {
+    if (!tuple(candidate, 2)) return false;
+    const name = typeof candidate[0] === 'number'
+      ? DELIRIUM_REWARD_NAMES[candidate[0]]
+      : candidate[0];
+    if (typeof name !== 'string') return false;
+    rewards.push([name, Number(candidate[1])]);
+  }
+  return [Number(value[0]), value[1] as [number, number][], rewards];
+};
+
+/** Build the lossless schema-v4 JSON. Electron main applies Brotli and the
+ * bot validates the same tuple before rebuilding the canonical readable card. */
+export function buildDiscordSharePayload(parsed: DiscordImport): string {
+  if (parsed.lootSummaryInvalid) throw new TypeError('Cannot encode invalid loot evidence');
+  const partyCode = parsed.isGroupPlay ? (parsed.groupSize ?? 1) : 0;
+  return JSON.stringify([
+    DISCORD_SHARE_BROTLI_VERSION,
+    encodeOperation(parsed),
+    [
+      parsed.mapCount,
+      parsed.mapType === '8-mod' ? 8 : 6,
+      parsed.multiplier,
+      parsed.observedModSampleSize === parsed.mapCount ? parsed.observedModAverage : null,
+      parsed.avgQuant, parsed.avgRarity, parsed.avgPack, parsed.avgCurr,
+    ],
+    [parsed.perMapCost, parsed.totalInvest, parsed.totalReturn, parsed.netProfit, parsed.divPerMap, parsed.divPrice],
+    [
+      parsed.chisel, parsed.chiselPrice,
+      parsed.scarabs.map((name, index) => [name, parsed.scarabCosts[index] ?? 0]),
+      parsed.deliOrbQty, parsed.deliOrbType, parsed.deliOrbPrice,
+      parsed.astroType, parsed.astroCount, parsed.astroPrice,
+    ],
+    [compactAtlasUrl(parsed.atlasTreeUrl), parsed.atlasPoints, parsed.atlasPointsMax],
+    [
+      parsed.league, parsed.gameDataRevision, parsed.gameDataPatchVersion ?? '',
+      parsed.multiplyingModifiersAllocated == null ? null : parsed.multiplyingModifiersAllocated ? 1 : 0,
+      parsed.multiplyingModifiersFragmentCount,
+    ],
+    [parsed.strategyName, parsed.strategyNotes, parsed.typeTags],
+    [
+      partyCode, parsed.sessionMinutes,
+      parsed.excludedDrops.map((drop) => [drop.name, drop.value]),
+      parsed.gemInfo ? [parsed.gemInfo.count, parsed.gemInfo.buy, parsed.gemInfo.sell, parsed.gemInfo.net] : null,
+    ],
+    parsed.runRegex,
+    parsed.lootSummary ? compactShareLootSummary(parsed.lootSummary) : null,
+    compactObservedDelirium(parsed.observedDelirium),
+  ]);
+}
+
+/** Decode a Brotli-expanded schema-v4 payload in the renderer. The conversion
+ * deliberately reuses the mature v3 validator rather than creating a looser
+ * second validation path. */
+export function decodeDiscordSharePayload(payloadJson: string): DiscordImport | null {
+  try {
+    const payload = JSON.parse(payloadJson) as unknown;
+    if (!tuple(payload, 12) || payload[0] !== DISCORD_SHARE_BROTLI_VERSION
+      || !tuple(payload[3], 6) || !tuple(payload[5], 3)
+      || typeof payload[9] !== 'string') return null;
+    const atlasUrl = expandAtlasUrl(payload[5][0]);
+    if (atlasUrl === null) return null;
+    const loot = payload[10] == null
+      ? null
+      : expandCompactShareLootSummary(payload[10], Number(payload[3][2]));
+    if (payload[10] != null && !loot) return null;
+    const observed = expandObservedDelirium(payload[11]);
+    if (observed === false) return null;
+    const legacyPayload = [
+      DISCORD_SHARE_WIRE_VERSION,
+      payload[1], payload[2], payload[3], payload[4],
+      [atlasUrl, payload[5][1], payload[5][2]],
+      payload[6], payload[7], payload[8], [payload[9]],
+      loot ? compactLootSummary(loot) : null,
+      null,
+      observed,
+    ];
+    const compressed = zlibSync(strToU8(JSON.stringify(legacyPayload)), { level: 9 });
+    return decodeDiscordShareWireInternal(
+      `${DISCORD_SHARE_WIRE_PREFIX}${bytesToBase64Url(compressed)}`,
+      false,
+    );
+  } catch {
+    return null;
+  }
+}
+
+export function looksLikeBrotliDiscordShareWire(raw: string): boolean {
+  return raw.trim().replace(/^```\s*/m, '').startsWith(DISCORD_SHARE_BROTLI_PREFIX);
 }
 
 /** Encode an already-validated canonical export parse. Schema v3 appends
@@ -254,10 +390,13 @@ function decodeOperation(value: unknown): Pick<DiscordImport,
   return null;
 }
 
-export function decodeDiscordShareWire(raw: string): DiscordImport | null {
+function decodeDiscordShareWireInternal(
+  raw: string,
+  enforceTransportSize: boolean,
+): DiscordImport | null {
   try {
     const token = raw.trim().replace(/^```\s*/m, '').replace(/\s*```\s*$/m, '').trim();
-    if (token.length > DISCORD_SHARE_WIRE_MAX) return null;
+    if (enforceTransportSize && token.length > DISCORD_SHARE_WIRE_MAX) return null;
     const match = /^wl2\.([A-Za-z0-9_-]+)$/.exec(token);
     if (!match) return null;
     const inflated = unzlibSync(base64UrlToBytes(match[1]), {
@@ -363,4 +502,8 @@ export function decodeDiscordShareWire(raw: string): DiscordImport | null {
   } catch {
     return null;
   }
+}
+
+export function decodeDiscordShareWire(raw: string): DiscordImport | null {
+  return decodeDiscordShareWireInternal(raw, true);
 }

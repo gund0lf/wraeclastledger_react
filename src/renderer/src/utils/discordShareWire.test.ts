@@ -2,13 +2,27 @@ import { describe, expect, it } from 'vitest';
 import type { DiscordImport } from './parseDiscordExport';
 import { parseDiscordExport } from './parseDiscordExport';
 import {
+  buildDiscordSharePayload,
+  decodeDiscordSharePayload,
   decodeDiscordShareWire,
+  DISCORD_SHARE_BROTLI_PREFIX,
+  DISCORD_SHARE_COMMAND_MAX,
   DISCORD_SHARE_WIRE_MAX,
   DISCORD_SHARE_WIRE_PREFIX,
   encodeDiscordShareWire,
 } from './discordShareWire';
-import type { LootSummary } from './lootSummary';
+import { expandCompactShareLootSummary, type LootSummary } from './lootSummary';
 import { strToU8, zlibSync } from 'fflate';
+import {
+  manualLootIdentityCategory,
+  manualLootIdentityName,
+  type ManualLootIdentity,
+} from '../../../shared/manualLoot';
+import {
+  decodeDiscordShareBrotli,
+  DISCORD_SHARE_BROTLI_TOKEN_MAX,
+  encodeDiscordShareBrotli,
+} from '../../../main/discordShareCompression';
 
 const lootSummary = (): LootSummary => {
   const rows = Array.from({ length: 30 }, (_, index) => ({
@@ -116,7 +130,142 @@ const parsed = (over: Partial<DiscordImport> = {}): DiscordImport => ({
   ...over,
 });
 
+const highEntropyLootSummary = (): LootSummary => {
+  const structured: ManualLootIdentity[] = [
+    { kind: 'quality-base', equipmentGroup: 'weapon', base: 'Psychotic Axe', quality: 30, influence: 'Elder' },
+    { kind: 'quality-base', equipmentGroup: 'weapon', base: 'Eventuality Rod', quality: 28, influence: 'Shaper' },
+    { kind: 'quality-base', equipmentGroup: 'armour', base: 'Twilight Regalia', quality: 30, influence: 'Crusader' },
+    { kind: 'quality-base', equipmentGroup: 'armour', base: 'Runic Gauntlets', quality: 29, influence: 'Warlord' },
+    { kind: 'chart', chart: 'Chart (Brine King\'s Domain)' },
+    { kind: 'chart', chart: 'Chart (Unremarkable Seabed)' },
+    { kind: 'chart', chart: null },
+    { kind: 'syndicate-reward', member: 'Aisling Laffrey', reward: 'Veiled equipment', equipmentGroup: 'armour', base: 'Sacrificial Garb' },
+    { kind: 'syndicate-reward', member: 'Cameria the Coldblooded', reward: 'League currency cache', equipmentGroup: 'accessory' },
+    { kind: 'syndicate-reward', member: 'It That Fled', reward: 'Breach crafting reward', equipmentGroup: 'weapon', base: 'Accumulator Wand' },
+    { kind: 'syndicate-reward', member: 'Vorici', reward: 'White socket bench', equipmentGroup: 'armour' },
+  ];
+  const manualRows = [
+    ...structured.map((identity, index) => ({
+      name: index === 0 ? 'Psychotic Axe' : manualLootIdentityName(identity),
+      category: manualLootIdentityCategory(identity),
+      source: 'manual' as const,
+      quantity: index + 1,
+      value: 9100.7 - index * 337.3,
+      note: index % 3 === 0 ? `Observed in review batch ${index + 11}` : undefined,
+      identity,
+    })),
+    ...[
+      ['Reflecting Mist of the Azure Horizon', 'League'],
+      ['Enshrouding Crystal of Unmaking', 'League'],
+      ['Unidentified Reliquary Key from the Deep', 'Fragments'],
+      ['Perfectly Rolled Prismatic Tincture', 'League'],
+      ['Double-Corrupted Awakened Support Gem', 'Gems'],
+      ['Synthesised Amethyst Ring with Fracture', 'Other'],
+    ].map(([name, category], index) => ({
+      name, category: category as LootSummary['rows'][number]['category'],
+      source: 'manual' as const,
+      quantity: index + 2,
+      value: 4300.9 - index * 211.7,
+      note: `Manual valuation note ${String.fromCharCode(65 + index)}-${index * 7919}`,
+    })),
+  ];
+  const csvRows = [
+    ['Divine Orb', 'Currency'], ['Maven\'s Chisel of Avarice', 'Currency'],
+    ['Valdo\'s Puzzle Box', 'League'], ['The Apothecary', 'Divination Cards'],
+    ['Incandescent Invitation', 'Fragments'], ['Nameless Beast of the Fen', 'Beasts'],
+    ['Awakened Enlighten Support', 'Gems'], ['Sacred Crystallised Lifeforce', 'Currency'],
+    ['Reliquary Scarab of Vision', 'Scarabs'], ['Simulacrum Splinter', 'Fragments'],
+    ['Tainted Mythic Orb', 'Currency'], ['Oil Extractor', 'Oils'],
+    ['Doryani\'s Machinarium Map', 'Maps'],
+  ].map(([name, category], index) => ({
+    name,
+    category: category as LootSummary['rows'][number]['category'],
+    source: 'wealthyexile' as const,
+    quantity: index + 3,
+    value: 7800.5 - index * 286.4,
+    tab: `Tracked stash ${String.fromCharCode(65 + index)}-${index * 3571}`,
+  }));
+  const rows = [...manualRows, ...csvRows];
+  const categoryTotals = new Map<LootSummary['rows'][number]['category'], number>();
+  for (const row of rows) {
+    categoryTotals.set(row.category, (categoryTotals.get(row.category) ?? 0) + row.value);
+  }
+  const csvPositive = csvRows.reduce((sum, row) => sum + row.value, 0);
+  const manualTotal = manualRows.reduce((sum, row) => sum + row.value, 0);
+  const csvNegative = -1327.6;
+  const csvAdjustment = 43.2;
+  const csvNet = csvPositive + csvNegative + csvAdjustment;
+  const marketRevaluation = 819.4;
+  const gemCorrection = 750.5;
+  const investmentCorrection = 225.2;
+  return {
+    version: 1,
+    rowLimit: 30,
+    rows,
+    categories: [...categoryTotals].map(([category, value]) => ({ category, value })),
+    hasBaseline: true,
+    csvPositive, csvNegative, csvNet, csvAdjustment,
+    inventoryFlow: csvNet - marketRevaluation - csvAdjustment,
+    marketRevaluation,
+    manualTotal,
+    gemCorrection,
+    investmentCorrection,
+    reportedReturn: csvNet + manualTotal + gemCorrection + investmentCorrection,
+    omittedCsvRows: 7,
+    omittedCsvValue: 0,
+    omittedManualRows: 0,
+    omittedManualValue: 0,
+  };
+};
+
 describe('compact Discord share wire', () => {
+  it('round-trips the Brotli schema-v4 transport through the strict legacy validator', () => {
+    expect(DISCORD_SHARE_BROTLI_TOKEN_MAX).toBe(DISCORD_SHARE_COMMAND_MAX);
+    const source = parsed();
+    const token = encodeDiscordShareBrotli(buildDiscordSharePayload(source));
+    expect(token.startsWith(DISCORD_SHARE_BROTLI_PREFIX)).toBe(true);
+    expect(decodeDiscordSharePayload(decodeDiscordShareBrotli(token))).toEqual({
+      ...source,
+      slamRegex: '',
+    });
+  });
+
+  it('rejects malformed or oversized Brotli IPC inputs', () => {
+    expect(() => encodeDiscordShareBrotli('[]')).toThrow(/unsupported schema/);
+    expect(() => decodeDiscordShareBrotli('wl3.not-compressed')).toThrow();
+    expect(() => decodeDiscordShareBrotli(
+      `wl3.${'a'.repeat(DISCORD_SHARE_BROTLI_TOKEN_MAX)}`,
+    )).toThrow(/outside the allowed size/);
+  });
+
+  it('keeps a varied 30-row / 17-manual evidence share inside a normal Discord message', () => {
+    const loot = highEntropyLootSummary();
+    const source = parsed({
+      mapCount: 500,
+      observedModSampleSize: 500,
+      totalReturn: loot.reportedReturn,
+      lootSummary: loot,
+      atlasTreeUrl: 'https://pathofpathing.com/?v=3.29.0-atlas#AAAABgAANi0IBoYJSgx-Flga5iHcJ4oq0S9GQYxGPkfPSCJPC1GCUqJW5mLVcXV2OndReOqAEIKKhlmP1JGMm9idh6OFtyu4drzQwabExsbQ1tvcTeN86dPsjPJM9rf98P7XV61kkGUkf-6Qk7SE4jnq3XF1AAA',
+      strategyName: 'Copenation Astrolabe Delirium Expedition',
+      strategyNotes: 'Prices captured after the final map; manual rows were reviewed against the Return snapshot.',
+    });
+    const legacy = encodeDiscordShareWire(source);
+    const payloadJson = buildDiscordSharePayload(source);
+    const compactLoot = (JSON.parse(payloadJson) as unknown[])[10];
+    const firstStructuredRow = (compactLoot as unknown[][][])[0][0] as unknown[];
+    expect(firstStructuredRow[0]).toBe(3);
+    expect(firstStructuredRow.at(-1)).toEqual([0, 0, 'Psychotic Axe', 30, 2]);
+    const normalizedLoot = expandCompactShareLootSummary(compactLoot, loot.reportedReturn);
+    expect(normalizedLoot).not.toBeNull();
+    const token = encodeDiscordShareBrotli(payloadJson);
+    expect(token.length).toBeLessThan(legacy.length);
+    expect(token.length).toBeLessThanOrEqual(DISCORD_SHARE_WIRE_MAX);
+    expect(decodeDiscordSharePayload(decodeDiscordShareBrotli(token))).toEqual({
+      ...source,
+      lootSummary: normalizedLoot,
+      slamRegex: '',
+    });
+  });
   it('round-trips the full share contract and remains under one Discord message', () => {
     const source = parsed();
     const wire = encodeDiscordShareWire(source);

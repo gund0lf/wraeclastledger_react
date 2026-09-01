@@ -2,11 +2,15 @@ import {
   Modal, Stack, Text, Alert, Textarea, Group, Badge,
   Divider, Button, NumberInput, ScrollArea,
 } from '@mantine/core';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useSessionStore } from '../store/useSessionStore';
 // (scalar selector below — this modal only needs the divine price)
 import { parseDiscordExport } from '../utils/parseDiscordExport';
 import type { DiscordImport } from '../utils/parseDiscordExport';
+import {
+  decodeDiscordSharePayload,
+  looksLikeBrotliDiscordShareWire,
+} from '../utils/discordShareWire';
 import { RegexLine } from './ui/RegexLine';
 import { SectionLabel } from './ui/SectionLabel';
 import { PoeItemIcon } from './ui/PoeItemIcon';
@@ -28,16 +32,30 @@ export const ImportModal = ({ opened, onClose, onLoadBuild }: Props) => {
   const [importResult,   setImportResult]   = useState<DiscordImport | null>(null);
   const [parseError,     setParseError]     = useState(false);
   const [importDivPrice, setImportDivPrice] = useState(divinePrice || 300);
+  const parseSequence = useRef(0);
 
   const handleClose = () => {
+    parseSequence.current += 1;
     onClose();
     setImportText(''); setImportResult(null); setParseError(false);
   };
 
-  const handleTextChange = (text: string) => {
+  const handleTextChange = async (text: string) => {
+    const sequence = ++parseSequence.current;
     setImportText(text);
     if (text.trim().length > 50) {
-      const r = parseDiscordExport(text);
+      let r: DiscordImport | null = null;
+      if (looksLikeBrotliDiscordShareWire(text)) {
+        try {
+          const result = await window.api.decodeDiscordShare(text);
+          r = result.payloadJson ? decodeDiscordSharePayload(result.payloadJson) : null;
+        } catch {
+          r = null;
+        }
+      } else {
+        r = parseDiscordExport(text);
+      }
+      if (sequence !== parseSequence.current) return;
       setImportResult(r);
       setParseError(!r && text.trim().length > 100);
     } else { setImportResult(null); setParseError(false); }
@@ -62,11 +80,11 @@ export const ImportModal = ({ opened, onClose, onLoadBuild }: Props) => {
       <Stack gap="sm">
         <Text size="xs" c="dimmed">Paste any WraeclastLedger export to see how it performs at your current divine price.</Text>
         <Textarea placeholder="Paste export here — auto-parses as you type..."
-          value={importText} onChange={(e) => handleTextChange(e.currentTarget.value)}
+          value={importText} onChange={(e) => { void handleTextChange(e.currentTarget.value); }}
           autosize minRows={4} maxRows={8} styles={{ input: { fontFamily: 'monospace', fontSize: FONT.body } }} />
         {parseError && (
           <Alert color="red" variant="light" p="xs">
-            <Text size="xs">Could not parse — paste the full export including the [WraeclastLedger Session] line.</Text>
+            <Text size="xs">Could not parse — paste a complete WraeclastLedger export or compact share token.</Text>
           </Alert>
         )}
         {importResult && repriced && (

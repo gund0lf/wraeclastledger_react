@@ -47,6 +47,8 @@ declare global {
       onClipboardBridgeStatus: (callback: (status: ClipboardBridgeStatus) => void) => () => void
       removeClipboardBridgeStatusListener: () => void
       getClipboardBridgeStatus: () => Promise<ClipboardBridgeStatus>
+      encodeDiscordShare: (payloadJson: string) => Promise<{ token: string | null; error: string | null }>
+      decodeDiscordShare: (token: string) => Promise<{ payloadJson: string | null; error: string | null }>
       setClipboardWatch:   (on: boolean) => void
       searchMapsOnTrade:   (params: TradeParams) => Promise<{ url: string | null; error: string | null }>
       getBrickMods:        () => Promise<BrickModResult>

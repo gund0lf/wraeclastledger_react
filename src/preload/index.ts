@@ -80,6 +80,10 @@ const api = {
   },
   getClipboardBridgeStatus: (): Promise<ClipboardBridgeStatus> =>
     ipcRenderer.invoke('clipboard:get-bridge-status'),
+  encodeDiscordShare: (payloadJson: string): Promise<{ token: string | null; error: string | null }> =>
+    ipcRenderer.invoke('discord-share:brotli-encode', payloadJson),
+  decodeDiscordShare: (token: string): Promise<{ payloadJson: string | null; error: string | null }> =>
+    ipcRenderer.invoke('discord-share:brotli-decode', token),
   // WP13: renderer drives the main-process clipboard polling lifecycle.
   setClipboardWatch: (on: boolean): void => { ipcRenderer.send('clipboard:set-watch', on) },
   searchMapsOnTrade: (params: TradeParams): Promise<{ url: string | null; error: string | null }> =>

@@ -23,6 +23,7 @@
  * ASCII-source rule: no raw emoji/middot literals - escapes only.
  */
 import { EXPORT_EMOJI } from './discordEmoji';
+import { DISCORD_SHARE_COMMAND_MAX } from './discordShareWire';
 import { LOOT_EVIDENCE_LABEL, type LootSummary } from './lootSummary';
 
 export const DISCORD_MSG_LIMIT = 2000;
@@ -33,13 +34,13 @@ export const STRAT_NAME_MAX = 80;
 
 // ── Bot card header allowance (mirrors bot/card.js buildCard) ───────────────
 // Normal header worst case: 32-char username, 20-digit snowflake, update-run
-// version line with a 2-digit revision and a "28 Sep"-style stamp.
+// version line with the longest PostgreSQL int4 revision and a "28 Sep" stamp.
 // 📨 = envelope-with-arrow header emoji; · = middot.
 const WORST_USERNAME = 'x'.repeat(32);
 const WORST_SNOWFLAKE = '9'.repeat(20);
 const WORST_HEADER =
   '\uD83D\uDCE8 **Shared by:** ' + WORST_USERNAME + ' (<@' + WORST_SNOWFLAKE + '>)\n' +
-  '*v99 \u00B7 updated 28 Sep*\n' +
+  '*v2147483647 \u00B7 updated 28 Sep*\n' +
   '\n';
 
 // Pooled cards can drop attribution/version before dropping evidence metadata.
@@ -55,9 +56,13 @@ const WORST_POOLED_HEADER =
   + ' \u00B7 Net +' + WORST_FIXED_INTEGER + '.9d\n'
   + '\n';
 
+export const CURRENT_CARD_HEADER_ALLOWANCE = WORST_HEADER.length;
+export const POOLED_CARD_HEADER_ALLOWANCE = WORST_POOLED_HEADER.length;
+/** Compatibility name: this is the future pooled-card guarantee, not the
+ * ordinary card header shown by the live preview meter. */
 export const CARD_HEADER_ALLOWANCE = Math.max(
-  WORST_HEADER.length,
-  WORST_POOLED_HEADER.length,
+  CURRENT_CARD_HEADER_ALLOWANCE,
+  POOLED_CARD_HEADER_ALLOWANCE,
 );
 
 // ── Emote decoration projection (mirrors bot/card.js decorate) ──────────────
@@ -83,6 +88,39 @@ export function projectDecoratedLength(text: string): number {
   return text.length + extra;
 }
 
+const DECORATION_FALLBACK_ORDER: readonly (keyof typeof EXPORT_EMOJI)[] = [
+  'strategy', 'notes', 'tags', 'party', 'time', 'points', 'league', 'atlas',
+  'astrolabe', 'delirium', 'scarabs', 'excluded', 'gem', 'search', 'run', 'slam',
+  'chisel', 'stats', 'cost', 'returns', 'div', 'maps',
+];
+
+export type DecorationMode = 'full' | 'mixed' | 'unicode';
+
+/** Mirrors the bot's selective fallback: remove only as many custom emotes as
+ * needed to fit, starting with the least essential presentation markers. */
+export function projectBestDecoratedLength(
+  text: string,
+  bodyLimit: number,
+): { length: number; mode: DecorationMode } {
+  let length = projectDecoratedLength(text);
+  if (length <= bodyLimit) return { length, mode: 'full' };
+  let decoratedOccurrences = 0;
+  for (const marker of Object.values(EXPORT_EMOJI)) {
+    decoratedOccurrences += countOccurrences(text, marker.uni);
+  }
+  for (const key of DECORATION_FALLBACK_ORDER) {
+    const marker = EXPORT_EMOJI[key];
+    const occurrences = countOccurrences(text, marker.uni);
+    if (occurrences === 0) continue;
+    length -= occurrences * (SHORT_REF_LENGTH - marker.uni.length);
+    decoratedOccurrences -= occurrences;
+    if (length <= bodyLimit) {
+      return { length, mode: decoratedOccurrences > 0 ? 'mixed' : 'unicode' };
+    }
+  }
+  return { length: text.length, mode: 'unicode' };
+}
+
 // ── Notes budget ────────────────────────────────────────────────────────────
 // The notes line the export gains when notes are non-empty:
 // `\n` + notes marker + ` **Notes:** ` + <the notes text>
@@ -91,12 +129,19 @@ const NOTES_LINE_OVERHEAD = 1 + EXPORT_EMOJI.notes.uni.length + ' **Notes:** '.l
 export interface ShareBudget {
   /** Compact author paste length. */
   wireLength: number;
-  /** True when the compact author paste fits one Discord message. */
+  /** True when the compact author paste fits either a message or slash command. */
   fitsWire: boolean;
+  /** True when the author can paste directly as a normal channel message. */
+  fitsDirectWire: boolean;
   /** Plain export + worst-case bot header, in UTF-16 units. */
   plainCardLength: number;
   /** Emote-projected export + worst-case bot header. */
   decoratedCardLength: number;
+  /** Length after the bot keeps as many custom emotes as the current card permits. */
+  postedCardLength: number;
+  decorationMode: DecorationMode;
+  /** Plain length reserved for the largest future pooled-results header. */
+  pooledPlainCardLength: number;
   /** True when the posted card is guaranteed to fit at all. */
   fitsPlain: boolean;
   /** True when the bot's emote-decorated form also fits (no unicode fallback). */
@@ -113,7 +158,7 @@ const visibleCardExport = (exportText: string): string => exportText
   .trimEnd();
 
 /** Presentation-only Discord-card compaction. The canonical readable export
- * and compact wl2 payload retain their authored Chaos values; only the posted
+ * and compact submission retain their authored Chaos values; only the posted
  * card (and its desktop preview/budget) changes units. Per-map cost and Divine
  * price intentionally stay in Chaos, while the three session totals switch at
  * one Divine. */
@@ -166,18 +211,27 @@ export function computeShareBudget(
 ): ShareBudget {
   const presented = presentAuthoredTotals(exportText);
   const presentedNoNotes = presentAuthoredTotals(exportTextNoNotes);
-  const plainCardLength = CARD_HEADER_ALLOWANCE + presented.length;
-  const decoratedCardLength = CARD_HEADER_ALLOWANCE + projectDecoratedLength(presented);
+  const plainCardLength = CURRENT_CARD_HEADER_ALLOWANCE + presented.length;
+  const decoratedCardLength = CURRENT_CARD_HEADER_ALLOWANCE + projectDecoratedLength(presented);
+  const bestDecoration = projectBestDecoratedLength(
+    presented,
+    DISCORD_MSG_LIMIT - CURRENT_CARD_HEADER_ALLOWANCE,
+  );
+  const pooledPlainCardLength = CARD_HEADER_ALLOWANCE + presented.length;
   const budgetForNotes = DISCORD_MSG_LIMIT
     - CARD_HEADER_ALLOWANCE
     - presentedNoNotes.length
     - NOTES_LINE_OVERHEAD;
   return {
     wireLength: exportText.length,
-    fitsWire: exportText.length <= DISCORD_MSG_LIMIT,
+    fitsWire: exportText.length <= DISCORD_SHARE_COMMAND_MAX,
+    fitsDirectWire: exportText.length <= DISCORD_MSG_LIMIT,
     plainCardLength,
     decoratedCardLength,
-    fitsPlain: plainCardLength <= DISCORD_MSG_LIMIT,
+    postedCardLength: CURRENT_CARD_HEADER_ALLOWANCE + bestDecoration.length,
+    decorationMode: bestDecoration.mode,
+    pooledPlainCardLength,
+    fitsPlain: pooledPlainCardLength <= DISCORD_MSG_LIMIT,
     fitsDecorated: decoratedCardLength <= DISCORD_MSG_LIMIT,
     notesRemaining: budgetForNotes - notesLength,
     notesMax: Math.max(0, budgetForNotes),
@@ -185,7 +239,7 @@ export function computeShareBudget(
 }
 
 /** Budget the compact author paste and the bot's reconstructed visible card.
- * Loot evidence is carried inside wl2 and rendered as an image, so its opaque
+ * Loot evidence is carried inside the compact wire and rendered as an image, so its opaque
  * wl1 line is deliberately absent from the final-card projection. */
 export function computeCompactShareBudget(
   wireText: string,
@@ -197,8 +251,14 @@ export function computeCompactShareBudget(
   const visible = presentAuthoredTotals(visibleCardExport(exportText));
   const visibleNoNotes = presentAuthoredTotals(visibleCardExport(exportTextNoNotes));
   const caption = lootCaption(summary);
-  const plainCardLength = CARD_HEADER_ALLOWANCE + caption.length + visible.length;
-  const decoratedCardLength = CARD_HEADER_ALLOWANCE + caption.length + projectDecoratedLength(visible);
+  const currentBody = caption.length + visible.length;
+  const plainCardLength = CURRENT_CARD_HEADER_ALLOWANCE + currentBody;
+  const decoratedCardLength = CURRENT_CARD_HEADER_ALLOWANCE + caption.length + projectDecoratedLength(visible);
+  const bestDecoration = projectBestDecoratedLength(
+    visible,
+    DISCORD_MSG_LIMIT - CURRENT_CARD_HEADER_ALLOWANCE - caption.length,
+  );
+  const pooledPlainCardLength = CARD_HEADER_ALLOWANCE + currentBody;
   const budgetForNotes = DISCORD_MSG_LIMIT
     - CARD_HEADER_ALLOWANCE
     - caption.length
@@ -206,10 +266,14 @@ export function computeCompactShareBudget(
     - NOTES_LINE_OVERHEAD;
   return {
     wireLength: wireText.length,
-    fitsWire: wireText.length <= DISCORD_MSG_LIMIT,
+    fitsWire: wireText.length <= DISCORD_SHARE_COMMAND_MAX,
+    fitsDirectWire: wireText.length <= DISCORD_MSG_LIMIT,
     plainCardLength,
     decoratedCardLength,
-    fitsPlain: plainCardLength <= DISCORD_MSG_LIMIT,
+    postedCardLength: CURRENT_CARD_HEADER_ALLOWANCE + caption.length + bestDecoration.length,
+    decorationMode: bestDecoration.mode,
+    pooledPlainCardLength,
+    fitsPlain: pooledPlainCardLength <= DISCORD_MSG_LIMIT,
     fitsDecorated: decoratedCardLength <= DISCORD_MSG_LIMIT,
     notesRemaining: budgetForNotes - notesLength,
     notesMax: Math.max(0, budgetForNotes),

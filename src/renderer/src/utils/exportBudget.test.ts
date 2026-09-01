@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EXPORT_EMOJI } from './discordEmoji';
 import {
   CARD_HEADER_ALLOWANCE,
+  CURRENT_CARD_HEADER_ALLOWANCE,
   DISCORD_MSG_LIMIT,
   STRAT_NAME_MAX,
   compactPostedCardPreview,
@@ -43,6 +44,7 @@ describe('exportBudget', () => {
       + ' · Net +' + worstFixedInteger + '.9d\n'
       + '\n';
     expect(CARD_HEADER_ALLOWANCE).toBe(worstPooledHeader.length);
+    expect(CURRENT_CARD_HEADER_ALLOWANCE).toBeLessThan(CARD_HEADER_ALLOWANCE);
     expect(CARD_HEADER_ALLOWANCE).toBeGreaterThan(150);
     expect(CARD_HEADER_ALLOWANCE).toBeLessThan(250);
   });
@@ -90,9 +92,11 @@ describe('exportBudget', () => {
     expect(budget.fitsPlain).toBe(true);
     expect(budget.fitsDecorated).toBe(false);
     expect(budget.decoratedCardLength).toBeGreaterThan(DISCORD_MSG_LIMIT);
+    expect(budget.decorationMode).toBe('mixed');
+    expect(budget.postedCardLength).toBeLessThanOrEqual(DISCORD_MSG_LIMIT);
   });
 
-  it('budgets wl2 separately and removes the opaque loot line from the posted card', () => {
+  it('budgets the compact submission separately and removes the opaque loot line from the posted card', () => {
     const noNotes = '[WraeclastLedger Session]\nMaps: 10\nLoot Evidence: wl1.' + 'x'.repeat(1000);
     const withNotes = noNotes + '\n' + EXPORT_EMOJI.notes.uni + ' **Notes:** hello';
     const summary = {

@@ -58,6 +58,7 @@ import {
   type OverlaySnapshot,
 } from '../shared/overlay'
 import { normalizeTradeItemCatalog } from '../shared/manualLoot'
+import { decodeDiscordShareBrotli, encodeDiscordShareBrotli } from './discordShareCompression'
 import type { TradeItemCatalog } from '../shared/manualLoot'
 
 // The installed build and `npm run dev` used to share one Chromium profile.
@@ -570,6 +571,20 @@ function setClipboardWatch(on: boolean): void {
 
 ipcMain.on('clipboard:set-watch', (_event, on: boolean) => setClipboardWatch(!!on));
 ipcMain.handle('clipboard:get-bridge-status', () => clipboardBridgeStatus);
+ipcMain.handle('discord-share:brotli-encode', (_event, payloadJson: unknown) => {
+  try {
+    return { token: encodeDiscordShareBrotli(payloadJson), error: null }
+  } catch (error) {
+    return { token: null, error: error instanceof Error ? error.message : 'Brotli encoding failed' }
+  }
+})
+ipcMain.handle('discord-share:brotli-decode', (_event, token: unknown) => {
+  try {
+    return { payloadJson: decodeDiscordShareBrotli(token), error: null }
+  } catch (error) {
+    return { payloadJson: null, error: error instanceof Error ? error.message : 'Brotli decoding failed' }
+  }
+})
 
 function setupAutoUpdater(mainWindow: BrowserWindow): void {
   const policy = resolveAutoUpdatePolicy({

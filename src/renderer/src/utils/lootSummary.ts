@@ -1,5 +1,7 @@
 import type { LootCategory, LootItem, ManualLootItem } from '../types';
 import {
+  manualLootIdentityCategory,
+  manualLootIdentityName,
   normalizeManualLootIdentity,
   type EquipmentCatalogGroup,
   type ManualLootIdentity,
@@ -120,6 +122,15 @@ export type CompactLootSummary = {
   t: CompactLootTotalsLegacy | CompactLootTotals;
 };
 
+/** Schema-v4 share-only form. It keeps the wl1/raw-export schema untouched,
+ * but removes repeated category strings, derivable structured-row labels, and
+ * three totals that are already fixed by the reconciliation equations. */
+export type CompactShareLootSummary = [
+  unknown[],
+  [number, number][],
+  [number, number, number, number, number, number, number, number, number, number, number, number],
+];
+
 const bytesToBase64Url = (bytes: Uint8Array): string => {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -142,6 +153,7 @@ const EQUIPMENT_GROUP_CODE: Readonly<Record<EquipmentCatalogGroup, 0 | 1 | 2>> =
   accessory: 2,
 };
 const EQUIPMENT_GROUP_BY_CODE: readonly EquipmentCatalogGroup[] = ['weapon', 'armour', 'accessory'];
+const INFLUENCE_BY_CODE = ['Shaper', 'Elder', 'Crusader', 'Hunter', 'Redeemer', 'Warlord'] as const;
 
 const compactManualIdentity = (identity: ManualLootIdentity): CompactManualLootIdentity => {
   if (identity.kind === 'quality-base') return [
@@ -182,6 +194,25 @@ const expandManualIdentity = (value: unknown): ManualLootIdentity | undefined =>
     base: value[4],
   });
   return undefined;
+};
+
+const compactShareManualIdentity = (identity: ManualLootIdentity): unknown[] => {
+  const compact = compactManualIdentity(identity);
+  if (identity.kind !== 'quality-base') return compact;
+  const influenceCode = identity.influence
+    ? INFLUENCE_BY_CODE.indexOf(identity.influence) + 1
+    : 0;
+  return [compact[0], compact[1], compact[2], compact[3], influenceCode];
+};
+
+const expandShareManualIdentity = (value: unknown): ManualLootIdentity | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  if (value[0] !== 0) return expandManualIdentity(value);
+  const influence = value[4] === 0 || value[4] == null
+    ? undefined
+    : INFLUENCE_BY_CODE[Number(value[4]) - 1];
+  if (value[4] != null && value[4] !== 0 && !influence) return undefined;
+  return expandManualIdentity([value[0], value[1], value[2], value[3], influence]);
 };
 
 const isValidCompactLootRow = (row: unknown): row is CompactLootSummary['r'][number] => {
@@ -236,6 +267,125 @@ export const compactLootSummary = (summary: LootSummary): CompactLootSummary => 
     summary.inventoryFlow, summary.marketRevaluation,
   ],
 });
+
+const categoryCode = (category: LootCategory): number => ITEM_CATEGORIES.indexOf(category);
+
+const trimTrailingNulls = (row: unknown[]): unknown[] => {
+  while (row.length > 0 && row[row.length - 1] == null) row.pop();
+  return row;
+};
+
+export const compactShareLootSummary = (summary: LootSummary): CompactShareLootSummary => {
+  const compact = compactLootSummary(summary);
+  const rows = summary.rows.map((row) => {
+    const code = categoryCode(row.category);
+    if (code < 0) throw new TypeError('Loot row has an unsupported category');
+    if (row.identity) {
+      const identity = compactShareManualIdentity(row.identity);
+      const derivable = row.name === manualLootIdentityName(row.identity)
+        && row.category === manualLootIdentityCategory(row.identity);
+      return trimTrailingNulls(derivable
+        ? [2, row.quantity, row.value, row.tab ?? null, row.note ?? null, identity]
+        : [3, row.name, code, row.quantity, row.value, row.tab ?? null, row.note ?? null, identity]);
+    }
+    if (row.valuation) return trimTrailingNulls([
+      1, row.name, code, row.quantity, row.value, row.tab ?? null, row.note ?? null,
+      row.valuation.baselineQuantity, row.valuation.currentQuantity,
+      row.valuation.baselineValue, row.valuation.currentValue,
+    ]);
+    return trimTrailingNulls([
+      0, row.name, code, row.source === 'manual' ? 1 : 0,
+      row.quantity, row.value, row.tab ?? null, row.note ?? null,
+    ]);
+  });
+  const categories: [number, number][] = compact.c.map(([category, value]) => {
+    const code = categoryCode(category);
+    if (code < 0) throw new TypeError('Loot summary has an unsupported category');
+    return [code, value];
+  });
+  const totals: CompactShareLootSummary[2] = [
+    summary.hasBaseline ? 1 : 0,
+    summary.csvPositive,
+    summary.csvNegative,
+    summary.csvAdjustment,
+    summary.manualTotal,
+    summary.gemCorrection,
+    summary.investmentCorrection,
+    summary.omittedCsvRows,
+    summary.omittedCsvValue,
+    summary.omittedManualRows,
+    summary.omittedManualValue,
+    summary.marketRevaluation,
+  ];
+  return [rows, categories, totals];
+};
+
+export function expandCompactShareLootSummary(
+  value: unknown,
+  reportedReturn: number,
+): LootSummary | null {
+  try {
+    if (!Array.isArray(value) || value.length !== 3
+      || !Array.isArray(value[0]) || !Array.isArray(value[1])
+      || !Array.isArray(value[2]) || value[2].length !== 12) return null;
+    const rows = value[0].map((candidate: unknown) => {
+      if (!Array.isArray(candidate)) throw new TypeError('Invalid compact share loot row');
+      const kind = candidate[0];
+      if (kind === 0) {
+        const category = ITEM_CATEGORIES[Number(candidate[2])];
+        return [candidate[1], category, candidate[3], candidate[4], candidate[5], candidate[6], candidate[7]];
+      }
+      if (kind === 1) {
+        const category = ITEM_CATEGORIES[Number(candidate[2])];
+        return [candidate[1], category, 0, candidate[3], candidate[4], candidate[5], candidate[6], 1,
+          candidate[7], candidate[8], candidate[9], candidate[10]];
+      }
+      if (kind === 2 || kind === 3) {
+        const offset = kind === 2 ? 0 : 2;
+        const identityValue = candidate[5 + offset];
+        const identity = expandShareManualIdentity(identityValue);
+        if (!identity) throw new TypeError('Invalid structured loot identity');
+        const name = kind === 2 ? manualLootIdentityName(identity) : candidate[1];
+        const category = kind === 2
+          ? manualLootIdentityCategory(identity)
+          : ITEM_CATEGORIES[Number(candidate[2])];
+        const quantity = candidate[1 + offset];
+        const rowValue = candidate[2 + offset];
+        const tab = candidate[3 + offset];
+        const note = candidate[4 + offset];
+        return [name, category, 1, quantity, rowValue, tab, note,
+          null, null, null, null, null, compactManualIdentity(identity)];
+      }
+      throw new TypeError('Invalid compact share loot row kind');
+    });
+    const categories = value[1].map((candidate: unknown) => {
+      if (!Array.isArray(candidate) || candidate.length !== 2) {
+        throw new TypeError('Invalid compact share loot category');
+      }
+      return [ITEM_CATEGORIES[Number(candidate[0])], candidate[1]];
+    });
+    const totals = value[2].map(Number);
+    const [hasBaseline, csvPositive, csvNegative, csvAdjustment,
+      manualTotal, gemCorrection, investmentCorrection,
+      omittedCsvRows, omittedCsvValue, omittedManualRows, omittedManualValue,
+      marketRevaluation] = totals;
+    const csvNet = csvPositive + csvNegative + csvAdjustment;
+    const inventoryFlow = csvNet - marketRevaluation - csvAdjustment;
+    return expandCompactLootSummary({
+      v: LOOT_SUMMARY_VERSION,
+      r: rows,
+      c: categories,
+      t: [
+        hasBaseline, csvPositive, csvNegative, csvNet, csvAdjustment,
+        manualTotal, gemCorrection, investmentCorrection, reportedReturn,
+        omittedCsvRows, omittedCsvValue, omittedManualRows, omittedManualValue,
+        inventoryFlow, marketRevaluation,
+      ],
+    });
+  } catch {
+    return null;
+  }
+}
 
 /** Compress the bounded summary into the existing paste-based Discord wire.
  * The bot stores the decoded JSON and replaces this opaque line with a short

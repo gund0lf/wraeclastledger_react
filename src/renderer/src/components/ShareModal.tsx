@@ -6,7 +6,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { IconBrandDiscord, IconCheck } from '@tabler/icons-react';
 import { useSessionKeys } from '../store/useSessionStore';
 import { buildDiscordExport } from '../utils/discordExport';
-import { encodeDiscordShareWire } from '../utils/discordShareWire';
+import {
+  buildDiscordSharePayload,
+  DISCORD_SHARE_COMMAND_MAX,
+} from '../utils/discordShareWire';
 import { parseTimeInput } from '../utils/sessionTime';
 import { computeTimeEstimate, formatActiveTime } from '../utils/timeEstimate';
 import { manualRunTimerElapsed } from '../utils/manualRunTimer';
@@ -287,23 +290,52 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
        updateTargetId, evidenceTargetId, evidenceExpectedRevision, evidenceProof,
        activeManifest.revision, activeManifest.patchVersion]);
 
-  const parsedDiscordExport = parseDiscordExport(discordExport);
-  const discordWireResult = useMemo(() => {
+  const parsedDiscordExport = useMemo(() => parseDiscordExport(discordExport), [discordExport]);
+  const [discordWireResult, setDiscordWireResult] = useState<{
+    wire: string;
+    error: string | null;
+    pending: boolean;
+  }>({ wire: '', error: null, pending: false });
+  useEffect(() => {
     if (!parsedDiscordExport) {
-      return {
+      setDiscordWireResult({
         wire: '',
         error: 'The readable share could not be parsed. Review the required fields above.',
-      };
+        pending: false,
+      });
+      return;
     }
+    let cancelled = false;
     try {
-      return { wire: encodeDiscordShareWire(parsedDiscordExport), error: null };
+      const payloadJson = buildDiscordSharePayload(parsedDiscordExport);
+      setDiscordWireResult({ wire: '', error: null, pending: true });
+      window.api.encodeDiscordShare(payloadJson).then((result) => {
+        if (cancelled) return;
+        setDiscordWireResult({
+          wire: result.token ?? '',
+          error: result.error
+            ? `The compact Discord share could not be generated: ${result.error}`
+            : null,
+          pending: false,
+        });
+      }).catch((error: unknown) => {
+        if (cancelled) return;
+        const detail = error instanceof Error ? error.message : 'unknown encoding error';
+        setDiscordWireResult({
+          wire: '',
+          error: `The compact Discord share could not be generated: ${detail}`,
+          pending: false,
+        });
+      });
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'unknown encoding error';
-      return {
+      setDiscordWireResult({
         wire: '',
         error: `The compact Discord share could not be generated: ${detail}`,
-      };
+        pending: false,
+      });
     }
+    return () => { cancelled = true; };
   }, [parsedDiscordExport]);
   const discordWire = discordWireResult.wire;
   const discordWireError = discordWireResult.error;
@@ -329,7 +361,8 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   // overflow keeps the preview visible so the author can see what to trim.
   const evidenceBlocked = evidenceTargetId !== null && evidenceProof === null;
   const previewWithheld = impossibleAtlasPoints || leagueBlock !== null || evidenceBlocked || shareIncomplete;
-  const copyDisabled = previewWithheld || !discordWire || !budget.fitsWire || !budget.fitsPlain;
+  const copyDisabled = previewWithheld || discordWireResult.pending
+    || !discordWire || discordWire.length > DISCORD_SHARE_COMMAND_MAX || !budget.fitsPlain;
 
   // ── Update run: compare the about-to-publish numbers to what's live now ─────
   // Fetch the current published strategy by uuid so the author can eyeball what
@@ -625,17 +658,21 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
           </Text>
         </Stack>
         <Divider label="Posted card preview" labelPosition="left" />
-        <Text size="xs" c={discordWireError || !budget.fitsWire || !budget.fitsPlain ? 'red' : budget.fitsDecorated ? 'dimmed' : 'orange'} style={{ fontSize: FONT.small }}>
-          {`Submission: ${budget.wireLength}/${DISCORD_MSG_LIMIT} | posted card: ${budget.plainCardLength}/${DISCORD_MSG_LIMIT} plain, ${budget.decoratedCardLength}/${DISCORD_MSG_LIMIT} with emotes — `}
-          {discordWireError
+        <Text size="xs" c={discordWireError || !budget.fitsWire || !budget.fitsPlain ? 'red' : budget.fitsDirectWire && budget.decorationMode === 'full' ? 'dimmed' : 'orange'} style={{ fontSize: FONT.small }}>
+          {discordWireResult.pending
+            ? 'Preparing compact submission...'
+            : `Submission: ${budget.wireLength}/${budget.fitsDirectWire ? DISCORD_MSG_LIMIT : DISCORD_SHARE_COMMAND_MAX} ${budget.fitsDirectWire ? 'message' : 'slash command'} | current card: ${budget.postedCardLength}/${DISCORD_MSG_LIMIT} ${budget.decorationMode === 'full' ? 'with app emotes' : budget.decorationMode === 'mixed' ? 'with mixed emotes' : 'with Unicode'} | pooled safety: ${budget.pooledPlainCardLength}/${DISCORD_MSG_LIMIT} — `}
+          {!discordWireResult.pending && (discordWireError
             ? 'compact submission unavailable.'
             : !budget.fitsWire
-            ? 'compact paste is too large; trim notes.'
+            ? 'compact submission is too large even for /wledger-share; trim notes.'
             : !budget.fitsPlain
             ? 'posted card is too large; trim notes.'
-            : budget.fitsDecorated
-              ? 'fits with app emotes.'
-              : 'posts without app emotes (over the emote budget).'}
+            : !budget.fitsDirectWire
+              ? 'copy it into the payload field of /wledger-share.'
+              : budget.decorationMode === 'full'
+                ? 'fits directly with app emotes.'
+                : 'fits directly; only the emotes needed to stay under Discord\'s limit fall back.')}
         </Text>
         {discordWireError && !previewWithheld && (
           <Alert color="red" variant="light" p="xs">
@@ -668,7 +705,11 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
             <Button leftSection={copied ? <IconCheck size={14} /> : <IconBrandDiscord size={14} />} onClick={copy}
               disabled={copyDisabled}
               color={copied ? 'teal' : 'indigo'} variant="light" fullWidth>
-              {copied ? 'Copied to clipboard!' : 'Copy to Discord'}
+              {copied
+                ? 'Copied to clipboard!'
+                : !budget.fitsDirectWire && discordWire
+                  ? 'Copy for /wledger-share'
+                  : 'Copy to Discord'}
             </Button>
           )}
         </CopyButton>
