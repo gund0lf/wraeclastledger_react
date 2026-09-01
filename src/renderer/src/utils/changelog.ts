@@ -10,6 +10,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.94',
+    date: '2026-09-01',
+    changes: [
+      'Discord strategy sharing now uses a smaller wl3 submission while preserving readable posted cards and complete legacy wl2/import compatibility. Short submissions still paste directly, while larger evidence-rich runs can use the new /wledger-share command up to Discord\'s 6,000-character command limit.',
+      'The Share preview now reports the author submission, current posted card, and future pooled-card safety separately. Posted cards retain as many application emotes as fit instead of dropping every custom marker when only a small amount of space is needed.',
+    ],
+  },
+  {
     version: '1.0.93',
     date: '2026-08-31',
     changes: [
