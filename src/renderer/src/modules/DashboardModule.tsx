@@ -33,6 +33,7 @@ import {
 import { PoeItemIcon } from '../components/ui/PoeItemIcon';
 import { LootCategoryGlyph, LootCategoryIcon } from '../components/ui/LootCategoryIcon';
 import { computeProfit, computeMultiplier } from '../utils/profit';
+import { describeMapModifierSource } from '../utils/atlasCalcPresentation';
 import { fcSep } from '../utils/parseDiscordExport';
 import { computeTimeEstimate, formatActiveTime } from '../utils/timeEstimate';
 import { assignLootCategories, buildCategoryBreakdown, categorise, ITEM_CATEGORIES, ItemCategory, CAT_COLORS } from '../utils/lootCategories';
@@ -176,6 +177,10 @@ export const DashboardModule = () => {
     }
     return { count, multiplier, usesObservedMods, observedModAverage, stats: result };
   }, [maps, settings]);
+  const mapModifierSource = useMemo(
+    () => describeMapModifierSource(maps, settings.mapType),
+    [maps, settings.mapType],
+  );
 
   // All profit math lives in utils/profit.ts (WP1) - single source of truth
   // shared with ShareModal/discordExport and InvestmentModule. The rolling
@@ -1045,7 +1050,7 @@ export const DashboardModule = () => {
                   <Badge color="gray" variant="outline" size="sm">{stats.count} maps</Badge>
                   <Tooltip label={stats.usesObservedMods && stats.observedModAverage != null
                     ? `Multiplier uses ${stats.observedModAverage.toFixed(1)} observed explicit mods per map`
-                    : `Multiplier uses the ${settings.mapType} fallback`}>
+                    : mapModifierSource.detail}>
                     <Badge color="blue" variant="outline" size="sm">{stats.multiplier.toFixed(3)}×</Badge>
                   </Tooltip>
                   {settings.chiselType && (

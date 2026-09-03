@@ -399,6 +399,27 @@ describe('computeMultiplier', () => {
     expect(m.multiplier).toBeCloseTo(1.09, 6);
   });
 
+  it('uses a complete exact sample from the first captured map', () => {
+    const m = computeMultiplier(
+      baseSettings({ mapType: '6-mod', mountingModifiers: true }),
+      [observedMap(8)],
+    );
+    expect(m.usesObservedMods).toBe(true);
+    expect(m.observedModAverage).toBe(8);
+    expect(m.observedSampleSize).toBe(1);
+    expect(m.effectiveMods).toBe(8);
+    expect(m.mountBonus).toBe(16);
+  });
+
+  it('includes exact zero-mod white maps in the observed average', () => {
+    const maps = [0, 0, 0, 0, 0, 2, 2].map((count) => observedMap(count));
+    const m = computeMultiplier(baseSettings({ mapType: '6-mod', mountingModifiers: true }), maps);
+    expect(m.usesObservedMods).toBe(true);
+    expect(m.observedSampleSize).toBe(7);
+    expect(m.observedModAverage).toBeCloseTo(4 / 7, 8);
+    expect(m.effectiveMods).toBeCloseTo(4 / 7, 8);
+  });
+
   it('adds Risk modifiers after the observed average', () => {
     const maps = [4, 4, 5, 5].map((count) => observedMap(count));
     const m = computeMultiplier(baseSettings({
@@ -410,9 +431,8 @@ describe('computeMultiplier', () => {
     expect(m.mountBonus).toBe(13);
   });
 
-  it('falls back when coverage is incomplete, unidentified, or too small', () => {
+  it('falls back when coverage is incomplete or unidentified', () => {
     const settings = baseSettings({ mapType: '8-mod', mountingModifiers: true });
-    expect(computeMultiplier(settings, [3, 4, 5].map((n) => observedMap(n))).usesObservedMods).toBe(false);
     expect(computeMultiplier(settings, [3, 4, 5, undefined].map((n) => observedMap(n))).effectiveMods).toBe(8);
     expect(computeMultiplier(settings, [3, 4, 5].map((n) => observedMap(n)).concat(observedMap(6, true))).usesObservedMods).toBe(false);
   });

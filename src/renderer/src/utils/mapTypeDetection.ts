@@ -9,7 +9,10 @@ export function inferMapType(
   maps: MapData[],
   current: SessionSettings['mapType'],
 ): SessionSettings['mapType'] {
-  if (maps.length < 4) return current;
+  if (maps.length === 0) return current;
+  const hasCompleteExactSample = maps.every((map) =>
+    !map.isUnidentified && map.explicitModCount != null);
+  if (!hasCompleteExactSample && maps.length < 4) return current;
   const ratio = maps.filter(isEightModCandidate).length / maps.length;
   return ratio > 0.6 ? '8-mod' : ratio < 0.4 ? '6-mod' : current;
 }

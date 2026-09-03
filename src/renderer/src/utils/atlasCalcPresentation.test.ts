@@ -64,12 +64,28 @@ describe('Atlas Calc provenance presentation', () => {
     expect(atlasSyncPresentation('legacy-imported')).toMatchObject({ label: 'Legacy / imported', color: 'yellow' });
   });
 
-  it('uses exact Map Log evidence only with complete bounded coverage', () => {
+  it('uses exact Map Log evidence from the first map when coverage is complete', () => {
+    const first = describeMapModifierSource([map({ explicitModCount: 8 })], '6-mod');
+    expect(first).toMatchObject({
+      observed: true,
+      value: '8.0 observed',
+      source: 'Map Log · 1/1 exact counts',
+    });
     const observed = describeMapModifierSource([map(), map(), map(), map()], '8-mod');
     expect(observed).toMatchObject({ observed: true, value: '6.0 observed' });
     const partial = describeMapModifierSource([map(), map(), map(), map({ explicitModCount: undefined })], '8-mod');
-    expect(partial).toMatchObject({ observed: false, value: '8-mod', source: 'Compatibility fallback' });
+    expect(partial).toMatchObject({ observed: false, value: '8-mod', source: 'Map Log · 3/4 exact counts' });
     expect(partial.detail).toContain('3/4');
+  });
+
+  it('labels an empty session as provisional rather than observed', () => {
+    const empty = describeMapModifierSource([], '6-mod');
+    expect(empty).toMatchObject({
+      observed: false,
+      value: '6-mod',
+      source: 'Provisional compatibility value',
+    });
+    expect(empty.detail).toContain('No captured maps yet');
   });
 
   it('labels Investment as authoritative and retained overrides as fallback', () => {

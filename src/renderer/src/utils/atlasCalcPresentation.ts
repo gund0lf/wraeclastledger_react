@@ -1,6 +1,6 @@
 import type { SessionLifecycle } from '../../../shared/sessionRepositoryIpc';
 import type { FragmentCountSource } from './profit';
-import { MIN_OBSERVED_MOD_SAMPLE, computeObservedModSample } from './profit';
+import { computeObservedModSample } from './profit';
 import type { MapData, SessionSettings } from '../types';
 import { isCrossLeagueSession } from './historicalSession';
 import { hasCurrentAtlasStatsRead } from './atlasStatsSync';
@@ -81,7 +81,7 @@ export function describeMapModifierSource(
     return {
       observed: true,
       value: `${observed.average.toFixed(1)} observed`,
-      source: `Map Log · ${observed.sampleSize}/${maps.length} advanced copies`,
+      source: `Map Log · ${observed.sampleSize}/${maps.length} exact counts`,
       detail: 'Every map has an exact modifier count, so this session average drives the multiplier.',
     };
   }
@@ -90,16 +90,16 @@ export function describeMapModifierSource(
   const exact = maps.filter((map) => map.explicitModCount != null).length;
   const reason = maps.length === 0
     ? 'No captured maps yet.'
-    : maps.length < MIN_OBSERVED_MOD_SAMPLE
-      ? `Needs at least ${MIN_OBSERVED_MOD_SAMPLE} captured maps.`
-      : unidentified > 0
-        ? `${unidentified} unidentified ${unidentified === 1 ? 'map prevents' : 'maps prevent'} complete coverage.`
-        : `${exact}/${maps.length} maps have an exact advanced-copy modifier count.`;
+    : unidentified > 0
+      ? `${unidentified} unidentified ${unidentified === 1 ? 'map prevents' : 'maps prevent'} complete coverage.`
+      : `${exact}/${maps.length} maps have an exact modifier count.`;
   return {
     observed: false,
     value: mapType,
-    source: 'Compatibility fallback',
-    detail: `${reason} The retained ${mapType} session value drives the multiplier until coverage is complete.`,
+    source: maps.length === 0
+      ? 'Provisional compatibility value'
+      : `Map Log · ${exact}/${maps.length} exact counts`,
+    detail: `${reason} The retained ${mapType} session value is only a fallback until every captured map has exact modifier-count data.`,
   };
 }
 

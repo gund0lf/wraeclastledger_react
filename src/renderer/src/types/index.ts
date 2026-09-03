@@ -138,8 +138,9 @@ export interface MapData {
   moreCurrency: number; moreMaps: number; moreScarabs: number;
   moreDivCards: number; // "More Divination Cards: +N%" — its own drop pool, NOT currency (added post-1.0.62; old persisted maps lack it, consumers must ?? 0)
   modCount: number;
-  /** Exact explicit affix count from advanced tooltip headers.
-   * Undefined for headerless legacy copies and old maps; never infer it from text-line count. */
+  /** Exact explicit affix count from advanced tooltip headers, or zero for an
+   * identified Normal map. Undefined for unidentified, headerless Magic/Rare
+   * legacy copies, and old maps; never infer it from text-line count. */
   explicitModCount?: number;
   /** Epoch ms when the map was parsed from the clipboard (WP9 Tier 0, added post-1.0.62).
    *  Additive — old persisted maps lack it; consumers must treat it as optional. */

@@ -27,11 +27,18 @@ describe('isEightModCandidate', () => {
 });
 
 describe('inferMapType', () => {
-  it('uses the existing majority thresholds and needs at least four maps', () => {
+  it('uses complete exact evidence immediately with the existing majority thresholds', () => {
     const eight = map({ explicitModCount: 8 });
     const six = map({ explicitModCount: 6 });
-    expect(inferMapType([eight, eight, eight], '6-mod')).toBe('6-mod');
+    expect(inferMapType([eight], '6-mod')).toBe('8-mod');
+    expect(inferMapType([eight, eight, eight], '6-mod')).toBe('8-mod');
     expect(inferMapType([eight, eight, eight, six], '6-mod')).toBe('8-mod');
     expect(inferMapType([eight, eight, six, six], '6-mod')).toBe('6-mod');
+  });
+
+  it('retains the four-map gate for incomplete legacy evidence', () => {
+    const legacyEight = map({ explicitModCount: undefined, modCount: 10 });
+    expect(inferMapType([legacyEight], '6-mod')).toBe('6-mod');
+    expect(inferMapType([legacyEight, legacyEight, legacyEight, legacyEight], '6-mod')).toBe('8-mod');
   });
 });

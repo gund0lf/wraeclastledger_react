@@ -109,7 +109,7 @@ describe('evidence submission preflight', () => {
       mapParsedAt: [1_000, 2_000],
     });
     expect(proof).toEqual({
-      runKey: 'sha256-v1:9c5dd3fd7d830678cfe695aa9d2c7c2059e8a597135a208fcb0a7110cbb70e61',
+      runKey: 'sha256-v1:18b58184920000e6ab3350de585648a03d725df801544932f86bbb873c6b4803',
       runStartedAt: '1970-01-01T00:00:01.000Z',
       runEndedAt: '1970-01-01T00:00:02.000Z',
       setupFingerprint: await targetFingerprint(raw),

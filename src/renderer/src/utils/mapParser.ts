@@ -40,6 +40,9 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
   let name = 'Unknown';
   const lines = clean.split('\n').map((l) => l.trim()).filter(Boolean);
   const rarityIdx = lines.findIndex((l) => l.startsWith('Rarity:'));
+  const itemRarity = rarityIdx >= 0
+    ? lines[rarityIdx].slice('Rarity:'.length).trim()
+    : '';
   if (rarityIdx >= 0 && rarityIdx + 1 < lines.length) name = lines[rarityIdx + 1];
 
   const extractPct = (pattern: RegExp): number => {
@@ -91,11 +94,16 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
 
   // Since 3.29, regular Ctrl+C uses the advanced format and includes exactly
   // one header per real affix, even when that affix has several description
-  // lines. Legacy headerless copies leave the exact count unknown.
+  // lines. An identified Normal map has an equally exact count of zero without
+  // needing headers. Unidentified and headerless Magic/Rare copies stay unknown.
   const explicitHeaders = lines.filter((line) => /^\{ (?:Prefix|Suffix) Modifier\b/.test(line));
-  const explicitModCount = !isUnidentified && explicitHeaders.length > 0
-    ? explicitHeaders.length
-    : undefined;
+  const explicitModCount = isUnidentified
+    ? undefined
+    : explicitHeaders.length > 0
+      ? explicitHeaders.length
+      : itemRarity === 'Normal'
+        ? 0
+        : undefined;
 
   // ── Explicit mod count ─────────────────────────────────────────────────────
   // Find the section just BEFORE "Travel to a Map" — this is always the
@@ -135,3 +143,14 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
     rawText: text,
   };
 };
+
+/** Recover additive exact-mod evidence from retained clipboard text without
+ * rewriting any other authored or historical map field. This is intentionally
+ * narrow: old records whose raw text was already stripped remain unknown. */
+export function recoverExactModifierCount(map: MapData): MapData {
+  if (map.explicitModCount != null || !map.rawText) return map;
+  const reparsed = parseMapClipboard(map.rawText);
+  return reparsed?.explicitModCount == null
+    ? map
+    : { ...map, explicitModCount: reparsed.explicitModCount };
+}

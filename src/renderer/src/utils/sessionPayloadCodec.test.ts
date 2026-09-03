@@ -15,6 +15,41 @@ import {
 } from '../repository/sessionPayloadCodec';
 
 describe('WP14 session payload codec', () => {
+  it('recovers an exact zero for a retained Normal-map clipboard without guessing stripped legacy maps', () => {
+    const normalRawText = [
+      'Item Class: Maps',
+      'Rarity: Normal',
+      'Map (Tier 16)',
+      '--------',
+      'Item Level: 85',
+      '--------',
+      'Monster Level: 83',
+      '--------',
+      'Travel to a Map of this tier or lower by using this in a personal Map Device. Maps can only be used once.',
+    ].join('\n');
+    const payload = createSessionPayload({
+      maps: [
+        { id: 'normal', rawText: normalRawText },
+        { id: 'stripped-legacy' },
+      ],
+      lootItems: [],
+      baselineItems: [],
+      baselineTotal: 0,
+      manualLootItems: [],
+      manualStatistics: {},
+      manualRunTimer: {},
+      settings: {},
+      sessionNotes: '',
+      investmentNeutralization: 0,
+      investmentDismissed: false,
+      strategySourceContext: null,
+    });
+
+    const decoded = decodeSessionPayload(payload, DEFAULT_SETTINGS);
+    expect(decoded.maps[0].explicitModCount).toBe(0);
+    expect(decoded.maps[1].explicitModCount).toBeUndefined();
+  });
+
   it('encodes and decodes every session-owned runtime field through one exact contract', () => {
     const encoded = encodeSessionPayload({
       maps: [],

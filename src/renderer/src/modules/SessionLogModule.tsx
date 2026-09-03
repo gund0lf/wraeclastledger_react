@@ -311,7 +311,7 @@ export const SessionLogModule = () => {
               <Table.Th className="session-log-tier">Tier</Table.Th>
               {showDeliriumColumn && <Table.Th className="session-log-delirium">Delirium</Table.Th>}
               <Table.Th className="session-log-number">
-                <Tooltip label="Exact explicit modifiers from advanced copies; dash means a legacy headerless copy">
+                <Tooltip label="Exact explicit modifiers; Normal maps show 0, while unidentified or legacy headerless copies show a dash">
                   <span style={{ cursor: 'help' }}>Mods</span>
                 </Tooltip>
               </Table.Th>

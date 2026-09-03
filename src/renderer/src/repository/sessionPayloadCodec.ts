@@ -7,6 +7,7 @@ import { assertJsonValue, type JsonObject, type JsonValue } from '../../../share
 import type { SessionSettings } from '../types';
 import { normalizeLocalManualStatistics } from '../utils/manualStatistics';
 import { normalizeManualRunTimer } from '../utils/manualRunTimer';
+import { recoverExactModifierCount } from '../utils/mapParser';
 import type { SessionState } from '../store/useSessionStore';
 
 export type SessionPayloadSource = Pick<
@@ -92,7 +93,9 @@ export function decodeSessionPayload(
     !Array.isArray(payload.settings)
     ? payload.settings as unknown as Partial<SessionSettings> : {};
   return {
-    maps: Array.isArray(payload.maps) ? payload.maps as unknown as SessionState['maps'] : [],
+    maps: Array.isArray(payload.maps)
+      ? (payload.maps as unknown as SessionState['maps']).map(recoverExactModifierCount)
+      : [],
     lootItems: Array.isArray(payload.lootItems) ? payload.lootItems as unknown as SessionState['lootItems'] : [],
     baselineItems: Array.isArray(payload.baselineItems)
       ? payload.baselineItems as unknown as SessionState['baselineItems'] : [],

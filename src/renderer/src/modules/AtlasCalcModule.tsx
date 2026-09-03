@@ -121,7 +121,7 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
   // The compatibility map type remains persisted/wire-visible, but ordinary
   // sessions no longer edit it here. Map Log evidence updates the fallback.
   useEffect(() => {
-    if (maps.length < 4) return undefined;
+    if (maps.length === 0) return undefined;
     const inferred = inferMapType(maps, settings.mapType);
     if (inferred !== settings.mapType) {
       updateSetting('mapType', inferred, 'automatic');
@@ -231,9 +231,18 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
     }
   };
 
-  const inputsMeta = `${mapSource.observed ? mapSource.value : settings.mapType} · ${fragmentCount} ${fragmentCount === 1 ? 'frag' : 'frags'}`;
+  const mapInputMeta = mapSource.observed
+    ? mapSource.value
+    : maps.length === 0
+      ? 'No map sample'
+      : `${settings.mapType} fallback · ${mapSource.source.replace('Map Log · ', '')}`;
+  const inputsMeta = `${mapInputMeta} · ${fragmentCount} ${fragmentCount === 1 ? 'frag' : 'frags'}`;
   const breakdownMeta = `+${fmt1(mountBonus + fragmentEffect + nodeEffect)}% mods · ${settings.atlasBonus ? '+25% IIQ' : 'Bonus off'}`;
-  const heroContext = `${fmt1(effectiveMods)} effective modifiers · ${mapSource.observed ? 'observed' : `${settings.mapType} fallback`}`;
+  const heroContext = mapSource.observed
+    ? `${fmt1(effectiveMods)} effective modifiers · observed`
+    : maps.length === 0
+      ? `No map evidence · ${settings.mapType} provisional fallback`
+      : `${fmt1(effectiveMods)} fallback modifiers · ${mapSource.source.replace('Map Log · ', '')}`;
 
   return (
     <Card

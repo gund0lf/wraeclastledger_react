@@ -176,7 +176,7 @@ export interface MultiplierResult {
   usesObservedMods: boolean;
 }
 
-export const MIN_OBSERVED_MOD_SAMPLE = 4;
+export const MIN_OBSERVED_MOD_SAMPLE = 1;
 
 export interface ObservedModSample {
   average: number;
@@ -226,9 +226,10 @@ export function resolveFragmentCount(settings: FragmentSettings): FragmentCountR
   };
 }
 
-/** Exact observed mode is deliberately all-or-nothing: a partial advanced-copy
+/** Exact observed mode is deliberately all-or-nothing: a partial exact-copy
  * sample could be biased toward whichever maps the user happened to copy that
- * way. Unidentified maps also make the session incomplete. */
+ * way. A complete sample is truthful even when the session currently has only
+ * one map. Unidentified maps also make the session incomplete. */
 type ObservedModMap = Pick<MapData, 'explicitModCount' | 'isUnidentified'>;
 
 export function computeObservedModSample(maps: readonly ObservedModMap[]): ObservedModSample | null {

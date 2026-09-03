@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseMapClipboard } from './mapParser';
+import { parseMapClipboard, recoverExactModifierCount } from './mapParser';
 
 const ADVANCED_8_AFFIX_CORRUPTED = [
   'Item Class: Maps', 'Rarity: Rare', 'Unstable Gulf', 'Map (Tier 16)', '--------',
@@ -479,6 +479,43 @@ describe('parseMapClipboard — advanced explicit affix count', () => {
 
   it('leaves exact count unknown for a legacy headerless copy', () => {
     expect(parseMapClipboard(REGULAR_8MOD_CORRUPTED)!.explicitModCount).toBeUndefined();
+  });
+
+  it('records an identified Normal map as an exact zero-mod map', () => {
+    expect(parseMapClipboard(WHITE_CORRUPTED_DELIRIOUS)!.explicitModCount).toBe(0);
+  });
+
+  it('leaves an unidentified Rare map unknown even though it has no visible headers', () => {
+    const unidentified = [
+      'Item Class: Maps',
+      'Rarity: Rare',
+      'Map (Tier 16)',
+      '--------',
+      'Item Level: 85',
+      '--------',
+      'Monster Level: 83',
+      '--------',
+      "Area is Influenced by the Originator's Memories (implicit)",
+      '--------',
+      'Unidentified',
+      '--------',
+      'Travel to a Map of this tier or lower by using this in a personal Map Device. Maps can only be used once.',
+    ].join('\n');
+
+    expect(parseMapClipboard(unidentified)!.explicitModCount).toBeUndefined();
+  });
+
+  it('recovers only exact evidence retained in an older map raw copy', () => {
+    const normal = parseMapClipboard(WHITE_CORRUPTED_DELIRIOUS)!;
+    const legacyNormal = { ...normal, id: 'normal', explicitModCount: undefined };
+    expect(recoverExactModifierCount(legacyNormal).explicitModCount).toBe(0);
+
+    const legacyHeaderless = {
+      ...parseMapClipboard(REGULAR_8MOD_CORRUPTED)!,
+      id: 'headerless',
+      explicitModCount: undefined,
+    };
+    expect(recoverExactModifierCount(legacyHeaderless).explicitModCount).toBeUndefined();
   });
 });
 
