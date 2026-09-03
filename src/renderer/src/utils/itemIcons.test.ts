@@ -21,6 +21,7 @@ const CHAOS_URL  = 'https://web.poecdn.com/gen/image/chaos.png';
 const ABYSS_URL  = 'https://web.poecdn.com/gen/image/abyss-scarab.png';
 const WINGED_URL = 'https://web.poecdn.com/gen/image/winged-abyss.png';
 const GEM_URL    = 'https://web.poecdn.com/gen/image/empower-support.png';
+const NIGHTBLADE_URL = 'https://web.poecdn.com/gen/image/nightblade-support.png';
 const CHISEL_URL = 'https://web.poecdn.com/gen/image/scarab-chisel.png';
 const BLUNDERBORE_URL = 'https://web.poecdn.com/gen/image/blunderbore.png';
 const RALAKESH_URL = 'https://web.poecdn.com/gen/image/ralakesh.png';
@@ -144,6 +145,11 @@ beforeAll(() => {
         if (type === 'SkillGem') return { icons: [
           { name: 'Empower Support', icon: GEM_URL },
           { name: 'Precision', icon: PRECISION_URL },
+          { name: 'Nightblade Support', icon: NIGHTBLADE_URL },
+          { name: 'Enhance Support', icon: 'https://web.poecdn.com/gen/image/enhance-support.png' },
+        ], slugs: [] };
+        if (type === 'ImbuedGem') return { icons: [
+          { name: 'Imbued Example Support', icon: 'https://web.poecdn.com/gen/image/imbued-example.png' },
         ], slugs: [] };
         if (type === 'UniqueJewel') return { icons: [
           // poe.ninja DOES list these (verified live 2026-07-09) — the
@@ -205,6 +211,27 @@ describe('decodeIconDescriptor()', () => {
 });
 
 describe('itemIcons resolve()', () => {
+  it('uses gem-only exact or unique-prefix previews without generic art or per-keystroke fetches', async () => {
+    clearIconCache();
+    const icons = await getItemIcons();
+    const counts = new Map(fetchCounts);
+    expect(icons.resolveGemPreview('E')).toBeUndefined();
+    expect(icons.resolveGemPreview('Emp')).toBe(GEM_URL);
+    expect(icons.resolveGemPreview('  EMPOWER   Suppor ')).toBe(GEM_URL);
+    expect(icons.resolveGemPreview('Empower Support')).toBe(GEM_URL);
+    expect(icons.resolveGemPreview('Nightb')).toBe(NIGHTBLADE_URL);
+    expect(icons.resolveGemPreview('Preci')).toBe(PRECISION_URL);
+    expect(icons.resolveGemPreview('Imbued Ex')).toBe('https://web.poecdn.com/gen/image/imbued-example.png');
+    expect(icons.resolveGemPreview('Chaos Orb')).toBeUndefined();
+    expect(icons.resolveGemPreview('support')).toBeUndefined();
+    expect(icons.resolveGemPreview('Unknown Support')).toBeUndefined();
+    expect(icons.resolveIdentity('Emp')).toBeUndefined();
+    expect(icons.resolve('Nightb')).toBeUndefined();
+    expect(fetchCounts).toEqual(counts);
+    clearIconCache();
+    expect(icons.resolveGemPreview('Emp')).toBeUndefined();
+    expect((await getItemIcons()).resolveGemPreview('Emp')).toBe(GEM_URL);
+  });
   it('exact and normalised matches still work', async () => {
     clearIconCache();
     const { resolve } = await getItemIcons();

@@ -23,6 +23,7 @@ import { normalizeOverlayPreferences } from '../../../shared/overlay';
 import { sanitizeBrickInclusionEntries } from '../../../shared/brickMods';
 import { normalizeLootCurrencyMode } from '../utils/currencyDisplay';
 import { isAutomaticSessionMutation } from '../utils/sessionMutationOrigin';
+import { flushSessionInputDrafts } from '../utils/sessionInputDrafts';
 import {
   DEFAULT_SETTINGS,
   configureSessionRepositoryActions,
@@ -489,6 +490,7 @@ function queuePreferenceSave(): void {
 }
 
 export async function flushRepositoryNow(): Promise<void> {
+  flushSessionInputDrafts();
   if (sessionSaveTimer) {
     clearTimeout(sessionSaveTimer);
     sessionSaveTimer = null;
@@ -514,6 +516,7 @@ export async function flushRepositoryNow(): Promise<void> {
 }
 
 export async function retryRepositorySave(): Promise<void> {
+  flushSessionInputDrafts();
   markRepositorySaving();
   if (pendingRestoreHydration) {
     const pending = pendingRestoreHydration;
@@ -1156,6 +1159,7 @@ export function bootstrapSessionRepository(): Promise<{ layoutRawValue: string |
 }
 
 function recoveryDocument(): string {
+  flushSessionInputDrafts();
   const state = useSessionStore.getState();
   return JSON.stringify({
     format: 'WraeclastLedger pending-state recovery',

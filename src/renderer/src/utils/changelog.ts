@@ -10,6 +10,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.95',
+    date: 'Unreleased',
+    changes: [
+      'Investment scarab and gem-name typing now stays local until you select an option or finish editing, avoiding repeated session-wide work on each keystroke. Finished edits still auto-save, and pending inputs are included when closing the editor, switching sessions, or closing the app.',
+      'Tabbing through unchanged Investment prices no longer triggers saves. Enter followed by blur commits only once, and equivalent Chaos/Divine input does not rewrite the same price. Chisel and Astrolabe selectors are now searchable like Delirium Orbs.',
+      'Gem-name icons preview while typing without saving each keystroke. Exact names or unique prefixes use the matching cached gem artwork; ambiguous or unknown text shows a neutral gem symbol instead of an unrelated support gem.',
+    ],
+  },
+  {
     version: '1.0.94',
     date: '2026-09-01',
     changes: [

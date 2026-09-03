@@ -40,6 +40,7 @@
 import { getCurrentLeague, KNOWN_LEAGUES } from './league';
 import type { LootCategory } from '../types';
 import { BUNDLED_CHART_NAMES } from '../../../shared/manualLoot';
+import { buildGemPreviewIndex } from './gemPreview';
 
 // exchange family: names + relative image paths live in the top-level items[]
 const EXCHANGE_TYPES = [
@@ -322,6 +323,7 @@ async function fetchCategory(
 let exactMap:  Map<string, string> | null = null;
 let normMap:   Map<string, string> | null = null;
 let identityMap: Map<string, ItemIdentity> | null = null;
+let gemPreviewIcons = new Map<string, string>();
 let fetchProm: Promise<void>       | null = null;
 let cacheLeague: string | null = null;
 // Tier -> signed, fully rendered MapNumbersN art whose descriptor has no
@@ -368,6 +370,7 @@ async function buildCache(challenge: string): Promise<void> {
   const exact      = new Map<string, string>();
   const normalized = new Map<string, string>();
   const identities = new Map<string, ItemIdentity>();
+  const gemIcons = new Map<string, string>();
   const identityConflicts = new Set<string>();
   divCardSet.clear();
 
@@ -442,6 +445,11 @@ async function buildCache(challenge: string): Promise<void> {
       if (r.status === 'fulfilled') r.value.pairs.forEach(([k, v]) => {
         add(k, v);
         addIdentity(k, ECONOMY_TYPE_CATEGORY[STASH_TYPES[i]]);
+        // Preview candidates are gems only, with the same current-first league
+        // priority. Duplicate level/quality rows do not create new identities.
+        if (ECONOMY_TYPE_CATEGORY[STASH_TYPES[i]] === 'Gems' && !gemIcons.has(norm(k))) {
+          gemIcons.set(norm(k), v);
+        }
       });
     });
   }
@@ -540,6 +548,7 @@ async function buildCache(challenge: string): Promise<void> {
   exactMap = exact;
   normMap  = normalized;
   identityMap = identities;
+  gemPreviewIcons = buildGemPreviewIndex(gemIcons);
 
   console.log(
     `[Icons] Cache built: ${exact.size} items, ${identities.size} identities, ${divCardSet.size} div cards, leagues: ${leagues.join(' + ')}`
@@ -549,6 +558,7 @@ async function buildCache(challenge: string): Promise<void> {
 // ─── Public API ───────────────────────────────────────────────────────────────
 export async function getItemIcons(): Promise<{
   resolve: (name: string) => string | undefined;
+  resolveGemPreview: (name: string) => string | undefined;
   resolveIdentity: (name: string) => ItemIdentity | undefined;
   resolveCategory: (name: string) => LootCategory | undefined;
   suggestName: (name: string) => ItemIdentity | undefined;
@@ -593,6 +603,11 @@ export async function getItemIcons(): Promise<{
   };
 
   return {
+    // Explicit opt-in for free-text gem previews. No generic-art fallback,
+    // substring guessing, typo correction, or change to exact loot identity.
+    resolveGemPreview(name: string): string | undefined {
+      return gemPreviewIcons.get(norm(name));
+    },
     resolve(name: string): string | undefined {
       if (!exactMap || !normMap) return undefined;
 
@@ -721,6 +736,7 @@ export function clearIconCache(): void {
   exactMap  = null;
   normMap   = null;
   identityMap = null;
+  gemPreviewIcons.clear();
   fetchProm = null;
   cacheLeague = null;
   mapTierIcons = new Map();

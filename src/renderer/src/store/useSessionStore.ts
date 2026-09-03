@@ -508,6 +508,7 @@ export const useSessionStore = create<SessionStoreState>()(
 
       updateSetting: (key, value, origin = 'user') => {
         const apply = () => set((s) => {
+          if (Object.is(s.settings[key], value)) return s;
           const atlasTreeChanged = key === 'atlasTreeUrl' && value !== s.settings.atlasTreeUrl;
           return {
             settings: {
@@ -525,6 +526,8 @@ export const useSessionStore = create<SessionStoreState>()(
 
       updateAdvSetting: (key, value) =>
         set((s) => {
+          const split = (key === 'advSplitPrice' ? Number(value) : s.settings.advSplitPrice) > 0;
+          if (Object.is(s.settings[key], value) && s.settings.isSplitSession === split) return s;
           const ns = { ...s.settings, [key]: value };
           // Sync isSplitSession from advSplitPrice. (The old rollingCostPerMap
           // recalc side effect is gone — the session total is derived live in
@@ -536,12 +539,14 @@ export const useSessionStore = create<SessionStoreState>()(
 
       updateScarab: (index, field, value) =>
         set((s) => {
+          if (Object.is(s.settings.scarabs[index]?.[field], value)) return s;
           const sc = [...s.settings.scarabs];
           sc[index] = { ...sc[index], [field]: value };
           return { settings: { ...s.settings, scarabs: sc } };
         }),
       clearScarab: (index) =>
         set((s) => {
+          if (s.settings.scarabs[index]?.name === '' && s.settings.scarabs[index]?.cost === 0) return s;
           const sc = [...s.settings.scarabs];
           sc[index] = { name: '', cost: 0 };
           return { settings: { ...s.settings, scarabs: sc } };
@@ -861,6 +866,7 @@ export const useSessionStore = create<SessionStoreState>()(
       },
 
       setDivinePriceManual: (v) => {
+        if (Object.is(get().settings.divinePrice, v)) return;
         const now = Date.now();
         set((s) => ({
           divinePriceFetchedAt: now,
@@ -997,7 +1003,7 @@ export const useSessionStore = create<SessionStoreState>()(
       deleteRegexSet: (id) =>
         set((s) => ({ regexSets: s.regexSets.filter((r) => r.id !== id) })),
       setRegexBuilderGroups: (groups) => set({ regexBuilderGroups: groups }),
-      setDiscordTag: (tag) => set({ discordTag: tag }),
+      setDiscordTag: (tag) => set((s) => s.discordTag === tag ? s : { discordTag: tag }),
 
       setLeagueOverride: (league) => {
         const v = normalizeLeagueOverride(league);
@@ -1157,7 +1163,7 @@ export const useSessionStore = create<SessionStoreState>()(
         overlayPreferences: normalizeOverlayPreferences({ ...s.overlayPreferences, ...patch }),
       })),
       setOverlayShortcutStatus: (status) => set({ overlayShortcutStatus: status }),
-      setSessionNotes: (notes) => set({ sessionNotes: notes }),
+      setSessionNotes: (notes) => set((s) => s.sessionNotes === notes ? s : { sessionNotes: notes }),
       setInvestmentNeutralization: (v) => set({ investmentNeutralization: v }),
       setInvestmentDismissed: (v: boolean) => set({ investmentDismissed: v }),
       dismissOnboarding: () => set({ onboardingDismissed: true }),

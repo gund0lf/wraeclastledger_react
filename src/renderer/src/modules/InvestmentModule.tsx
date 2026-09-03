@@ -4,8 +4,9 @@ import {
   ActionIcon, TextInput, Menu, Alert, Tooltip,
 } from '@mantine/core';
 import { useDisclosure, useElementSize } from '@mantine/hooks';
-import { useState, useEffect, useMemo } from 'react';
-import { useSessionKeys } from '../store/useSessionStore';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useSessionKeys, useSessionStore, type SessionState } from '../store/useSessionStore';
+import { useSessionInputDraft } from '../components/useSessionInputDraft';
 import {
   shouldShowMechanicInput, selectableAstrolabeList,
   selectableChiselList, selectableDeliriumOrbList, selectableScarabOptions,
@@ -55,23 +56,18 @@ const InvestmentMetric = ({
 );
 
 const PriceInput = ({
-  label, description, value, onChange, divinePrice, placeholder = '0', style, size = 'xs',
+  label, description, selectValue, onChange, divinePrice, placeholder = '0', style, size = 'xs',
   previewWidth = 52, compactSpacing = false,
 }: {
-  label?: string; description?: string; value: number;
+  label?: string; description?: string; selectValue: (state: SessionState) => number;
   onChange: (v: number) => void; divinePrice: number;
   placeholder?: string; style?: React.CSSProperties; size?: 'xs' | 'sm';
   previewWidth?: number; compactSpacing?: boolean;
 }) => {
-  const [raw, setRaw]         = useState(value > 0 ? String(value) : '');
-  const [editing, setEditing] = useState(false);
-  useEffect(() => { if (!editing) setRaw(value > 0 ? String(value) : ''); }, [value, editing]);
-  const commit = () => {
-    setEditing(false);
-    const r = parsePriceInput(raw, divinePrice);
-    setRaw(r > 0 ? String(r) : '');
-    onChange(r);
-  };
+  const { raw, change, commit } = useSessionInputDraft(
+    selectValue, onChange, (text) => parsePriceInput(text, divinePrice),
+    (value) => value > 0 ? String(value) : '',
+  );
   const divPreview = (() => {
     if (!raw || raw.toLowerCase().includes('d')) return null;
     const n = parsePriceInput(raw, divinePrice);
@@ -79,8 +75,10 @@ const PriceInput = ({
   })();
   return (
     <TextInput label={label} description={description} placeholder={placeholder} value={raw}
-      onChange={(e) => { setEditing(true); setRaw(e.currentTarget.value); }}
-      onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && commit()}
+      onChange={(e) => change(e.currentTarget.value)}
+      onBlur={commit} onKeyDown={(e) => {
+        if (e.key === 'Enter' && !e.nativeEvent.isComposing) commit();
+      }}
       rightSection={divPreview ? <Text size="xs" c="dimmed">{divPreview}</Text> : undefined}
       rightSectionWidth={divPreview ? previewWidth : 0}
       classNames={compactSpacing ? {
@@ -91,17 +89,73 @@ const PriceInput = ({
   );
 };
 
+const GemNameInput = () => {
+  const update = useSessionStore((state) => state.updateAdvSetting);
+  const { raw, change, commit } = useSessionInputDraft(
+    (state) => state.settings.advGemName,
+    (value) => update('advGemName', value), (text) => text,
+  );
+  return <TextInput
+    label="Gem name (for auto-exclusion)"
+    description="Partial match: 'Empower' will exclude all 'Empower Support' entries from CSV"
+    placeholder="e.g. Empower Support"
+    value={raw} onChange={(e) => change(e.currentTarget.value)} onBlur={commit}
+    onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) commit(); }}
+    size="xs"
+    leftSection={raw ? <PoeItemIcon name={raw} size={16} category="gem" gemPreview /> : undefined}
+  />;
+};
+
+const ScarabNameInput = ({ index, size }: { index: number; size: 'xs' | 'sm' }) => {
+  const { updateScarab, clearScarab } = useSessionKeys('updateScarab', 'clearScarab');
+  const name = useSessionStore((state) => state.settings.scarabs[index].name);
+  const { raw, change, commit } = useSessionInputDraft(
+    (state) => state.settings.scarabs[index].name,
+    (value) => updateScarab(index, 'name', value), (text) => text,
+  );
+  const options = selectableScarabOptions();
+  const submitted = useRef<string | null>(null);
+  return <Autocomplete
+    placeholder={`Scarab ${index + 1}`} value={raw}
+    onChange={(text) => {
+      // Mantine calls onOptionSubmit(value), then onChange(display label).
+      // Store the canonical name, never a decorated availability label.
+      const selected = submitted.current;
+      submitted.current = null;
+      change(selected ?? text);
+      if (selected !== null) commit();
+    }}
+    data={options} size={size} style={{ flex: 1, minWidth: 0 }}
+    onBlur={commit}
+    onOptionSubmit={(value) => { submitted.current = value; }}
+    onKeyDown={(e) => {
+      // Mantine handles Enter on a highlighted option after this callback.
+      if (e.key === 'Enter' && !e.nativeEvent.isComposing &&
+          !e.currentTarget.getAttribute('aria-activedescendant')) commit();
+    }}
+    leftSection={name ? <PoeItemIcon name={name} size={size === 'sm' ? 18 : 16} category="scarab" /> : undefined}
+    rightSection={raw || name
+      ? <ActionIcon size="xs" variant="transparent" c="dimmed" aria-label={`Clear scarab ${index + 1}`}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => { change(''); clearScarab(index); }}>
+          <IconX size={10} />
+        </ActionIcon>
+      : undefined}
+    rightSectionPointerEvents={raw || name ? 'all' : 'none'}
+  />;
+};
+
 export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = {}) => {
   const panelIsMaximized = usePanelMaximized('investment');
   const isMaximized = !embedded && panelIsMaximized;
   const { ref: panelRef, width: panelWidth } = useElementSize();
   const compactPanel = panelWidth > 0 && panelWidth < 310;
   const {
-    maps, settings, updateSetting, updateAdvSetting, updateScarab, clearScarab, initDivinePrice,
+    maps, settings, updateSetting, updateAdvSetting, updateScarab, initDivinePrice,
     setDivinePriceManual, leagueOverride, setLeagueOverride, assignMissingSessionLeague,
     scarabPresets, saveScarabPreset, loadScarabPreset, deleteScarabPreset, sessionLifecycle, sessionNonce,
   } = useSessionKeys(
-    'maps', 'settings', 'updateSetting', 'updateAdvSetting', 'updateScarab', 'clearScarab', 'initDivinePrice',
+    'maps', 'settings', 'updateSetting', 'updateAdvSetting', 'updateScarab', 'initDivinePrice',
     'setDivinePriceManual', 'leagueOverride', 'setLeagueOverride', 'assignMissingSessionLeague',
     'scarabPresets', 'saveScarabPreset', 'loadScarabPreset', 'deleteScarabPreset', 'sessionLifecycle', 'sessionNonce',
   );
@@ -154,7 +208,6 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
   };
 
   const divinePrice = settings.divinePrice || 1;
-  const scarabOptions = selectableScarabOptions();
   const deliriumOrbOptions = preserveHistoricalSelection(
     selectableDeliriumOrbList(), settings.advDeliOrbType,
   );
@@ -267,13 +320,13 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
             <Text size="xs">Use <Text span c="yellow">.7d</Text> for divine prices. Click a section to expand. Session costs update live.</Text>
           </Alert>
           <AdvSection title="Base Map Cost" filled={baseMapFilled}>
-            <PriceInput value={settings.baseMapCost} onChange={(v) => updateSetting('baseMapCost', v)} divinePrice={divinePrice} placeholder="e.g. 900c" />
+            <PriceInput selectValue={(state) => state.settings.baseMapCost} onChange={(v) => updateSetting('baseMapCost', v)} divinePrice={divinePrice} placeholder="e.g. 900c" />
           </AdvSection>
           <AdvSection title="Chisel" filled={chiselFilled}>
             <SimpleGrid cols={2} style={{ alignItems: 'flex-end' }}>
               <Select label="Type" data={chiselOptions} value={settings.chiselType || null}
                 onChange={(v) => { const t = v ?? ''; updateSetting('chiselType', t); updateSetting('chiselUsed', t.length > 0); }}
-                size="xs" clearable placeholder="— None —"
+                size="xs" clearable searchable placeholder="— None —"
                 leftSection={settings.chiselType ? <PoeItemIcon name={chiselItemName(settings.chiselType)} size={16} category="chisel" /> : undefined}
                 renderOption={({ option }) => (
                   <Group gap={6} wrap="nowrap">
@@ -281,7 +334,7 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
                     <Text size="xs">{option.label}</Text>
                   </Group>
                 )} />
-              <PriceInput label="Price per map" value={settings.chiselPrice}
+              <PriceInput label="Price per map" selectValue={(state) => state.settings.chiselPrice}
                 onChange={(v) => updateSetting('chiselPrice', v)} divinePrice={divinePrice}
                 placeholder={settings.chiselType ? 'e.g. 150c' : '—'} />
             </SimpleGrid>
@@ -301,7 +354,7 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
             <SimpleGrid cols={3} style={{ alignItems: 'center' }}>
               <Group gap={4} wrap="nowrap"><PoeItemIcon name="Exalted Orb" size={16} category="orb" /><Text size="xs">Exalted</Text></Group>
               <NumberInput size="xs" value={settings.advExalt} onChange={(v) => updateAdvSetting('advExalt', Number(v))} min={0} />
-              <PriceInput value={settings.advExaltPrice} onChange={(v) => updateAdvSetting('advExaltPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
+              <PriceInput selectValue={(state) => state.settings.advExaltPrice} onChange={(v) => updateAdvSetting('advExaltPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
             </SimpleGrid>
             {settings.advExalt > 0 && settings.advExaltPrice > 0 && (
               // Per-orb caption lives in the grid too, under the Total paid
@@ -315,12 +368,12 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
             <SimpleGrid cols={3} style={{ alignItems: 'center' }}>
               <Group gap={4} wrap="nowrap"><PoeItemIcon name="Orb of Scouring" size={16} category="orb" /><Text size="xs">Scour</Text></Group>
               <NumberInput size="xs" value={settings.advScour} onChange={(v) => updateAdvSetting('advScour', Number(v))} min={0} />
-              <PriceInput value={settings.advScourPrice} onChange={(v) => updateAdvSetting('advScourPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
+              <PriceInput selectValue={(state) => state.settings.advScourPrice} onChange={(v) => updateAdvSetting('advScourPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
             </SimpleGrid>
             <SimpleGrid cols={3} style={{ alignItems: 'center' }}>
               <Group gap={4} wrap="nowrap"><PoeItemIcon name="Orb of Alchemy" size={16} category="orb" /><Text size="xs">Alch</Text></Group>
               <NumberInput size="xs" value={settings.advAlch} onChange={(v) => updateAdvSetting('advAlch', Number(v))} min={0} />
-              <PriceInput value={settings.advAlchPrice} onChange={(v) => updateAdvSetting('advAlchPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
+              <PriceInput selectValue={(state) => state.settings.advAlchPrice} onChange={(v) => updateAdvSetting('advAlchPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
             </SimpleGrid>
           </AdvSection>
           <AdvSection title="Delirium Orbs" filled={deliFilled}>
@@ -336,7 +389,7 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
             <SimpleGrid cols={2} style={{ alignItems: 'flex-end' }}>
               <NumberInput label="Per map (1–5)" size="xs" value={settings.advDeliOrbQtyPerMap}
                 onChange={(v) => updateAdvSetting('advDeliOrbQtyPerMap', Number(v))} min={0} max={5} />
-              <PriceInput label="Price each" value={settings.advDeliOrbPriceEach}
+              <PriceInput label="Price each" selectValue={(state) => state.settings.advDeliOrbPriceEach}
                 onChange={(v) => updateAdvSetting('advDeliOrbPriceEach', v)} divinePrice={divinePrice} placeholder="e.g. 0.5d" />
             </SimpleGrid>
             <Text size="xs" c="teal" style={{ visibility: deliPerMap > 0 ? 'visible' : 'hidden' }} aria-hidden={deliPerMap <= 0}>
@@ -347,7 +400,7 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
           <AdvSection title="Astrolabe" filled={astrolabeFilled}>
             <Text size="xs" c="dimmed">Random duration. Enter price each + count used this session.</Text>
             <Select label="Type" data={astrolabeOptions} value={settings.advAstrolabeType || null}
-              onChange={(v) => updateAdvSetting('advAstrolabeType', v ?? '')} size="xs" placeholder="Select astrolabe..." clearable
+              onChange={(v) => updateAdvSetting('advAstrolabeType', v ?? '')} size="xs" placeholder="Select astrolabe..." clearable searchable
               leftSection={settings.advAstrolabeType ? <PoeItemIcon name={settings.advAstrolabeType} size={16} category="astrolabe" /> : undefined}
               renderOption={({ option }) => (
                 <Group gap={6} wrap="nowrap">
@@ -356,7 +409,7 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
                 </Group>
               )} />
             <SimpleGrid cols={2} style={{ alignItems: 'flex-end' }}>
-              <PriceInput label="Price each" value={settings.advAstrolabePrice}
+              <PriceInput label="Price each" selectValue={(state) => state.settings.advAstrolabePrice}
                 onChange={(v) => updateAdvSetting('advAstrolabePrice', v)} divinePrice={divinePrice} placeholder="e.g. 1d" />
               <NumberInput label="Count used" size="xs" value={settings.advAstrolabeCount}
                 onChange={(v) => updateAdvSetting('advAstrolabeCount', Number(v))} min={0} />
@@ -371,22 +424,14 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
               Tracked separately — gem buy cost and sell value are both excluded from map profit.
               Enter the gem name to auto-exclude matching items when you import a loot CSV.
             </Text>
-            <TextInput
-              label="Gem name (for auto-exclusion)"
-              description="Partial match: 'Empower' will exclude all 'Empower Support' entries from CSV"
-              placeholder="e.g. Empower Support"
-              value={settings.advGemName}
-              onChange={(e) => updateAdvSetting('advGemName', e.currentTarget.value)}
-              size="xs"
-              leftSection={settings.advGemName ? <PoeItemIcon name={settings.advGemName} size={16} category="gem" /> : undefined}
-            />
+            <GemNameInput />
             <NumberInput label="Gems leveled" size="xs" value={settings.advGemCount}
               onChange={(v) => updateAdvSetting('advGemCount', Number(v))} min={0} />
             <SimpleGrid cols={2} style={{ alignItems: 'flex-end' }}>
-              <PriceInput label="Buy price each (lvl 1)" value={settings.advGemBuyPrice}
+              <PriceInput label="Buy price each (lvl 1)" selectValue={(state) => state.settings.advGemBuyPrice}
                 onChange={(v) => updateAdvSetting('advGemBuyPrice', v)} divinePrice={divinePrice}
                 placeholder="e.g. 100c" />
-              <PriceInput label="Sell price each (leveled)" value={settings.advGemSellPrice}
+              <PriceInput label="Sell price each (leveled)" selectValue={(state) => state.settings.advGemSellPrice}
                 onChange={(v) => updateAdvSetting('advGemSellPrice', v)} divinePrice={divinePrice}
                 placeholder="e.g. 300c" />
             </SimpleGrid>
@@ -426,7 +471,7 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
             </Group>
             <SimpleGrid cols={2} style={{ alignItems: 'flex-end' }}>
               <PriceInput label="Price per split" description="cost of your split method (beast or fossil)"
-                value={settings.advSplitPrice} onChange={(v) => updateAdvSetting('advSplitPrice', v)}
+                selectValue={(state) => state.settings.advSplitPrice} onChange={(v) => updateAdvSetting('advSplitPrice', v)}
                 divinePrice={divinePrice} placeholder="0 = disabled" />
               <Stack gap={0}>
                 <Text size="xs" fw={500}>Splits needed</Text>
@@ -727,21 +772,10 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
           </div>
 
           <Stack gap={4} className="investment-scarab-list">
-            {settings.scarabs.map((scarab, i) => (
+            {settings.scarabs.map((_, i) => (
               <Group key={i} gap={4} wrap="nowrap" className="investment-scarab-row">
-                <Autocomplete placeholder={`Scarab ${i + 1}`} value={scarab.name}
-                  onChange={(v) => updateScarab(i, 'name', v)}
-                  data={scarabOptions} size={isMaximized ? 'sm' : 'xs'} style={{ flex: 1, minWidth: 0 }}
-                  leftSection={scarab.name ? <PoeItemIcon name={scarab.name} size={isMaximized ? 18 : 16} category="scarab" /> : undefined}
-                  rightSection={scarab.name
-                    ? <ActionIcon size="xs" variant="transparent" c="dimmed"
-                        onMouseDown={(e) => { e.preventDefault(); clearScarab(i); }}>
-                        <IconX size={10} />
-                      </ActionIcon>
-                    : undefined}
-                  rightSectionPointerEvents={scarab.name ? 'all' : 'none'}
-                />
-                <PriceInput value={scarab.cost} onChange={(v) => updateScarab(i, 'cost', v)}
+                <ScarabNameInput index={i} size={isMaximized ? 'sm' : 'xs'} />
+                <PriceInput selectValue={(state) => state.settings.scarabs[i].cost} onChange={(v) => updateScarab(i, 'cost', v)}
                   divinePrice={divinePrice} placeholder="0c" size={isMaximized ? 'sm' : 'xs'}
                   previewWidth={compactPanel ? 38 : 52} compactSpacing={compactPanel}
                   style={{ width: isMaximized ? 120 : compactPanel ? 68 : 100, flexShrink: 0 }} />

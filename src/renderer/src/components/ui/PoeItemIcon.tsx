@@ -5,8 +5,8 @@
  *
  * Behavior:
  *  - While the cache loads, or when the name can't be resolved, renders the
- *    `fallback` node (default: nothing). A wrong icon is worse than a blank —
- *    the resolver itself guarantees no wrong matches (see itemIcons.ts).
+ *    `fallback` node (default: nothing). The general resolver can use category
+ *    artwork; gemPreview opts into exact/unique-prefix gem artwork only.
  *  - The resolver is cached module-level, so only the first mounted instance
  *    triggers the (already IPC-cached) fetch; all later instances render
  *    synchronously.
@@ -18,9 +18,9 @@ import { getItemIcons } from '../../utils/itemIcons';
 import { useSessionStore } from '../../store/useSessionStore';
 import { COLOR } from '../../utils/uiTokens';
 
-type Resolver = (name: string) => string | undefined;
+type Resolvers = Pick<Awaited<ReturnType<typeof getItemIcons>>, 'resolve' | 'resolveGemPreview'>;
 export type PoeItemCategory = 'scarab' | 'orb' | 'chisel' | 'gem' | 'astrolabe';
-let cachedResolver: Resolver | null = null;
+let cachedResolvers: Resolvers | null = null;
 
 const CategoryFallback = ({ category, size }: { category: PoeItemCategory; size: number }) => {
   const props = { size, stroke: 1.5, color: COLOR.textMuted, style: { flexShrink: 0 } };
@@ -31,32 +31,33 @@ const CategoryFallback = ({ category, size }: { category: PoeItemCategory; size:
   return <IconCircleDashed {...props} />;
 };
 
-export const PoeItemIcon = ({ name, size = 14, fallback = null, category }: {
+export const PoeItemIcon = ({ name, size = 14, fallback = null, category, gemPreview = false }: {
   name: string | null | undefined;
   size?: number;
   fallback?: ReactNode;
   category?: PoeItemCategory;
+  /** Exact or unique-prefix GEM match only; never generic support-gem art. */
+  gemPreview?: boolean;
 }) => {
   const leagueOverride = useSessionStore((s) => s.leagueOverride);
   const sessionLeague = useSessionStore((s) => s.settings.leagueName);
-  // NOTE: the lazy-initializer form is REQUIRED here — cachedResolver is a
-  // function, and useState(fn) would CALL it as an initializer (resolve(undefined)
-  // -> crash on later mounts once the cache is warm).
-  const [resolver, setResolver] = useState<Resolver | null>(() => cachedResolver);
+  const [resolvers, setResolvers] = useState<Resolvers | null>(() => cachedResolvers);
   const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => {
     let alive = true;
     getItemIcons()
       .then((c) => {
-        cachedResolver = c.resolve;
-        if (alive) setResolver(() => c.resolve);
+        cachedResolvers = { resolve: c.resolve, resolveGemPreview: c.resolveGemPreview };
+        if (alive) setResolvers(cachedResolvers);
       })
       .catch(() => {}); // offline / poe.ninja down -> stay on fallback
     return () => { alive = false; };
   }, [leagueOverride, sessionLeague]);
 
-  const url = name ? resolver?.(name) : undefined;
+  const url = name
+    ? (gemPreview ? resolvers?.resolveGemPreview(name) : resolvers?.resolve(name))
+    : undefined;
   useEffect(() => setImageFailed(false), [url]);
 
   const fallbackNode = fallback ?? (category ? <CategoryFallback category={category} size={size} /> : null);
