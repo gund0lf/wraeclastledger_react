@@ -3,9 +3,11 @@ export interface RegexSessionAverages {
   avgRarity: number;
   avgPack: number;
   avgCurr: number;
+  avgScarabs?: number;
 }
 
 export function formatRegexAverageSummary(averages: RegexSessionAverages): string {
+  const avgScarabs = averages.avgScarabs ?? 0;
   const parts = [
     `${averages.avgQuant.toFixed(0)}%Q`,
     `${averages.avgRarity.toFixed(0)}%R`,
@@ -14,6 +16,9 @@ export function formatRegexAverageSummary(averages: RegexSessionAverages): strin
 
   if (averages.avgCurr > 0) {
     parts.push(`${averages.avgCurr.toFixed(0)}% Curr`);
+  }
+  if (avgScarabs > 0) {
+    parts.push(`${avgScarabs.toFixed(0)}% Scarabs`);
   }
 
   return parts.join(' · ');

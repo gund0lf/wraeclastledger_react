@@ -22,6 +22,16 @@ describe('Regex session summary presentation', () => {
       avgCurr: 64.2,
     })).toBe('114%Q · 67%R · 43%P · 64% Curr');
   });
+
+  it('shows a positive Scarabs average after the existing map metrics', () => {
+    expect(formatRegexAverageSummary({
+      avgQuant: 114.2,
+      avgRarity: 129.4,
+      avgPack: 48.7,
+      avgCurr: 18.2,
+      avgScarabs: 39.2,
+    })).toBe('114%Q · 129%R · 49%P · 18% Curr · 39% Scarabs');
+  });
 });
 
 describe('Regex SLAM availability', () => {

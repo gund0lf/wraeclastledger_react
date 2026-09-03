@@ -41,7 +41,7 @@ import {
 import { normalizeBrickExclusionEntries } from '../../../shared/brickMods';
 
 // Badge tooltips explaining how each generated regex is derived (Sad 2026-07-09).
-const RUN_TOOLTIP = 'Run = maps ready to run: floors derived from your session averages — currency and pack (both required on high-currency sessions), plus quantity/rarity riders at 60% of your averages.';
+const RUN_TOOLTIP = 'Run = maps ready to run: floors derived from your session averages — currency and pack (both required on high-currency sessions), plus quantity, rarity, and Scarabs riders at 60% of your averages.';
 const SLAM_TOOLTIP = 'Slam = near-miss maps worth upgrading: 75% of your session\u2019s currency/pack averages, either one is enough. Quantity and rarity are ignored because a slam can still add them.';
 
 type MapType = 'any' | 'regular' | '8mod' | 'nightmare' | 'originator';
@@ -486,6 +486,8 @@ export const FromSessionTab = () => {
       const term = DELI_REWARD_STASH_TERMS.get(key);
       return term ? [term] : [];
     }),
+    tradeMinScarabs,
+    tradeMinMaps,
   );
   return (
     <div className="regex-tab-workspace regex-from-session">
@@ -618,6 +620,10 @@ export const FromSessionTab = () => {
             Read-only from Modifier filters &amp; presets. Exclusions use one NOT group;
             inclusions use AND for one target and Count ≥ 1 for several.
           </Text>
+          <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>
+            Copy Regex mirrors the six numeric minimums, Delirium, and modifier filters.
+            Map type, tier, Corrupted, and Empowered remain Trade-only filters.
+          </Text>
           {brickModsError && (
             <Alert color="orange" variant="light" p="xs">
               <Text size="xs">{brickModsError} — restart the app to retry. Existing stash modifier terms still work.</Text>
@@ -668,7 +674,7 @@ export const FromSessionTab = () => {
             {tradeRegex && (
               <CopyButton value={tradeRegex} timeout={2000}>
                 {({ copied, copy }) => (
-                  <Tooltip label={tradeRegex.length > 250 ? 'Regex exceeds the 250-character stash limit' : copied ? 'Copied!' : 'Copy approximate stash regex from these controls'} withArrow>
+                  <Tooltip label={tradeRegex.length > 250 ? 'Regex exceeds the 250-character stash limit' : copied ? 'Copied!' : 'Copy seller-stash regex from the supported controls'} withArrow>
                     <Button variant={copied ? 'light' : 'default'} color={copied ? 'teal' : undefined}
                       disabled={tradeRegex.length > 250} onClick={copy}
                       style={{ minWidth: 110 }}

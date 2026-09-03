@@ -129,6 +129,10 @@ export const generateRunRegex = (
     const rarFloor = Math.max(Math.floor(avg.avgRarity * 0.6 / 10) * 10, 30);
     parts.push(`"m rar.*(${thresholdPat(rarFloor)})%"`);
   }
+  if (avg.avgScarabs > 0) {
+    const scarabFloor = Math.max(Math.floor(avg.avgScarabs * 0.6 / 10) * 10, 20);
+    parts.push(`"scarabs.*(${thresholdPat(scarabFloor)})%"`);
+  }
   return parts.join(' ');
 };
 
@@ -169,6 +173,8 @@ export function generateTradeRegex(
   minIIR: number,
   deliriousPercent = -1,
   deliriumRewardTerms: readonly string[] = [],
+  minScarabs = 0,
+  minMaps = 0,
 ): string {
   const numericParts: string[] = [];
   const exclusionBlock = buildExclusionRegexBlock(exclusions);
@@ -183,6 +189,8 @@ export function generateTradeRegex(
   if (minPack > 0) numericParts.push(`"ack.*(${exactIntegerThresholdPattern(minPack)})%"`);
   if (minIIQ > 0) numericParts.push(`"m q.*(${exactIntegerThresholdPattern(minIIQ)})%"`);
   if (minIIR > 0) numericParts.push(`"m rar.*(${exactIntegerThresholdPattern(minIIR)})%"`);
+  if (minScarabs > 0) numericParts.push(`"scarabs.*(${exactIntegerThresholdPattern(minScarabs)})%"`);
+  if (minMaps > 0) numericParts.push(`"maps.*(${exactIntegerThresholdPattern(minMaps)})%"`);
   const numericRegex = numericParts.join(' ');
   const deliriumRegex = deliriousPercent === 0
     ? '"!delirious"'

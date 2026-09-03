@@ -311,6 +311,23 @@ describe('generateRunRegex', () => {
     });
   });
 
+  describe('Scarabs gate', () => {
+    it('omits Scarabs when the session has no observed Scarabs bonus', () => {
+      const r = generateRunRegex({ ...baseAvg, avgScarabs: 0, avgPack: 50 });
+      expect(r).not.toContain('scarabs.*');
+    });
+
+    it('adds a 60%-of-average Scarabs rider with a 20% floor', () => {
+      const r = generateRunRegex({ ...baseAvg, avgScarabs: 39, avgPack: 50 });
+      expect(r).toContain('"scarabs.*([2-9].|\\d..)%"');
+    });
+
+    it('rounds a larger Scarabs rider down to the nearest ten', () => {
+      const r = generateRunRegex({ ...baseAvg, avgScarabs: 90, avgPack: 50 });
+      expect(r).toContain('"scarabs.*([5-9].|\\d..)%"');
+    });
+  });
+
   describe('thresholdPat — regression tests for the 1.0.40 fix', () => {
     // The 1.0.40 changelog calls out that 100-199 floors were producing
     // an ambiguous \d.. instead of the correct 1[X-9].|[2-9].. pattern.
@@ -435,6 +452,38 @@ describe('Trade modal regex', () => {
     expect(generateTradeRegex([], [], 0, 0, 145, 0)).toBe(
       '"urr.*(14[5-9]|1[5-9].|[2-9]..)%"',
     );
+  });
+
+  it('copies Scarabs and Maps as independent literal Trade minimums', () => {
+    expect(generateTradeRegex([], [], 0, 0, 0, 0, -1, [], 53, 35)).toBe(
+      '"scarabs.*(5[3-9]|[6-9].|\\d..)%" "maps.*(3[5-9]|[4-9].|\\d..)%"',
+    );
+  });
+
+  it('keeps every numeric Trade minimum in the seller-stash regex', () => {
+    const regex = generateTradeRegex([], [], 110, 40, 18, 120, 0, [], 50, 35);
+    expect(regex).toBe(
+      '"urr.*(1[8-9]|[2-9].|\\d..)%" "ack.*([4-9].|\\d..)%" '
+      + '"m q.*(1[1-9].|[2-9]..)%" "m rar.*(1[2-9].|[2-9]..)%" '
+      + '"scarabs.*([5-9].|\\d..)%" "maps.*(3[5-9]|[4-9].|\\d..)%" "!delirious"',
+    );
+  });
+
+  it('rejects a seller-stash map that lacks either selected pseudo minimum', () => {
+    const regex = generateTradeRegex([], [], 110, 40, 0, 120, -1, [], 50, 35);
+    const clauses = [...regex.matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    const matching = [
+      'Item Quantity: +110%',
+      'Item Rarity: +120%',
+      'Monster Pack Size: +40%',
+      'More Scarabs: +53%',
+      'More Maps: +35%',
+    ].join('\n');
+    const missingScarabs = matching.replace('More Scarabs: +53%', 'More Currency: +64%');
+    const missingMaps = matching.replace('More Maps: +35%', 'More Currency: +64%');
+    expect(clauses.every((clause) => new RegExp(clause, 'is').test(matching))).toBe(true);
+    expect(clauses.every((clause) => new RegExp(clause, 'is').test(missingScarabs))).toBe(false);
+    expect(clauses.every((clause) => new RegExp(clause, 'is').test(missingMaps))).toBe(false);
   });
 
   it('adds an exact delirium percentage to the copied Trade regex', () => {
