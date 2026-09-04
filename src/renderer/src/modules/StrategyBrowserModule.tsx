@@ -43,6 +43,7 @@ import {
   hasSameStrategyDetailVersion,
   mergeRefreshedStrategyPage,
 } from '../utils/strategyRefresh';
+import { isStrategyBackIntent } from '../utils/strategyBackNavigation';
 
 // API base (incl. the VITE_STRATEGY_API_URL dev override) moved to
 // strategyConstants.STRATEGY_API_URL — shared with the game-data loader.
@@ -121,7 +122,10 @@ export const StrategyBrowserModule = () => {
     if (expanded) {
       strategyListScrollTopRef.current = strategyViewportRef.current?.scrollTop ?? 0;
       setExpandedStrategyId(strategyId);
-      requestAnimationFrame(() => strategyViewportRef.current?.scrollTo({ top: 0 }));
+      requestAnimationFrame(() => {
+        strategyViewportRef.current?.scrollTo({ top: 0 });
+        strategyViewportRef.current?.focus({ preventScroll: true });
+      });
       const summary = strategies.find((strategy) => strategy.id === strategyId);
       if (summary && !summary.raw_export) {
         setDetailLoadingId(strategyId);
@@ -695,7 +699,37 @@ export const StrategyBrowserModule = () => {
           </Group>
         </Paper>
 
-        <div ref={strategyViewportRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 6px 6px', border: `1px solid ${COLOR.border}`, borderRadius: 6, position: 'relative', isolation: 'isolate' }}>
+        <div
+          ref={strategyViewportRef}
+          tabIndex={-1}
+          onKeyDown={(event) => {
+            if (!expandedStrategyId) return;
+            const target = event.target as HTMLElement | null;
+            const targetEditable = !!target?.closest('input, textarea, select, [contenteditable="true"]');
+            if (!isStrategyBackIntent({
+              kind: 'keyboard',
+              key: event.key,
+              altKey: event.altKey,
+              ctrlKey: event.ctrlKey,
+              metaKey: event.metaKey,
+              targetEditable,
+              defaultPrevented: event.defaultPrevented,
+            })) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setStrategyExpanded(expandedStrategyId, false);
+          }}
+          onMouseUp={(event) => {
+            if (!expandedStrategyId || !isStrategyBackIntent({
+              kind: 'mouse',
+              button: event.button,
+              defaultPrevented: event.defaultPrevented,
+            })) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setStrategyExpanded(expandedStrategyId, false);
+          }}
+          style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 6px 6px', border: `1px solid ${COLOR.border}`, borderRadius: 6, position: 'relative', isolation: 'isolate', outline: 'none' }}>
         {!expandedStrategyId && <div style={{
           display: 'grid', gridTemplateColumns: browserGridTemplate,
           columnGap: BROWSER_ROW_GAP, alignItems: 'center', marginBottom: 3,
