@@ -16,6 +16,7 @@ import { manualRunTimerElapsed } from '../utils/manualRunTimer';
 import { ALL_TYPE_TAGS, STRATEGY_API_URL, type Strategy } from '../utils/strategyConstants';
 import { parseDiscordExport } from '../utils/parseDiscordExport';
 import { missingShareFields } from '../utils/shareCompleteness';
+import { investmentCompleteness } from '../utils/investmentCompleteness';
 import { buildUpdateComparison, rowDirection } from '../utils/updateCompare';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { getManifest } from '../utils/gameData';
@@ -370,11 +371,17 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
 
   const shareMissingFields = missingShareFields(parseDiscordExport(baseDiscordExport));
   const shareIncomplete = shareMissingFields.length > 0;
+  const costCompleteness = useMemo(() => investmentCompleteness(settings), [settings]);
+  const costsIncomplete = costCompleteness.hasIncompleteCosts;
   const impossibleAtlasPoints = hasImpossibleAtlasPoints(settings.atlasPoints, settings.atlasPointsMax);
   // Preview is WITHHELD for invalid-content blocks (atlas, league); a size
   // overflow keeps the preview visible so the author can see what to trim.
   const evidenceBlocked = evidenceTargetId !== null && evidenceProof === null;
-  const previewWithheld = impossibleAtlasPoints || leagueBlock !== null || evidenceBlocked || shareIncomplete;
+  const previewWithheld = impossibleAtlasPoints
+    || leagueBlock !== null
+    || evidenceBlocked
+    || shareIncomplete
+    || costsIncomplete;
   const copyDisabled = previewWithheld || discordWireResult.pending
     || !discordWire || discordWire.length > DISCORD_SHARE_COMMAND_MAX || !budget.fitsPlain;
 
@@ -574,6 +581,14 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
             </Text>
           </Alert>
         )}
+        {costsIncomplete && (
+          <Alert color="red" variant="light" p="xs">
+            <Text size="xs">
+              Sharing is disabled until current-run costs are complete: {costCompleteness.incompleteCostLabels.join(', ')}.
+              {' '}Unpriced items stay excluded from local profit in the meantime.
+            </Text>
+          </Alert>
+        )}
         {settings.advAstrolabeType && (
           <Alert color="teal" variant="light" p="xs">
             <Text size="xs" mb={4}>
@@ -706,6 +721,8 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
                   : 'Preparing the revision and setup evidence proof...'
                 : shareIncomplete
                   ? 'Preview withheld until the share requirements above are complete.'
+                : costsIncomplete
+                  ? 'Preview withheld until the configured setup costs above have current prices and usage.'
                 : impossibleAtlasPoints
                 ? 'Preview withheld until the impossible Atlas allocation is corrected.'
                 : 'Preview withheld — this league no longer accepts new shares.'}

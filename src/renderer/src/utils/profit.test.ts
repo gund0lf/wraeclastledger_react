@@ -120,6 +120,13 @@ describe('computeRollingSessionTotal', () => {
     const s = SAD_PRESERVATION();
     expect(computeRollingSessionTotal(s, 0)).toBeCloseTo(2120, 6);
   });
+
+  it('does not charge hidden Delirium or Astrolabe values after their type is cleared', () => {
+    const s = SAD_PRESERVATION();
+    s.advDeliOrbType = '';
+    s.advAstrolabeType = '';
+    expect(computeRollingSessionTotal(s, N)).toBeCloseTo(1650, 6);
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -146,6 +153,13 @@ describe('computeCosts — preservation split', () => {
     expect(c.perMapScarabs).toBe(200);
     expect(c.oneTimeScarabs).toBe(0);
     expect(c.perMapBase).toBe(1850);    // 1500 + 150 + 200
+  });
+
+  it('does not charge an orphaned scarab price after its name is cleared', () => {
+    const s = baseSettings({ scarabs: [{ name: '', cost: 99 }] });
+    const c = computeCosts(s, 10);
+    expect(c.perMapScarabs).toBe(0);
+    expect(c.totalInvest).toBe(0);
   });
 });
 

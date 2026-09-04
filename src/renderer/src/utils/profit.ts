@@ -30,7 +30,7 @@ export const isPreservationScarab = (name: string): boolean =>
   name.toLowerCase().includes('preservation');
 
 const sumScarabs = (arr: ScarabSlot[]): number =>
-  arr.reduce((a, s) => a + (s.cost || 0), 0);
+  arr.reduce((a, s) => a + (s.name.trim() ? (s.cost || 0) : 0), 0);
 
 /* ------------------------------------------------------------------ */
 /* Costs                                                               */
@@ -62,8 +62,12 @@ export interface CostBreakdown {
  */
 export function computeRollingSessionTotal(settings: SessionSettings, mapCount: number): number {
   const n = mapCount || 1;
-  const deliTotal      = settings.advDeliOrbQtyPerMap * settings.advDeliOrbPriceEach * n;
-  const astrolabeTotal = settings.advAstrolabePrice * settings.advAstrolabeCount;
+  const deliTotal = settings.advDeliOrbType.trim()
+    ? settings.advDeliOrbQtyPerMap * settings.advDeliOrbPriceEach * n
+    : 0;
+  const astrolabeTotal = settings.advAstrolabeType.trim()
+    ? settings.advAstrolabePrice * settings.advAstrolabeCount
+    : 0;
   // Gems are intentionally excluded — gem leveling is side income, not map investment.
   return settings.advChaos
     + settings.advExaltPrice
