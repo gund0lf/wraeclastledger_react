@@ -238,7 +238,7 @@ export const SORT_OPTIONS: { value: SortKey; label: string }[] = [
 
 export const BROWSER_COLS = {
   chevron: 22,
-  author:  88,
+  author:  128,
   tags:    140,
   mod:     44,
   maps:    32,
@@ -254,12 +254,12 @@ export const BROWSER_ROW_GAP = 6;
 export const BROWSER_ROW_PAD_X = 10;
 /** Full collapsed-row grid plus gaps/padding. Below this, preserve the table and
  * expose horizontal scrolling instead of silently clipping metric columns. */
-export const BROWSER_MIN_CONTENT_WIDTH = 860;
-export const BROWSER_SETUP_COLLAPSED_MIN_CONTENT_WIDTH = 962;
+export const BROWSER_MIN_CONTENT_WIDTH = 900;
+export const BROWSER_SETUP_COLLAPSED_MIN_CONTENT_WIDTH = 1002;
 
 export const BROWSER_MAXIMIZED_COLS = {
   chevron: 22,
-  author:  140,
+  author:  180,
   tags:    260,
   mod:     52,
   maps:    54,
@@ -271,8 +271,8 @@ export const BROWSER_MAXIMIZED_COLS = {
   dpm:     92,
 } as const;
 
-export const BROWSER_MAXIMIZED_MIN_CONTENT_WIDTH = 1180;
-export const BROWSER_MAXIMIZED_SETUP_COLLAPSED_MIN_CONTENT_WIDTH = 1298;
+export const BROWSER_MAXIMIZED_MIN_CONTENT_WIDTH = 1220;
+export const BROWSER_MAXIMIZED_SETUP_COLLAPSED_MIN_CONTENT_WIDTH = 1338;
 export const BROWSER_ACTIVITY_WIDTH = 96;
 export const BROWSER_MAXIMIZED_ACTIVITY_WIDTH = 112;
 

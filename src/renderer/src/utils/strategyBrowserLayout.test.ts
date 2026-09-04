@@ -12,7 +12,7 @@ describe('Strategy Browser panel layouts', () => {
   it('preserves the established docked row geometry', () => {
     expect(BROWSER_COLS).toEqual({
       chevron: 22,
-      author: 88,
+      author: 128,
       tags: 140,
       mod: 44,
       maps: 32,
@@ -23,8 +23,8 @@ describe('Strategy Browser panel layouts', () => {
       dph: 46,
       dpm: 74,
     });
-    expect(BROWSER_MIN_CONTENT_WIDTH).toBe(860);
-    expect(BROWSER_GRID_TEMPLATE).toContain('88px minmax(140px, 1fr)');
+    expect(BROWSER_MIN_CONTENT_WIDTH).toBe(900);
+    expect(BROWSER_GRID_TEMPLATE).toContain('128px minmax(140px, 1fr)');
   });
 
   it('uses wider identity and result columns when maximized', () => {
