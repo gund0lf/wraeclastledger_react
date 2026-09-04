@@ -312,6 +312,12 @@ describe('compact Discord share wire', () => {
     expect(parseDiscordExport(wire)).toEqual(expected);
   });
 
+  it('retains a negative profit/map through both compact import formats', () => {
+    const source = parsed({ divPerMap: -0.5 });
+    expect(parseDiscordExport(encodeDiscordShareWire(source))?.divPerMap).toBe(-0.5);
+    expect(decodeDiscordSharePayload(buildDiscordSharePayload(source))?.divPerMap).toBe(-0.5);
+  });
+
   it('keeps a 500-map strategy with bounded top-30 evidence inside one message', () => {
     const wire = encodeDiscordShareWire(parsed({
       mapCount: 500,

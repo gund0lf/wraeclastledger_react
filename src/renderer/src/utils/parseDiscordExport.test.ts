@@ -131,10 +131,22 @@ describe('parseDiscordExport', () => {
     expect(r!.runRegex).toBe('ter D|lid|poss');
   });
 
-  it('parses Profit/map with legacy "Div / Map" label', () => {
-    const legacy = FULL_EXPORT.replace('Profit/map: 0.66d', 'Div / Map: 0.66d');
-    const r = parseDiscordExport(legacy);
-    expect(r!.divPerMap).toBe(0.66);
+  describe.each(['Profit/map', 'Div / Map'])('%s readable value', (label) => {
+    it.each([
+      ['-0.5', -0.5],
+      ['0', 0],
+      ['+0.5', 0.5],
+    ])('preserves %s d/map', (authored, expected) => {
+      const raw = FULL_EXPORT.replace('Profit/map: 0.66d', `${label}: ${authored}d`);
+      expect(parseDiscordExport(raw)?.divPerMap).toBe(expected);
+    });
+  });
+
+  it('retains the established zero fallback when the readable field is absent or malformed', () => {
+    const missing = FULL_EXPORT.replace('Profit/map: 0.66d', '');
+    const malformed = FULL_EXPORT.replace('Profit/map: 0.66d', 'Profit/map: unknownd');
+    expect(parseDiscordExport(missing)?.divPerMap).toBe(0);
+    expect(parseDiscordExport(malformed)?.divPerMap).toBe(0);
   });
 
   it('ignores pooled economics while importing the published run beneath it', () => {
