@@ -71,7 +71,8 @@ describe('reviewed visual alignment corrections', () => {
   });
 
   it('keeps the per-item saved total in the label row instead of shifting one input', () => {
-    expect(dashboardSource).toContain('Saved total: {fcSep(manualCanonicalTotal, false, 1)}c');
+    expect(dashboardSource).toContain('Saved total: {fcSep(manualCanonicalTotal, false, 1)}');
+    expect(dashboardSource).not.toContain('Saved total: {fcSep(manualCanonicalTotal, false, 1)}c');
     expect(dashboardSource).not.toContain("description={manualValueMode === 'perItem'");
     expect(dashboardSource).not.toContain('Plain values are Chaos');
     expect(dashboardSource).not.toContain('Divine input requires a valid session Divine price');
@@ -84,6 +85,19 @@ describe('reviewed visual alignment corrections', () => {
     expect(dashboardSource).toContain(
       '<Text size="xs" c="dimmed">({(profit.lootGain / profit.div).toFixed(2)}d)</Text>',
     );
+  });
+
+  it('returns custom loot focus without automatically opening a structured picker', () => {
+    expect(dashboardSource).toContain('(manualNameInput.current ?? manualEntryHeading.current)?.focus();');
+    expect(dashboardSource).toContain('ref={manualEntryHeading} tabIndex={-1}');
+    expect(dashboardSource).toContain("data-autofocus={manualMode !== 'free' || undefined}");
+    expect(dashboardSource).toMatch(/<TextInput label="Item name"[^>]*ref=\{manualNameInput\} data-autofocus/);
+    const selects = dashboardSource.match(/<Select\b[\s\S]*?\/>/g) ?? [];
+    expect(selects.length).toBeGreaterThan(0);
+    for (const select of selects) {
+      expect(select).not.toMatch(/data-autofocus|ref=\{manual(?:NameInput|EntryHeading|IdentityInput)\}/);
+    }
+    expect(dashboardSource).not.toContain('manualIdentityInput');
   });
 
   it('centres Strategy Browser cost-per-map headings and values together', () => {

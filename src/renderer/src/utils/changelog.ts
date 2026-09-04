@@ -16,6 +16,8 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Investment scarab and gem-name typing now stays local until you select an option or finish editing, avoiding repeated session-wide work on each keystroke. Finished edits still auto-save, and pending inputs are included when closing the editor, switching sessions, or closing the app.',
       'Tabbing through unchanged Investment prices no longer triggers saves. Enter followed by blur commits only once, and equivalent Chaos/Divine input does not rewrite the same price. Chisel and Astrolabe selectors are now searchable like Delirium Orbs.',
       'Gem-name icons preview while typing without saving each keystroke. Exact names or unique prefixes use the matching cached gem artwork; ambiguous or unknown text shows a neutral gem symbol instead of an unrelated support gem.',
+      'Custom loot keeps the selected item kind and Total/Per-item mode between additions and when reopening in the same session. Saving clears the previous item and returns focus without automatically opening a dropdown; editing existing rows does not replace your Add preferences.',
+      'Custom-loot pickers replace their selected text when you start typing or paste a new search. New value fields start empty, an initial zero is easy to replace, and Saved total no longer displays a doubled Chaos suffix.',
     ],
   },
   {
