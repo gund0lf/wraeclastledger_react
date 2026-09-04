@@ -11,7 +11,7 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '1.0.95',
-    date: 'Unreleased',
+    date: '2026-09-04',
     changes: [
       'Trade search Copy Regex now retains the exact minimum Scarabs and Maps filters entered in the search. Session-generated Run regexes also include observed Scarab bonuses, with the existing 250-character copy limit still enforced.',
       'Atlas modifier calculations now use complete exact Map Log counts from the first captured map, including mixed 6-mod/8-mod sessions and zero-mod normal maps. Missing or unidentified counts remain explicitly labelled as fallback; older maps recover exact counts only when their original clipboard text is still available.',
