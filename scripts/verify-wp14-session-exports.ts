@@ -18,6 +18,7 @@ import {
   forkPayloadIntoLeague,
   workflowForHistoricalDuplicate,
 } from '../src/renderer/src/repository/sessionRepositoryRuntime';
+import { assertSessionFieldsEqual, payloadFromPortable, portableSession } from './wp14-session-export-contract';
 
 interface InputExport {
   sourcePath: string;
@@ -39,10 +40,11 @@ interface CheckResult {
   details?: JsonObject;
 }
 
-const sourceArguments = process.argv.slice(2);
+const roundTripOnly = process.argv.includes('--round-trip-only');
+const sourceArguments = process.argv.slice(2).filter((argument) => argument !== '--round-trip-only');
 if (sourceArguments.length < 1) {
   throw new Error(
-    'Usage: npm run wp14:session-export-check -- <session-export.json> [more-exports.json]',
+    'Usage: npm run wp14:session-export-check -- [--round-trip-only] <session-export.json> [more-exports.json]',
   );
 }
 
@@ -106,51 +108,6 @@ function arrayValue(object: JsonObject, key: string): JsonValue[] {
 function optionalArray(object: JsonObject, key: string): JsonValue[] {
   const value = object[key];
   return Array.isArray(value) ? value : [];
-}
-
-function portableSession(session: JsonObject): JsonObject {
-  const settings = session.settings;
-  if (!isObject(settings)) throw new Error('settings must be an object');
-  const baselineTotal = session.baselineTotal;
-  const investmentNeutralization = session.investmentNeutralization;
-  return {
-    id: requiredString(session, 'id'),
-    name: requiredString(session, 'name'),
-    createdAt: requiredString(session, 'createdAt'),
-    maps: jsonClone(arrayValue(session, 'maps')),
-    lootItems: jsonClone(arrayValue(session, 'lootItems')),
-    baselineItems: jsonClone(optionalArray(session, 'baselineItems')),
-    baselineTotal: typeof baselineTotal === 'number' && Number.isFinite(baselineTotal)
-      ? baselineTotal : 0,
-    manualLootItems: jsonClone(optionalArray(session, 'manualLootItems')),
-    manualStatistics: isObject(session.manualStatistics)
-      ? jsonClone(session.manualStatistics) : {},
-    settings: jsonClone(settings),
-    notes: typeof session.notes === 'string' ? session.notes : '',
-    investmentNeutralization:
-      typeof investmentNeutralization === 'number' && Number.isFinite(investmentNeutralization)
-        ? investmentNeutralization : 0,
-    investmentDismissed: session.investmentDismissed === true,
-    strategySourceContext: isObject(session.strategySourceContext)
-      ? jsonClone(session.strategySourceContext) : null,
-  };
-}
-
-function payloadFromPortable(session: JsonObject): JsonObject {
-  const normalized = portableSession(session);
-  return {
-    maps: normalized.maps,
-    lootItems: normalized.lootItems,
-    baselineItems: normalized.baselineItems,
-    baselineTotal: normalized.baselineTotal,
-    manualLootItems: normalized.manualLootItems,
-    manualStatistics: normalized.manualStatistics,
-    settings: normalized.settings,
-    sessionNotes: normalized.notes,
-    investmentNeutralization: normalized.investmentNeutralization,
-    investmentDismissed: normalized.investmentDismissed,
-    strategySourceContext: normalized.strategySourceContext,
-  };
 }
 
 function withBloodlinesCost(payload: JsonObject, cost: number): JsonObject {
@@ -279,7 +236,7 @@ async function tempProfile(prefix: string): Promise<string> {
   return profile;
 }
 
-try {
+async function verifyExports(): Promise<void> {
   const profile = await tempProfile('wl-wp14-export-acceptance-');
   let repository = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
   repositories.push(repository);
@@ -325,7 +282,7 @@ try {
       const loaded = await repository.load({
         operation: 'load', target: { kind: 'session', sessionId: id }, mode: 'inspect',
       });
-      deepStrictEqual(loaded.payload, payloadFromPortable(session));
+      assertSessionFieldsEqual(loaded.payload, payloadFromPortable(session), 'Imported payload');
     }
     return { verifiedPayloads: allSessions.length };
   });
@@ -333,13 +290,27 @@ try {
   await timed(checks, 'portable export round-trip', async () => {
     const exported = await repository.exportDocument({ operation: 'export', sessionIds: allSessionIds });
     const roundTrip = parseExport(exported.document, 'round-trip.json');
-    deepStrictEqual(sortedPortableSessions(roundTrip), sortedPortableSessions(allSessions));
+    const expected = sortedPortableSessions(allSessions);
+    const actual = sortedPortableSessions(roundTrip);
+    equal(actual.length, expected.length, 'Portable session count changed');
+    actual.forEach((session, index) => assertSessionFieldsEqual(session, expected[index], 'Portable round-trip'));
+    // A second import/export must already be stable, including legacy defaults.
+    await repository.importDocument({ operation: 'import', document: exported.document, conflictMode: 'overwrite' });
+    const repeated = parseExport((await repository.exportDocument({
+      operation: 'export', sessionIds: allSessionIds,
+    })).document, 'second-round-trip.json');
+    const second = sortedPortableSessions(repeated);
+    equal(second.length, actual.length, 'Repeated portable session count changed');
+    second.forEach((session, index) => assertSessionFieldsEqual(session, actual[index], 'Repeated round-trip'));
     return {
       sessions: roundTrip.length,
       exportBytes: Buffer.byteLength(exported.document, 'utf8'),
     };
   });
 
+  // Full acceptance additionally needs multi-session/Ancestors/Bloodlines fixtures.
+  // The explicit portable-only mode does not claim those lifecycle checks ran.
+  if (roundTripOnly) return;
   const firstSessionId = allSessionIds[0];
   const secondSessionId = allSessionIds[1];
   await timed(checks, 'live and viewed target lifecycle', async () => {
@@ -731,7 +702,10 @@ try {
     equal(retried.importedSessionIds.length, inputs.at(-1)!.sessions.length);
     return { rolledBackEntries: inputs.at(-1)!.sessions.length };
   });
+}
 
+try {
+  await verifyExports();
   await timed(checks, 'source exports remain byte-identical', async () => {
     for (const input of inputs) {
       const current = await readFile(input.sourcePath, 'utf8');
@@ -743,6 +717,7 @@ try {
 
   report = {
     schemaVersion: 1,
+    mode: roundTripOnly ? 'portable-round-trip-only' : 'full-acceptance',
     inputs: inputs.map((input) => ({
       fileName: input.fileName,
       bytes: input.bytes,
@@ -755,10 +730,10 @@ try {
     })),
     suppliedSessions: allSessionIds.length,
     checks,
-    phase5Recovery,
+    phase5Recovery: roundTripOnly ? { status: 'not-run', reason: 'portable-only mode' } : phase5Recovery,
     layoutReference: {
       source: 'user screenshot',
-      persistence: 'verified as exact repository raw JSON',
+      persistence: roundTripOnly ? 'not checked in portable-only mode' : 'verified as exact repository raw JSON',
       visualMatch: 'manual or future Electron UI automation required',
     },
     sourceFilesModified: false,
