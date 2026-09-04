@@ -23,6 +23,8 @@ export interface QualityBaseLootIdentity {
   base: string
   quality: number
   influence?: ItemInfluence
+  /** Missing means unrecorded; explicit zero means confirmed no strands. */
+  memoryStrands?: number
 }
 
 export interface ChartLootIdentity {
@@ -137,6 +139,9 @@ export function normalizeManualLootIdentity(value: unknown): ManualLootIdentity 
     const base = clean(candidate.base, 120)
     const quality = Number(candidate.quality)
     const influence = candidate.influence == null ? undefined : clean(candidate.influence, 20)
+    const memoryStrands = candidate.memoryStrands
+    if (memoryStrands !== undefined && (typeof memoryStrands !== 'number'
+      || !Number.isInteger(memoryStrands) || memoryStrands < 0 || memoryStrands > 100)) return undefined
     if (!base || !Number.isInteger(quality) || quality < 1 || quality > 30) return undefined
     if (influence && !ITEM_INFLUENCES.includes(influence as ItemInfluence)) return undefined
     return {
@@ -145,6 +150,7 @@ export function normalizeManualLootIdentity(value: unknown): ManualLootIdentity 
       base,
       quality,
       ...(influence ? { influence: influence as ItemInfluence } : {}),
+      ...(memoryStrands !== undefined ? { memoryStrands } : {}),
     }
   }
   if (candidate.kind === 'chart') {
@@ -172,6 +178,7 @@ export function normalizeManualLootIdentity(value: unknown): ManualLootIdentity 
 export function manualLootIdentityName(identity: ManualLootIdentity): string {
   if (identity.kind === 'quality-base') {
     return `${identity.influence ? `${identity.influence} ` : ''}${identity.base} · ${identity.quality}% quality`
+      + (identity.memoryStrands !== undefined ? ` · ${identity.memoryStrands} Memory Strands` : '')
   }
   if (identity.kind === 'chart') return identity.chart ?? 'Charts'
   const target = identity.base ?? EQUIPMENT_GROUP_LABEL[identity.equipmentGroup]

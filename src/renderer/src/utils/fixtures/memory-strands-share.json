@@ -1,0 +1,238 @@
+[
+  {
+    "memoryStrands": null,
+    "summary": {
+      "version": 1,
+      "rowLimit": 30,
+      "rows": [
+        {
+          "name": "Kinetic Wand · 27% quality",
+          "category": "Other",
+          "source": "manual",
+          "quantity": 1,
+          "value": 120,
+          "identity": {
+            "kind": "quality-base",
+            "equipmentGroup": "weapon",
+            "base": "Kinetic Wand",
+            "quality": 27
+          }
+        },
+        {
+          "name": "Chaos Orb",
+          "category": "Currency",
+          "source": "wealthyexile",
+          "quantity": 100,
+          "value": 100,
+          "tab": "currency"
+        }
+      ],
+      "categories": [
+        {
+          "category": "Other",
+          "value": 120
+        },
+        {
+          "category": "Currency",
+          "value": 100
+        }
+      ],
+      "hasBaseline": false,
+      "csvPositive": 100,
+      "csvNegative": 0,
+      "csvNet": 100,
+      "csvAdjustment": 0,
+      "inventoryFlow": 100,
+      "marketRevaluation": 0,
+      "manualTotal": 120,
+      "gemCorrection": 0,
+      "investmentCorrection": 0,
+      "reportedReturn": 220,
+      "omittedCsvRows": 0,
+      "omittedCsvValue": 0,
+      "omittedManualRows": 0,
+      "omittedManualValue": 0
+    },
+    "lootToken": "wl1.eNqFTr0KAjEMfpUScMuQdjm49UaHGx1Kh1oLVygVayuI-FzuPplt7yw4SUgC-X7yPeAGI0eIMEoJexdscoYddDix94uJYccuWXuX7oAwp8VGQF5LEIbs_Z8hCQl_XAHF0DClUMK06POVzfFY3Kccow2mPCLktDaYftw0YFrQbxRBzaaziqiSUiGtDn2WwLXEtjuinh89s0wu",
+    "wl2": "wl2.eNp1UU1LAzEQ_SthwNsgs1Fa6U16FO2hBw8hh3Xd0oU0i2lWXMTf5d1f5kvirqVQhkw-Zt57MxNzw8KmEl5wxX5wju9wFr4VFpsDlQhrjR1LrmXBWlKEnnrfUgJbOEqn7HKMClVy6Xrv3M7VB6Tn5_PwdvRx38auUY_toQ-j2sZQ-9ej2nUfcQiAAWEsUqUAITlhyfInvdOqYgq0MoYeOp-pnsGgfr6VXl6pt6F2XRzBs4FQILQKQz9zGZcdNNHZKSuxXhb9VMB6X_dHtQkvYF8PIbS-gVAZW1rUzI9_GGpyoVMpOk_sHwpQSopIKgyzTx8AS58xWY7Yr5N5_gLzLogo",
+    "wl3": "wl3.G08BYCwKyri8YafMDeEUknmbL4Kv_WKpTx7kzXL8s4pRsBiHDdV8mrpKFpgu3eb1xm7fx9IwWAVlR-FmtgPikf5gd9uaTQow0JJYC8OI022C4uEpYq2G0B31Ty_jBsfx_5HyxMEFVoOQmWTCo2No1Xc74C4sGYMuLgjG04vs1OnzS3z8_ZXhOdqbytYVmbT7gfxbvuMgubuyM7sOoLfjtCesGynG-gw7rAZzg-RB79B9i1MB45BCp6ZYWJtb2wrHlQqaSdmeAA"
+  },
+  {
+    "memoryStrands": 0,
+    "summary": {
+      "version": 1,
+      "rowLimit": 30,
+      "rows": [
+        {
+          "name": "Kinetic Wand · 27% quality · 0 Memory Strands",
+          "category": "Other",
+          "source": "manual",
+          "quantity": 1,
+          "value": 120,
+          "identity": {
+            "kind": "quality-base",
+            "equipmentGroup": "weapon",
+            "base": "Kinetic Wand",
+            "quality": 27,
+            "memoryStrands": 0
+          }
+        },
+        {
+          "name": "Chaos Orb",
+          "category": "Currency",
+          "source": "wealthyexile",
+          "quantity": 100,
+          "value": 100,
+          "tab": "currency"
+        }
+      ],
+      "categories": [
+        {
+          "category": "Other",
+          "value": 120
+        },
+        {
+          "category": "Currency",
+          "value": 100
+        }
+      ],
+      "hasBaseline": false,
+      "csvPositive": 100,
+      "csvNegative": 0,
+      "csvNet": 100,
+      "csvAdjustment": 0,
+      "inventoryFlow": 100,
+      "marketRevaluation": 0,
+      "manualTotal": 120,
+      "gemCorrection": 0,
+      "investmentCorrection": 0,
+      "reportedReturn": 220,
+      "omittedCsvRows": 0,
+      "omittedCsvValue": 0,
+      "omittedManualRows": 0,
+      "omittedManualValue": 0
+    },
+    "lootToken": "wl1.eNqFTrEKwkAM_ZUQcMtwPYdC144iHRwcjg71PGihXjG9CkX8Lne_zFyrB04SkpDkvZd3xxsWGSFjYQzuOu9CZ-HY-DO8nqDzDVynpu_CHEcFe3cZeIZDYEGMSFiF1jFSFkMr8lPf_ylmS4p-PiHpfL2puiaDZdsMI1R8Ev1yYnbeziikTK2JNi0jSzhoF_tfM1otMgklpAgKAloVUhXLMfSnp0v9eAONylQO",
+    "wl2": "wl2.eNp1UU1LAzEQ_SthwNsgs1Fa6U16FO2hBw9LDuu6pQtpFtOsuIi_y7u_zDdZdrWFEjJJ5s1785HyhoXLQnjBBYfee77DXfhWWFwGChG2Fie2XMuCrShCT11oSMkOhvSWTcZolFKjz3vvd746IDy7z-HtENK-SW1tHptDFwezTbEKr0ezaz9SH0EDo3QIlZGIlBOXHH_SO60KpkirsqSHNmSpZyiYn29jl1fmra98mwZ9ylkOaG-QPBLax0KPc2mXTR7aSSZiuxwx0Tppva-6o9nEF-iv-xibUA86HR2mbqpnZ-7EwZPLn4qxeY5_VJA0KCFoVJitfguWftG0MuK-_k35F2YJkAg",
+    "wl3": "wl3.G1EBQJwF5Ri3uinzQthCMv8efO0XS33yIG_W459VjILFOGw-TV0lC0yXbvN6Y3fvY2komELZkdkOiEf6g91tNZtQgJXE-homnO2M6NGzpGsnes_Gexk3OI5X-uuFgwusBiEzyYRHx9CqX4YA7sKSKtpEBkFhe7svpy3AsWH9_yiVsvmocnRHpvj-IP9W7whI7q4cra4BGe048xkt6X0a62uh0xQMc4vyPOijlLc5AzAOMbU4RydpbplWPE-dy0z6jgU"
+  },
+  {
+    "memoryStrands": 40,
+    "summary": {
+      "version": 1,
+      "rowLimit": 30,
+      "rows": [
+        {
+          "name": "Kinetic Wand · 27% quality · 40 Memory Strands",
+          "category": "Other",
+          "source": "manual",
+          "quantity": 1,
+          "value": 120,
+          "identity": {
+            "kind": "quality-base",
+            "equipmentGroup": "weapon",
+            "base": "Kinetic Wand",
+            "quality": 27,
+            "memoryStrands": 40
+          }
+        },
+        {
+          "name": "Chaos Orb",
+          "category": "Currency",
+          "source": "wealthyexile",
+          "quantity": 100,
+          "value": 100,
+          "tab": "currency"
+        }
+      ],
+      "categories": [
+        {
+          "category": "Other",
+          "value": 120
+        },
+        {
+          "category": "Currency",
+          "value": 100
+        }
+      ],
+      "hasBaseline": false,
+      "csvPositive": 100,
+      "csvNegative": 0,
+      "csvNet": 100,
+      "csvAdjustment": 0,
+      "inventoryFlow": 100,
+      "marketRevaluation": 0,
+      "manualTotal": 120,
+      "gemCorrection": 0,
+      "investmentCorrection": 0,
+      "reportedReturn": 220,
+      "omittedCsvRows": 0,
+      "omittedCsvValue": 0,
+      "omittedManualRows": 0,
+      "omittedManualValue": 0
+    },
+    "lootToken": "wl1.eNqFT8EKwjAM_ZUS8JZDVweDXXcU2cGDh7LDrIUNZodZJwzxu7z7ZaarFjxJSEKS95KXO9ygzBAISq1h1zvreyOOrTuL11OoYiOuczv0fgllLsXeXkZaxMETQyZAqH1nCTALpiS6eRj-BL1FiT-nAFURZ7lsGtRQde04iZpOfKCaiawzCzArk9HBpGagMQfM-sBXjZLrmoRiUgB5BsUNKbLmYOqT06R5vAEYxFR2",
+    "wl2": "wl2.eNp1Uc1qwzAMfhUj2E0MxQvt6G30OLYeetjB-JBlKQ24DnOdsTD2XLvvySYpJGsLRVi29enTr7tDQlcQLrDA2IeA9_wmLAnJK1AQobV886FbWqAlQeC5iw0I2bMCealSDMZQouT7EMIuVAd2V_MlvB1i3je5rc1Tc-jSYLY5VfHtaHbtZ-4T05jhPLvSSOSUExc8fsEHrAqEBCvn4LGNGuqFI5jfH2OXN-a9r0KbB_mWdJGEg284ewLun4WbnGu7rnRqZ6kA7XLESpJKYb2vuqPZpFdOsO5TamI9yHxknHKgno3ai2eLNjBVY3WS_1QmiVNmpzHCrGUxLLKkSRTx3ydz_gNlGZBw",
+    "wl3": "wl3.G1IBYIyUq4N78O9YLPXlh7zN484qRkGDwfCZbvN6Y3fvY2komELZkdkOiEf6g91tNZtQoCWxfhgmnG4TBA9PEW01BO8ongNJy0kz0V8POeUQl7S0MiM94s2T0SX1yRAgWaRKFWzFBUG9PN2X05b1LT7_fpRK2XxTOX5XZIrvB_Jv9Y6AKrJLPFlZAzCSodszVtJzR-ptoec_BYO5kEOeh3op5W3fM4BIG7IG59hI0hc9LoFzM8dlj_RtCw"
+  },
+  {
+    "memoryStrands": 100,
+    "summary": {
+      "version": 1,
+      "rowLimit": 30,
+      "rows": [
+        {
+          "name": "Elder Kinetic Wand · 27% quality · 100 Memory Strands",
+          "category": "Other",
+          "source": "manual",
+          "quantity": 1,
+          "value": 120,
+          "identity": {
+            "kind": "quality-base",
+            "equipmentGroup": "weapon",
+            "base": "Kinetic Wand",
+            "quality": 27,
+            "influence": "Elder",
+            "memoryStrands": 100
+          }
+        },
+        {
+          "name": "Chaos Orb",
+          "category": "Currency",
+          "source": "wealthyexile",
+          "quantity": 100,
+          "value": 100,
+          "tab": "currency"
+        }
+      ],
+      "categories": [
+        {
+          "category": "Other",
+          "value": 120
+        },
+        {
+          "category": "Currency",
+          "value": 100
+        }
+      ],
+      "hasBaseline": false,
+      "csvPositive": 100,
+      "csvNegative": 0,
+      "csvNet": 100,
+      "csvAdjustment": 0,
+      "inventoryFlow": 100,
+      "marketRevaluation": 0,
+      "manualTotal": 120,
+      "gemCorrection": 0,
+      "investmentCorrection": 0,
+      "reportedReturn": 220,
+      "omittedCsvRows": 0,
+      "omittedCsvValue": 0,
+      "omittedManualRows": 0,
+      "omittedManualValue": 0
+    },
+    "lootToken": "wl1.eNqFj7EKwjAQhl8lHLjdkMah0LU4iXRwcAgdahpoIaZ4TYUiPpe7T-al1eAmRy4k9993_93hBkWGQFBoDTvXWhL73tvQG3FqfCteT6HyjbhOjevDHJ-ZlOJgLwPN4hiINSMgVKGzBJjFUBL95NyfpLcoEX5nAaocVw9MkrKuUUPZNcMoKjrzkHIist7MwJ1cXw6Y9Bmx3ANm2eXrSMkFk1QrGAKLVkLK7DuG-typUj_etV5XUQ",
+    "wl2": "wl2.eNp1UcFqwzAM_RUj2E0MxRvt6G2UncbWQw87BB-yNKUB12GuMxbGvmv3fdmeHJKVwjCWbUnvSXoub1i4LIQXXHDovec73IVvhcXlQCHC1uLElmtZsBWN0HMXGlKwgyG9ZZNjNFKp0ee993tfHZGe3Zfh7RDSoUltbZ6aYxcHs02xCruT2bcfqY-AAVE6pMoIRMkJS44_6Z1WBVOkVVnSg9810Ty2IRO-gMf8fBu7vDJvfeXbNOgTM13UQo0NmogEGbAw69zi_yaLR-e1iO2Sxx7ABKG0x_Wh6k5mE19RZN3H2IR6UKlUWd1Uz848loMnzzJ1ZLOof9CRmBKSRobZ6h9h6X9NK0fc15nkv4cuk0s",
+    "wl3": "wl3.G1MBIBwFbnuxyUHgF0S99iBdU_nqMC7Z85vyodY2U5XLliJGQYPB_Js_FH4v6C8sWWC6VHYg10Nguqzq1CGLoCSlfBomnG4TRA9fpa0ReEfxHqEaV9ZMf_24OGDVMEnihKcrtE5eyoC60CAiXKAGw8oSRB6hl5EtY66_2mCb96vKuV6S8X6-kH-zbzMMfHdlr3cT0KmNLCdd4vsKTZoao5F2bsinkdTDxEHruLIvQMgUm9klUEn9cVoJdt8hlyiqezI"
+  }
+]

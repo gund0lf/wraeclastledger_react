@@ -13,6 +13,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.95',
     date: 'Unreleased',
     changes: [
+      'Quality-base custom loot now records optional Memory Strands from 0 to 100 beside Quality. Blank remains unrecorded, while 0 means none. Strand counts survive editing, saved sessions, and shared evidence without changing the exact base artwork; older saved influence details remain intact.',
       'Investment scarab and gem-name typing now stays local until you select an option or finish editing, avoiding repeated session-wide work on each keystroke. Finished edits still auto-save, and pending inputs are included when closing the editor, switching sessions, or closing the app.',
       'Tabbing through unchanged Investment prices no longer triggers saves. Enter followed by blur commits only once, and equivalent Chaos/Divine input does not rewrite the same price. Chisel and Astrolabe selectors are now searchable like Delirium Orbs.',
       'Gem-name icons preview while typing without saving each keystroke. Exact names or unique prefixes use the matching cached gem artwork; ambiguous or unknown text shows a neutral gem symbol instead of an unrelated support gem.',

@@ -14,6 +14,19 @@ const row: ManualLootItem = {
 };
 
 describe('custom loot editor continuity', () => {
+  it('retains old influence and strands when editing, but carries neither to the next item', () => {
+    const identity = {
+      kind: 'quality-base' as const, equipmentGroup: 'weapon' as const,
+      base: 'Kinetic Wand', quality: 27, influence: 'Elder' as const, memoryStrands: 40,
+    };
+    let state = reduce(createManualLootEditor(), { type: 'mode', mode: 'quality-base' });
+    state = reduce(state, { type: 'edit', item: { ...row, identity }, divinePrice: 217 });
+    expect(state.draft.identity).toEqual(identity);
+    expect(state.draft.identity).not.toBe(identity);
+    state = reduce(state, { type: 'new-addition' });
+    expect(state.draft.identity).toEqual({ kind: 'quality-base', equipmentGroup: 'armour', base: '', quality: 20 });
+  });
+
   it.each<ManualLootMode>(['free', 'quality-base', 'chart', 'syndicate-reward'])(
     'keeps %s and Per item for the next addition without carrying item data', (mode) => {
       let state = reduce(createManualLootEditor(), { type: 'mode', mode });

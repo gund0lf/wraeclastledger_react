@@ -13,6 +13,8 @@ import {
 } from './discordShareWire';
 import { expandCompactShareLootSummary, type LootSummary } from './lootSummary';
 import { strToU8, zlibSync } from 'fflate';
+import memoryStrandsFixtures from './fixtures/memory-strands-share.json';
+import { decodeLootSummary, encodeLootSummary } from './lootSummary';
 import {
   manualLootIdentityCategory,
   manualLootIdentityName,
@@ -219,6 +221,40 @@ const highEntropyLootSummary = (): LootSummary => {
 };
 
 describe('compact Discord share wire', () => {
+  it.each(memoryStrandsFixtures)('keeps pinned client/bot strand fixture $memoryStrands lossless', (fixture) => {
+    const loot = fixture.summary as LootSummary;
+    expect(encodeLootSummary(loot)).toBe(fixture.lootToken);
+    expect(decodeLootSummary(fixture.lootToken)).toEqual(loot);
+    const source = decodeDiscordShareWire(fixture.wl2)!;
+    expect(source.lootSummary).toEqual(loot);
+    expect(encodeDiscordShareWire(source)).toBe(fixture.wl2);
+    expect(decodeDiscordSharePayload(decodeDiscordShareBrotli(fixture.wl3))?.lootSummary).toEqual(loot);
+    expect(decodeDiscordSharePayload(buildDiscordSharePayload(source))?.lootSummary).toEqual(loot);
+  });
+
+  it('keeps 30 strand-bearing quality bases lossless and within the existing transport gates', () => {
+    const loot = lootSummary();
+    loot.rows = Array.from({ length: 30 }, (_, index) => {
+      const identity: ManualLootIdentity = {
+        kind: 'quality-base', equipmentGroup: 'weapon', base: 'Kinetic Wand', quality: 27,
+        memoryStrands: index === 0 ? 0 : index === 29 ? 100 : 40,
+        ...(index % 2 ? { influence: 'Elder' as const } : {}),
+      };
+      return { name: manualLootIdentityName(identity), category: 'Other', source: 'manual',
+        quantity: 1, value: 120, identity };
+    });
+    Object.assign(loot, {
+      categories: [{ category: 'Other', value: 3600 }],
+      csvPositive: 0, csvNegative: 0, csvNet: 0, csvAdjustment: 0, inventoryFlow: 0,
+      manualTotal: 3600, reportedReturn: 3600,
+    });
+    const source = parsed({ lootSummary: loot, totalReturn: 3600, totalInvest: 0, netProfit: 3600 });
+    const token = encodeDiscordShareBrotli(buildDiscordSharePayload(source));
+    expect(token.length).toBeLessThanOrEqual(DISCORD_SHARE_WIRE_MAX);
+    expect(decodeDiscordSharePayload(decodeDiscordShareBrotli(token))?.lootSummary).toEqual(loot);
+    expect(decodeDiscordShareWire(encodeDiscordShareWire(source))?.lootSummary).toEqual(loot);
+  });
+
   it('round-trips the Brotli schema-v4 transport through the strict legacy validator', () => {
     expect(DISCORD_SHARE_BROTLI_TOKEN_MAX).toBe(DISCORD_SHARE_COMMAND_MAX);
     const source = parsed();

@@ -102,6 +102,7 @@ type CompactLootTotals = [
 
 type CompactManualLootIdentity =
   | [0, 0 | 1, string, number, string?]
+  | [3, 0 | 1, string, number, string | undefined, number]
   | [1, string?]
   | [2, string, string, 0 | 1 | 2, string?];
 
@@ -156,6 +157,12 @@ const EQUIPMENT_GROUP_BY_CODE: readonly EquipmentCatalogGroup[] = ['weapon', 'ar
 const INFLUENCE_BY_CODE = ['Shaper', 'Elder', 'Crusader', 'Hunter', 'Redeemer', 'Warlord'] as const;
 
 const compactManualIdentity = (identity: ManualLootIdentity): CompactManualLootIdentity => {
+  // A new identity tag, not a silently ignored extension of tag 0: older
+  // readers must reject strand-bearing evidence. Legacy tuples stay identical.
+  if (identity.kind === 'quality-base' && identity.memoryStrands !== undefined) return [
+    3, EQUIPMENT_GROUP_CODE[identity.equipmentGroup] as 0 | 1,
+    identity.base, identity.quality, identity.influence, identity.memoryStrands,
+  ];
   if (identity.kind === 'quality-base') return [
     0,
     EQUIPMENT_GROUP_CODE[identity.equipmentGroup] as 0 | 1,
@@ -175,13 +182,18 @@ const compactManualIdentity = (identity: ManualLootIdentity): CompactManualLootI
 
 const expandManualIdentity = (value: unknown): ManualLootIdentity | undefined => {
   if (!Array.isArray(value)) return undefined;
-  if (value[0] === 0) return normalizeManualLootIdentity({
-    kind: 'quality-base',
-    equipmentGroup: EQUIPMENT_GROUP_BY_CODE[Number(value[1])],
-    base: value[2],
-    quality: value[3],
-    influence: value[4],
-  });
+  if (value[0] === 0 || value[0] === 3) {
+    if (value[0] === 0 && (value.length < 4 || value.length > 5)) return undefined;
+    if (value[0] === 3 && (value.length !== 6 || typeof value[5] !== 'number')) return undefined;
+    return normalizeManualLootIdentity({
+      kind: 'quality-base',
+      equipmentGroup: EQUIPMENT_GROUP_BY_CODE[Number(value[1])],
+      base: value[2],
+      quality: value[3],
+      influence: value[4],
+      ...(value[0] === 3 ? { memoryStrands: value[5] } : {}),
+    });
+  }
   if (value[0] === 1) return normalizeManualLootIdentity({
     kind: 'chart',
     chart: value[1] ?? null,
@@ -202,17 +214,21 @@ const compactShareManualIdentity = (identity: ManualLootIdentity): unknown[] => 
   const influenceCode = identity.influence
     ? INFLUENCE_BY_CODE.indexOf(identity.influence) + 1
     : 0;
-  return [compact[0], compact[1], compact[2], compact[3], influenceCode];
+  const result: unknown[] = [...compact];
+  result[4] = influenceCode;
+  return result;
 };
 
 const expandShareManualIdentity = (value: unknown): ManualLootIdentity | undefined => {
   if (!Array.isArray(value)) return undefined;
-  if (value[0] !== 0) return expandManualIdentity(value);
+  if (value[0] !== 0 && value[0] !== 3) return expandManualIdentity(value);
   const influence = value[4] === 0 || value[4] == null
     ? undefined
     : INFLUENCE_BY_CODE[Number(value[4]) - 1];
   if (value[4] != null && value[4] !== 0 && !influence) return undefined;
-  return expandManualIdentity([value[0], value[1], value[2], value[3], influence]);
+  const expanded = [...value];
+  expanded[4] = influence;
+  return expandManualIdentity(expanded);
 };
 
 const isValidCompactLootRow = (row: unknown): row is CompactLootSummary['r'][number] => {

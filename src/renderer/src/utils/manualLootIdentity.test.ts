@@ -4,9 +4,31 @@ import {
   manualLootIdentityName,
   normalizeManualLootIdentity,
   normalizeTradeItemCatalog,
-} from './manualLoot'
+} from '../../../shared/manualLoot'
 
 describe('structured manual loot identity', () => {
+  it.each([undefined, 0, 40, 100])('preserves Memory Strands %s without inventing a zero', (memoryStrands) => {
+    const input = {
+      kind: 'quality-base', equipmentGroup: 'weapon', base: 'Kinetic Wand', quality: 27,
+      ...(memoryStrands !== undefined ? { memoryStrands } : {}),
+    };
+    const identity = normalizeManualLootIdentity(input)!;
+    expect(identity).toEqual(input);
+    expect(manualLootIdentityName(identity)).toBe('Kinetic Wand · 27% quality'
+      + (memoryStrands !== undefined ? ` · ${memoryStrands} Memory Strands` : ''));
+    expect(manualLootIdentityArtName(identity)).toBe('Kinetic Wand');
+    expect(normalizeManualLootIdentity({ ...input, influence: 'Elder' }))
+      .toEqual({ ...input, influence: 'Elder' });
+  });
+
+  it.each([-1, 101, 40.5, NaN, Infinity, '40', '', null, false, [], {}])(
+    'rejects invalid Memory Strands %s without coercing them', (memoryStrands) => {
+      expect(normalizeManualLootIdentity({
+        kind: 'quality-base', equipmentGroup: 'weapon', base: 'Kinetic Wand', quality: 27, memoryStrands,
+      })).toBeUndefined();
+    },
+  );
+
   it('separates a quality base display label from its exact artwork identity', () => {
     const identity = normalizeManualLootIdentity({
       kind: 'quality-base',
