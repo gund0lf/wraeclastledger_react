@@ -4,8 +4,10 @@ import type { LootItem, ManualLootItem } from '../types';
 import {
   buildLootSummary, compactLootSummary, decodeLootSummary, encodeLootSummary,
   expandCompactLootSummary,
+  compactShareLootSummary, expandCompactShareLootSummary,
   LOOT_SUMMARY_ROW_LIMIT, LOOT_SUMMARY_TOKEN_MAX,
 } from './lootSummary';
+import { manualLootIdentityName, type QualityBaseLootIdentity } from '../../../shared/manualLoot';
 
 const item = (
   name: string,
@@ -23,6 +25,45 @@ const manual = (name: string, total: number, note = ''): ManualLootItem => ({
 });
 
 describe('buildLootSummary', () => {
+  it.each([undefined, 0, 40, 100])('round-trips strands %s through both evidence formats', (memoryStrands) => {
+    const identity: QualityBaseLootIdentity = {
+      kind: 'quality-base', equipmentGroup: 'weapon', base: 'Kinetic Wand', quality: 27,
+      influence: 'Elder', ...(memoryStrands !== undefined ? { memoryStrands } : {}),
+    };
+    const summary = buildLootSummary({
+      baselineItems: [], baselineTotal: 0, lootItems: [item('Chaos Orb', 100, '100')],
+      manualLootItems: [{ ...manual(manualLootIdentityName(identity), 120), identity }],
+      gemCorrection: 0, investmentCorrection: 0, reportedReturn: 220,
+    })!;
+    expect(decodeLootSummary(encodeLootSummary(summary))).toEqual(summary);
+    const compact = compactLootSummary(summary);
+    expect(compact.r[0][12]).toEqual(memoryStrands === undefined
+      ? [0, 0, 'Kinetic Wand', 27, 'Elder']
+      : [3, 0, 'Kinetic Wand', 27, 'Elder', memoryStrands]);
+    const share = compactShareLootSummary(summary);
+    expect((share[0][0] as unknown[]).at(-1)).toEqual(memoryStrands === undefined
+      ? [0, 0, 'Kinetic Wand', 27, 2]
+      : [3, 0, 'Kinetic Wand', 27, 2, memoryStrands]);
+    expect(expandCompactShareLootSummary(share, 220)).toEqual(summary);
+  });
+
+  it.each([
+    [3, 0, 'Kinetic Wand', 27, null],
+    [3, 0, 'Kinetic Wand', 27, null, null],
+    [3, 0, 'Kinetic Wand', 27, null, -1],
+    [3, 0, 'Kinetic Wand', 27, null, 101],
+    [3, 0, 'Kinetic Wand', 27, null, 0.5],
+    [3, 0, 'Kinetic Wand', 27, null, '40'],
+    [3, 0, 'Kinetic Wand', 27, null, 40, 99],
+    [0, 0, 'Kinetic Wand', 27, null, 40],
+  ])('rejects malformed strand tuples without discarding their metadata: %j', (...identity) => {
+    const share = [
+      [[2, 1, 120, null, null, identity]], [[17, 120]],
+      [1, 0, 0, 0, 120, 0, 0, 0, 0, 0, 0, 0],
+    ];
+    expect(expandCompactShareLootSummary(share, 120)).toBeNull();
+  });
+
   it('reconciles CSV diff, corrections and manual return', () => {
     const summary = buildLootSummary({
       baselineItems: [item('Divine Orb', 100, '1'), item('Chaos Orb', 50, '50')],

@@ -8,6 +8,7 @@ import {
   sessionPayloadFromPortableFields,
 } from '../../../shared/sessionPayload';
 import { DEFAULT_SETTINGS } from '../store/useSessionStore';
+import type { ManualLootItem } from '../types';
 import {
   decodeSessionPayload,
   encodeSessionPayload,
@@ -15,6 +16,26 @@ import {
 } from '../repository/sessionPayloadCodec';
 
 describe('WP14 session payload codec', () => {
+  it('retains absent, zero and positive strands plus legacy influence across save/load and portable JSON', () => {
+    const manualLootItems: ManualLootItem[] = [undefined, 0, 40, 100].map((memoryStrands, index) => ({
+      id: `quality-${index}`, name: 'Kinetic Wand', quantity: 1, total: 120, category: 'Other', note: '',
+      identity: {
+        kind: 'quality-base', equipmentGroup: 'weapon', base: 'Kinetic Wand', quality: 27,
+        influence: 'Elder', ...(memoryStrands !== undefined ? { memoryStrands } : {}),
+      },
+    }));
+    const encoded = encodeSessionPayload({
+      maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, manualLootItems,
+      manualStatistics: {},
+      manualRunTimer: { accumulatedMs: 0, runningSince: null, lastHeartbeatAt: null, finishedAt: null },
+      settings: DEFAULT_SETTINGS, sessionNotes: '',
+      investmentNeutralization: 0, investmentDismissed: false, loadedStrategyInfo: null,
+    });
+    const portable = JSON.parse(JSON.stringify(portableFieldsFromSessionPayload(encoded)));
+    const restored = decodeSessionPayload(sessionPayloadFromPortableFields(portable), DEFAULT_SETTINGS);
+    expect(restored.manualLootItems).toEqual(manualLootItems);
+  });
+
   it('recovers an exact zero for a retained Normal-map clipboard without guessing stripped legacy maps', () => {
     const normalRawText = [
       'Item Class: Maps',

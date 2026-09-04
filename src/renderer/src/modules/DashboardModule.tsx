@@ -19,14 +19,12 @@ import type { ItemIdentity } from '../utils/itemIcons';
 import {
   EQUIPMENT_GROUP_LABEL,
   SYNDICATE_MEMBERS,
-  ITEM_INFLUENCES,
   manualLootIdentityArtName,
   manualLootIdentityCategory,
   manualLootIdentityName,
   normalizeManualLootIdentity,
   normalizeTradeItemCatalog,
   type EquipmentCatalogGroup,
-  type ItemInfluence,
   type TradeItemCatalog,
 } from '../../../shared/manualLoot';
 import { PoeItemIcon } from '../components/ui/PoeItemIcon';
@@ -711,27 +709,35 @@ export const DashboardModule = () => {
                     };
                   })}
                 />
-                <Select
-                  label="Influence (optional)"
-                  placeholder="None"
-                  clearable
-                  data={ITEM_INFLUENCES.map((value) => ({ value, label: value }))}
-                  value={manualDraft.identity.influence ?? null}
+                <NumberInput
+                  label="Memory Strands (optional)"
+                  placeholder="Unrecorded"
+                  min={0}
+                  max={100}
+                  clampBehavior="strict"
+                  allowDecimal={false}
+                  allowNegative={false}
+                  value={manualDraft.identity.memoryStrands ?? ''}
                   onChange={(value) => setManualDraft((draft) => {
                     if (draft.identity?.kind !== 'quality-base') return draft;
                     return {
                       ...draft,
                       identity: {
                         ...draft.identity,
-                        influence: (value || undefined) as ItemInfluence | undefined,
+                        memoryStrands: value === '' ? undefined : Number(value),
                       },
                     };
                   })}
                 />
               </SimpleGrid>
               <Text size="xs" c="dimmed">
-                Artwork follows the exact base; quality and influence stay in the visible label.
+                Memory Strands: 0–100. Leave blank if unrecorded; enter 0 for none. Artwork follows the exact base.
               </Text>
+              {manualDraft.identity.influence && (
+                <Text size="xs" c="dimmed">
+                  Saved influence: {manualDraft.identity.influence} — retained in this entry and its label.
+                </Text>
+              )}
             </Stack>
           )}
 
