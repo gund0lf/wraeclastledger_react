@@ -13,6 +13,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.95',
     date: 'Unreleased',
     changes: [
+      'Trade search Copy Regex now retains the exact minimum Scarabs and Maps filters entered in the search. Session-generated Run regexes also include observed Scarab bonuses, with the existing 250-character copy limit still enforced.',
+      'Atlas modifier calculations now use complete exact Map Log counts from the first captured map, including mixed 6-mod/8-mod sessions and zero-mod normal maps. Missing or unidentified counts remain explicitly labelled as fallback; older maps recover exact counts only when their original clipboard text is still available.',
       'Loading a strategy now clones its actual map, chisel, scarab, Delirium, Astrolabe, and Atlas setup without copying stale historical prices. Investment marks configured-but-unpriced items incomplete, excludes them from local profit, and blocks sharing until current prices or usage are supplied; choosing None or replacing an item also clears dependent stale costs.',
       'Readable strategy imports now preserve negative Profit/map values under both current and legacy labels instead of silently turning a loss into zero. Zero and positive values plus compact share imports remain unchanged.',
       'Loading build settings from a pasted readable or compact strategy now applies its authored 6-mod or 8-mod setup even when the strategy has no Run regex. Missing or unsupported values retain the fresh-session fallback, while complete Map Log observations still take precedence.',
