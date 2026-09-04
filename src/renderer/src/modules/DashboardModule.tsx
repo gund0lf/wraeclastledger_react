@@ -5,7 +5,7 @@ import {
   NumberInput, Select, Textarea, Alert,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useReducer } from 'react';
 import { useSessionKeys } from '../store/useSessionStore';
 import { QUALITY_STAT_EFFECTS, CHISEL_TYPES, DELIRIUM_ORB_LIST } from '../utils/constants';
 import { LootCategory, ManualLootItem, MapData, LootItem } from '../types';
@@ -27,7 +27,6 @@ import {
   normalizeTradeItemCatalog,
   type EquipmentCatalogGroup,
   type ItemInfluence,
-  type ManualLootIdentity,
   type TradeItemCatalog,
 } from '../../../shared/manualLoot';
 import { PoeItemIcon } from '../components/ui/PoeItemIcon';
@@ -56,6 +55,11 @@ import {
   parseManualLootValueInput,
   type ManualLootValueMode,
 } from '../utils/manualLootValue';
+import {
+  createManualLootEditor, manualLootEditorReducer,
+  type ManualLootDraft, type ManualLootMode,
+} from '../utils/manualLootEditor';
+import { replaceSelectedInputText } from '../utils/replaceSelectedInputText';
 import './DashboardModule.css';
 
 // Smart page size: show INITIAL rows, user can load more in STEP increments
@@ -79,23 +83,9 @@ interface CsvCandidate {
   total: number;
 }
 
-interface ManualLootDraft {
-  name: string;
-  quantity: number;
-  total: number;
-  category: LootCategory;
-  note: string;
-  identity?: ManualLootIdentity;
-}
-
-const EMPTY_MANUAL_LOOT: ManualLootDraft = {
-  name: '', quantity: 1, total: 0, category: 'Other', note: '',
-};
-
 type IconResolver = (name: string) => string | undefined;
 type IdentityResolver = (name: string) => ItemIdentity | undefined;
 type NameSuggestionResolver = (name: string) => ItemIdentity | undefined;
-type ManualLootMode = 'free' | ManualLootIdentity['kind'];
 
 const LootCategoryFallback = ({
   name, tab, category,
@@ -136,7 +126,7 @@ export const DashboardModule = () => {
     investmentNeutralization, setInvestmentNeutralization,
     investmentDismissed, setInvestmentDismissed,
     onboardingDismissed, dismissOnboarding, sessionLifecycle, leagueOverride,
-    lootCurrencyMode, setLootCurrencyMode,
+    lootCurrencyMode, setLootCurrencyMode, activeSessionId, sessionNonce,
   } = useSessionKeys(
     'maps', 'settings', 'lootItems', 'baselineItems', 'baselineTotal', 'manualLootItems',
     'setLootItems', 'setBaselineItems', 'toggleLootItemExcluded', 'clearLoot',
@@ -144,7 +134,7 @@ export const DashboardModule = () => {
     'investmentNeutralization', 'setInvestmentNeutralization',
     'investmentDismissed', 'setInvestmentDismissed',
     'onboardingDismissed', 'dismissOnboarding', 'sessionLifecycle', 'leagueOverride',
-    'lootCurrencyMode', 'setLootCurrencyMode',
+    'lootCurrencyMode', 'setLootCurrencyMode', 'activeSessionId', 'sessionNonce',
   );
 
   // Phase 1.5 (rollover plan): cross-league loaded session banner. The
@@ -224,10 +214,32 @@ export const DashboardModule = () => {
   const [visibleDiffRows, setVisibleDiffRows] = useState(INITIAL_ROWS);
   const [hoveredLootClear, setHoveredLootClear] = useState(false); // loot-clear icon red hover (Sessions pattern)
   const [dragOver, setDragOver] = useState(false); // CSV drag-and-drop highlight
-  const [editingManualId, setEditingManualId] = useState<string | null>(null);
-  const [manualDraft, setManualDraft] = useState<ManualLootDraft>(EMPTY_MANUAL_LOOT);
-  const [manualValueMode, setManualValueMode] = useState<ManualLootValueMode>('total');
-  const [manualValueText, setManualValueText] = useState('0');
+  const [{
+    editingId: editingManualId, draft: manualDraft,
+    valueMode: manualValueMode, valueText: manualValueText,
+  }, dispatchManual] = useReducer(manualLootEditorReducer, undefined, createManualLootEditor);
+  const setManualDraft = (update: (draft: ManualLootDraft) => ManualLootDraft): void => {
+    dispatchManual({ type: 'draft', update });
+  };
+  const setManualValueText = (text: string): void => dispatchManual({ type: 'value-text', text });
+  const manualNameInput = useRef<HTMLInputElement>(null);
+  const manualEntryHeading = useRef<HTMLParagraphElement>(null);
+  const [manualFocusRequest, requestManualFocus] = useReducer((count: number) => count + 1, 0);
+
+  // An old draft must never be saved into a newly viewed/created session.
+  // Choices live only in this mounted editor and its current session scope.
+  useEffect(() => {
+    dispatchManual({ type: 'reset-session' });
+    closeManual();
+  }, [activeSessionId, sessionNonce, closeManual]);
+
+  useEffect(() => {
+    if (!manualOpen || manualFocusRequest === 0) return;
+    // Searchable Select opens on focus. Return structured entries to their
+    // heading instead, so saving/reopening does not pop a menu over the form.
+    (manualNameInput.current ?? manualEntryHeading.current)?.focus();
+    manualNameInput.current?.select();
+  }, [manualFocusRequest, manualOpen]);
 
   const hasBaseline = baselineItems.length > 0 || baselineTotal > 0;
   const hasCurrent  = lootItems.length > 0;
@@ -357,53 +369,23 @@ export const DashboardModule = () => {
     manualCatalog.groups.find((group) => group.id === id)?.entries ?? []
   );
   const setManualMode = (mode: ManualLootMode) => {
-    setManualDraft((draft) => {
-      if (mode === 'free') return { ...draft, name: '', category: 'Other', identity: undefined };
-      if (mode === 'quality-base') return {
-        ...draft,
-        name: '',
-        category: 'Other',
-        identity: { kind: 'quality-base', equipmentGroup: 'armour', base: '', quality: 20 },
-      };
-      if (mode === 'chart') return {
-        ...draft,
-        name: 'Charts',
-        category: 'League',
-        identity: { kind: 'chart', chart: null },
-      };
-      return {
-        ...draft,
-        name: '',
-        category: 'League',
-        identity: {
-          kind: 'syndicate-reward',
-          member: '',
-          reward: '',
-          equipmentGroup: 'armour',
-        },
-      };
-    });
+    dispatchManual({ type: 'mode', mode });
+  };
+  const returnToManualAdd = () => {
+    dispatchManual({ type: 'new-addition' });
+    requestManualFocus();
+  };
+  const finishManual = () => {
+    closeManual();
+    dispatchManual({ type: 'new-addition' });
   };
 
   const startAddManual = () => {
-    setEditingManualId(null);
-    setManualDraft(EMPTY_MANUAL_LOOT);
-    setManualValueMode('total');
-    setManualValueText('0');
+    dispatchManual({ type: 'new-addition' });
     openManual();
   };
   const startEditManual = (item: ManualLootItem) => {
-    setEditingManualId(item.id);
-    setManualDraft({
-      name: item.name,
-      quantity: item.quantity,
-      total: item.total,
-      category: item.category,
-      note: item.note,
-      identity: item.identity,
-    });
-    setManualValueMode('total');
-    setManualValueText(formatManualLootValueInput(item.total, item.quantity, 'total', 'chaos', divPrice));
+    dispatchManual({ type: 'edit', item, divinePrice: divPrice });
     openManual();
   };
   const saveManual = () => {
@@ -424,9 +406,7 @@ export const DashboardModule = () => {
     if (!item.name || item.total <= 0) return;
     if (editingManualId) updateManualLootItem(editingManualId, item);
     else addManualLootItem(item);
-    setEditingManualId(null);
-    setManualDraft(EMPTY_MANUAL_LOOT);
-    setManualValueText('0');
+    returnToManualAdd();
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -561,12 +541,7 @@ export const DashboardModule = () => {
         </Stack>
       </Modal>
 
-      <Modal opened={manualOpen} onClose={() => {
-        closeManual();
-        setEditingManualId(null);
-        setManualDraft(EMPTY_MANUAL_LOOT);
-        setManualValueMode('total');
-      }} title="Custom loot additions" size="lg">
+      <Modal opened={manualOpen} onClose={finishManual} title="Custom loot additions" size="lg">
         <Stack gap="sm">
           <Alert color="yellow" variant="light" title="Supplemental and always disclosed">
             <Text size="xs">
@@ -616,11 +591,7 @@ export const DashboardModule = () => {
                     <ActionIcon size="md" variant="subtle" color="red" aria-label={`Remove ${item.name}`}
                       onClick={() => {
                         removeManualLootItem(item.id);
-                        if (editingManualId === item.id) {
-                          setEditingManualId(null);
-                          setManualDraft(EMPTY_MANUAL_LOOT);
-                          setManualValueMode('total');
-                        }
+                        if (editingManualId === item.id) returnToManualAdd();
                       }}>
                       <IconTrash size={14} />
                     </ActionIcon>
@@ -631,7 +602,10 @@ export const DashboardModule = () => {
             </Stack>
           )}
 
-          <Text size="xs" fw={700}>{editingManualId ? 'Edit addition' : 'Add a missing drop'}</Text>
+          <Text size="xs" fw={700} ref={manualEntryHeading} tabIndex={-1}
+            data-autofocus={manualMode !== 'free' || undefined}>
+            {editingManualId ? 'Edit addition' : 'Add a missing drop'}
+          </Text>
           <SegmentedControl
             size="xs"
             fullWidth
@@ -652,6 +626,7 @@ export const DashboardModule = () => {
           {manualMode === 'free' && (
             <>
               <TextInput label="Item name" placeholder="e.g. Unidentified unique ring"
+                ref={manualNameInput} data-autofocus
                 value={manualDraft.name} maxLength={MANUAL_LOOT_NAME_MAX}
                 onChange={(event) => {
                   const name = event.currentTarget.value;
@@ -705,6 +680,7 @@ export const DashboardModule = () => {
                 />
                 <Select
                   label="Exact base"
+                  {...replaceSelectedInputText(manualDraft.identity.base)}
                   placeholder={manualCatalogLoading ? 'Loading official bases…' : 'Choose a base'}
                   searchable
                   nothingFoundMessage="No exact base found"
@@ -762,6 +738,7 @@ export const DashboardModule = () => {
           {manualDraft.identity?.kind === 'chart' && (
             <Select
               label="Chart type"
+              {...replaceSelectedInputText(manualDraft.identity.chart ?? 'Charts (type unknown)')}
               description="Choose the exact Chart when known; the generic option still uses reviewed Chart artwork."
               searchable
               data={[
@@ -787,6 +764,7 @@ export const DashboardModule = () => {
               <SimpleGrid cols={2} spacing="sm">
                 <Select
                   label="Syndicate member"
+                  {...replaceSelectedInputText(manualDraft.identity.member)}
                   searchable
                   data={SYNDICATE_MEMBERS.map((value) => ({ value, label: value }))}
                   value={manualDraft.identity.member || null}
@@ -822,6 +800,7 @@ export const DashboardModule = () => {
                 />
                 <Select
                   label="Exact base (optional)"
+                  {...replaceSelectedInputText(manualDraft.identity.base ?? '')}
                   placeholder={manualCatalogLoading ? 'Loading official bases…' : 'Use category only'}
                   clearable
                   searchable
@@ -852,14 +831,16 @@ export const DashboardModule = () => {
             onChange={(value) => {
               const nextMode = value as ManualLootValueMode;
               const unit = manualValueParse.ok ? manualValueParse.unit : 'chaos';
-              setManualValueMode(nextMode);
-              setManualValueText(formatManualLootValueInput(
-                manualCanonicalTotal,
-                manualDraft.quantity,
-                nextMode,
-                unit,
-                divPrice,
-              ));
+              dispatchManual({
+                type: 'value-mode', mode: nextMode,
+                text: manualValueText.trim() === '' ? '' : formatManualLootValueInput(
+                  manualCanonicalTotal,
+                  manualDraft.quantity,
+                  nextMode,
+                  unit,
+                  divPrice,
+                ),
+              });
             }}
           />
           <SimpleGrid cols={2} spacing="sm">
@@ -893,7 +874,7 @@ export const DashboardModule = () => {
                   </Text>
                   {manualValueMode === 'perItem' && (
                     <Text span size="xs" c="dimmed" fw={400} style={{ whiteSpace: 'nowrap' }}>
-                      Saved total: {fcSep(manualCanonicalTotal, false, 1)}c
+                      Saved total: {fcSep(manualCanonicalTotal, false, 1)}
                     </Text>
                   )}
                 </Group>
@@ -901,6 +882,7 @@ export const DashboardModule = () => {
               styles={{ label: { display: 'block', width: '100%' } }}
               placeholder="e.g. 100c or .4d"
               value={manualValueText}
+              {...replaceSelectedInputText('0')}
               error={manualValueError}
               onChange={(event) => {
                 const text = event.currentTarget.value;
@@ -933,19 +915,14 @@ export const DashboardModule = () => {
             </Text>
             <Group gap="xs">
               {editingManualId && (
-                <Button variant="subtle" color="gray" onClick={() => {
-                  setEditingManualId(null);
-                  setManualDraft(EMPTY_MANUAL_LOOT);
-                  setManualValueMode('total');
-                  setManualValueText('0');
-                }}>Cancel edit</Button>
+                <Button variant="subtle" color="gray" onClick={returnToManualAdd}>Cancel edit</Button>
               )}
               <Button leftSection={<IconPlus size={14} />} onClick={saveManual}
                 disabled={!manualIdentityReady || manualCanonicalTotal <= 0
                   || (!editingManualId && manualLootItems.length >= LOOT_SUMMARY_ROW_LIMIT)}>
                 {editingManualId ? 'Save change' : 'Add item'}
               </Button>
-              <Button variant="default" onClick={closeManual}>Done</Button>
+              <Button variant="default" onClick={finishManual}>Done</Button>
             </Group>
           </Group>
         </Stack>
