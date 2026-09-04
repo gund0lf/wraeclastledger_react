@@ -13,6 +13,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.95',
     date: 'Unreleased',
     changes: [
+      'Loading build settings from a pasted readable or compact strategy now applies its authored 6-mod or 8-mod setup even when the strategy has no Run regex. Missing or unsupported values retain the fresh-session fallback, while complete Map Log observations still take precedence.',
       'Expanded Strategy Browser cards now close with the ordinary mouse Back button, Alt+Left, or Escape and return to the exact prior list position. The shortcuts stay scoped to the strategy panel and do not claim text editing or add application-history entries.',
       'Strategy Browser rows now lead with the strategy title and place the author plus pooled run count beneath it. Long identities remain available on hover, older unnamed strategies receive readable fallbacks, and the Maps column keeps the total map count without repeating the run count.',
       'Loot breakdown categories now use source-family-verified representative artwork, including Scarabs and all five Unique families. Armour and Accessories use compact inexpensive examples rather than chase-item or oversized inventory art, and the accessory bucket is displayed as the shorter Unique Jewellery. Offline or missing artwork falls back to distinct weapon, armour, accessory, flask, jewel, League, and Other glyphs instead of repeating one generic symbol.',

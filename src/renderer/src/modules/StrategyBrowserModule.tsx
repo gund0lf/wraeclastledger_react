@@ -44,6 +44,7 @@ import {
   mergeRefreshedStrategyPage,
 } from '../utils/strategyRefresh';
 import { isStrategyBackIntent } from '../utils/strategyBackNavigation';
+import { applyImportedMapType } from '../utils/importBuildSettings';
 
 // API base (incl. the VITE_STRATEGY_API_URL dev override) moved to
 // strategyConstants.STRATEGY_API_URL — shared with the game-data loader.
@@ -423,6 +424,7 @@ export const StrategyBrowserModule = () => {
   const applyImportedBuild = async (parsed: DiscordImport): Promise<void> => {
     // Apply what we can from a parsed import (no Strategy object — use parsed fields)
     await startWorking(true);
+    applyImportedMapType(parsed.mapType, (mapType) => updateSetting('mapType', mapType));
     if (parsed.chisel && parsed.chisel !== 'None') {
       updateSetting('chiselType', parsed.chisel.split(' ')[0]);
       updateSetting('chiselUsed', true);
