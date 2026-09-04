@@ -4,7 +4,7 @@ import {
 import { IconChevronDown, IconChevronRight } from '@tabler/icons-react';
 import { useState } from 'react';
 import type { LootSummary } from '../utils/lootSummary';
-import { CAT_COLORS } from '../utils/lootCategories';
+import { CAT_COLORS, lootCategoryLabel } from '../utils/lootCategories';
 import { fcSep } from '../utils/parseDiscordExport';
 import { COLOR, FONT } from '../utils/uiTokens';
 import { SectionLabel } from './ui/SectionLabel';
@@ -90,11 +90,11 @@ export const LootEvidenceSummary = ({
       <div className="loot-evidence-categories">
         {summary.categories.map((entry) => (
           <Tooltip key={entry.category}
-            label={`${entry.category}: ${displayValue(entry.value)} (${((entry.value / categoryTotal) * 100).toFixed(0)}%)`}
+            label={`${lootCategoryLabel(entry.category)}: ${displayValue(entry.value)} (${((entry.value / categoryTotal) * 100).toFixed(0)}%)`}
             withArrow>
             <Stack gap={4} p={8} className="loot-evidence-category"
               style={{ background: COLOR.surfaceSectionBg, borderRadius: 6, cursor: 'help', minWidth: 0 }}>
-              <Text size="xs" c="dimmed" lineClamp={1}>{entry.category}</Text>
+              <Text size="xs" c="dimmed" lineClamp={1}>{lootCategoryLabel(entry.category)}</Text>
               <Group gap={8} wrap="nowrap" justify="center">
                 <LootCategoryIcon category={entry.category} size={28} />
                 <Stack gap={0} align="center">
@@ -166,7 +166,7 @@ export const LootEvidenceSummary = ({
                             </Tooltip>
                           )}
                         </Group>
-                        <Text size="xs" c="dimmed" style={{ fontSize: FONT.label }}>{row.category}</Text>
+                        <Text size="xs" c="dimmed" style={{ fontSize: FONT.label }}>{lootCategoryLabel(row.category)}</Text>
                       </Stack>
                     </Group>
                   </Table.Td>

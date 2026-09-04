@@ -13,6 +13,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.95',
     date: 'Unreleased',
     changes: [
+      'Loot breakdown categories now use source-family-verified representative artwork, including Scarabs and all five Unique families. Armour and Accessories use compact inexpensive examples rather than chase-item or oversized inventory art, and the accessory bucket is displayed as the shorter Unique Jewellery. Offline or missing artwork falls back to distinct weapon, armour, accessory, flask, jewel, League, and Other glyphs instead of repeating one generic symbol.',
       'Quality-base custom loot now records optional Memory Strands from 0 to 100 beside Quality. Blank remains unrecorded, while 0 means none. Strand counts survive editing, saved sessions, and shared evidence without changing the exact base artwork; older saved influence details remain intact.',
       'Investment scarab and gem-name typing now stays local until you select an option or finish editing, avoiding repeated session-wide work on each keystroke. Finished edits still auto-save, and pending inputs are included when closing the editor, switching sessions, or closing the app.',
       'Tabbing through unchanged Investment prices no longer triggers saves. Enter followed by blur commits only once, and equivalent Chaos/Divine input does not rewrite the same price. Chisel and Astrolabe selectors are now searchable like Delirium Orbs.',

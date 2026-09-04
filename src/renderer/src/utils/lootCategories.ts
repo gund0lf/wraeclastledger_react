@@ -11,6 +11,20 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
   'Beasts', 'League', 'Other',
 ];
 
+const CATEGORY_DISPLAY_LABELS: Partial<Record<ItemCategory, string>> = {
+  // Wire/storage keeps the established category key; this is presentation only.
+  'Unique Accessories': 'Unique Jewellery',
+};
+
+export const lootCategoryLabel = (category: ItemCategory): string => (
+  CATEGORY_DISPLAY_LABELS[category] ?? category
+);
+
+export const ITEM_CATEGORY_OPTIONS = ITEM_CATEGORIES.map((category) => ({
+  value: category,
+  label: lootCategoryLabel(category),
+}));
+
 export const CAT_COLORS: Partial<Record<ItemCategory, string>> = {
   Currency: 'yellow',
   Scarabs: 'teal',

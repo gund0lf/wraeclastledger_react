@@ -27,7 +27,11 @@ const BLUNDERBORE_URL = 'https://web.poecdn.com/gen/image/blunderbore.png';
 const RALAKESH_URL = 'https://web.poecdn.com/gen/image/ralakesh.png';
 const MALACHAIS_MARK_URL = 'https://web.poecdn.com/gen/image/malachais-mark.png';
 const KAOMS_HEART_URL = 'https://web.poecdn.com/gen/image/kaoms-heart.png';
+const GOLDRIM_URL = 'https://web.poecdn.com/gen/image/goldrim.png';
 const EPHEMERAL_URL = 'https://web.poecdn.com/gen/image/ephemeral-edge.png';
+const HEADHUNTER_URL = 'https://web.poecdn.com/gen/image/headhunter.png';
+const BLACKHEART_URL = 'https://web.poecdn.com/gen/image/blackheart.png';
+const PROGENESIS_URL = 'https://web.poecdn.com/gen/image/progenesis.png';
 const DISSOLUTION_URL = 'https://web.poecdn.com/gen/image/dissolution.png';
 const INVITATION_URL = 'https://web.poecdn.com/gen/image/incandescent-invitation.png';
 const BEAST_URL = 'https://web.poecdn.com/gen/image/bestiary-orb-full.png';
@@ -114,9 +118,17 @@ beforeAll(() => {
           { name: "Ralakesh's Impatience", icon: RALAKESH_URL },
           { name: "Malachai's Mark", icon: MALACHAIS_MARK_URL },
           { name: "Kaom's Heart", icon: KAOMS_HEART_URL },
+          { name: 'Goldrim', icon: GOLDRIM_URL },
         ], slugs: [] };
         if (type === 'UniqueWeapon') return { icons: [
           { name: 'Ephemeral Edge', icon: EPHEMERAL_URL },
+        ], slugs: [] };
+        if (type === 'UniqueAccessory') return { icons: [
+          { name: 'Headhunter', icon: HEADHUNTER_URL },
+          { name: 'Blackheart', icon: BLACKHEART_URL },
+        ], slugs: [] };
+        if (type === 'UniqueFlask') return { icons: [
+          { name: 'Progenesis', icon: PROGENESIS_URL },
         ], slugs: [] };
         if (type === 'Map') {
           if (league === 'Standard') return { icons: [
@@ -299,6 +311,20 @@ describe('itemIcons resolve()', () => {
     expect(resolve('Dissolution of the Flesh')).toBe(DISSOLUTION_URL);
     expect(resolve('Empower Support - 1/0')).toBe(GEM_URL);
     expect(resolve('Incandescent Invitation')).toBe(INVITATION_URL);
+  });
+
+  it('uses source-family representatives for concrete categories without inventing catch-all art', async () => {
+    const { resolveCategoryIcon } = await getItemIcons();
+    expect(resolveCategoryIcon('Scarabs')).toBe(ABYSS_URL);
+    expect(resolveCategoryIcon('Unique Weapons')).toBe(EPHEMERAL_URL);
+    expect(resolveCategoryIcon('Unique Armours')).toBe(GOLDRIM_URL);
+    expect(resolveCategoryIcon('Unique Accessories')).toBe(BLACKHEART_URL);
+    expect(resolveCategoryIcon('Unique Flasks')).toBe(PROGENESIS_URL);
+    expect(resolveCategoryIcon('Unique Jewels')).toBe(FLAME_URL);
+    expect(resolveCategoryIcon('Maps')).toBe(ALLFLAME16_URL);
+    expect(resolveCategoryIcon('Divination Cards')).toContain('Divination');
+    expect(resolveCategoryIcon('League')).toBeUndefined();
+    expect(resolveCategoryIcon('Other')).toBeUndefined();
   });
 
   it('resolves exact base-item identities from the stash BaseType feed', async () => {
