@@ -33,7 +33,10 @@ import { computeProfit, computeMultiplier } from '../utils/profit';
 import { describeMapModifierSource } from '../utils/atlasCalcPresentation';
 import { fcSep } from '../utils/parseDiscordExport';
 import { computeTimeEstimate, formatActiveTime } from '../utils/timeEstimate';
-import { assignLootCategories, buildCategoryBreakdown, categorise, ITEM_CATEGORIES, ItemCategory, CAT_COLORS } from '../utils/lootCategories';
+import {
+  assignLootCategories, buildCategoryBreakdown, categorise, ITEM_CATEGORY_OPTIONS,
+  ItemCategory, CAT_COLORS, lootCategoryLabel,
+} from '../utils/lootCategories';
 import { LOOT_SUMMARY_ROW_LIMIT, MANUAL_LOOT_NAME_MAX, MANUAL_LOOT_NOTE_MAX } from '../utils/lootSummary';
 import { StatTile } from '../components/ui/StatTile';
 import { GettingStartedCard } from '../components/GettingStartedCard';
@@ -903,7 +906,7 @@ export const DashboardModule = () => {
               }}
             />
           </SimpleGrid>
-          <Select label="Category" data={ITEM_CATEGORIES} value={manualEffectiveCategory}
+          <Select label="Category" data={ITEM_CATEGORY_OPTIONS} value={manualEffectiveCategory}
             disabled={manualMode !== 'free' || manualExactIdentity !== undefined}
             description={manualMode !== 'free' || manualExactIdentity
               ? 'Category is determined by the exact structured/catalog identity.'
@@ -1365,7 +1368,9 @@ export const DashboardModule = () => {
                             <Group justify="space-between">
                               <Group gap={6} wrap="nowrap">
                                 <LootCategoryIcon category={cat as ItemCategory} size={20} />
-                                <Badge color={CAT_COLORS[cat as ItemCategory] ?? 'gray'} size="xs" variant="light">{cat}</Badge>
+                                <Badge color={CAT_COLORS[cat as ItemCategory] ?? 'gray'} size="xs" variant="light">
+                                  {lootCategoryLabel(cat as ItemCategory)}
+                                </Badge>
                               </Group>
                               <Group gap={6} align="baseline">
                                 <Text size="xs" c="dimmed" style={{ fontVariantNumeric: 'tabular-nums' }}>{((value / catTotal) * 100).toFixed(0)}%</Text>

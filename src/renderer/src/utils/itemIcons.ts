@@ -136,6 +136,32 @@ const ECONOMY_TYPE_CATEGORY: Readonly<Partial<Record<string, LootCategory>>> = {
   Wombgift: 'League',
 };
 
+// Preferred category artwork is deliberately separate from item resolution.
+// Each name is looked up only inside a source-family-confirmed category; if a
+// preferred identity is absent, the current league's first exact entry for that
+// category is used. League and Other are intentionally excluded because neither
+// catch-all has one honest representative item.
+const CATEGORY_ART_CANDIDATES: Readonly<Partial<Record<LootCategory, readonly string[]>>> = {
+  Currency: ['Divine Orb', 'Chaos Orb'],
+  Fragments: ['Sacrifice at Dusk', 'Incandescent Invitation'],
+  Scarabs: ['Breach Scarab', 'Abyss Scarab'],
+  'Divination Cards': [],
+  Essences: ['Deafening Essence of Greed'],
+  Deliriums: ['Fine Delirium Orb'],
+  Oils: ['Golden Oil'],
+  Incubators: ['Ornate Incubator'],
+  'Unique Weapons': ['Ephemeral Edge'],
+  // Compact, inexpensive 1x1/2x2 items read clearly in the square summary slot
+  // without implying that a category's small total contains a chase unique.
+  'Unique Armours': ['Goldrim', 'The Three Dragons', 'Leer Cast'],
+  'Unique Accessories': ['Blackheart', 'Le Heup of All', "Doedre's Damning", 'Karui Ward'],
+  'Unique Flasks': ['Progenesis', 'Bottled Faith'],
+  'Unique Jewels': ['Forbidden Flame', 'Dissolution of the Flesh'],
+  Maps: [],
+  Gems: ['Empower Support'],
+  Beasts: ['Craicic Croaker'],
+};
+
 // Normal shared divination-card inventory art (all cards use this same icon).
 // Used once a name matches the known card list; if it ever 404s the UI falls
 // back to its neutral category glyph.
@@ -323,6 +349,7 @@ async function fetchCategory(
 let exactMap:  Map<string, string> | null = null;
 let normMap:   Map<string, string> | null = null;
 let identityMap: Map<string, ItemIdentity> | null = null;
+let categoryIconMap = new Map<LootCategory, string>();
 let gemPreviewIcons = new Map<string, string>();
 let fetchProm: Promise<void>       | null = null;
 let cacheLeague: string | null = null;
@@ -371,6 +398,7 @@ async function buildCache(challenge: string): Promise<void> {
   const normalized = new Map<string, string>();
   const identities = new Map<string, ItemIdentity>();
   const gemIcons = new Map<string, string>();
+  const categoryEntries = new Map<LootCategory, Array<[string, string]>>();
   const identityConflicts = new Set<string>();
   divCardSet.clear();
 
@@ -400,6 +428,12 @@ async function buildCache(challenge: string): Promise<void> {
     }
     if (!existing) identities.set(key, { name, category });
   };
+  const addCategoryEntry = (name: string, url: string, category: LootCategory | undefined) => {
+    if (!category || category === 'League' || category === 'Other') return;
+    const entries = categoryEntries.get(category) ?? [];
+    if (!entries.some(([known]) => norm(known) === norm(name))) entries.push([name, url]);
+    categoryEntries.set(category, entries);
+  };
 
   // Detect current challenge league, then also pull every KNOWN_LEAGUES entry
   // BELOW it (during events the parent league — e.g. Mirage under Ancestors —
@@ -426,6 +460,7 @@ async function buildCache(challenge: string): Promise<void> {
       r.value.pairs.forEach(([k, v]) => {
         add(k, v);
         addIdentity(k, category);
+        addCategoryEntry(k, v, category);
       });
       for (const name of r.value.names) addIdentity(name, category);
       // Actual items[] display names are authoritative. Slug reconstruction is
@@ -444,7 +479,9 @@ async function buildCache(challenge: string): Promise<void> {
     stashRes.forEach((r, i) => {
       if (r.status === 'fulfilled') r.value.pairs.forEach(([k, v]) => {
         add(k, v);
-        addIdentity(k, ECONOMY_TYPE_CATEGORY[STASH_TYPES[i]]);
+        const category = ECONOMY_TYPE_CATEGORY[STASH_TYPES[i]];
+        addIdentity(k, category);
+        addCategoryEntry(k, v, category);
         // Preview candidates are gems only, with the same current-first league
         // priority. Duplicate level/quality rows do not create new identities.
         if (ECONOMY_TYPE_CATEGORY[STASH_TYPES[i]] === 'Gems' && !gemIcons.has(norm(k))) {
@@ -545,9 +582,26 @@ async function buildCache(challenge: string): Promise<void> {
   GENERIC.div_card  = GENERIC_DIV_CARD; // no per-card icons exist on poe.ninja
   if (!GENERIC.astrolabe) GENERIC.astrolabe = GENERIC.misc_orb ?? GENERIC.chaos_orb ?? '';
 
+  const categoryIcons = new Map<LootCategory, string>();
+  for (const [category, candidates] of Object.entries(CATEGORY_ART_CANDIDATES) as
+    Array<[LootCategory, readonly string[]]>) {
+    const entries = categoryEntries.get(category) ?? [];
+    const preferred = candidates
+      .map((candidate) => entries.find(([name]) => norm(name) === norm(candidate))?.[1])
+      .find((url): url is string => !!url);
+    const fallback = entries[0]?.[1];
+    const url = preferred ?? fallback;
+    if (url) categoryIcons.set(category, url);
+  }
+  categoryIcons.set('Divination Cards', GENERIC_DIV_CARD);
+  if (GENERIC.map) categoryIcons.set('Maps', GENERIC.map);
+  if (GENERIC.gem) categoryIcons.set('Gems', GENERIC.gem);
+  if (GENERIC.beast) categoryIcons.set('Beasts', GENERIC.beast);
+
   exactMap = exact;
   normMap  = normalized;
   identityMap = identities;
+  categoryIconMap = categoryIcons;
   gemPreviewIcons = buildGemPreviewIndex(gemIcons);
 
   console.log(
@@ -561,6 +615,7 @@ export async function getItemIcons(): Promise<{
   resolveGemPreview: (name: string) => string | undefined;
   resolveIdentity: (name: string) => ItemIdentity | undefined;
   resolveCategory: (name: string) => LootCategory | undefined;
+  resolveCategoryIcon: (category: LootCategory) => string | undefined;
   suggestName: (name: string) => ItemIdentity | undefined;
 }> {
   const league = await getCurrentLeague();
@@ -713,6 +768,9 @@ export async function getItemIcons(): Promise<{
     resolveCategory(name: string): LootCategory | undefined {
       return resolveIdentity(name)?.category;
     },
+    resolveCategoryIcon(category: LootCategory): string | undefined {
+      return categoryIconMap.get(category);
+    },
     suggestName(name: string): ItemIdentity | undefined {
       if (!identityMap) return undefined;
       const raw = norm(name);
@@ -736,6 +794,7 @@ export function clearIconCache(): void {
   exactMap  = null;
   normMap   = null;
   identityMap = null;
+  categoryIconMap.clear();
   gemPreviewIcons.clear();
   fetchProm = null;
   cacheLeague = null;

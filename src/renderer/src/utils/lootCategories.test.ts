@@ -1,9 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { assignLootCategories, categorise, buildCategoryBreakdown } from './lootCategories';
+import {
+  assignLootCategories, categorise, buildCategoryBreakdown, lootCategoryLabel,
+} from './lootCategories';
 
 // The categorise rules cascade in order — first rule that matches wins.
 // WealthyExile's Tab value is provenance only. Name-based fallback rules apply
 // in declaration order when an exact economy-catalog identity is unavailable.
+
+describe('loot category presentation', () => {
+  it('shortens the accessory bucket without changing its stored category key', () => {
+    expect(lootCategoryLabel('Unique Accessories')).toBe('Unique Jewellery');
+    expect(lootCategoryLabel('Unique Jewels')).toBe('Unique Jewels');
+  });
+});
 
 describe('categorise — stash tab provenance', () => {
   it('never treats user-named stash tabs as item taxonomy', () => {

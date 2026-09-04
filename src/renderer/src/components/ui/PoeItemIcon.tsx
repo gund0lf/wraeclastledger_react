@@ -17,8 +17,10 @@ import { IconBug, IconCircleDashed, IconDiamond, IconTool, IconWorld } from '@ta
 import { getItemIcons } from '../../utils/itemIcons';
 import { useSessionStore } from '../../store/useSessionStore';
 import { COLOR } from '../../utils/uiTokens';
+import type { LootCategory } from '../../types';
 
-type Resolvers = Pick<Awaited<ReturnType<typeof getItemIcons>>, 'resolve' | 'resolveGemPreview'>;
+type Resolvers = Pick<Awaited<ReturnType<typeof getItemIcons>>,
+  'resolve' | 'resolveGemPreview' | 'resolveCategoryIcon'>;
 export type PoeItemCategory = 'scarab' | 'orb' | 'chisel' | 'gem' | 'astrolabe';
 let cachedResolvers: Resolvers | null = null;
 
@@ -31,11 +33,15 @@ const CategoryFallback = ({ category, size }: { category: PoeItemCategory; size:
   return <IconCircleDashed {...props} />;
 };
 
-export const PoeItemIcon = ({ name, size = 14, fallback = null, category, gemPreview = false }: {
+export const PoeItemIcon = ({
+  name, size = 14, fallback = null, category, representativeCategory, gemPreview = false,
+}: {
   name: string | null | undefined;
   size?: number;
   fallback?: ReactNode;
   category?: PoeItemCategory;
+  /** Category-summary art, resolved only from exact source-family identities. */
+  representativeCategory?: LootCategory;
   /** Exact or unique-prefix GEM match only; never generic support-gem art. */
   gemPreview?: boolean;
 }) => {
@@ -48,16 +54,22 @@ export const PoeItemIcon = ({ name, size = 14, fallback = null, category, gemPre
     let alive = true;
     getItemIcons()
       .then((c) => {
-        cachedResolvers = { resolve: c.resolve, resolveGemPreview: c.resolveGemPreview };
+        cachedResolvers = {
+          resolve: c.resolve,
+          resolveGemPreview: c.resolveGemPreview,
+          resolveCategoryIcon: c.resolveCategoryIcon,
+        };
         if (alive) setResolvers(cachedResolvers);
       })
       .catch(() => {}); // offline / poe.ninja down -> stay on fallback
     return () => { alive = false; };
   }, [leagueOverride, sessionLeague]);
 
-  const url = name
-    ? (gemPreview ? resolvers?.resolveGemPreview(name) : resolvers?.resolve(name))
-    : undefined;
+  const url = representativeCategory
+    ? resolvers?.resolveCategoryIcon(representativeCategory)
+    : name
+      ? (gemPreview ? resolvers?.resolveGemPreview(name) : resolvers?.resolve(name))
+      : undefined;
   useEffect(() => setImageFailed(false), [url]);
 
   const fallbackNode = fallback ?? (category ? <CategoryFallback category={category} size={size} /> : null);
