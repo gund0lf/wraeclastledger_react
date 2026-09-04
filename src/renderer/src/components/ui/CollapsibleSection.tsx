@@ -12,7 +12,7 @@ import { FONT } from '../../utils/uiTokens'
  *    Supports a `right` slot for custom header controls.
  *  - variant 'group'   — plain bold form-group toggle in a dense stack
  *    (Investment advanced costs). Draws a bottom border and can show a
- *    "filled" badge when collapsed.
+ *    completion badge when collapsed.
  */
 export const CollapsibleSection = ({
   title,
@@ -21,6 +21,7 @@ export const CollapsibleSection = ({
   defaultOpen = variant === 'heading',
   right,
   filled = false,
+  status,
   contentPaddingBottom = 6,
   className,
   headerClassName,
@@ -31,7 +32,9 @@ export const CollapsibleSection = ({
   variant?: 'heading' | 'group'
   defaultOpen?: boolean
   right?: ReactNode
+  /** `filled` remains as a compatibility shorthand for older callers. */
   filled?: boolean
+  status?: 'empty' | 'incomplete' | 'filled'
   contentPaddingBottom?: number
   className?: string
   headerClassName?: string
@@ -40,6 +43,7 @@ export const CollapsibleSection = ({
   const [open, setOpen] = useState(defaultOpen)
   const toggle = () => setOpen((o) => !o)
   const isHeading = variant === 'heading'
+  const effectiveStatus = status ?? (filled ? 'filled' : 'empty')
 
   return (
     <Stack gap={0} className={className} data-open={open}>
@@ -70,9 +74,13 @@ export const CollapsibleSection = ({
               {title}
             </Text>
           )}
-          {!isHeading && filled && !open && (
-            <Badge size="xs" color="green" variant="dot">
-              filled
+          {!isHeading && effectiveStatus !== 'empty' && !open && (
+            <Badge
+              size="xs"
+              color={effectiveStatus === 'filled' ? 'green' : 'yellow'}
+              variant="dot"
+            >
+              {effectiveStatus}
             </Badge>
           )}
         </Group>

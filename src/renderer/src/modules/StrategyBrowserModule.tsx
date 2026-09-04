@@ -45,6 +45,8 @@ import {
 } from '../utils/strategyRefresh';
 import { isStrategyBackIntent } from '../utils/strategyBackNavigation';
 import { applyImportedMapType } from '../utils/importBuildSettings';
+import { buildImportedSetupPlan, type ImportedSetupPlan } from '../utils/investmentSetup';
+import { MAP_DEVICE_SLOT_COUNT } from '../../../shared/mapDevice';
 
 // API base (incl. the VITE_STRATEGY_API_URL dev override) moved to
 // strategyConstants.STRATEGY_API_URL — shared with the game-data loader.
@@ -254,23 +256,37 @@ export const StrategyBrowserModule = () => {
     }
   };
 
+  const applyReusableSetup = (plan: ImportedSetupPlan): void => {
+    applyImportedMapType(plan.mapType, (mapType) => updateSetting('mapType', mapType));
+    updateSetting('chiselType', plan.chiselType);
+    updateSetting('chiselUsed', plan.chiselType.length > 0);
+    updateSetting('chiselPrice', 0);
+    for (let index = 0; index < MAP_DEVICE_SLOT_COUNT; index += 1) {
+      updateScarab(index, 'name', plan.scarabNames[index] ?? '');
+      updateScarab(index, 'cost', 0);
+    }
+    updateAdvSetting('advDeliOrbType', plan.deliriumType);
+    updateAdvSetting('advDeliOrbQtyPerMap', plan.deliriumCountPerMap);
+    updateAdvSetting('advDeliOrbPriceEach', 0);
+    updateAdvSetting('advAstrolabeType', plan.astrolabeType);
+    updateAdvSetting('advAstrolabePrice', 0);
+    updateAdvSetting('advAstrolabeCount', 0);
+  };
+
   // ── Load build (called by both StrategyCard and ImportModal) ─────────────────
   const applyStrategyBuild = async (s: Strategy): Promise<void> => {
     await startWorking(true);
     const parsed = s.raw_export ? parseDiscordExport(s.raw_export) : null;
-    if (s.map_type === '6-mod' || s.map_type === '8-mod') {
-      updateSetting('mapType', s.map_type);
-    }
-    if (s.chisel && s.chisel !== 'None') {
-      updateSetting('chiselType', s.chisel.split(' ')[0]);
-      updateSetting('chiselUsed', true);
-    }
-    if (s.scarabs && s.scarabs.length > 0) {
-      s.scarabs.slice(0, 5).forEach((scarab, i) => {
-        updateScarab(i, 'name', scarab.name);
-        updateScarab(i, 'cost', scarab.cost);
-      });
-    }
+    applyReusableSetup(buildImportedSetupPlan({
+      mapType: parsed?.mapType === '6-mod' || parsed?.mapType === '8-mod'
+        ? parsed.mapType
+        : s.map_type,
+      chisel: parsed?.chisel || s.chisel,
+      scarabs: s.scarabs?.length ? s.scarabs.map((scarab) => scarab.name) : parsed?.scarabs,
+      deliriumType: parsed?.deliOrbType,
+      deliriumCountPerMap: parsed?.deliOrbQty,
+      astrolabeType: parsed?.astroType,
+    }));
     if (s.atlas_tree_url && isSafeStrategyAtlasUrl(s.atlas_tree_url)) {
       updateSetting('atlasTreeUrl', s.atlas_tree_url);
       // Force the Atlas Tree to re-apply the tree to the Atlas Calc even when the
@@ -289,21 +305,8 @@ export const StrategyBrowserModule = () => {
             : null,
         );
       }
-      if (parsed.mapType === '6-mod' || parsed.mapType === '8-mod') {
-        updateSetting('mapType', parsed.mapType);
-      }
-      if (parsed.deliOrbType) {
-        updateAdvSetting('advDeliOrbType', parsed.deliOrbType);
-        if (parsed.deliOrbQty   > 0) updateAdvSetting('advDeliOrbQtyPerMap',  parsed.deliOrbQty);
-        if (parsed.deliOrbPrice > 0) updateAdvSetting('advDeliOrbPriceEach',  parsed.deliOrbPrice);
-      }
-      if (parsed.astroType) {
-        updateAdvSetting('advAstrolabeType', parsed.astroType);
-        if (parsed.astroCount > 0) updateAdvSetting('advAstrolabeCount', parsed.astroCount);
-        if (parsed.astroPrice > 0) updateAdvSetting('advAstrolabePrice', parsed.astroPrice);
-      }
     }
-    setLoadedMsg(`Loaded ${s.discord_username}'s build — scarabs, chisel, atlas tree, deli orbs & astrolabe applied.`);
+    setLoadedMsg(`Loaded ${s.discord_username}'s setup — item types and quantities applied. Add current prices in Investment.`);
     const p = parsed;
     const runRegex = p?.runRegex || s.run_regex;
     if (runRegex) {
@@ -424,17 +427,14 @@ export const StrategyBrowserModule = () => {
   const applyImportedBuild = async (parsed: DiscordImport): Promise<void> => {
     // Apply what we can from a parsed import (no Strategy object — use parsed fields)
     await startWorking(true);
-    applyImportedMapType(parsed.mapType, (mapType) => updateSetting('mapType', mapType));
-    if (parsed.chisel && parsed.chisel !== 'None') {
-      updateSetting('chiselType', parsed.chisel.split(' ')[0]);
-      updateSetting('chiselUsed', true);
-    }
-    if (parsed.scarabs && parsed.scarabs.length > 0) {
-      parsed.scarabs.slice(0, 5).forEach((name, i) => {
-        updateScarab(i, 'name', name);
-        if (parsed.scarabCosts[i] > 0) updateScarab(i, 'cost', parsed.scarabCosts[i]);
-      });
-    }
+    applyReusableSetup(buildImportedSetupPlan({
+      mapType: parsed.mapType,
+      chisel: parsed.chisel,
+      scarabs: parsed.scarabs,
+      deliriumType: parsed.deliOrbType,
+      deliriumCountPerMap: parsed.deliOrbQty,
+      astrolabeType: parsed.astroType,
+    }));
     if (parsed.multiplyingModifiersAllocated !== null) {
       updateSetting('multiplyingModifiersAllocated', parsed.multiplyingModifiersAllocated);
       updateSetting(
@@ -448,8 +448,6 @@ export const StrategyBrowserModule = () => {
       updateSetting('atlasTreeUrl', parsed.atlasTreeUrl);
       requestCurrentAtlasApply(parsed.atlasTreeUrl, parsed);
     }
-    if (parsed.deliOrbType)  { updateAdvSetting('advDeliOrbType', parsed.deliOrbType); updateAdvSetting('advDeliOrbQtyPerMap', parsed.deliOrbQty); updateAdvSetting('advDeliOrbPriceEach', parsed.deliOrbPrice); }
-    if (parsed.astroType)    { updateAdvSetting('advAstrolabeType', parsed.astroType); updateAdvSetting('advAstrolabeCount', parsed.astroCount); updateAdvSetting('advAstrolabePrice', parsed.astroPrice); }
     if (parsed.runRegex) {
       setLoadedStrategyInfo({
         authorName: parsed.strategyName || 'Imported',
@@ -463,7 +461,7 @@ export const StrategyBrowserModule = () => {
         mapType:    parsed.mapType === '8-mod' ? '8mod' : undefined,
       });
     }
-    setLoadedMsg(`Imported build settings applied: chisel, scarabs, atlas tree, deli orbs & astrolabe.`);
+    setLoadedMsg('Imported setup applied: item types and quantities loaded. Add current prices in Investment.');
     setTimeout(() => setLoadedMsg(null), 6000);
   };
 

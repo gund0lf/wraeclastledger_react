@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildDiscordSharePayload, decodeDiscordSharePayload } from './discordShareWire';
 import { applyImportedMapType } from './importBuildSettings';
+import { buildImportedSetupPlan } from './investmentSetup';
 import { parseDiscordExport } from './parseDiscordExport';
 
 const readableImport = (mapTypeLine: string, extras = ''): string => `
@@ -47,6 +48,38 @@ describe('applyImportedMapType', () => {
     applyImportedMapType('6-mod', apply);
 
     expect(applied).toEqual(['8-mod', '6-mod']);
+  });
+
+  it('clones the same setup-only plan from readable and compact imports', () => {
+    const readable = parseDiscordExport(readableImport('Type: 8-mod', [
+      'Chisel: Avarice (40c each)',
+      '- Horned Scarab of Awakening (75c)',
+      'Delirium Orbs: 3x Fine @ 85c ea',
+      'Astrolabe: Grasping · 7x @ 10c ea',
+    ].join('\n')));
+    expect(readable).not.toBeNull();
+    const compact = decodeDiscordSharePayload(buildDiscordSharePayload(readable!));
+    expect(compact).not.toBeNull();
+
+    const toPlan = (source: NonNullable<typeof readable>) => buildImportedSetupPlan({
+      mapType: source.mapType,
+      chisel: source.chisel,
+      scarabs: source.scarabs,
+      deliriumType: source.deliOrbType,
+      deliriumCountPerMap: source.deliOrbQty,
+      astrolabeType: source.astroType,
+    });
+    const expected = {
+      mapType: '8-mod',
+      chiselType: 'Avarice',
+      scarabNames: ['Horned Scarab of Awakening'],
+      deliriumType: 'Fine',
+      deliriumCountPerMap: 3,
+      astrolabeType: 'Grasping Astrolabe',
+    };
+
+    expect(toPlan(readable!)).toEqual(expected);
+    expect(toPlan(compact!)).toEqual(expected);
   });
 
   it('does not apply missing, unsupported, or lookalike values', () => {

@@ -14,6 +14,13 @@ import {
 } from '../utils/gameData';
 import { parsePriceInput } from '../utils/priceUtils';
 import { computeCosts } from '../utils/profit';
+import { investmentCompleteness, type InvestmentSectionStatus } from '../utils/investmentCompleteness';
+import {
+  nextAstrolabeSelection,
+  nextChiselSelection,
+  nextDeliriumSelection,
+  nextScarabSelection,
+} from '../utils/investmentSetup';
 import { fcSep } from '../utils/parseDiscordExport';
 import { KNOWN_LEAGUES, confirmedLeagueSync, fetchSelectableLeagues, currentLeagueSync } from '../utils/league';
 import { isCrossLeagueSession, isLiveSessionLeagueMismatch } from '../utils/historicalSession';
@@ -27,19 +34,27 @@ import { MAP_DEVICE_SLOT_COUNT } from '../../../shared/mapDevice';
 import { usePanelMaximized } from '../layout/panelLayoutContext';
 import './InvestmentModule.css';
 
-const AdvSection = ({ title, filled, children }: {
-  title: string; filled: boolean; children: React.ReactNode;
+const AdvSection = ({ title, status, children }: {
+  title: string; status: InvestmentSectionStatus; children: React.ReactNode;
 }) => (
   <CollapsibleSection
     title={title}
     variant="group"
-    filled={filled}
+    status={status}
     className="investment-advanced-section"
     headerClassName="investment-advanced-section-header"
     contentClassName="investment-advanced-section-content"
   >
     {children}
   </CollapsibleSection>
+);
+
+const withNoneOption = (
+  options: { value: string; label: string }[],
+): { value: string; label: string }[] => (
+  options.some((option) => option.value === '')
+    ? options
+    : [{ value: '', label: '— None —' }, ...options]
 );
 
 const InvestmentMetric = ({
@@ -109,9 +124,15 @@ const GemNameInput = () => {
 const ScarabNameInput = ({ index, size }: { index: number; size: 'xs' | 'sm' }) => {
   const { updateScarab, clearScarab } = useSessionKeys('updateScarab', 'clearScarab');
   const name = useSessionStore((state) => state.settings.scarabs[index].name);
+  const cost = useSessionStore((state) => state.settings.scarabs[index].cost);
   const { raw, change, commit } = useSessionInputDraft(
     (state) => state.settings.scarabs[index].name,
-    (value) => updateScarab(index, 'name', value), (text) => text,
+    (value) => {
+      const next = nextScarabSelection({ name, cost }, value);
+      updateScarab(index, 'name', next.name);
+      if (next.cost !== cost) updateScarab(index, 'cost', next.cost);
+    },
+    (text) => text,
   );
   const options = selectableScarabOptions();
   const submitted = useRef<string | null>(null);
@@ -208,15 +229,15 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
   };
 
   const divinePrice = settings.divinePrice || 1;
-  const deliriumOrbOptions = preserveHistoricalSelection(
+  const deliriumOrbOptions = withNoneOption(preserveHistoricalSelection(
     selectableDeliriumOrbList(), settings.advDeliOrbType,
-  );
-  const astrolabeOptions = preserveHistoricalSelection(
+  ));
+  const astrolabeOptions = withNoneOption(preserveHistoricalSelection(
     selectableAstrolabeList(), settings.advAstrolabeType,
-  );
-  const chiselOptions = preserveHistoricalSelection(
+  ));
+  const chiselOptions = withNoneOption(preserveHistoricalSelection(
     selectableChiselList(), settings.chiselType,
-  );
+  ));
 
   // All cost math lives in utils/profit.ts (WP1). The session total is derived
   // LIVE from settings + map count — the stored settings.rollingCostPerMap was
@@ -224,14 +245,19 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
   // removed in store migration v16.
   const mapCount = maps.length || 1;
   const costs = computeCosts(settings, mapCount);
+  const completeness = investmentCompleteness(settings);
   const { hasPreservation, oneTimeScarabs, rollingSessionTotal } = costs;
   const isSplit         = settings.advSplitPrice > 0;
   // ALL-IN cost per map: total investment (incl. one-time scarabs and session
   // costs) spread over parsed maps — badge x maps always equals the Dashboard's
   // Investment figure. One definition, no gaps.
   const totalPerMapFull = costs.totalInvest / mapCount;
-  const deliPerMap      = settings.advDeliOrbQtyPerMap * settings.advDeliOrbPriceEach;
-  const astrolabeTotal  = settings.advAstrolabePrice * settings.advAstrolabeCount;
+  const deliPerMap      = settings.advDeliOrbType
+    ? settings.advDeliOrbQtyPerMap * settings.advDeliOrbPriceEach
+    : 0;
+  const astrolabeTotal  = settings.advAstrolabeType
+    ? settings.advAstrolabePrice * settings.advAstrolabeCount
+    : 0;
   // Mechanic gate (rollover §5.3): if 3.29 removes astrolabes, hide the NEW-input
   // section — UNLESS this session already has astrolabe data, so an in-progress
   // session is never disrupted mid-edit (read-time visibility, non-destructive).
@@ -296,7 +322,6 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
     : 'Previous-league Divine';
   const historicalPriceTooltip = `Previous-league session — divine price, league and atlas points are frozen. Automatic refreshes never touch it. Start a new session to track ${currentLeagueSync() ?? 'the current league'}.`;
 
-  const baseMapFilled   = settings.baseMapCost > 0;
   const doPresetSave = () => {
     const name = presetSaveName.trim();
     if (!name) return;
@@ -304,13 +329,6 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
     setPresetSaveName('');
     setPresetSaveOpen(false);
   };
-  const chiselFilled    = !!settings.chiselType && settings.chiselPrice > 0;
-  const rollingFilled   = settings.advChaos > 0 || settings.advExaltPrice > 0 || settings.advScourPrice > 0 || settings.advAlchPrice > 0;
-  const deliFilled      = deliPerMap > 0;
-  const astrolabeFilled = astrolabeTotal > 0;
-  const gemFilled       = settings.advGemCount > 0;
-  const splitFilled     = isSplit;
-
   return (
     <>
       <Modal opened={advOpen} onClose={closeAdv} title="Advanced Costs" size="md"
@@ -319,18 +337,23 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
           <Alert color="blue" variant="light" p="xs">
             <Text size="xs">Use <Text span c="yellow">.7d</Text> for divine prices. Click a section to expand. Session costs update live.</Text>
           </Alert>
-          <AdvSection title="Base Map Cost" filled={baseMapFilled}>
+          <AdvSection title="Base Map Cost" status={completeness.sections.baseMap}>
             <PriceInput selectValue={(state) => state.settings.baseMapCost} onChange={(v) => updateSetting('baseMapCost', v)} divinePrice={divinePrice} placeholder="e.g. 900c" />
           </AdvSection>
-          <AdvSection title="Chisel" filled={chiselFilled}>
+          <AdvSection title="Chisel" status={completeness.sections.chisel}>
             <SimpleGrid cols={2} style={{ alignItems: 'flex-end' }}>
               <Select label="Type" data={chiselOptions} value={settings.chiselType || null}
-                onChange={(v) => { const t = v ?? ''; updateSetting('chiselType', t); updateSetting('chiselUsed', t.length > 0); }}
+                onChange={(v) => {
+                  const next = nextChiselSelection(settings, v);
+                  updateSetting('chiselType', next.chiselType);
+                  updateSetting('chiselUsed', next.chiselUsed);
+                  updateSetting('chiselPrice', next.chiselPrice);
+                }}
                 size="xs" clearable searchable placeholder="— None —"
                 leftSection={settings.chiselType ? <PoeItemIcon name={chiselItemName(settings.chiselType)} size={16} category="chisel" /> : undefined}
                 renderOption={({ option }) => (
                   <Group gap={6} wrap="nowrap">
-                    <PoeItemIcon name={chiselItemName(option.value)} size={16} category="chisel" />
+                    {option.value && <PoeItemIcon name={chiselItemName(option.value)} size={16} category="chisel" />}
                     <Text size="xs">{option.label}</Text>
                   </Group>
                 )} />
@@ -339,7 +362,7 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
                 placeholder={settings.chiselType ? 'e.g. 150c' : '—'} />
             </SimpleGrid>
           </AdvSection>
-          <AdvSection title="Rolling Costs" filled={rollingFilled}>
+          <AdvSection title="Rolling Costs" status={completeness.sections.rolling}>
             <Text size="xs" c="dimmed">Orbs spent rolling maps this session. Enter total quantity bought + total chaos paid.</Text>
             <SimpleGrid cols={3}>
               <Text size="xs" fw={600} c="dimmed">Item</Text>
@@ -376,13 +399,18 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
               <PriceInput selectValue={(state) => state.settings.advAlchPrice} onChange={(v) => updateAdvSetting('advAlchPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
             </SimpleGrid>
           </AdvSection>
-          <AdvSection title="Delirium Orbs" filled={deliFilled}>
+          <AdvSection title="Delirium Orbs" status={completeness.sections.delirium}>
             <Select label="Orb Type" data={deliriumOrbOptions} value={settings.advDeliOrbType || null}
-              onChange={(v) => updateAdvSetting('advDeliOrbType', v ?? '')} size="xs" placeholder="Type to search..." searchable clearable
+              onChange={(v) => {
+                const next = nextDeliriumSelection(settings, v);
+                updateAdvSetting('advDeliOrbType', next.advDeliOrbType);
+                updateAdvSetting('advDeliOrbQtyPerMap', next.advDeliOrbQtyPerMap);
+                updateAdvSetting('advDeliOrbPriceEach', next.advDeliOrbPriceEach);
+              }} size="xs" placeholder="Type to search..." searchable clearable
               leftSection={settings.advDeliOrbType ? <PoeItemIcon name={deliOrbItemName(settings.advDeliOrbType)} size={16} category="orb" /> : undefined}
               renderOption={({ option }) => (
                 <Group gap={6} wrap="nowrap">
-                  <PoeItemIcon name={deliOrbItemName(option.value)} size={16} category="orb" />
+                  {option.value && <PoeItemIcon name={deliOrbItemName(option.value)} size={16} category="orb" />}
                   <Text size="xs">{option.label}</Text>
                 </Group>
               )} />
@@ -397,14 +425,19 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
             </Text>
           </AdvSection>
           {showAstrolabe && (
-          <AdvSection title="Astrolabe" filled={astrolabeFilled}>
+          <AdvSection title="Astrolabe" status={completeness.sections.astrolabe}>
             <Text size="xs" c="dimmed">Random duration. Enter price each + count used this session.</Text>
             <Select label="Type" data={astrolabeOptions} value={settings.advAstrolabeType || null}
-              onChange={(v) => updateAdvSetting('advAstrolabeType', v ?? '')} size="xs" placeholder="Select astrolabe..." clearable searchable
+              onChange={(v) => {
+                const next = nextAstrolabeSelection(settings, v);
+                updateAdvSetting('advAstrolabeType', next.advAstrolabeType);
+                updateAdvSetting('advAstrolabePrice', next.advAstrolabePrice);
+                updateAdvSetting('advAstrolabeCount', next.advAstrolabeCount);
+              }} size="xs" placeholder="Select astrolabe..." clearable searchable
               leftSection={settings.advAstrolabeType ? <PoeItemIcon name={settings.advAstrolabeType} size={16} category="astrolabe" /> : undefined}
               renderOption={({ option }) => (
                 <Group gap={6} wrap="nowrap">
-                  <PoeItemIcon name={option.value} size={16} category="astrolabe" />
+                  {option.value && <PoeItemIcon name={option.value} size={16} category="astrolabe" />}
                   <Text size="xs">{option.label}</Text>
                 </Group>
               )} />
@@ -419,7 +452,7 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
             </Text>
           </AdvSection>
           )}
-          <AdvSection title="Gem Leveling" filled={gemFilled}>
+          <AdvSection title="Gem Leveling" status={completeness.sections.gem}>
             <Text size="xs" c="dimmed">
               Tracked separately — gem buy cost and sell value are both excluded from map profit.
               Enter the gem name to auto-exclude matching items when you import a loot CSV.
@@ -460,7 +493,7 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
             )}
           </AdvSection>
           {showSplit && (
-          <AdvSection title="Split Session" filled={splitFilled}>
+          <AdvSection title="Split Session" status={completeness.sections.split}>
             <Group gap={6} wrap="nowrap">
               {/* Fractured Fossil = the actual split fossil (session-16 review
                   correction; Shuddering was wrong). The beast-orb icon was
@@ -594,6 +627,14 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
               </Text>
             </Alert>
           )}
+          {completeness.hasIncompleteCosts && (
+            <Alert color="yellow" variant="light" p="xs" title="Costs incomplete">
+              <Text size={isMaximized ? 'sm' : 'xs'}>
+                Add current-run prices or usage for {completeness.incompleteCostLabels.join(', ')}.
+                {' '}Until then, those items are excluded from investment and profit.
+              </Text>
+            </Alert>
+          )}
           <div className="investment-overview">
             <div className="investment-summary-grid">
               <InvestmentMetric label={
@@ -636,7 +677,13 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
             </div>
 
             <Group className="investment-overview-actions" gap={4} wrap="nowrap">
-              <Button variant="default" size={isMaximized ? 'sm' : 'xs'} leftSection={<IconSettings size={12} />} onClick={openAdv} style={{ flex: 1 }}>
+              <Button
+                variant="default"
+                size={isMaximized ? 'sm' : 'xs'}
+                leftSection={<IconSettings size={12} />}
+                onClick={openAdv}
+                style={{ flex: 1 }}
+              >
                 Advanced Costs
               </Button>
               <Tooltip label="Reset all costs (keeps divine price)">

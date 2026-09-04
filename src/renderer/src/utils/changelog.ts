@@ -13,6 +13,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.95',
     date: 'Unreleased',
     changes: [
+      'Loading a strategy now clones its actual map, chisel, scarab, Delirium, Astrolabe, and Atlas setup without copying stale historical prices. Investment marks configured-but-unpriced items incomplete, excludes them from local profit, and blocks sharing until current prices or usage are supplied; choosing None or replacing an item also clears dependent stale costs.',
       'Readable strategy imports now preserve negative Profit/map values under both current and legacy labels instead of silently turning a loss into zero. Zero and positive values plus compact share imports remain unchanged.',
       'Loading build settings from a pasted readable or compact strategy now applies its authored 6-mod or 8-mod setup even when the strategy has no Run regex. Missing or unsupported values retain the fresh-session fallback, while complete Map Log observations still take precedence.',
       'Expanded Strategy Browser cards now close with the ordinary mouse Back button, Alt+Left, or Escape and return to the exact prior list position. The shortcuts stay scoped to the strategy panel and do not claim text editing or add application-history entries.',
