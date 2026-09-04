@@ -181,7 +181,7 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     const perMapCost  = num([/Per Map Cost:\s*([\d.]+)c/]);
     const totalInvest = authoredTotal('Total Invest');
     const totalReturn = authoredTotal('Total Return');
-    const divPerMap   = num([/Profit\/map:\s*([\d.]+)d/, /Div \/ Map:\s*([\d.]+)d/]);
+    const divPerMap   = num([/Profit\/map:\s*([+-]?[\d.]+)d/, /Div \/ Map:\s*([+-]?[\d.]+)d/]);
     const netProfit   = authoredTotal('Net Profit');
     const mapType     = str([/Type:\s*([68]-mod)/]);
     const chiselRaw   = str([/Chisel:\s*([^\n]+)/]);
