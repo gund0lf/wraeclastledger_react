@@ -704,7 +704,7 @@ export const StrategyBrowserModule = () => {
           borderBottom: `1px solid ${COLOR.border}`, boxShadow: `0 2px 0 ${COLOR.bgDeep}`,
         }}>
           <div style={{ width: browserCols.chevron, flexShrink: 0 }} />
-          <Text size="xs" c="dimmed" style={{ width: browserCols.author, flexShrink: 0, fontSize: FONT.small }}>Author</Text>
+          <Text size="xs" c="dimmed" style={{ width: browserCols.author, flexShrink: 0, fontSize: FONT.small }}>Strategy</Text>
           <Text size="xs" c="dimmed" style={{ flex: 1, minWidth: 0, fontSize: FONT.small }}>Tags</Text>
           {isSetupSidebarCollapsed && (
             <Tooltip label="Time since the latest published result, or its latest update when revised — click to sort. Exact dates remain inside the expanded card." withArrow multiline w={270}>

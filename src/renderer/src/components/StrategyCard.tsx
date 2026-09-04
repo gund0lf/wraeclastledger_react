@@ -34,6 +34,7 @@ import {
 import { COLOR, FONT } from '../utils/uiTokens';
 import { formatRelativeAge, latestStrategyActivity } from '../utils/relativeTime';
 import { computePublishedSetupCostBreakdown } from '../utils/strategySetupCosts';
+import { strategyRowIdentity } from '../utils/strategyIdentity';
 import { CHISEL_TYPES } from '../utils/constants';
 import { isSafeStrategyAtlasUrl } from '../utils/atlasUrl';
 import './StrategyCard.css';
@@ -261,6 +262,7 @@ export const StrategyCard = ({
     divPerHour,
     timedRunCount,
   } = evidencePresentation(strategy);
+  const rowIdentity = strategyRowIdentity(strategy, evidenceRunCount);
   const [pooledSetupCosts, setPooledSetupCosts] = useState<PooledEvidenceCostBreakdown | null>(null);
   const [pooledSetupState, setPooledSetupState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   useEffect(() => {
@@ -468,9 +470,15 @@ export const StrategyCard = ({
         <ActionIcon size={browserCols.chevron} variant="transparent" c="dimmed">
           {open ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
         </ActionIcon>
-        <Stack gap={0} style={{ width: browserCols.author, minWidth: 0 }}>
-          <Group gap={3} wrap="nowrap">
-            <Text size="xs" fw={600} lineClamp={1} title={strategy.discord_username}>{strategy.discord_username}</Text>
+        <Stack gap={1} style={{ width: browserCols.author, minWidth: 0 }}>
+          <Text size="xs" fw={700} lineClamp={1} title={rowIdentity.title} style={{ lineHeight: 1.15 }}>
+            {rowIdentity.title}
+          </Text>
+          <Group gap={3} wrap="nowrap" style={{ minWidth: 0 }}>
+            <Text size="xs" c="dimmed" lineClamp={1} title={rowIdentity.attribution}
+              style={{ minWidth: 0, flex: 1, fontSize: FONT.label, lineHeight: 1.15 }}>
+              {rowIdentity.attribution}
+            </Text>
             {isGroup && (
               <Tooltip label={`Group / Party play${strategy.group_size ? ` — ${strategy.group_size} players` : ''} — loot scales with more players`} withArrow>
                 <Badge size="xs" color="cyan" variant="light" style={{ fontSize: FONT.micro, padding: '0 3px', flexShrink: 0, cursor: 'help' }}>
@@ -500,9 +508,6 @@ export const StrategyCard = ({
               </Tooltip>
             )}
           </Group>
-          {strategy.strategy_name && (
-            <Text size="xs" c="dimmed" lineClamp={1} style={{ fontSize: FONT.label }}>{strategy.strategy_name}</Text>
-          )}
         </Stack>
         <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
           <TagStrip tagStr={strategy.type_tag} layoutKey={open} />
@@ -535,29 +540,13 @@ export const StrategyCard = ({
           withArrow multiline w={260}>
           <div style={{
             width: browserCols.maps,
-            alignSelf: 'stretch',
             flexShrink: 0,
-            position: 'relative',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             cursor: isPooled ? 'help' : undefined,
           }}>
             <Text size="xs" fw={600} c="gray.4" style={{ fontSize: FONT.body, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{displayMapCount != null ? displayMapCount : '—'}</Text>
-            {isPooled && (
-              <Text c="blue" style={{
-                position: 'absolute',
-                left: '50%',
-                top: 'calc(50% + 6px)',
-                transform: 'translateX(-50%)',
-                fontSize: FONT.micro,
-                lineHeight: 1,
-                whiteSpace: 'nowrap',
-                pointerEvents: 'none',
-              }}>
-                {evidenceRunCount} {evidenceRunCount === 1 ? 'run' : 'runs'}
-              </Text>
-            )}
           </div>
         </Tooltip>
         <Text size="xs" fw={600} c="gray.4" style={{ width: browserCols.cost, textAlign: 'center', flexShrink: 0, fontSize: FONT.body, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', overflow: 'hidden' }}>
