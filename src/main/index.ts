@@ -20,6 +20,8 @@ import {
 } from '../shared/atlasReaderSafety'
 import { resolveUserDataPath } from '../shared/appProfile'
 import { resolveAutoUpdatePolicy } from '../shared/updatePolicy'
+import { INITIAL_UPDATER_STATUS } from '../shared/updaterStatus'
+import { UpdaterCoordinator } from './updaterCoordinator'
 import {
   ProtonClipboardFrameDecoder,
   type ClipboardBridgeStatus,
@@ -586,6 +588,8 @@ ipcMain.handle('discord-share:brotli-decode', (_event, token: unknown) => {
   }
 })
 
+let updaterCoordinator: UpdaterCoordinator | null = null;
+
 function setupAutoUpdater(mainWindow: BrowserWindow): void {
   const policy = resolveAutoUpdatePolicy({
     isDevelopment: is.dev,
@@ -595,36 +599,29 @@ function setupAutoUpdater(mainWindow: BrowserWindow): void {
   });
   if (!policy.enabled) {
     console.info(`[Updater] Disabled: ${policy.reason}`);
-    return;
   }
-  autoUpdater.allowPrerelease = policy.allowPrerelease;
-  autoUpdater.autoDownload         = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.on('update-available',     (info) => mainWindow.webContents.send('update-available', info.version));
-  autoUpdater.on('update-not-available', ()     => mainWindow.webContents.send('update-not-available'));
-  autoUpdater.on('update-downloaded',    ()     => mainWindow.webContents.send('update-downloaded'));
-  autoUpdater.on('error', (err) => {
-    console.error('[Updater]', err?.message ?? err);
-    mainWindow.webContents.send('update-error', err?.message ?? 'Unknown error');
+  updaterCoordinator?.dispose();
+  const coordinator = new UpdaterCoordinator(autoUpdater, policy, (status) => {
+    if (!mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send('updater-state', status);
+    }
+  }, (error) => console.error('[Updater]', error));
+  updaterCoordinator = coordinator;
+  mainWindow.once('closed', () => {
+    coordinator.dispose();
+    if (updaterCoordinator === coordinator) updaterCoordinator = null;
   });
-  autoUpdater.checkForUpdates().catch(() => {});
-  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 2 * 60 * 60 * 1000);
+  coordinator.start();
 }
+
+ipcMain.handle('updater:get-state', () => updaterCoordinator?.getStatus() ?? INITIAL_UPDATER_STATUS);
 
 ipcMain.on('install-update', () => {
   const mainWindow = watchWindow
   if (mainWindow && !mainWindow.isDestroyed()) void continueQuit('updater', mainWindow)
 });
 ipcMain.on('check-for-updates', () => {
-  const policy = resolveAutoUpdatePolicy({
-    isDevelopment: is.dev,
-    platform: process.platform,
-    version: app.getVersion(),
-    appImagePath: process.env.APPIMAGE,
-  });
-  if (!policy.enabled) return;
-  autoUpdater.allowPrerelease = policy.allowPrerelease;
-  autoUpdater.checkForUpdates().catch(() => {});
+  void updaterCoordinator?.check();
 });
 
 // Strategy Browser can load a Path of Pathing tree while the visible Atlas Tree

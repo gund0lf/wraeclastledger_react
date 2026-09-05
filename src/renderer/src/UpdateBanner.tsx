@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useSyncExternalStore } from 'react';
 import { Button, Group, Text, Stack, List, Badge, Collapse, ActionIcon } from '@mantine/core';
 import { IconChevronDown, IconChevronRight, IconX } from '@tabler/icons-react';
 import { CHANGELOG } from './utils/changelog';
 import { useUIStore } from './store/useUIStore';
 import pkg from '../../../package.json';
+import { UpdaterPresentation, updaterCopy } from './utils/updaterPresentation';
 import {
   repositoryLastSeenVersion,
   setRepositoryLastSeenVersion,
@@ -42,11 +43,13 @@ const VersionEntry = ({ entry, defaultOpen }: { entry: typeof CHANGELOG[0]; defa
 };
 
 export const UpdateBanner = () => {
-  const [updateVersion,  setUpdateVersion]  = useState<string | null>(null);
-  const [downloaded,     setDownloaded]     = useState(false);
+  const [updater] = useState(() => new UpdaterPresentation());
+  const { status, dismissed, upToDateFlash } = useSyncExternalStore(updater.subscribe, updater.getSnapshot);
+  const downloaded = status.phase === 'ready';
+  const failed = status.phase === 'failed';
+  const copy = updaterCopy(status);
   const [showChangelog,  setShowChangelog]  = useState(false);
   const [showHistory,    setShowHistory]    = useState(false);
-  const [upToDateFlash,  setUpToDateFlash]  = useState(false);
 
   useEffect(() => {
     const seen = repositoryLastSeenVersion();
@@ -67,13 +70,8 @@ export const UpdateBanner = () => {
   useEffect(() => {
     const ipc = window.electron?.ipcRenderer;
     if (!ipc) return;
-    ipc.on('update-available',     (_, version: string) => setUpdateVersion(version));
-    ipc.on('update-downloaded',    ()                   => setDownloaded(true));
-    ipc.on('update-not-available', ()                   => {
-      setUpToDateFlash(true);
-      setTimeout(() => setUpToDateFlash(false), 3000);
-    });
-  }, []);
+    return updater.connect(ipc);
+  }, [updater]);
 
   // Entries for the current version (shown expanded by default)
   const currentEntries = CHANGELOG.filter((e) => {
@@ -155,31 +153,36 @@ export const UpdateBanner = () => {
         </div>
       )}
 
-      {updateVersion && (
+      {!dismissed && ['checking', 'downloading', 'failed', 'ready'].includes(status.phase) && (
         <div style={{
           position: 'fixed', bottom: showChangelog ? 320 : 12, right: 12,
           zIndex: 9999, maxWidth: 300,
-          background: '#1e1f22', border: `1px solid ${downloaded ? '#40c057' : '#4dabf7'}`,
+          background: '#1e1f22', border: `1px solid ${failed ? '#fa5252' : downloaded ? '#40c057' : '#4dabf7'}`,
           borderRadius: 8, padding: 12, boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
         }}>
           <Group justify="space-between" mb={4}>
-            <Text size="sm" fw={700} c={downloaded ? 'green' : 'blue'}>
-              {downloaded ? `v${updateVersion} Ready` : `v${updateVersion} Downloading…`}
+            <Text size="sm" fw={700} c={failed ? 'red' : downloaded ? 'green' : 'blue'}>
+              {copy.title}
             </Text>
             {!downloaded && (
-              <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => setUpdateVersion(null)}><IconX size={12} /></ActionIcon>
+              <ActionIcon size="sm" variant="subtle" color="gray" aria-label="Dismiss update notice" onClick={updater.dismiss}><IconX size={12} /></ActionIcon>
             )}
           </Group>
           {downloaded ? (
             <Stack gap={4}>
-              <Text size="xs" c="dimmed">Downloaded and ready to install.</Text>
+              <Text size="xs" c="dimmed">{copy.body}</Text>
               <Button size="xs" color="teal" variant="light"
                 onClick={() => window.electron?.ipcRenderer.send('install-update')}>
                 Restart & Update
               </Button>
             </Stack>
+          ) : failed ? (
+            <Stack gap={4}>
+              <Text size="xs" c="dimmed">{copy.body}</Text>
+              <Button size="xs" color="blue" variant="light" onClick={updater.retry}>Retry</Button>
+            </Stack>
           ) : (
-            <Text size="xs" c="dimmed">Downloading in background…</Text>
+            <Text size="xs" c="dimmed">{copy.body}</Text>
           )}
         </div>
       )}
