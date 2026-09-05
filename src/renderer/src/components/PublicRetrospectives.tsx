@@ -2,26 +2,15 @@ import {
   ActionIcon, Alert, Badge, Card, Group, Loader, Stack, Text, Tooltip,
 } from '@mantine/core';
 import { IconCoins, IconRefresh, IconSnowflake, IconTrophy } from '@tabler/icons-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useLayoutEffect, useState, useSyncExternalStore } from 'react';
 import type { Strategy } from '../utils/strategyConstants';
 import { BROWSER_MIN_CONTENT_WIDTH } from '../utils/strategyConstants';
-import {
-  fetchRetrospectiveBoard,
-  fetchRetrospectiveCatalog,
-  fetchRetrospectiveStrategy,
-  type RetrospectiveBoardResponse,
-  type RetrospectiveSnapshot,
-} from '../utils/retrospectiveApi';
+import { FrozenBrowserRequests, frozenStrategyKey } from '../utils/strategyBrowserRequests';
 import { COLOR } from '../utils/uiTokens';
 import { StrategyCard } from './StrategyCard';
 
 interface Props {
   onLoadStrategy: (strategy: Strategy) => void;
-}
-
-interface SnapshotBoards {
-  rated: RetrospectiveBoardResponse;
-  profit: RetrospectiveBoardResponse;
 }
 
 function displayTime(iso: string): string {
@@ -107,49 +96,16 @@ const FrozenBoard = ({
 );
 
 export const PublicRetrospectives = ({ onLoadStrategy }: Props) => {
-  const [snapshots, setSnapshots] = useState<RetrospectiveSnapshot[]>([]);
-  const [boards, setBoards] = useState<Record<string, SnapshotBoards>>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [loadingStrategyId, setLoadingStrategyId] = useState<string | null>(null);
-
-  const loadSnapshots = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const catalog = await fetchRetrospectiveCatalog();
-      setSnapshots(catalog.retrospectives);
-      const loadedBoards = await Promise.all(catalog.retrospectives.map(async (snapshot) => {
-        const [rated, profit] = await Promise.all([
-          fetchRetrospectiveBoard(snapshot.league_key, 'score'),
-          fetchRetrospectiveBoard(snapshot.league_key, 'div_per_map'),
-        ]);
-        return [snapshot.league_key, { rated, profit }] as const;
-      }));
-      setBoards(Object.fromEntries(loadedBoards));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not load public snapshots.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadSnapshots();
-  }, [loadSnapshots]);
-
-  const loadFrozenStrategy = async (leagueKey: string, strategy: Strategy) => {
-    setLoadingStrategyId(strategy.id);
-    setError(null);
-    try {
-      const detail = await fetchRetrospectiveStrategy(leagueKey, strategy.id);
-      onLoadStrategy(detail.strategy);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not load this frozen strategy.');
-    } finally {
-      setLoadingStrategyId(null);
-    }
-  };
+  const [requests] = useState(() => new FrozenBrowserRequests());
+  const { snapshots, boards, loading, listError, actionError, loadingStrategyKey } =
+    useSyncExternalStore(requests.subscribe, requests.getSnapshot);
+  const error = actionError ?? listError;
+  useLayoutEffect(() => {
+    requests.activate();
+    return () => requests.deactivate();
+  }, [requests]);
+  const loadFrozenStrategy = (leagueKey: string, strategy: Strategy) =>
+    requests.load(leagueKey, strategy.id, onLoadStrategy);
 
   return (
     <Stack gap="sm">
@@ -169,7 +125,7 @@ export const PublicRetrospectives = ({ onLoadStrategy }: Props) => {
             variant="default"
             loading={loading}
             aria-label="Refresh public snapshots"
-            onClick={() => void loadSnapshots()}
+            onClick={() => void requests.refresh()}
           >
             <IconRefresh size={14} />
           </ActionIcon>
@@ -221,7 +177,7 @@ export const PublicRetrospectives = ({ onLoadStrategy }: Props) => {
                       description="Community score captured when this snapshot was created."
                       strategies={snapshotBoards.rated.strategies}
                       total={snapshotBoards.rated.total}
-                      loadingStrategyId={loadingStrategyId}
+                      loadingStrategyId={snapshotBoards.rated.strategies.find((row) => frozenStrategyKey(snapshot.league_key, row.id) === loadingStrategyKey)?.id ?? null}
                       onLoad={(strategy) => void loadFrozenStrategy(snapshot.league_key, strategy)}
                     />
                     <FrozenBoard
@@ -230,7 +186,7 @@ export const PublicRetrospectives = ({ onLoadStrategy }: Props) => {
                       strategies={snapshotBoards.profit.strategies}
                       total={snapshotBoards.profit.total}
                       profit
-                      loadingStrategyId={loadingStrategyId}
+                      loadingStrategyId={snapshotBoards.profit.strategies.find((row) => frozenStrategyKey(snapshot.league_key, row.id) === loadingStrategyKey)?.id ?? null}
                       onLoad={(strategy) => void loadFrozenStrategy(snapshot.league_key, strategy)}
                     />
                   </>

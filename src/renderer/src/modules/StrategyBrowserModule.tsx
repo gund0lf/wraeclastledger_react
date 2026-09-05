@@ -3,14 +3,14 @@ import {
   ActionIcon, Loader, Alert, Tooltip, Modal, UnstyledButton, SegmentedControl, Paper,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useSyncExternalStore, useRef } from 'react';
 import { IconRefresh, IconBrandDiscord, IconShare2 } from '@tabler/icons-react';
 import { useSessionKeys, useSessionStore } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
 import { KNOWN_LEAGUES, activeKnownLeagues, isLeagueEnded } from '../utils/league';
 import { parseDiscordExport } from '../utils/parseDiscordExport';
 import {
-  Strategy, ApiResponse, ALL_TYPE_TAGS, BROWSER_COLS, BROWSER_GRID_TEMPLATE, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X,
+  Strategy, ALL_TYPE_TAGS, BROWSER_COLS, BROWSER_GRID_TEMPLATE, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X,
   BROWSER_MIN_CONTENT_WIDTH, BROWSER_MAXIMIZED_COLS, BROWSER_MAXIMIZED_GRID_TEMPLATE,
   BROWSER_MAXIMIZED_MIN_CONTENT_WIDTH, BROWSER_SETUP_COLLAPSED_GRID_TEMPLATE,
   BROWSER_MAXIMIZED_SETUP_COLLAPSED_GRID_TEMPLATE, BROWSER_SETUP_COLLAPSED_MIN_CONTENT_WIDTH,
@@ -39,10 +39,7 @@ import {
   nameWorking,
   startWorking,
 } from '../repository/sessionRepositoryRuntime';
-import {
-  hasSameStrategyDetailVersion,
-  mergeRefreshedStrategyPage,
-} from '../utils/strategyRefresh';
+import { EMPTY_LIVE_BROWSER, LiveBrowserRequests, STRATEGY_PAGE_SIZE } from '../utils/strategyBrowserRequests';
 import { isStrategyBackIntent } from '../utils/strategyBackNavigation';
 import { applyImportedMapType } from '../utils/importBuildSettings';
 import { buildImportedSetupPlan, type ImportedSetupPlan } from '../utils/investmentSetup';
@@ -50,12 +47,6 @@ import { MAP_DEVICE_SLOT_COUNT } from '../../../shared/mapDevice';
 
 // API base (incl. the VITE_STRATEGY_API_URL dev override) moved to
 // strategyConstants.STRATEGY_API_URL — shared with the game-data loader.
-
-async function fetchStrategyDetail(apiUrl: string, strategyId: string): Promise<Strategy> {
-  const response = await fetch(`${apiUrl}/strategies/${encodeURIComponent(strategyId)}`);
-  if (!response.ok) throw new Error(`Server returned ${response.status}`);
-  return response.json() as Promise<Strategy>;
-}
 
 // ─── Main module ───────────────────────────────────────────────────────────────
 export const StrategyBrowserModule = () => {
@@ -90,11 +81,8 @@ export const StrategyBrowserModule = () => {
   const requestAtlasApply = useUIStore((s) => s.requestAtlasApply);
 
   const apiUrl = STRATEGY_API_URL;
-  const [strategies, setStrategies] = useState<Strategy[]>([]);
-  const [total,      setTotal]      = useState(0);
-  const [loading,    setLoading]    = useState(false);
-  const [error,      setError]      = useState<string | null>(null);
-  const [offset,     setOffset]     = useState(0);
+  const [requests] = useState(() => new LiveBrowserRequests());
+  const browserState = useSyncExternalStore(requests.subscribe, requests.getSnapshot);
   const [loadedMsg,  setLoadedMsg]  = useState<string | null>(null);
   const [typeTags,   setTypeTags]   = useState<string[]>([]);
   // Default filter follows the active context: manual override wins, else the
@@ -111,48 +99,40 @@ export const StrategyBrowserModule = () => {
   const [period,     setPeriod]     = useState('all');
   const [hideGroup,  setHideGroup]  = useState(false);
   const [browserView, setBrowserView] = useState<'live' | 'retrospectives'>('live');
-  const [expandedStrategyId, setExpandedStrategyId] = useState<string | null>(null);
-  const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
+  const params = new URLSearchParams({ limit: String(STRATEGY_PAGE_SIZE), offset: '0', sort: sortBy });
+  if (sortOrder) params.set('order', sortOrder);
+  if (typeTags.length) params.set('type_tag', typeTags.join(','));
+  const divNum = parseFloat(minDiv);
+  if (!isNaN(divNum) && divNum > 0) params.set('min_div', String(divNum));
+  if (period !== 'all') params.set('since', period);
+  if (leagueFilter) params.set('league', leagueFilter);
+  const query = browserView === 'live' ? `${apiUrl}/strategies?${params}` : null;
+  // Hide old-scope rows in the transition render; layout cleanup revokes all
+  // old continuations before the new view becomes interactive.
+  const visible = query && browserState.query === query ? browserState : EMPTY_LIVE_BROWSER;
+  const { strategies, total, offset, loading, expandedId: expandedStrategyId, detailLoadingId } = visible;
+  const error = visible.detailError ?? visible.listError;
+  const LIMIT = STRATEGY_PAGE_SIZE;
   const strategyViewportRef = useRef<HTMLDivElement>(null);
   const strategyListScrollTopRef = useRef(0);
-  const strategiesRef = useRef<Strategy[]>([]);
-  const expandedStrategyIdRef = useRef<string | null>(null);
-  strategiesRef.current = strategies;
-  expandedStrategyIdRef.current = expandedStrategyId;
-  const LIMIT = 20;
-
+  const navigationAttempt = useRef(0);
   const setStrategyExpanded = (strategyId: string, expanded: boolean) => {
+    const navigation = ++navigationAttempt.current;
     if (expanded) {
       strategyListScrollTopRef.current = strategyViewportRef.current?.scrollTop ?? 0;
-      setExpandedStrategyId(strategyId);
+      requests.expand(strategyId);
       requestAnimationFrame(() => {
+        if (navigation !== navigationAttempt.current || requests.getSnapshot().expandedId !== strategyId) return;
         strategyViewportRef.current?.scrollTo({ top: 0 });
         strategyViewportRef.current?.focus({ preventScroll: true });
       });
-      const summary = strategies.find((strategy) => strategy.id === strategyId);
-      if (summary && !summary.raw_export) {
-        setDetailLoadingId(strategyId);
-        void fetchStrategyDetail(apiUrl, strategyId)
-          .then((detail) => {
-            setStrategies((current) => current.map((strategy) => (
-              strategy.id === strategyId ? { ...strategy, ...detail } : strategy
-            )));
-          })
-          .catch((detailError: unknown) => {
-            setError(detailError instanceof Error
-              ? `Could not load full strategy details: ${detailError.message}`
-              : 'Could not load full strategy details.');
-          })
-          .finally(() => setDetailLoadingId((current) => (
-            current === strategyId ? null : current
-          )));
-      }
-      return;
+    } else {
+      requests.expand(null);
+      requestAnimationFrame(() => {
+        if (navigation !== navigationAttempt.current || requests.getSnapshot().expandedId !== null) return;
+        strategyViewportRef.current?.scrollTo({ top: strategyListScrollTopRef.current });
+      });
     }
-    setExpandedStrategyId(null);
-    requestAnimationFrame(() => strategyViewportRef.current?.scrollTo({
-      top: strategyListScrollTopRef.current,
-    }));
   };
 
   const requestCurrentAtlasApply = (
@@ -188,13 +168,6 @@ export const StrategyBrowserModule = () => {
       setLoadedMsg(`Build loaded, but Atlas Calc could not read the Atlas Tree: ${message}.`);
     });
   };
-
-  // Refs mirroring loading/offset for the background-refresh interval —
-  // keeps the interval effect off those fast-changing deps (no re-arm churn).
-  const loadingRef = useRef(false);
-  const offsetRef  = useRef(0);
-  loadingRef.current = loading;
-  offsetRef.current  = offset;
 
   // ── Share modal ───────────────────────────────────────────────────────────────
   const [shareOpen, { open: openShare, close: closeShare }] = useDisclosure(false);
@@ -469,49 +442,6 @@ export const StrategyBrowserModule = () => {
     requestReplacement(() => applyImportedBuild(parsed));
   };
 
-  // ── Fetch ─────────────────────────────────────────────────────────────────────
-  const fetchStrategies = useCallback(async (newOffset = 0) => {
-    setLoading(true); setError(null);
-    try {
-      const params = new URLSearchParams({ limit: String(LIMIT), offset: String(newOffset), sort: sortBy });
-      if (sortOrder) params.set('order', sortOrder);
-      if (typeTags.length > 0) params.set('type_tag', typeTags.join(','));
-      const divNum = parseFloat(minDiv);
-      if (!isNaN(divNum) && divNum > 0) params.set('min_div', String(divNum));
-      if (period !== 'all') params.set('since', period);
-      if (leagueFilter) params.set('league', leagueFilter);
-      const res  = await fetch(`${apiUrl}/strategies?${params}`);
-      if (!res.ok) throw new Error(`Server returned ${res.status}`);
-      const data: ApiResponse = await res.json();
-      let refreshedStrategies = data.strategies;
-      const expandedId = expandedStrategyIdRef.current;
-      if (newOffset === 0 && expandedId) {
-        const currentExpanded = strategiesRef.current.find((strategy) => strategy.id === expandedId);
-        const refreshedExpanded = refreshedStrategies.find((strategy) => strategy.id === expandedId);
-        if (
-          currentExpanded?.raw_export
-          && refreshedExpanded
-          && !hasSameStrategyDetailVersion(currentExpanded, refreshedExpanded)
-        ) {
-          setDetailLoadingId(expandedId);
-          try {
-            const detail = await fetchStrategyDetail(apiUrl, expandedId);
-            refreshedStrategies = refreshedStrategies.map((strategy) => (
-              strategy.id === expandedId ? { ...strategy, ...detail } : strategy
-            ));
-          } finally {
-            setDetailLoadingId((current) => current === expandedId ? null : current);
-          }
-        }
-      }
-      setStrategies(newOffset === 0
-        ? (current) => mergeRefreshedStrategyPage(current, refreshedStrategies)
-        : (current) => [...current, ...refreshedStrategies]);
-      setTotal(data.total); setOffset(newOffset);
-    } catch (err: any) { setError(err.message ?? 'Could not reach the strategy server.'); }
-    finally { setLoading(false); }
-  }, [apiUrl, typeTags, minDiv, sortBy, sortOrder, period, leagueFilter]);
-
   // ── Sorting (dropdown + click-header share the same state) ──────────────────
   const setSort = (key: SortKey) => { setSortBy(key); setSortOrder(null); };
   const effectiveDir: SortOrder = sortOrder ?? SORT_DEFAULT_DIR[sortBy];
@@ -534,20 +464,14 @@ export const StrategyBrowserModule = () => {
     clearStrategyAction();
   }, [pendingStrategyAction]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { fetchStrategies(0); }, [fetchStrategies]);
-
-  // Background refresh (Sad 2026-07-10): re-pull the first page every 5 min so
-  // fresh shares/votes appear without manual refresh. Skipped while a fetch is
-  // in flight or the user has paginated past page 1 (a refresh would discard
-  // their loaded rows); the interval keys on fetchStrategies, so filter/sort
-  // changes reset the timer naturally.
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (loadingRef.current || offsetRef.current > 0) return;
-      fetchStrategies(0);
-    }, 5 * 60_000);
-    return () => clearInterval(id);
-  }, [fetchStrategies]);
+  useLayoutEffect(() => {
+    if (query) requests.activate(query);
+    else requests.deactivate();
+    return () => {
+      navigationAttempt.current += 1;
+      requests.deactivate();
+    };
+  }, [requests, query]);
 
   const hasMore = offset + LIMIT < total;
 
@@ -654,7 +578,7 @@ export const StrategyBrowserModule = () => {
               </Tooltip>
               <Tooltip label="Refresh strategies" withArrow>
                 <ActionIcon size="md" variant="default" loading={loading} aria-label="Refresh strategies"
-                  onClick={() => fetchStrategies(0)}><IconRefresh size={14} /></ActionIcon>
+                  onClick={() => void requests.refresh()}><IconRefresh size={14} /></ActionIcon>
               </Tooltip>
             </Group> : undefined
           }
@@ -809,7 +733,7 @@ export const StrategyBrowserModule = () => {
                 onExpandedChange={(expanded) => setStrategyExpanded(s.id, expanded)} />)}
           </Stack>
           {!expandedStrategyId && hasMore && !loading && (
-            <Button variant="subtle" size="xs" fullWidth mt={8} onClick={() => fetchStrategies(offset + LIMIT)}>
+            <Button variant="subtle" size="xs" fullWidth mt={8} onClick={() => void requests.loadMore()}>
               Load more ({total - offset - LIMIT} remaining)
             </Button>
           )}
