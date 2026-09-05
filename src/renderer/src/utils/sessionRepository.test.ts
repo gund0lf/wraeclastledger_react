@@ -473,6 +473,8 @@ describe('WP14 concrete file repository', () => {
     await repository.releaseLock();
   });
 
+  // Thirty real disk save/load cycles need headroom on hosted Windows runners.
+  // This checks retention semantics; WP14's separate performance limits still apply.
   it('applies the 24-version bound on disk while pinning the current activation baseline', async () => {
     const profile = await tempProfile();
     let clock = new Date('2026-08-23T08:00:00.000Z');
@@ -507,7 +509,7 @@ describe('WP14 concrete file repository', () => {
     const versions = join(deriveSessionDirectory(deriveRepositoryPaths(profile).root, sessionId), 'versions');
     expect((await readdir(versions)).filter((name) => name.endsWith('.wlrec.gz'))).toHaveLength(24);
     await repository.releaseLock();
-  });
+  }, 15_000);
 
   it('rolls back every entry when a staged batch import fails after its first commit', async () => {
     const profile = await tempProfile();
