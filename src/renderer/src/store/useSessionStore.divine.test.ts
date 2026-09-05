@@ -19,9 +19,11 @@ vi.mock('../utils/priceUtils', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils/priceUtils')>();
   return {
     ...actual,
-    // The store calls tryFetchDivinePrice; the real one has its own 60s
+    // The store calls requestDivinePrice; the real one has its own 60s
     // cooldown which would interfere with these tests, so replace it.
-    tryFetchDivinePrice: (force?: boolean) => fetchMock(force),
+    requestDivinePrice: (league: string, force?: boolean) => ({
+      league, result: fetchMock(force), isCurrent: () => true,
+    }),
   };
 });
 vi.mock('../utils/league', async (importOriginal) => {
@@ -29,6 +31,7 @@ vi.mock('../utils/league', async (importOriginal) => {
   return {
     ...actual,
     getCurrentLeague: async () => leagueState.current,
+    currentLeagueSync: () => leagueState.current,
     confirmedLeagueSync: () => leagueState.confirmed,
   };
 });

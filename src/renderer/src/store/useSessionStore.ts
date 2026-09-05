@@ -2,8 +2,8 @@ import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { MapData, SessionSettings, LootItem, ManualLootItem, ManualSessionStatistics, ManualRunTimer, SavedSession, ScarabSlot, ScarabPreset, RegexSet, ExclusionPreset, LeagueCloseouts } from '../types';
 import { v4 as uuidv4 } from 'uuid';
-import { tryFetchDivinePrice, sanitizeExclusionTerms } from '../utils/priceUtils';
-import { confirmedLeagueSync, getCurrentLeague, normalizeLeagueOverride, setLeagueOverrideValue } from '../utils/league';
+import { requestDivinePrice, sanitizeExclusionTerms } from '../utils/priceUtils';
+import { confirmedLeagueSync, currentLeagueSync, getCurrentLeague, normalizeLeagueOverride, setLeagueOverrideValue } from '../utils/league';
 import { ModGroupState, cloneDefaultGroups } from '../utils/regexBuilderPresets';
 import { isRetrospectiveLeague, normalizeLeagueKey } from '../utils/retrospectives';
 import { MAP_DEVICE_SLOT_COUNT } from '../../../shared/mapDevice';
@@ -66,6 +66,12 @@ export interface SessionRepositoryActions {
 }
 
 let repositoryActions: SessionRepositoryActions | null = null;
+
+// Transient request ownership, never session data or repository state.
+let divineInitSequence = 0;
+let latestApplicableDivineInit = 0;
+let divineManualEditSequence = 0;
+let divineContextEditSequence = 0;
 
 export function configureSessionRepositoryActions(actions: SessionRepositoryActions | null): void {
   repositoryActions = actions;
@@ -783,9 +789,20 @@ export const useSessionStore = create<SessionStoreState>()(
         // Divine price is a session snapshot. Automatically seed only an unset
         // or legacy-default session; once authored, it stays fixed regardless
         // of age. `force` is an explicit refresh/override action.
-        const { settings: st, activeSessionId, sessionLifecycle } = get();
+        const invocation = ++divineInitSequence;
+        const manualEdit = divineManualEditSequence;
+        const contextEdit = divineContextEditSequence;
+        const { settings: st, activeSessionId, sessionLifecycle, sessionNonce, leagueOverride } = get();
         const requestedSessionId = activeSessionId;
         const requestedLifecycle = sessionLifecycle;
+        const ownsSession = (s: SessionStoreState): boolean => (
+          s.activeSessionId === requestedSessionId && s.sessionLifecycle === requestedLifecycle &&
+          s.sessionNonce === sessionNonce && s.leagueOverride === leagueOverride &&
+          divineManualEditSequence === manualEdit &&
+          divineContextEditSequence === contextEdit &&
+          s.settings.divinePrice === st.divinePrice &&
+          s.settings.divinePriceQuotedAt === st.divinePriceQuotedAt
+        );
         // Historical-session guard (Phase 1.5): a loaded saved session is
         // never auto-mutated — the audit found this exact path repricing AND
         // re-stamping the league of old sessions, with the WP10 auto-save
@@ -800,22 +817,34 @@ export const useSessionStore = create<SessionStoreState>()(
         // to 30 minutes. A context change also bypasses the one-minute retry
         // cooldown because that cooldown belongs to the previous league.
         const league = await getCurrentLeague();
+        if (!ownsSession(get()) || invocation < latestApplicableDivineInit) return;
+        const resolvedContext = currentLeagueSync();
+        if (resolvedContext && resolvedContext !== league) return;
         const leagueChanged = st.leagueName.trim() !== '' && st.leagueName !== league;
         const isUnset = st.divinePrice === 0 || st.divinePrice === 200;
         if (!opts.force && !leagueChanged && !isUnset) return;
+        // A later automatic no-op must not supersede a real explicit refresh.
+        latestApplicableDivineInit = invocation;
         // Price is cooldown-gated unless explicitly forced or the league
         // changed. League detection has its own in-memory cache and falls back
         // to CURRENT_LEAGUE on failure.
-        // FETCH-FIRST safety: nothing is mutated unless the fetch succeeded
-        // (a failed refresh preserves the old price everywhere).
-        const price = await tryFetchDivinePrice(opts.force === true || leagueChanged);
+        // A failed refresh preserves the old price. Confirmed league/Atlas
+        // seeding keeps its independent provenance guards below.
+        const request = requestDivinePrice(league, opts.force === true || leagueChanged);
+        const price = await request.result;
         const quotedAt = new Date().toISOString();
         const applyPriceSnapshot = () => set((s) => {
           const priceOk = !!(price && price > 0);
           const stillLive = s.sessionLifecycle === 'live';
-          // Ignore a response that completed after the user changed sessions.
-          if (s.activeSessionId !== requestedSessionId || s.sessionLifecycle !== requestedLifecycle) return {};
+          // A cached or pending result must still own both its request and the
+          // unchanged session/price context when the synchronous write occurs.
+          if (!ownsSession(s) || invocation !== latestApplicableDivineInit || !request.isCurrent()) return {};
           const realLeague = confirmedLeagueSync();
+          // The quote belongs to the league captured before the transport, not
+          // whichever league happened to become confirmed while it was pending.
+          const currentLeague = currentLeagueSync();
+          if ((currentLeague && currentLeague !== request.league) ||
+            (realLeague && realLeague !== request.league)) return {};
           const sameOrUnstamped = !!realLeague && (
             !s.settings.leagueName || s.settings.leagueName === realLeague
           );
@@ -866,6 +895,7 @@ export const useSessionStore = create<SessionStoreState>()(
       },
 
       setDivinePriceManual: (v) => {
+        divineManualEditSequence += 1;
         if (Object.is(get().settings.divinePrice, v)) return;
         const now = Date.now();
         set((s) => ({
@@ -1007,6 +1037,7 @@ export const useSessionStore = create<SessionStoreState>()(
 
       setLeagueOverride: (league) => {
         const v = normalizeLeagueOverride(league);
+        if (v !== get().leagueOverride) divineContextEditSequence += 1;
         setLeagueOverrideValue(v); // clears the detection cache in league.ts
         set((s) => {
           const live = s.sessionLifecycle === 'live';

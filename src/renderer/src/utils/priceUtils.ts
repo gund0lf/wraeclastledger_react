@@ -237,58 +237,84 @@ export const generateSlamRegex = (
 // stranded at 0c, while a failed attempt still remains a real failure.
 
 const DIVINE_PRICE_COOLDOWN_MS = 60_000;
-let lastDivineFetchAttempt = 0;
-let lastDivineFetchLeague: string | null = null;
-let lastDivineFetchResult: number | null = null;
+export interface DivinePriceRequest {
+  readonly league: string;
+  readonly result: Promise<number | null>;
+  /** Recheck at application time, even if the result has already resolved. */
+  isCurrent: () => boolean;
+}
 
-async function fetchDivinePriceForLeague(league: string): Promise<number | null> {
-  lastDivineFetchAttempt = Date.now();
-  lastDivineFetchLeague = league;
-  lastDivineFetchResult = null;
-  try {
-    // poe.ninja is fetched via the main process to avoid renderer CORS.
-    const res = await window.api?.fetchCurrencyOverview(league);
-    const lines = res?.lines ?? [];
-    const divine = lines.find((l) => l.id === 'divine');
-    const price = Number(divine?.primaryValue);
-    lastDivineFetchResult = Number.isFinite(price) && price > 0 ? price : null;
-    return lastDivineFetchResult;
-  } catch {
-    // AbortError or network error — caller treats null as "no price".
-    return null;
-  }
+interface DivinePriceAttempt {
+  attemptedAt: number;
+  pending: boolean;
+  request: DivinePriceRequest;
+}
+
+const divinePriceAttempts = new Map<string, DivinePriceAttempt>();
+
+/** The caller supplies its captured league; an attempt's identity owns that cache entry. */
+export function requestDivinePrice(league: string, force = false): DivinePriceRequest {
+  const previous = divinePriceAttempts.get(league);
+  if (!force && previous && (
+    previous.pending || Date.now() - previous.attemptedAt < DIVINE_PRICE_COOLDOWN_MS
+  )) return previous.request;
+
+  const attempt: DivinePriceAttempt = {
+    attemptedAt: Date.now(),
+    pending: true,
+    request: {
+      league,
+      isCurrent: () => divinePriceAttempts.get(league) === attempt,
+      // Defer the transport until this attempt owns the entry. Pending callers
+      // share this promise, including a failure; force creates a new owner.
+      result: Promise.resolve().then(async () => {
+        try {
+          const res = await window.api?.fetchCurrencyOverview(league);
+          if (!attempt.request.isCurrent()) return null;
+          const divine = res?.lines?.find((line) => line.id === 'divine');
+          const price = Number(divine?.primaryValue);
+          return Number.isFinite(price) && price > 0 ? price : null;
+        } catch {
+          return null;
+        } finally {
+          attempt.pending = false;
+        }
+      }),
+    },
+  };
+  divinePriceAttempts.set(league, attempt);
+  return attempt.request;
 }
 
 export async function fetchDivinePrice(): Promise<number | null> {
   try {
-    return await fetchDivinePriceForLeague(await getCurrentLeague());
+    const request = requestDivinePrice(await getCurrentLeague(), true);
+    const price = await request.result;
+    return request.isCurrent() ? price : null;
   } catch {
     return null;
   }
 }
 
 /**
- * Cooldown-gated wrapper around fetchDivinePrice.
+ * Cooldown-gated access to the shared per-league request cache.
  *
  * Reuses the latest result without making a network call when an attempt for
  * the same league is still inside the cooldown window. A successful result is
  * safe to seed another fresh session; a failed result stays null. Pass
  * `force: true` for explicit user-triggered refreshes — those should never be
- * rate-limited. A league change also fetches immediately because the previous
- * quote belongs to a different market.
+ * rate-limited. Each league reuses only its own pending attempt or recent result.
  *
- * The store's `initDivinePrice` uses this to prevent retry storms when
- * panels remount and the price keeps coming back as 0 due to an offline
- * network or a poe.ninja outage.
+ * The store uses requestDivinePrice directly with its captured league and
+ * rechecks ownership before applying the result. Both paths share this cooldown
+ * to prevent retry storms during an offline network or poe.ninja outage.
  */
 export async function tryFetchDivinePrice(force = false): Promise<number | null> {
   try {
     const league = await getCurrentLeague();
-    if (!force && lastDivineFetchLeague === league) {
-      const elapsed = Date.now() - lastDivineFetchAttempt;
-      if (elapsed < DIVINE_PRICE_COOLDOWN_MS) return lastDivineFetchResult;
-    }
-    return await fetchDivinePriceForLeague(league);
+    const request = requestDivinePrice(league, force);
+    const price = await request.result;
+    return request.isCurrent() ? price : null;
   } catch {
     return null;
   }
