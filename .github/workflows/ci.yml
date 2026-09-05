@@ -1,0 +1,58 @@
+name: Client CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: client-ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Source gates (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-24.04]
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: 'true'
+    steps:
+      - name: Check out tested source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up pinned Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.20.0'
+          package-manager-cache: false
+      - name: Record source and verify tooling
+        run: |
+          git rev-parse HEAD
+          node --version
+          npm --version
+          test "$(node --version)" = 'v24.20.0'
+          test "$(npm --version)" = '11.19.0'
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck main, preload and renderer
+        run: npm run typecheck
+      - name: Run utility and packaging tests
+        run: npm test
+      - name: Lint
+        run: npm run lint
+      - name: Build production bundles
+        run: npm run build
+      - name: Verify tracked source and lockfile remain unchanged
+        if: always()
+        run: git diff --exit-code HEAD -- .

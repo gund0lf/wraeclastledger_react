@@ -21,8 +21,6 @@ docs/REMEDIATION_PLAN_2026-07.md
 docs/WP14_FIELD_OWNERSHIP.md
 docs/WP14_PHASE0_REPORT.md
 traceuer-server-side/
-# Lock file — regenerated on install, no need to track
-package-lock.json
 docs/mockups/
 .wp14-bench/
 src/renderer/src/utils/__fixtures__/wp14-profile/

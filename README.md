@@ -56,7 +56,7 @@ publisher-signature trust root yet.
 ## Development
 
 ```bash
-npm install
+npm ci
 npm run dev        # dev server with hot reload
 npm start          # preview the built app
 npm run typecheck  # TypeScript checks for main/preload and renderer
@@ -66,6 +66,13 @@ npm run build      # production build
 ```
 
 Stack: Electron 43, React 19, TypeScript 5, Mantine v8, Zustand, electron-vite, flexlayout-react.
+
+Client CI runs on branch pushes and pull requests on Windows 2022 and Ubuntu
+24.04, using Node 24.20.0 and npm 11.19.0. It installs the committed dependency
+lockfile, then runs typecheck, all tests, lint and the production bundle build.
+Errors fail the job; existing lint warnings remain visible. These checks use no
+release secrets and do not create installers or publish releases. The manual
+Linux artifact workflows remain separate.
 
 For process boundaries, data flows, persistence, and integration structure, see
 [ARCHITECTURE.md](ARCHITECTURE.md).
