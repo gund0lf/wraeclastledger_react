@@ -74,6 +74,13 @@ Errors fail the job; existing lint warnings remain visible. These checks use no
 release secrets and do not create installers or publish releases. The manual
 Linux artifact workflows remain separate.
 
+The Windows release command, `npm run publish:win`, enforces typecheck, the full
+test suite and lint before building and uploading with electron-builder. Any
+failure stops the sequence; lint warnings remain visible and allowed, while
+errors block publication. Run it only for an authorized release with the existing
+release credentials. Routine tests verify the command order and failure stops
+using an isolated fixture and fake uploader; they do not publish a release.
+
 For process boundaries, data flows, persistence, and integration structure, see
 [ARCHITECTURE.md](ARCHITECTURE.md).
 

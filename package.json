@@ -20,7 +20,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "test": "vitest run && node --test scripts/after-pack.test.mjs scripts/cargo-query.test.mjs scripts/linux-windowing-evidence.test.mjs",
+    "test": "vitest run && node --test scripts/after-pack.test.mjs scripts/cargo-query.test.mjs scripts/linux-windowing-evidence.test.mjs scripts/publish-win.test.mjs",
     "test:watch": "vitest",
     "game-data:generate": "node scripts/gen-manifest-json.mjs",
     "trade-stats:check": "node scripts/check-tradestats.mjs",
@@ -41,7 +41,7 @@
     "build:linux": "npm run build:linux-helper && electron-vite build && electron-builder --linux AppImage --x64 --publish never",
     "verify:linux:canary": "node scripts/verify-linux-canary.mjs",
     "verify:linux:release": "node scripts/verify-linux-release.mjs",
-    "publish:win": "npm run build && electron-builder --win --publish always"
+    "publish:win": "npm run typecheck && npm test && npm run lint && npm run build && electron-builder --win --publish always"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
