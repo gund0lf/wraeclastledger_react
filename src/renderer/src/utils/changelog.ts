@@ -10,6 +10,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.96',
+    date: '2026-09-06',
+    changes: [
+      'Divine-price requests now keep each league separate and ignore superseded results, so an older response cannot replace a newer quote or initialize a session with another league\'s price.',
+      'Strategy Browser keeps filters, sorting, pagination and expanded details tied to the current view. Delayed responses can no longer replace a newer selection, and leaving Retrospectives prevents an unfinished frozen-build request from loading afterward.',
+      'Failed update checks and downloads now show a clear message with Retry. Checking and downloading progress stays visible, and a completed download brings back the Ready notice even if earlier progress was dismissed.',
+    ],
+  },
+  {
     version: '1.0.95',
     date: '2026-09-04',
     changes: [
