@@ -74,7 +74,9 @@ export class LiveBrowserRequests extends ObservableState<LiveBrowserState> {
   };
 
   private async json<T>(url: string): Promise<T> {
-    const response = await this.fetcher(url);
+    // Native Window.fetch rejects the controller as its receiver.
+    const fetcher = this.fetcher;
+    const response = await fetcher(url);
     if (!response.ok) throw new Error(`Server returned ${response.status}`);
     return response.json() as Promise<T>;
   }

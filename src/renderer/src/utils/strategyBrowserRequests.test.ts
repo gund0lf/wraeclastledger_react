@@ -38,6 +38,37 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 describe('production live Browser request lifecycle', () => {
+  it.each(['default', 'injected'])('calls %s fetch without a controller receiver for pages and detail', async (mode) => {
+    const calls: string[] = [];
+    // Chromium rejects fetch when an arbitrary object is its receiver. Node's
+    // fetch and arrow-function test doubles do not enforce that Window contract.
+    const fetcher: typeof fetch = async function (this: unknown, input) {
+      if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation');
+      const url = String(input);
+      calls.push(url);
+      const body = url.endsWith('/one')
+        ? row('one', { raw_export: 'full fixture detail' })
+        : page([row(new URL(url).searchParams.get('offset') === '20' ? 'two' : 'one')]);
+      return { ok: true, json: async () => body } as Response;
+    };
+    if (mode === 'default') vi.stubGlobal('fetch', fetcher);
+    const browser = mode === 'default' ? new LiveBrowserRequests() : new LiveBrowserRequests(fetcher);
+    try {
+      browser.activate(query()); await flush();
+      expect(browser.getSnapshot().listError).toBeNull();
+      expect(browser.getSnapshot().strategies.map(s => s.id)).toEqual(['one']);
+      await browser.loadMore();
+      expect(browser.getSnapshot().strategies.map(s => s.id)).toEqual(['one', 'two']);
+      browser.expand('one'); await flush();
+      expect(browser.getSnapshot().detailError).toBeNull();
+      expect(browser.getSnapshot().strategies[0].raw_export).toBe('full fixture detail');
+      expect(calls).toHaveLength(3);
+    } finally {
+      browser.deactivate();
+      if (mode === 'default') vi.unstubAllGlobals();
+    }
+  });
+
   it.each(['http', 'json'])('current %s failure is visible and a retry clears it', async (failure) => {
     const net = transport(); const browser = new LiveBrowserRequests(net.fetcher);
     browser.activate(query());
