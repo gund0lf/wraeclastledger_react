@@ -28,7 +28,11 @@ interface UIState {
 
 export const useUIStore = create<UIState>()((set) => ({
   pendingStrategyAction: null,
-  triggerStrategyAction: (action) => set({ pendingStrategyAction: action }),
+  triggerStrategyAction: (action) => set((state) => ({
+    pendingStrategyAction: action,
+    panelRequestNonce: state.panelRequestNonce + 1,
+    panelRequestComponent: 'strategy-browser',
+  })),
   clearStrategyAction:   ()       => set({ pendingStrategyAction: null }),
   changelogRequested: false,
   requestChangelog:      () => set({ changelogRequested: true }),

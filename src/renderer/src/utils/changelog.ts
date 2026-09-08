@@ -16,6 +16,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Website setup codes now work with older records that lack a structured cost breakdown. The Import window keeps available historical prices and results for inspection; Load Build Settings applies reusable setup and leaves new-run prices empty. Existing Discord exports remain supported.',
       'Strategy Browser and copied setup codes now use the same setup loader. Published strategies retain the current combined map guidance, Delirium, Astrolabe and Atlas modifier context; older Discord exports keep their recorded snapshot.',
       'Import previews mark totals and comparisons derived from rounded Discord Divine amounts as approximate.',
+      'The sidebar Import Strategy button now opens Strategy Browser when its tab has not been visited or was closed.',
       'League and Other loot categories now use their dedicated WraeclastLedger artwork in Dashboard and Strategy Browser. Specific items keep their existing PoE artwork.',
     ],
   },
