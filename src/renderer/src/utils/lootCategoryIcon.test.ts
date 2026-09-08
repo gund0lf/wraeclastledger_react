@@ -19,7 +19,11 @@ describe('loot category artwork fallbacks', () => {
   });
 
   it('uses honest non-item glyphs for the League and Other catch-alls', () => {
-    expect(iconClass('League')).toBe('sparkles');
-    expect(iconClass('Other')).toBe('packages');
+    const league = renderToStaticMarkup(createElement(LootCategoryGlyph, { category: 'League' }));
+    const other = renderToStaticMarkup(createElement(LootCategoryGlyph, { category: 'Other' }));
+    expect(league).toContain('wl_loot_league.png');
+    expect(other).toContain('wl_loot_other.png');
+    expect(league).not.toBe(other);
+    expect(league + other).not.toContain('poecdn.com');
   });
 });

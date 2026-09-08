@@ -9,6 +9,8 @@ export default defineConfig(
   {
     ignores: [
       '**/node_modules', '**/dist', '**/out',
+      // Local review generators, captures and detached verification checkouts.
+      'tmp/**', 'output/**',
       // Separate (private, server) repo checked out inside this folder —
       // CommonJS Node code with its own conventions; never lint it from here.
       'traceuer-server-side',

@@ -26,3 +26,8 @@ docs/mockups/
 src/renderer/src/utils/__fixtures__/wp14-profile/
 *.tsbuildinfo
 resources/linux/wl-proton-clipboard.exe
+
+# Local review material and generated artifacts; application source stays tracked.
+/tmp/
+/output/
+/resources/icons/discord/

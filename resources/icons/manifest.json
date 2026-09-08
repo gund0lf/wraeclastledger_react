@@ -1,0 +1,257 @@
+{
+  "description": "Original semantic artwork, including the generated Updated icon; display derivatives and runtime wiring are separate.",
+  "assets": [
+    {
+      "name": "wl_astro",
+      "file": "wl_astro.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 995233,
+      "sha256": "f53c9930f2a9f334c95dae950f0dc6f8d86e56cf7df8e80940944e32575328a3",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_atlas",
+      "file": "wl_atlas.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 405110,
+      "sha256": "b8c9d659b02cbf51e871701fb80d9502ac9384b1a024fc5079015f878c20ad3e",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_chisel",
+      "file": "wl_chisel.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 378674,
+      "sha256": "2c6daaef8cdd2f960b6527f0a3541179ea2e818c67cacd07003e87373cfdea17",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_cost",
+      "file": "wl_cost.png",
+      "width": 128,
+      "height": 128,
+      "bytes": 23828,
+      "sha256": "c49988fde571e88279d147f0fd99570adba20cb3dfb55bf4d50daadd028e95c2",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_deli",
+      "file": "wl_deli.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1273035,
+      "sha256": "c9c89f22e8850c4b7d184f6c928f63dd07480faa8a5e731301b6c4748cfcf7a1",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_div",
+      "file": "wl_div.png",
+      "width": 128,
+      "height": 128,
+      "bytes": 21725,
+      "sha256": "1d3562fa4ade3ca9c9216994b1d3046a405444623df364c845b1f9517ffa9728",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_excluded",
+      "file": "wl_excluded.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1213409,
+      "sha256": "995dc883dc743dd97a67c611aa032bc263574b4f950c3473474389250a7d8e77",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_following",
+      "file": "wl_following.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 811827,
+      "sha256": "a5462e9d31b84de7d610c547b57f7f9ac8e5a37625368992b0a96ef4a332ab33",
+      "discordExportMarker": false
+    },
+    {
+      "name": "wl_gem",
+      "file": "wl_gem.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1738301,
+      "sha256": "c3776b0b083f0878c80dd4ded5d65599bedc8bf66b493648d189b2e77f2f12c8",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_home",
+      "file": "wl_home.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1018337,
+      "sha256": "9826588ffb9d02892c4243811422d3d8d6687771074b8a7cd97492ee63c0a042",
+      "discordExportMarker": false
+    },
+    {
+      "name": "wl_league",
+      "file": "wl_league.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1017504,
+      "sha256": "fe31389402a897717f06a85cb3987fea4a7716731dab10b5c17123678fc320ee",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_loot_league",
+      "file": "wl_loot_league.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 880583,
+      "sha256": "5c2df46401c63f03f4bdb733c66308de59fc8b341ad2529aa1a264c42f81af78",
+      "discordExportMarker": false
+    },
+    {
+      "name": "wl_loot_other",
+      "file": "wl_loot_other.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 792073,
+      "sha256": "b45023bf40ed64ec099b20a9821dd8ed83dd4ea0c933debc181d0ab29c2a2191",
+      "discordExportMarker": false
+    },
+    {
+      "name": "wl_maps",
+      "file": "wl_maps.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1465857,
+      "sha256": "1c1c4e16490f7c5a057a41ee57dabf7899141d938e9587ef5dd1a99956516ab8",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_notes",
+      "file": "wl_notes.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1114464,
+      "sha256": "4c1d2c791941f1a2392f540a9c24bd6ab37080ddd301170bcab92bb7567f61a1",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_party",
+      "file": "wl_party.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 924345,
+      "sha256": "67ff037d8ed4809a2e016c7741e635cbeb07280f90e927ef4f18690063973a4c",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_points",
+      "file": "wl_points.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1057778,
+      "sha256": "29bf4129c7e4e361e618267f92389ff40172b6c46a1655706a70f5680f6eaf01",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_public",
+      "file": "wl_public.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1233347,
+      "sha256": "3385c84221e78fd6ddfd1974711e0dcb95398aae05b0ebf8a89893422eb7f644",
+      "discordExportMarker": false
+    },
+    {
+      "name": "wl_regex",
+      "file": "wl_regex.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1029162,
+      "sha256": "1b496899c1662e035773ec93f8124c3f807dd2be11bb2d8a61f6ef416bf660ad",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_return",
+      "file": "wl_return.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 955698,
+      "sha256": "2d71d1c480d745296c2e1b72a6e7d6a6570cdc8d5d0fa495cf8c9279ed77a3ee",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_run",
+      "file": "wl_run.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1145806,
+      "sha256": "81ea04f108c209d4d1db345c6c7a89103c5eb534bacfd8378f02439b2f596d7b",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_scarab",
+      "file": "wl_scarab.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1033759,
+      "sha256": "f502fff80f6002a6d4d736152074c627dedd0e1bcb5ecbaaac53c94d39e6a7a3",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_slam",
+      "file": "wl_slam.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 811291,
+      "sha256": "7caa04ad5635a64872f810b086a6f019c98ac04d3e6a13c139e2d924497ac20d",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_stats",
+      "file": "wl_stats.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1427243,
+      "sha256": "9c47258949a6116d3b72e94e4ec2d3eb928f5e3a7b1b366181bdf511fc7b2b05",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_strategy",
+      "file": "wl_strategy.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1267409,
+      "sha256": "1b8e72d8719bd9d92e437975e704633d4ed06f19994b333b97a8a7a3871e6283",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_tags",
+      "file": "wl_tags.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1161660,
+      "sha256": "5cc6fc8ad0a30f7fec2065befb7043c66e9209cdc153a5730f16a4cb1e227d07",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_time",
+      "file": "wl_time.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 880928,
+      "sha256": "75c0e906e9b5a973c06f4b45a9bbe6a3b86c6ed32f0de75a37422a7d365a4cb7",
+      "discordExportMarker": true
+    },
+    {
+      "name": "wl_updated",
+      "file": "wl_updated.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 1159312,
+      "sha256": "2051f2e732dd6078908d11d6ad71c322913f953fdcfd0175d76dce2b9331849a",
+      "discordExportMarker": false
+    }
+  ]
+}
