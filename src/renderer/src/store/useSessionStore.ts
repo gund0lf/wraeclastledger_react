@@ -343,11 +343,11 @@ export interface SessionState {
   setOverlayShortcutStatus: (status: OverlayShortcutStatus | null) => void;
   // Loaded strategy preview
   loadedStrategyInfo: {
-    authorName: string; mapCount: number;
-    avgQuant: number; avgRarity: number; avgPack: number; avgCurr: number;
+    authorName: string;
     runRegex: string; slamRegex?: string;
     mapType?: string;
-  } | null;
+  } & ({ kind?: 'run'; mapCount: number; avgQuant: number; avgRarity: number; avgPack: number; avgCurr: number }
+    | { kind: 'setup' }) | null;
   repositoryStatus: 'dormant' | 'loading' | 'ready' | 'failed';
   repositoryError: string | null;
   repositorySessions: RepositorySessionSummary[];

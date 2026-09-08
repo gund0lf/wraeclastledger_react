@@ -402,7 +402,7 @@ export const FromSessionTab = () => {
   };
 
   useEffect(() => {
-    const src = generatedRegex ?? (loadedStrategyInfo ? {
+    const src = generatedRegex ?? (loadedStrategyInfo && loadedStrategyInfo.kind !== 'setup' ? {
       avg: {
         avgQuant:  loadedStrategyInfo.avgQuant,
         avgRarity: loadedStrategyInfo.avgRarity,
@@ -786,7 +786,7 @@ export const FromSessionTab = () => {
               inclusions,
             );
             const neutralSlam = loadedStrategyInfo.slamRegex
-              || (loadedStrategyInfo.mapType === '8mod'
+              || (loadedStrategyInfo.kind === 'setup' || loadedStrategyInfo.mapType === '8mod'
                 ? null
                 : generateSlamRegex({
                   avgQuant: loadedStrategyInfo.avgQuant,
@@ -802,14 +802,14 @@ export const FromSessionTab = () => {
               <Stack className="regex-session-output" gap="xs" p="xs">
                 <Group gap="xs">
                   <IconWand size={12} color={COLOR.accentStrong} />
-                  <Text className="regex-output-source" size="xs" fw={700}>From {loadedStrategyInfo.authorName} · {loadedStrategyInfo.mapCount} maps</Text>
+                  <Text className="regex-output-source" size="xs" fw={700}>From {loadedStrategyInfo.authorName}{loadedStrategyInfo.kind === 'setup' ? ' · Setup only' : ` · ${loadedStrategyInfo.mapCount} maps`}</Text>
                   {loadedStrategyInfo.mapType && (
                     <Badge size="xs" color="gray" variant="outline">{loadedStrategyInfo.mapType}</Badge>
                   )}
                 </Group>
-                <Text size="xs" c="dimmed">
+                {loadedStrategyInfo.kind !== 'setup' && <Text size="xs" c="dimmed">
                   {formatRegexAverageSummary(loadedStrategyInfo)}
-                </Text>
+                </Text>}
                 <Stack gap={4}>
                   <RegexLine value={run} badge="Run" badgeColor="green" badgeTooltip={RUN_TOOLTIP} charLimit={250} />
                   {slam && <RegexLine value={slam} badge="Slam" badgeColor="orange" badgeTooltip={SLAM_TOOLTIP} charLimit={250} />}

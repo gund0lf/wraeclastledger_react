@@ -19,6 +19,8 @@ export interface DiscordImport {
   avgQuant: number; avgRarity: number; avgPack: number; avgCurr: number;
   perMapCost: number; totalInvest: number; totalReturn: number;
   netProfit: number; divPerMap: number; divPrice: number;
+  /** Preview-only precision disclosure for totals copied as displayed Divines. */
+  approximateTotals?: { totalInvest: boolean; netProfit: boolean };
   chisel: string; chiselPrice: number; runRegex: string; slamRegex: string; scarabs: string[]; scarabCosts: number[];
   atlasTreeUrl: string;
   strategyName: string; strategyNotes: string;
@@ -170,12 +172,15 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     const avgPack     = num([/Avg Pack:\s*(\d+)%/]);
     const avgCurr     = num([/Avg Currency:\s*(\d+)%/]);
     const divPrice    = num([/Divine Price:\s*([\d.]+)c/]);
+    const approximateTotals = { totalInvest: false, netProfit: false };
     const authoredTotal = (label: string): number => {
       const match = text.match(new RegExp(`${label}:\\s*([+-]?[\\d.]+)([cd])`, 'i'));
       if (!match) return 0;
       const amount = Number(match[1]);
       if (!Number.isFinite(amount)) return 0;
       if (match[2].toLowerCase() === 'c') return amount;
+      if (divPrice > 0 && label === 'Total Invest') approximateTotals.totalInvest = true;
+      if (divPrice > 0 && label === 'Net Profit') approximateTotals.netProfit = true;
       return divPrice > 0 ? amount * divPrice : 0;
     };
     const perMapCost  = num([/Per Map Cost:\s*([\d.]+)c/]);
@@ -271,6 +276,7 @@ export function parseDiscordExport(raw: string): DiscordImport | null {
     const lootSummaryInvalid = lootLines.length > 1 || (lootLines.length === 1 && lootSummary === null);
     if (mapCount === 0) return null;
     return { mapCount, mapType, multiplier, avgQuant, avgRarity, avgPack, avgCurr,
+             ...(approximateTotals.totalInvest || approximateTotals.netProfit ? { approximateTotals } : {}),
              perMapCost, totalInvest, totalReturn, netProfit, divPerMap, divPrice,
              chisel, chiselPrice, runRegex, slamRegex, scarabs, scarabCosts, atlasTreeUrl, strategyName, strategyNotes, typeTags,
              deliOrbQty, deliOrbType, deliOrbPrice, astroType, astroCount, astroPrice,

@@ -23,10 +23,12 @@ import { ModuleHeader } from '../components/ui/ModuleHeader';
 import { SectionLabel } from '../components/ui/SectionLabel';
 import { ShareModal } from '../components/ShareModal';
 import { ImportModal } from '../components/ImportModal';
+import type { StrategySetupCode } from '../../../shared/strategySetupCode';
+import { buildSetupOnlyImportPlan } from '../utils/setupOnlyImport';
+import { discordImportSource, publishedStrategyImportSource } from '../utils/strategyImportSource';
 import { PersonalRetrospectives } from '../components/PersonalRetrospectives';
 import { PublicRetrospectives } from '../components/PublicRetrospectives';
 import type { DiscordImport } from '../utils/parseDiscordExport';
-import { isSafeStrategyAtlasUrl } from '../utils/atlasUrl';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { WorkingSessionGuardModal } from '../components/WorkingSessionGuardModal';
 import { applyAtlasStatsSyncPatch, buildAtlasStatsSyncPatch } from '../utils/atlasStatsSync';
@@ -42,7 +44,7 @@ import {
 import { EMPTY_LIVE_BROWSER, LiveBrowserRequests, STRATEGY_PAGE_SIZE } from '../utils/strategyBrowserRequests';
 import { isStrategyBackIntent } from '../utils/strategyBackNavigation';
 import { applyImportedMapType } from '../utils/importBuildSettings';
-import { buildImportedSetupPlan, type ImportedSetupPlan } from '../utils/investmentSetup';
+import { type ImportedSetupPlan } from '../utils/investmentSetup';
 import { MAP_DEVICE_SLOT_COUNT } from '../../../shared/mapDevice';
 
 // API base (incl. the VITE_STRATEGY_API_URL dev override) moved to
@@ -247,59 +249,29 @@ export const StrategyBrowserModule = () => {
   };
 
   // ── Load build (called by both StrategyCard and ImportModal) ─────────────────
-  const applyStrategyBuild = async (s: Strategy): Promise<void> => {
+  const applySetupSource = async (setup: StrategySetupCode): Promise<void> => {
+    const plan = buildSetupOnlyImportPlan(setup);
     await startWorking(true);
-    const parsed = s.raw_export ? parseDiscordExport(s.raw_export) : null;
-    applyReusableSetup(buildImportedSetupPlan({
-      mapType: parsed?.mapType === '6-mod' || parsed?.mapType === '8-mod'
-        ? parsed.mapType
-        : s.map_type,
-      chisel: parsed?.chisel || s.chisel,
-      scarabs: s.scarabs?.length ? s.scarabs.map((scarab) => scarab.name) : parsed?.scarabs,
-      deliriumType: parsed?.deliOrbType,
-      deliriumCountPerMap: parsed?.deliOrbQty,
-      astrolabeType: parsed?.astroType,
-    }));
-    if (s.atlas_tree_url && isSafeStrategyAtlasUrl(s.atlas_tree_url)) {
-      updateSetting('atlasTreeUrl', s.atlas_tree_url);
-      // Force the Atlas Tree to re-apply the tree to the Atlas Calc even when the
-      // URL is unchanged (loading the SAME strategy twice). newSession() zeroed the
-      // calc config; without this the URL-change effect can't fire on an unchanged
-      // URL, so the calc would stay empty and the setup wizard would reappear.
-      requestCurrentAtlasApply(s.atlas_tree_url, parsed ?? undefined);
+    applyReusableSetup(plan.investment);
+    const modifiers = plan.multiplyingModifiers;
+    if (modifiers.allocated !== null) {
+      updateSetting('multiplyingModifiersAllocated', modifiers.allocated);
+      updateSetting('fragmentCountOverride', modifiers.allocated ? modifiers.fragmentCount : null);
     }
-    if (parsed) {
-      if (parsed.multiplyingModifiersAllocated !== null) {
-        updateSetting('multiplyingModifiersAllocated', parsed.multiplyingModifiersAllocated);
-        updateSetting(
-          'fragmentCountOverride',
-          parsed.multiplyingModifiersAllocated
-            ? parsed.multiplyingModifiersFragmentCount
-            : null,
-        );
-      }
-    }
-    setLoadedMsg(`Loaded ${s.discord_username}'s setup — item types and quantities applied. Add current prices in Investment.`);
-    const p = parsed;
-    const runRegex = p?.runRegex || s.run_regex;
-    if (runRegex) {
-      setLoadedStrategyInfo({
-        authorName: s.strategy_name || s.discord_username,
-        mapCount:   p?.mapCount || s.map_count || 0,
-        avgQuant:   p?.avgQuant  ?? s.avg_quant  ?? 0,
-        avgRarity:  p?.avgRarity ?? s.avg_rarity ?? 0,
-        avgPack:    p?.avgPack   ?? s.avg_pack   ?? 0,
-        avgCurr:    p?.avgCurr   ?? s.avg_currency ?? 0,
-        runRegex,
-        slamRegex:  (p?.slamRegex || s.slam_regex) ?? undefined,
-        mapType:    s.map_type === '8-mod' ? '8mod'
-          : (s.type_tag?.split(',').find((t) =>
-              ['nightmare','originator','empowered-originator','empowered'].includes(t.trim())
-            ) ?? undefined),
+    setLoadedStrategyInfo(plan.source);
+    if (plan.atlasTreeUrl) {
+      updateSetting('atlasTreeUrl', plan.atlasTreeUrl);
+      requestCurrentAtlasApply(plan.atlasTreeUrl, {
+        multiplyingModifiersAllocated: modifiers.allocated,
+        multiplyingModifiersFragmentCount: modifiers.fragmentCount,
       });
     }
+    setLoadedMsg('Setup applied. Add current prices in Investment.');
     setTimeout(() => setLoadedMsg(null), 6000);
   };
+
+  const applyStrategyBuild = (strategy: Strategy): Promise<void> =>
+    applySetupSource(publishedStrategyImportSource(strategy));
 
   const handleLoadBuild = (strategy: Strategy) => {
     requestReplacement(() => applyStrategyBuild(strategy));
@@ -397,49 +369,13 @@ export const StrategyBrowserModule = () => {
     else void armEvidenceTarget(candidate, cloneSetup);
   };
 
-  const applyImportedBuild = async (parsed: DiscordImport): Promise<void> => {
-    // Apply what we can from a parsed import (no Strategy object — use parsed fields)
-    await startWorking(true);
-    applyReusableSetup(buildImportedSetupPlan({
-      mapType: parsed.mapType,
-      chisel: parsed.chisel,
-      scarabs: parsed.scarabs,
-      deliriumType: parsed.deliOrbType,
-      deliriumCountPerMap: parsed.deliOrbQty,
-      astrolabeType: parsed.astroType,
-    }));
-    if (parsed.multiplyingModifiersAllocated !== null) {
-      updateSetting('multiplyingModifiersAllocated', parsed.multiplyingModifiersAllocated);
-      updateSetting(
-        'fragmentCountOverride',
-        parsed.multiplyingModifiersAllocated
-          ? parsed.multiplyingModifiersFragmentCount
-          : null,
-      );
-    }
-    if (parsed.atlasTreeUrl && isSafeStrategyAtlasUrl(parsed.atlasTreeUrl)) {
-      updateSetting('atlasTreeUrl', parsed.atlasTreeUrl);
-      requestCurrentAtlasApply(parsed.atlasTreeUrl, parsed);
-    }
-    if (parsed.runRegex) {
-      setLoadedStrategyInfo({
-        authorName: parsed.strategyName || 'Imported',
-        mapCount:   parsed.mapCount,
-        avgQuant:   parsed.avgQuant,
-        avgRarity:  parsed.avgRarity,
-        avgPack:    parsed.avgPack,
-        avgCurr:    parsed.avgCurr,
-        runRegex:   parsed.runRegex,
-        slamRegex:  parsed.slamRegex || undefined,
-        mapType:    parsed.mapType === '8-mod' ? '8mod' : undefined,
-      });
-    }
-    setLoadedMsg('Imported setup applied: item types and quantities loaded. Add current prices in Investment.');
-    setTimeout(() => setLoadedMsg(null), 6000);
+  const handleLoadFromImport = (parsed: DiscordImport) => {
+    if (parsed.operationError) return;
+    requestReplacement(() => applySetupSource(discordImportSource(parsed)));
   };
 
-  const handleLoadFromImport = (parsed: DiscordImport) => {
-    requestReplacement(() => applyImportedBuild(parsed));
+  const handleLoadSetupCode = (setup: StrategySetupCode) => {
+    requestReplacement(() => applySetupSource(setup));
   };
 
   // ── Sorting (dropdown + click-header share the same state) ──────────────────
@@ -479,7 +415,7 @@ export const StrategyBrowserModule = () => {
   return (
     <>
       <ShareModal opened={shareOpen} onClose={closeShare} initialTags={shareTags} />
-      <ImportModal opened={importOpen} onClose={closeImport} onLoadBuild={handleLoadFromImport} />
+      <ImportModal opened={importOpen} onClose={closeImport} onLoadBuild={handleLoadFromImport} onLoadSetup={handleLoadSetupCode} />
       <WorkingSessionGuardModal
         opened={replacementGuardOpen}
         mapCount={guardedWorkingMapCount}
