@@ -44,8 +44,9 @@ The script only downsamples, preserving the complete canvas and alpha:
 - Discord: all 28 names at 128px in `resources/icons/discord`, ready for upload.
 
 The masters, manifest and two desktop runtime PNGs are versioned. Reproducible
-Discord upload copies are ignored. Local review captures and candidate archives
-belong in the ignored `output/` or `tmp/` folders, not the runtime asset set.
+Discord upload copies are ignored. Keep temporary review captures untracked and
+remove them after accepted assets are adopted. Preserve useful provenance in a
+separate local archive; runtime assets must never depend on temporary review folders.
 
 Unused semantic masters remain available for later placements. Discord upload and
 runtime release/deployment are separate; no emoji or wire marker was changed.
