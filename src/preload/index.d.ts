@@ -1,4 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
+import type { AuthorBridge } from '../shared/authorHandoff'
 import type { AtlasStatsReadResult } from '../shared/atlasStats'
 import type { ClipboardBridgeStatus } from '../shared/protonClipboardBridge'
 import type { TradeItemCatalog } from '../shared/manualLoot'
@@ -31,6 +32,7 @@ declare global {
   interface Window {
     electron: ElectronAPI
     api: {
+      authorHandoff: AuthorBridge
       usesManagedOverlayBounds: boolean
       sessionRepository: SessionRepositoryBridge
       onSessionRepositoryFlushRequest: (callback: (request: RepositoryFlushRequest) => void) => () => void

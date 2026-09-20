@@ -52,6 +52,7 @@ const stateDefaults = (): Record<string, unknown> => {
     'saveError', 'sessionLifecycle', 'liveSessionId', 'activationCheckpointNotice',
     'historyStoragePressure', 'manualRunTimer', 'manualTimerRecoveryMs',
     'overlayPreferences', 'overlayShortcutStatus', 'lootCurrencyMode',
+    'authorPreferences',
   ]) delete state[key];
   return state;
 };

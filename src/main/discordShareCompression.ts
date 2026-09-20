@@ -14,20 +14,20 @@ const normalizedToken = (raw: string): string => raw
   .replace(/\s*```\s*$/m, '')
   .trim()
 
-const validatedPayloadJson = (raw: unknown): string => {
+const validatedPayloadJson = (raw: unknown, allowAuthor = false): string => {
   if (typeof raw !== 'string' || raw.length === 0 || raw.length >= DISCORD_SHARE_BROTLI_OUTPUT_MAX) {
     throw new TypeError('Compact Discord payload is outside the allowed size')
   }
   const payload = JSON.parse(raw) as unknown
-  if (!Array.isArray(payload) || payload[0] !== 4) {
+  if (!Array.isArray(payload) || (payload[0] !== 4 && !(allowAuthor && payload[0] === 5))) {
     throw new TypeError('Compact Discord payload has an unsupported schema')
   }
   return raw
 }
 
 /** Node owns Brotli because Chromium's CompressionStream does not expose it. */
-export function encodeDiscordShareBrotli(rawPayloadJson: unknown): string {
-  const payloadJson = validatedPayloadJson(rawPayloadJson)
+export function encodeDiscordShareBrotli(rawPayloadJson: unknown, allowAuthor = false): string {
+  const payloadJson = validatedPayloadJson(rawPayloadJson, allowAuthor)
   const compressed = brotliCompressSync(Buffer.from(payloadJson, 'utf8'), {
     params: {
       [zlibConstants.BROTLI_PARAM_MODE]: zlibConstants.BROTLI_MODE_TEXT,
@@ -49,5 +49,5 @@ export function decodeDiscordShareBrotli(rawToken: unknown): string {
   const payloadJson = brotliDecompressSync(Buffer.from(match[1], 'base64url'), {
     maxOutputLength: DISCORD_SHARE_BROTLI_OUTPUT_MAX,
   }).toString('utf8')
-  return validatedPayloadJson(payloadJson)
+  return validatedPayloadJson(payloadJson, true)
 }

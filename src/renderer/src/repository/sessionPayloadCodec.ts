@@ -9,6 +9,7 @@ import { normalizeLocalManualStatistics } from '../utils/manualStatistics';
 import { normalizeManualRunTimer } from '../utils/manualRunTimer';
 import { recoverExactModifierCount } from '../utils/mapParser';
 import type { SessionState } from '../store/useSessionStore';
+import { migrateStrategyTarget } from '../../../shared/strategyTarget';
 
 export type SessionPayloadSource = Pick<
   SessionState,
@@ -92,6 +93,7 @@ export function decodeSessionPayload(
   const settings = typeof payload.settings === 'object' && payload.settings !== null &&
     !Array.isArray(payload.settings)
     ? payload.settings as unknown as Partial<SessionSettings> : {};
+  const target = migrateStrategyTarget(settings as Record<string, unknown>);
   return {
     maps: Array.isArray(payload.maps)
       ? (payload.maps as unknown as SessionState['maps']).map(recoverExactModifierCount)
@@ -104,7 +106,7 @@ export function decodeSessionPayload(
       ? payload.manualLootItems as unknown as SessionState['manualLootItems'] : [],
     manualStatistics: normalizeLocalManualStatistics(payload.manualStatistics),
     manualRunTimer: normalizeManualRunTimer(payload.manualRunTimer),
-    settings: { ...defaultSettings, ...settings },
+    settings: { ...defaultSettings, ...settings, ...(target ? { strategyTarget: target } : {}) },
     sessionNotes: typeof payload.sessionNotes === 'string' ? payload.sessionNotes : '',
     investmentNeutralization: typeof payload.investmentNeutralization === 'number'
       ? payload.investmentNeutralization : 0,

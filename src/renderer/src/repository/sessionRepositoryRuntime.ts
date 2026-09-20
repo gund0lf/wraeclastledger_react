@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import { parseAuthorPreferences } from '../../../shared/authorRecognition';
 import {
   LEGACY_CHANGELOG_STORAGE_KEY,
   LEGACY_LAYOUT_STORAGE_KEY,
@@ -235,6 +236,7 @@ function applyPreferences(preferences: JsonObject): Partial<SessionState> {
   lastSeenChangelogVersion = typeof preferences.lastSeenChangelogVersion === 'string'
     ? preferences.lastSeenChangelogVersion : null;
   return {
+    authorPreferences: parseAuthorPreferences(preferences.authorPreferences),
     discordTag: typeof preferences.discordTag === 'string' ? preferences.discordTag : '',
     regexSets: Array.isArray(preferences.regexSets) ? preferences.regexSets as unknown as SessionState['regexSets'] : [],
     leagueOverride,
@@ -300,6 +302,7 @@ function sessionPayload(state = useSessionStore.getState()): JsonObject {
 
 function preferencePayload(state = useSessionStore.getState()): JsonObject {
   return toJsonObject({
+    authorPreferences: parseAuthorPreferences(state.authorPreferences),
     discordTag: state.discordTag,
     regexSets: state.regexSets,
     leagueOverride: state.leagueOverride,
@@ -879,9 +882,14 @@ function freshWorkingPayload(): JsonObject {
   });
 }
 
-export async function startWorking(replaceExisting = false): Promise<void> {
+export async function startWorking(replaceExisting = false, action?: {
+  assertCurrent(): void;
+  activated(): void;
+}): Promise<void> {
+  action?.assertCurrent();
   useSessionStore.getState().pauseManualTimer();
   await flushRepositoryNow();
+  action?.assertCurrent();
   const workingTarget = { kind: 'working' } as const;
   if (!replaceExisting && repositoryWorkflow?.activeTarget.kind === 'working' &&
       repositoryWorkflow.viewedTarget.kind !== 'working') {
@@ -907,6 +915,7 @@ export async function startWorking(replaceExisting = false): Promise<void> {
   let expectedGeneration: number | null = null;
   try {
     const working = await repositoryClient().request({ operation: 'load', target: workingTarget, mode: 'inspect' });
+    action?.assertCurrent();
     expectedGeneration = working.generation;
     const preferences = useSessionStore.getState();
     if (!isWorkingPayloadMeaningful(
@@ -932,10 +941,15 @@ export async function startWorking(replaceExisting = false): Promise<void> {
   }
   const payload = freshWorkingPayload();
   const activationId = uuidv4();
+  action?.assertCurrent();
   const saved = await repositoryClient().request({
     operation: 'save', target: workingTarget, expectedGeneration, payload, replacement: true, activationId,
     freshEmptyWorking: true,
   });
+  // After the durable replacement starts, finish its workflow-pointer commit.
+  // Cancellation here would strand the renderer on the old disk generation.
+  // The caller blocks interaction during this commit and rechecks ownership
+  // afterwards before applying setup fields or a continuation target.
   // The destination record is already durable. Reflect it before the separate
   // workflow-pointer commit so a failed pointer write can be retried without
   // leaving renderer identity aimed at the previous session.
@@ -953,6 +967,7 @@ export async function startWorking(replaceExisting = false): Promise<void> {
     saveError: null,
     sessionNonce: useSessionStore.getState().sessionNonce + 1,
   });
+  action?.activated();
   applyingRepositoryState = false;
   await mutateWorkflow((current) => ({
     ...current,
@@ -1021,6 +1036,7 @@ function installStoreSubscription(): void {
       queueSessionSave(discrete, !isAutomaticSessionMutation());
     }
     const preferencesChanged =
+      state.authorPreferences !== previous.authorPreferences ||
       state.discordTag !== previous.discordTag || state.regexSets !== previous.regexSets ||
       state.leagueOverride !== previous.leagueOverride || state.atlasBonusByLeague !== previous.atlasBonusByLeague ||
       state.retrospectiveCloseouts !== previous.retrospectiveCloseouts ||

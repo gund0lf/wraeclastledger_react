@@ -1,4 +1,8 @@
-import { app, shell, BrowserWindow, ipcMain, clipboard, dialog, globalShortcut, powerMonitor, screen } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, clipboard, dialog, globalShortcut, powerMonitor, screen, safeStorage } from 'electron'
+import { AuthorHandoffVault } from './authorHandoffVault'
+import { AuthorHandoffService, authorReviewOrigin } from './authorHandoffService'
+import { AUTHOR_HANDOFF_CHANNEL } from '../shared/authorHandoff'
+import { deriveRepositoryPaths } from './sessionRepositoryCore'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { copyFile, mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'path'
@@ -207,6 +211,22 @@ let clipboardInterval: NodeJS.Timeout | null = null;
 let lastClipboardText = '';
 let watchWindow: BrowserWindow | null = null;
 let mainWindowRef: BrowserWindow | null = null;
+const authorHandoffs = new AuthorHandoffService({
+  origin: authorReviewOrigin(is.dev && !app.isPackaged, process.env.WL_AUTHOR_REVIEW_ORIGIN),
+  vault: new AuthorHandoffVault(join(deriveRepositoryPaths(app.getPath('userData')).root, 'private'), {
+    isEncryptionAvailable: () => safeStorage.isEncryptionAvailable() &&
+      (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),
+    encryptString: (value) => safeStorage.encryptString(value),
+    decryptString: (value) => safeStorage.decryptString(value),
+  }),
+  readClipboard: () => clipboard.readText(),
+})
+ipcMain.handle(AUTHOR_HANDOFF_CHANNEL, (event, input: unknown) => {
+  if (!mainWindowRef || event.sender !== mainWindowRef.webContents ||
+    event.senderFrame !== mainWindowRef.webContents.mainFrame)
+    return { ok: false, error: 'Author controls are available only in the main window.' }
+  return authorHandoffs.handle(input)
+})
 let overlayWindow: BrowserWindow | null = null;
 let overlayBoundsTimer: NodeJS.Timeout | null = null;
 let lastOverlaySnapshot: OverlaySnapshot | null = null;

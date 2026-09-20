@@ -1,0 +1,1782 @@
+{
+  "detail": {
+    "schema_version": 2,
+    "id": "11111111-1111-4111-8111-111111111111",
+    "revision": 2,
+    "title": "Synthetic Herd",
+    "notes": "Synthetic compatibility fixture",
+    "tags": [
+      "bestiary"
+    ],
+    "league": "Allflame",
+    "attribution": {
+      "registration_id": "11111111-1111-4111-8111-111111111111",
+      "display_name": "Fixture Author",
+      "status": "active"
+    },
+    "community": null,
+    "published_at": "2026-09-09T00:00:00.000Z",
+    "updated_at": "2026-09-09T00:00:00.000Z",
+    "score": null,
+    "setup": {
+      "map_type": "8-mod",
+      "group_play": false,
+      "party_size": 1,
+      "chisel": "None",
+      "scarabs": [
+        {
+          "name": "Bestiary Scarab",
+          "price_each_chaos": null
+        },
+        {
+          "name": "Bestiary Scarab of the Herd",
+          "price_each_chaos": null
+        },
+        {
+          "name": "Bestiary Scarab of the Herd",
+          "price_each_chaos": null
+        }
+      ],
+      "delirium": null,
+      "astrolabe": null,
+      "multiplying_modifiers": {
+        "allocated": true,
+        "fragment_count": 3
+      },
+      "atlas": {
+        "url": "https://pathofpathing.com/#AAAA",
+        "points": null,
+        "points_max": null
+      },
+      "run_regex": "\"quantity\"",
+      "slam_regex": null,
+      "game_data": {
+        "revision": 4,
+        "patch_version": "3.29"
+      }
+    },
+    "observed": {
+      "map_count": 2,
+      "mod_average": 8,
+      "mod_sample_size": 2,
+      "quantity_average": null,
+      "rarity_average": null,
+      "pack_size_average": null,
+      "currency_average": null,
+      "multiplier_average": 1.63
+    },
+    "economics": {
+      "all_in_cost_per_map_chaos": 0,
+      "recurring_cost_per_map_chaos": 0,
+      "net_per_map_divines": null,
+      "historical_net_divines": null,
+      "historical_invest_divines": null,
+      "total_invest_chaos": 0,
+      "net_profit_chaos": -2
+    },
+    "coverage": {
+      "run_count": 1,
+      "map_count": 2,
+      "timed_run_count": null,
+      "timed_map_count": null,
+      "timed_minutes": null,
+      "timed_net_divines": null,
+      "net_divines_per_hour": null,
+      "loot_available": false
+    },
+    "loot": null,
+    "scope": "current",
+    "snapshot_key": null,
+    "read_version": "22222222-2222-4222-8222-222222222222",
+    "reusable_setup": {
+      "status": "available",
+      "value": {
+        "version": 1,
+        "kind": "setup",
+        "title": "Synthetic Herd",
+        "notes": "Synthetic compatibility fixture",
+        "league": "Allflame",
+        "mapType": "8-mod",
+        "chisel": null,
+        "scarabs": [
+          "Bestiary Scarab",
+          "Bestiary Scarab of the Herd",
+          "Bestiary Scarab of the Herd"
+        ],
+        "delirium": null,
+        "astrolabe": null,
+        "atlasTreeUrl": "https://pathofpathing.com/#AAAA",
+        "runRegex": "\"quantity\"",
+        "reference": {
+          "maps": 2,
+          "quantity": null,
+          "rarity": null,
+          "packSize": null,
+          "currency": null,
+          "mapFamily": "8mod",
+          "slamRegex": ""
+        },
+        "multiplyingModifiers": {
+          "allocated": true,
+          "fragmentCount": 3
+        },
+        "party": {
+          "group": false,
+          "size": 1
+        }
+      }
+    },
+    "authored_history": {
+      "observed": {
+        "map_count": 2,
+        "mod_average": 8,
+        "mod_sample_size": 2,
+        "quantity_average": null,
+        "rarity_average": null,
+        "pack_size_average": null,
+        "currency_average": null,
+        "multiplier": 1.63
+      },
+      "economics": {
+        "recurring_cost_per_map_chaos": 0,
+        "total_invest_chaos": 0,
+        "net_profit_chaos": -2,
+        "net_per_map_divines": null,
+        "divine_price_chaos": 200
+      },
+      "timing": {
+        "reported_minutes": 12
+      },
+      "setup_display": {
+        "source": "structured",
+        "authored_map_count": 2,
+        "cost_breakdown": {
+          "chisel": null,
+          "scarabs": [
+            {
+              "name": "Bestiary Scarab",
+              "price_each_chaos": 0
+            },
+            {
+              "name": "Bestiary Scarab of the Herd",
+              "price_each_chaos": 0
+            },
+            {
+              "name": "Bestiary Scarab of the Herd",
+              "price_each_chaos": 0
+            }
+          ],
+          "delirium": null,
+          "astrolabe": null
+        },
+        "combined_map_rolling_cost_per_map_chaos": null
+      }
+    },
+    "ancillary": {
+      "excluded_drops": {
+        "declared_count": 1,
+        "total_chaos": 5,
+        "entries": [
+          {
+            "name": "Synthetic exclusion",
+            "chaos": 5
+          }
+        ],
+        "complete": true
+      },
+      "gem_leveling": {
+        "count": 2,
+        "buy_chaos": 0,
+        "sell_chaos": 5,
+        "net_chaos": 5
+      },
+      "observed_delirium": null
+    },
+    "continuation_setup": {
+      "status": "available",
+      "identity_version": 2,
+      "seed": {
+        "map_type": "8-mod",
+        "group_play": false,
+        "party_size": 1,
+        "chisel": "none",
+        "scarabs": [
+          "bestiary scarab",
+          "bestiary scarab of the herd",
+          "bestiary scarab of the herd"
+        ],
+        "delirium": {
+          "type": null,
+          "count_per_map": 0
+        },
+        "astrolabe": null,
+        "multiplying_modifiers": {
+          "allocated": true,
+          "fragment_count": 3
+        },
+        "game_data": {
+          "revision": 4,
+          "patch_version": "3.29"
+        },
+        "league_key": "allflame",
+        "multiplier_milli": 1630,
+        "atlas_tree_url": "https://pathofpathing.com/#AAAA"
+      }
+    },
+    "lifecycle": {
+      "state": "current",
+      "continuation_reason": null
+    }
+  },
+  "row": {
+    "schema_version": 2,
+    "id": "11111111-1111-4111-8111-111111111111",
+    "title": "Synthetic Herd",
+    "tags": [
+      "bestiary"
+    ],
+    "league": "Allflame",
+    "attribution": {
+      "registration_id": "11111111-1111-4111-8111-111111111111",
+      "display_name": "Fixture Author",
+      "status": "active"
+    },
+    "community": null,
+    "published_at": "2026-09-09T00:00:00.000Z",
+    "updated_at": "2026-09-09T00:00:00.000Z",
+    "score": null,
+    "map_type": "8-mod",
+    "observed": {
+      "map_count": 2,
+      "mod_average": 8,
+      "mod_sample_size": 2
+    },
+    "results": {
+      "all_in_cost_per_map_chaos": 0,
+      "net_per_map_divines": null,
+      "net_divines_per_hour": null,
+      "total_invest_chaos": 0,
+      "net_profit_chaos": -2
+    },
+    "evidence": {
+      "run_count": 1,
+      "timed_run_count": null,
+      "timed_map_count": null
+    },
+    "scope": "current",
+    "snapshot_key": null,
+    "revision": 2,
+    "read_version": "22222222-2222-4222-8222-222222222222"
+  },
+  "frozen": {
+    "schema_version": 2,
+    "id": "11111111-1111-4111-8111-111111111111",
+    "revision": 2,
+    "title": "Synthetic Herd",
+    "notes": "Synthetic compatibility fixture",
+    "tags": [
+      "bestiary"
+    ],
+    "league": "Allflame",
+    "attribution": {
+      "registration_id": "11111111-1111-4111-8111-111111111111",
+      "display_name": "Fixture Author",
+      "status": "active"
+    },
+    "community": null,
+    "published_at": "2026-09-09T00:00:00.000Z",
+    "updated_at": "2026-09-09T00:00:00.000Z",
+    "score": null,
+    "setup": {
+      "map_type": "8-mod",
+      "group_play": false,
+      "party_size": 1,
+      "chisel": "None",
+      "scarabs": [
+        {
+          "name": "Bestiary Scarab",
+          "price_each_chaos": null
+        },
+        {
+          "name": "Bestiary Scarab of the Herd",
+          "price_each_chaos": null
+        },
+        {
+          "name": "Bestiary Scarab of the Herd",
+          "price_each_chaos": null
+        }
+      ],
+      "delirium": null,
+      "astrolabe": null,
+      "multiplying_modifiers": {
+        "allocated": true,
+        "fragment_count": 3
+      },
+      "atlas": {
+        "url": "https://pathofpathing.com/#AAAA",
+        "points": null,
+        "points_max": null
+      },
+      "run_regex": "\"quantity\"",
+      "slam_regex": null,
+      "game_data": {
+        "revision": 4,
+        "patch_version": "3.29"
+      }
+    },
+    "observed": {
+      "map_count": 2,
+      "mod_average": 8,
+      "mod_sample_size": 2,
+      "quantity_average": null,
+      "rarity_average": null,
+      "pack_size_average": null,
+      "currency_average": null,
+      "multiplier_average": 1.63
+    },
+    "economics": {
+      "all_in_cost_per_map_chaos": 0,
+      "recurring_cost_per_map_chaos": 0,
+      "net_per_map_divines": null,
+      "historical_net_divines": null,
+      "historical_invest_divines": null,
+      "total_invest_chaos": 0,
+      "net_profit_chaos": -2
+    },
+    "coverage": {
+      "run_count": 1,
+      "map_count": 2,
+      "timed_run_count": null,
+      "timed_map_count": null,
+      "timed_minutes": null,
+      "timed_net_divines": null,
+      "net_divines_per_hour": null,
+      "loot_available": false
+    },
+    "loot": null,
+    "scope": "frozen",
+    "snapshot_key": "33333333-3333-4333-8333-333333333333",
+    "read_version": "22222222-2222-4222-8222-222222222222",
+    "snapshot_schema_version": 1,
+    "reusable_setup": {
+      "status": "available",
+      "value": {
+        "version": 1,
+        "kind": "setup",
+        "title": "Synthetic Herd",
+        "notes": "Synthetic compatibility fixture",
+        "league": "Allflame",
+        "mapType": "8-mod",
+        "chisel": null,
+        "scarabs": [
+          "Bestiary Scarab",
+          "Bestiary Scarab of the Herd",
+          "Bestiary Scarab of the Herd"
+        ],
+        "delirium": null,
+        "astrolabe": null,
+        "atlasTreeUrl": "https://pathofpathing.com/#AAAA",
+        "runRegex": "\"quantity\"",
+        "reference": {
+          "maps": 2,
+          "quantity": null,
+          "rarity": null,
+          "packSize": null,
+          "currency": null,
+          "mapFamily": "8mod",
+          "slamRegex": ""
+        },
+        "multiplyingModifiers": {
+          "allocated": true,
+          "fragmentCount": 3
+        },
+        "party": {
+          "group": false,
+          "size": 1
+        }
+      }
+    },
+    "authored_history": {
+      "observed": {
+        "map_count": 2,
+        "mod_average": 8,
+        "mod_sample_size": 2,
+        "quantity_average": null,
+        "rarity_average": null,
+        "pack_size_average": null,
+        "currency_average": null,
+        "multiplier": 1.63
+      },
+      "economics": {
+        "recurring_cost_per_map_chaos": 0,
+        "total_invest_chaos": 0,
+        "net_profit_chaos": -2,
+        "net_per_map_divines": null,
+        "divine_price_chaos": 200
+      },
+      "timing": {
+        "reported_minutes": 12
+      },
+      "setup_display": {
+        "source": "structured",
+        "authored_map_count": 2,
+        "cost_breakdown": {
+          "chisel": null,
+          "scarabs": [
+            {
+              "name": "Bestiary Scarab",
+              "price_each_chaos": 0
+            },
+            {
+              "name": "Bestiary Scarab of the Herd",
+              "price_each_chaos": 0
+            },
+            {
+              "name": "Bestiary Scarab of the Herd",
+              "price_each_chaos": 0
+            }
+          ],
+          "delirium": null,
+          "astrolabe": null
+        },
+        "combined_map_rolling_cost_per_map_chaos": null
+      }
+    },
+    "ancillary": {
+      "excluded_drops": {
+        "declared_count": 1,
+        "total_chaos": 5,
+        "entries": [
+          {
+            "name": "Synthetic exclusion",
+            "chaos": 5
+          }
+        ],
+        "complete": true
+      },
+      "gem_leveling": {
+        "count": 2,
+        "buy_chaos": 0,
+        "sell_chaos": 5,
+        "net_chaos": 5
+      },
+      "observed_delirium": null
+    },
+    "continuation_setup": {
+      "status": "unavailable",
+      "reason": "frozen"
+    },
+    "lifecycle": {
+      "state": "frozen",
+      "continuation_reason": "frozen"
+    }
+  },
+  "run": {
+    "schema_version": 2,
+    "ordinal": 1,
+    "contributed_on": "2026-09-09",
+    "setup": {
+      "map_type": "8-mod",
+      "group_play": false,
+      "party_size": 1,
+      "chisel": "none",
+      "scarabs": [
+        "bestiary scarab",
+        "bestiary scarab of the herd",
+        "bestiary scarab of the herd"
+      ],
+      "delirium": {
+        "type": null,
+        "count_per_map": 0
+      },
+      "astrolabe": null,
+      "multiplying_modifiers": {
+        "allocated": true,
+        "fragment_count": 3
+      },
+      "game_data": {
+        "revision": 4,
+        "patch_version": "3.29"
+      }
+    },
+    "observed": {
+      "map_count": 2,
+      "mod_average": 8,
+      "mod_sample_size": 2,
+      "quantity_average": null,
+      "rarity_average": null,
+      "pack_size_average": null,
+      "currency_average": null,
+      "multiplier": 1.63
+    },
+    "economics": {
+      "recurring_cost_per_map_chaos": 0,
+      "total_invest_chaos": 0,
+      "net_profit_chaos": -2,
+      "net_per_map_divines": null,
+      "divine_price_chaos": 200
+    },
+    "timing": {
+      "reported_minutes": 12
+    },
+    "cost_breakdown": {
+      "chisel": null,
+      "scarabs": [
+        {
+          "name": "Bestiary Scarab",
+          "price_each_chaos": 0
+        },
+        {
+          "name": "Bestiary Scarab of the Herd",
+          "price_each_chaos": 0
+        },
+        {
+          "name": "Bestiary Scarab of the Herd",
+          "price_each_chaos": 0
+        }
+      ],
+      "delirium": null,
+      "astrolabe": null
+    },
+    "display_cost_breakdown": null,
+    "observed_delirium": null,
+    "loot": null
+  },
+  "richDetail": {
+    "schema_version": 2,
+    "id": "11111111-1111-4111-8111-111111111111",
+    "revision": 2,
+    "title": "Synthetic Herd",
+    "notes": "Synthetic compatibility fixture",
+    "tags": [
+      "bestiary"
+    ],
+    "league": "Allflame",
+    "attribution": null,
+    "community": null,
+    "published_at": "2026-09-09T00:00:00.000Z",
+    "updated_at": "2026-09-09T00:00:00.000Z",
+    "score": null,
+    "setup": {
+      "map_type": "8-mod",
+      "group_play": false,
+      "party_size": 1,
+      "chisel": "None",
+      "scarabs": [
+        {
+          "name": "Bestiary Scarab",
+          "price_each_chaos": null
+        },
+        {
+          "name": "Bestiary Scarab of the Herd",
+          "price_each_chaos": null
+        },
+        {
+          "name": "Bestiary Scarab of the Herd",
+          "price_each_chaos": null
+        }
+      ],
+      "delirium": null,
+      "astrolabe": null,
+      "multiplying_modifiers": {
+        "allocated": true,
+        "fragment_count": 3
+      },
+      "atlas": {
+        "url": "https://pathofpathing.com/#AAAA",
+        "points": null,
+        "points_max": null
+      },
+      "run_regex": "\"quantity\"",
+      "slam_regex": null,
+      "game_data": {
+        "revision": 4,
+        "patch_version": "3.29"
+      }
+    },
+    "observed": {
+      "map_count": 2,
+      "mod_average": 8,
+      "mod_sample_size": 2,
+      "quantity_average": null,
+      "rarity_average": null,
+      "pack_size_average": null,
+      "currency_average": null,
+      "multiplier_average": 1.63
+    },
+    "economics": {
+      "all_in_cost_per_map_chaos": 0,
+      "recurring_cost_per_map_chaos": 0,
+      "net_per_map_divines": null,
+      "historical_net_divines": null,
+      "historical_invest_divines": null,
+      "total_invest_chaos": 0,
+      "net_profit_chaos": -2
+    },
+    "coverage": {
+      "run_count": 1,
+      "map_count": 2,
+      "timed_run_count": null,
+      "timed_map_count": null,
+      "timed_minutes": null,
+      "timed_net_divines": null,
+      "net_divines_per_hour": null,
+      "loot_available": true
+    },
+    "loot": {
+      "version": 1,
+      "row_limit": 30,
+      "rows": [
+        {
+          "name": "Kinetic Wand",
+          "category": "Other",
+          "source": "manual",
+          "quantity": 1,
+          "value_chaos": 120,
+          "note": "Synthetic disclosure",
+          "valuation": null,
+          "identity": {
+            "kind": "quality-base",
+            "equipment_group": "weapon",
+            "base": "Kinetic Wand",
+            "quality": 27,
+            "influence": "Elder",
+            "memory_strands": 40
+          }
+        },
+        {
+          "name": "Chaos Orb",
+          "category": "Currency",
+          "source": "wealthyexile",
+          "quantity": 100,
+          "value_chaos": 100,
+          "note": null,
+          "valuation": null,
+          "identity": null
+        }
+      ],
+      "categories": [
+        {
+          "category": "Other",
+          "value_chaos": 120
+        },
+        {
+          "category": "Currency",
+          "value_chaos": 100
+        }
+      ],
+      "has_baseline": true,
+      "csv_positive_chaos": 100,
+      "csv_negative_chaos": 0,
+      "csv_net_chaos": 100,
+      "csv_adjustment_chaos": 0,
+      "inventory_flow_chaos": 100,
+      "market_revaluation_chaos": 0,
+      "manual_total_chaos": 120,
+      "gem_correction_chaos": 0,
+      "investment_correction_chaos": 0,
+      "reported_return_chaos": 220,
+      "omitted_csv_rows": 0,
+      "omitted_csv_value_chaos": 0,
+      "omitted_manual_rows": 0,
+      "omitted_manual_value_chaos": 0
+    },
+    "scope": "current",
+    "snapshot_key": null,
+    "read_version": "22222222-2222-4222-8222-222222222222",
+    "reusable_setup": {
+      "status": "available",
+      "value": {
+        "version": 1,
+        "kind": "setup",
+        "title": "Synthetic Herd",
+        "notes": "Synthetic compatibility fixture",
+        "league": "Allflame",
+        "mapType": "8-mod",
+        "chisel": null,
+        "scarabs": [
+          "Bestiary Scarab",
+          "Bestiary Scarab of the Herd",
+          "Bestiary Scarab of the Herd"
+        ],
+        "delirium": null,
+        "astrolabe": null,
+        "atlasTreeUrl": "https://pathofpathing.com/#AAAA",
+        "runRegex": "\"quantity\"",
+        "reference": {
+          "maps": 2,
+          "quantity": null,
+          "rarity": null,
+          "packSize": null,
+          "currency": null,
+          "mapFamily": "8mod",
+          "slamRegex": ""
+        },
+        "multiplyingModifiers": {
+          "allocated": true,
+          "fragmentCount": 3
+        },
+        "party": {
+          "group": false,
+          "size": 1
+        }
+      }
+    },
+    "authored_history": {
+      "observed": {
+        "map_count": 2,
+        "mod_average": 8,
+        "mod_sample_size": 2,
+        "quantity_average": null,
+        "rarity_average": null,
+        "pack_size_average": null,
+        "currency_average": null,
+        "multiplier": 1.63
+      },
+      "economics": {
+        "recurring_cost_per_map_chaos": 0,
+        "total_invest_chaos": 0,
+        "net_profit_chaos": -2,
+        "net_per_map_divines": null,
+        "divine_price_chaos": 200
+      },
+      "timing": {
+        "reported_minutes": 12
+      },
+      "setup_display": {
+        "source": "structured",
+        "authored_map_count": 2,
+        "cost_breakdown": {
+          "chisel": null,
+          "scarabs": [
+            {
+              "name": "Bestiary Scarab",
+              "price_each_chaos": 0
+            },
+            {
+              "name": "Bestiary Scarab of the Herd",
+              "price_each_chaos": 0
+            },
+            {
+              "name": "Bestiary Scarab of the Herd",
+              "price_each_chaos": 0
+            }
+          ],
+          "delirium": null,
+          "astrolabe": null
+        },
+        "combined_map_rolling_cost_per_map_chaos": null
+      }
+    },
+    "ancillary": {
+      "excluded_drops": {
+        "declared_count": 1,
+        "total_chaos": 5,
+        "entries": [
+          {
+            "name": "Synthetic exclusion",
+            "chaos": 5
+          }
+        ],
+        "complete": true
+      },
+      "gem_leveling": {
+        "count": 2,
+        "buy_chaos": 0,
+        "sell_chaos": 5,
+        "net_chaos": 5
+      },
+      "observed_delirium": null
+    },
+    "continuation_setup": {
+      "status": "unavailable",
+      "reason": "inactive_registration"
+    },
+    "lifecycle": {
+      "state": "current",
+      "continuation_reason": "inactive_registration"
+    }
+  },
+  "partialDetail": {
+    "schema_version": 2,
+    "id": "11111111-1111-4111-8111-111111111111",
+    "revision": 2,
+    "title": "Synthetic Herd",
+    "notes": "Synthetic compatibility fixture",
+    "tags": [
+      "bestiary"
+    ],
+    "league": "Allflame",
+    "attribution": null,
+    "community": null,
+    "published_at": "2026-09-09T00:00:00.000Z",
+    "updated_at": "2026-09-09T00:00:00.000Z",
+    "score": null,
+    "setup": {
+      "map_type": "8-mod",
+      "group_play": false,
+      "party_size": 1,
+      "chisel": "None",
+      "scarabs": [
+        {
+          "name": "Bestiary Scarab",
+          "price_each_chaos": null
+        },
+        {
+          "name": "Bestiary Scarab of the Herd",
+          "price_each_chaos": null
+        },
+        {
+          "name": "Bestiary Scarab of the Herd",
+          "price_each_chaos": null
+        }
+      ],
+      "delirium": null,
+      "astrolabe": null,
+      "multiplying_modifiers": {
+        "allocated": true,
+        "fragment_count": 3
+      },
+      "atlas": {
+        "url": "https://pathofpathing.com/#AAAA",
+        "points": null,
+        "points_max": null
+      },
+      "run_regex": "\"quantity\"",
+      "slam_regex": null,
+      "game_data": {
+        "revision": 4,
+        "patch_version": "3.29"
+      }
+    },
+    "observed": {
+      "map_count": 2,
+      "mod_average": 8,
+      "mod_sample_size": 2,
+      "quantity_average": null,
+      "rarity_average": null,
+      "pack_size_average": null,
+      "currency_average": null,
+      "multiplier_average": 1.63
+    },
+    "economics": {
+      "all_in_cost_per_map_chaos": 0,
+      "recurring_cost_per_map_chaos": 0,
+      "net_per_map_divines": null,
+      "historical_net_divines": null,
+      "historical_invest_divines": null,
+      "total_invest_chaos": 0,
+      "net_profit_chaos": -2
+    },
+    "coverage": {
+      "run_count": 1,
+      "map_count": 2,
+      "timed_run_count": null,
+      "timed_map_count": null,
+      "timed_minutes": null,
+      "timed_net_divines": null,
+      "net_divines_per_hour": null,
+      "loot_available": false
+    },
+    "loot": null,
+    "scope": "current",
+    "snapshot_key": null,
+    "read_version": "22222222-2222-4222-8222-222222222222",
+    "reusable_setup": {
+      "status": "available",
+      "value": {
+        "version": 1,
+        "kind": "setup",
+        "title": "Synthetic Herd",
+        "notes": "Synthetic compatibility fixture",
+        "league": "Allflame",
+        "mapType": "8-mod",
+        "chisel": null,
+        "scarabs": [
+          "Bestiary Scarab",
+          "Bestiary Scarab of the Herd",
+          "Bestiary Scarab of the Herd"
+        ],
+        "delirium": null,
+        "astrolabe": null,
+        "atlasTreeUrl": "https://pathofpathing.com/#AAAA",
+        "runRegex": "\"quantity\"",
+        "reference": {
+          "maps": 2,
+          "quantity": null,
+          "rarity": null,
+          "packSize": null,
+          "currency": null,
+          "mapFamily": "8mod",
+          "slamRegex": ""
+        },
+        "multiplyingModifiers": {
+          "allocated": true,
+          "fragmentCount": 3
+        },
+        "party": {
+          "group": false,
+          "size": 1
+        }
+      }
+    },
+    "authored_history": {
+      "observed": {
+        "map_count": 2,
+        "mod_average": 8,
+        "mod_sample_size": 2,
+        "quantity_average": null,
+        "rarity_average": null,
+        "pack_size_average": null,
+        "currency_average": null,
+        "multiplier": 1.63
+      },
+      "economics": {
+        "recurring_cost_per_map_chaos": 0,
+        "total_invest_chaos": 0,
+        "net_profit_chaos": -2,
+        "net_per_map_divines": null,
+        "divine_price_chaos": 200
+      },
+      "timing": {
+        "reported_minutes": 12
+      },
+      "setup_display": {
+        "source": "structured",
+        "authored_map_count": 2,
+        "cost_breakdown": {
+          "chisel": null,
+          "scarabs": [
+            {
+              "name": "Bestiary Scarab",
+              "price_each_chaos": 0
+            },
+            {
+              "name": "Bestiary Scarab of the Herd",
+              "price_each_chaos": 0
+            },
+            {
+              "name": "Bestiary Scarab of the Herd",
+              "price_each_chaos": 0
+            }
+          ],
+          "delirium": null,
+          "astrolabe": null
+        },
+        "combined_map_rolling_cost_per_map_chaos": null
+      }
+    },
+    "ancillary": {
+      "excluded_drops": {
+        "declared_count": null,
+        "total_chaos": null,
+        "entries": [
+          {
+            "name": "Unpriced exclusion",
+            "chaos": null
+          }
+        ],
+        "complete": false
+      },
+      "gem_leveling": {
+        "count": null,
+        "buy_chaos": null,
+        "sell_chaos": 0,
+        "net_chaos": -5
+      },
+      "observed_delirium": null
+    },
+    "continuation_setup": {
+      "status": "unavailable",
+      "reason": "inactive_registration"
+    },
+    "lifecycle": {
+      "state": "current",
+      "continuation_reason": "inactive_registration"
+    }
+  },
+  "allNullDetail": {
+    "schema_version": 2,
+    "id": "11111111-1111-4111-8111-111111111111",
+    "revision": 2,
+    "title": "Synthetic Herd",
+    "notes": "Synthetic compatibility fixture",
+    "tags": [
+      "bestiary"
+    ],
+    "league": "Allflame",
+    "attribution": null,
+    "community": null,
+    "published_at": "2026-09-09T00:00:00.000Z",
+    "updated_at": "2026-09-09T00:00:00.000Z",
+    "score": null,
+    "setup": {
+      "map_type": "8-mod",
+      "group_play": false,
+      "party_size": 1,
+      "chisel": "None",
+      "scarabs": [
+        {
+          "name": "Bestiary Scarab",
+          "price_each_chaos": null
+        },
+        {
+          "name": "Bestiary Scarab of the Herd",
+          "price_each_chaos": null
+        },
+        {
+          "name": "Bestiary Scarab of the Herd",
+          "price_each_chaos": null
+        }
+      ],
+      "delirium": null,
+      "astrolabe": null,
+      "multiplying_modifiers": {
+        "allocated": true,
+        "fragment_count": 3
+      },
+      "atlas": {
+        "url": "https://pathofpathing.com/#AAAA",
+        "points": null,
+        "points_max": null
+      },
+      "run_regex": "\"quantity\"",
+      "slam_regex": null,
+      "game_data": {
+        "revision": 4,
+        "patch_version": "3.29"
+      }
+    },
+    "observed": {
+      "map_count": 2,
+      "mod_average": 8,
+      "mod_sample_size": 2,
+      "quantity_average": null,
+      "rarity_average": null,
+      "pack_size_average": null,
+      "currency_average": null,
+      "multiplier_average": 1.63
+    },
+    "economics": {
+      "all_in_cost_per_map_chaos": 0,
+      "recurring_cost_per_map_chaos": 0,
+      "net_per_map_divines": null,
+      "historical_net_divines": null,
+      "historical_invest_divines": null,
+      "total_invest_chaos": 0,
+      "net_profit_chaos": -2
+    },
+    "coverage": {
+      "run_count": 1,
+      "map_count": 2,
+      "timed_run_count": null,
+      "timed_map_count": null,
+      "timed_minutes": null,
+      "timed_net_divines": null,
+      "net_divines_per_hour": null,
+      "loot_available": false
+    },
+    "loot": null,
+    "scope": "current",
+    "snapshot_key": null,
+    "read_version": "22222222-2222-4222-8222-222222222222",
+    "reusable_setup": {
+      "status": "available",
+      "value": {
+        "version": 1,
+        "kind": "setup",
+        "title": "Synthetic Herd",
+        "notes": "Synthetic compatibility fixture",
+        "league": "Allflame",
+        "mapType": "8-mod",
+        "chisel": null,
+        "scarabs": [
+          "Bestiary Scarab",
+          "Bestiary Scarab of the Herd",
+          "Bestiary Scarab of the Herd"
+        ],
+        "delirium": null,
+        "astrolabe": null,
+        "atlasTreeUrl": "https://pathofpathing.com/#AAAA",
+        "runRegex": "\"quantity\"",
+        "reference": {
+          "maps": 2,
+          "quantity": null,
+          "rarity": null,
+          "packSize": null,
+          "currency": null,
+          "mapFamily": "8mod",
+          "slamRegex": ""
+        },
+        "multiplyingModifiers": {
+          "allocated": true,
+          "fragmentCount": 3
+        },
+        "party": {
+          "group": false,
+          "size": 1
+        }
+      }
+    },
+    "authored_history": {
+      "observed": {
+        "map_count": 2,
+        "mod_average": 8,
+        "mod_sample_size": 2,
+        "quantity_average": null,
+        "rarity_average": null,
+        "pack_size_average": null,
+        "currency_average": null,
+        "multiplier": 1.63
+      },
+      "economics": {
+        "recurring_cost_per_map_chaos": 0,
+        "total_invest_chaos": 0,
+        "net_profit_chaos": -2,
+        "net_per_map_divines": null,
+        "divine_price_chaos": 200
+      },
+      "timing": {
+        "reported_minutes": 12
+      },
+      "setup_display": {
+        "source": "structured",
+        "authored_map_count": 2,
+        "cost_breakdown": {
+          "chisel": null,
+          "scarabs": [
+            {
+              "name": "Bestiary Scarab",
+              "price_each_chaos": 0
+            },
+            {
+              "name": "Bestiary Scarab of the Herd",
+              "price_each_chaos": 0
+            },
+            {
+              "name": "Bestiary Scarab of the Herd",
+              "price_each_chaos": 0
+            }
+          ],
+          "delirium": null,
+          "astrolabe": null
+        },
+        "combined_map_rolling_cost_per_map_chaos": null
+      }
+    },
+    "ancillary": {
+      "excluded_drops": {
+        "declared_count": null,
+        "total_chaos": null,
+        "entries": [
+          {
+            "name": "Unpriced exclusion",
+            "chaos": null
+          }
+        ],
+        "complete": false
+      },
+      "gem_leveling": {
+        "count": null,
+        "buy_chaos": null,
+        "sell_chaos": null,
+        "net_chaos": null
+      },
+      "observed_delirium": null
+    },
+    "continuation_setup": {
+      "status": "unavailable",
+      "reason": "inactive_registration"
+    },
+    "lifecycle": {
+      "state": "current",
+      "continuation_reason": "inactive_registration"
+    }
+  },
+  "displayOnlyDetails": [
+    {
+      "schema_version": 2,
+      "id": "11111111-1111-4111-8111-111111111111",
+      "revision": 2,
+      "title": "Long title Long title Long title Long title Long title Long title Long title Long title Long title",
+      "notes": "Synthetic compatibility fixture",
+      "tags": [
+        "bestiary"
+      ],
+      "league": "Allflame",
+      "attribution": null,
+      "community": null,
+      "published_at": "2026-09-09T00:00:00.000Z",
+      "updated_at": "2026-09-09T00:00:00.000Z",
+      "score": null,
+      "setup": {
+        "map_type": "8-mod",
+        "group_play": false,
+        "party_size": 1,
+        "chisel": "None",
+        "scarabs": [
+          {
+            "name": "Bestiary Scarab",
+            "price_each_chaos": null
+          },
+          {
+            "name": "Bestiary Scarab of the Herd",
+            "price_each_chaos": null
+          },
+          {
+            "name": "Bestiary Scarab of the Herd",
+            "price_each_chaos": null
+          }
+        ],
+        "delirium": {
+          "type": "Fine",
+          "count_per_map": 1
+        },
+        "astrolabe": "Templar Astrolabe",
+        "multiplying_modifiers": {
+          "allocated": true,
+          "fragment_count": 5
+        },
+        "atlas": {
+          "url": "https://pathofpathing.com/#AAAA",
+          "points": null,
+          "points_max": null
+        },
+        "run_regex": "\"quantity\"",
+        "slam_regex": null,
+        "game_data": {
+          "revision": 4,
+          "patch_version": "3.29"
+        }
+      },
+      "observed": {
+        "map_count": 2,
+        "mod_average": 8,
+        "mod_sample_size": 2,
+        "quantity_average": null,
+        "rarity_average": null,
+        "pack_size_average": null,
+        "currency_average": null,
+        "multiplier_average": 1.63
+      },
+      "economics": {
+        "all_in_cost_per_map_chaos": 0,
+        "recurring_cost_per_map_chaos": 0,
+        "net_per_map_divines": null,
+        "historical_net_divines": null,
+        "historical_invest_divines": null,
+        "total_invest_chaos": 0,
+        "net_profit_chaos": -2
+      },
+      "coverage": {
+        "run_count": 1,
+        "map_count": 2,
+        "timed_run_count": null,
+        "timed_map_count": null,
+        "timed_minutes": null,
+        "timed_net_divines": null,
+        "net_divines_per_hour": null,
+        "loot_available": false
+      },
+      "loot": null,
+      "scope": "current",
+      "snapshot_key": null,
+      "read_version": "22222222-2222-4222-8222-222222222222",
+      "reusable_setup": {
+        "status": "unavailable",
+        "reason": "title_limit"
+      },
+      "authored_history": {
+        "observed": {
+          "map_count": 2,
+          "mod_average": 8,
+          "mod_sample_size": 2,
+          "quantity_average": null,
+          "rarity_average": null,
+          "pack_size_average": null,
+          "currency_average": null,
+          "multiplier": 1.63
+        },
+        "economics": {
+          "recurring_cost_per_map_chaos": 0,
+          "total_invest_chaos": 0,
+          "net_profit_chaos": -2,
+          "net_per_map_divines": null,
+          "divine_price_chaos": 200
+        },
+        "timing": {
+          "reported_minutes": 12
+        },
+        "setup_display": {
+          "source": "legacy_display",
+          "authored_map_count": 2,
+          "cost_breakdown": {
+            "chisel": null,
+            "scarabs": [],
+            "delirium": {
+              "type": "Fine",
+              "count_per_map": 1,
+              "price_each_chaos": 18
+            },
+            "astrolabe": {
+              "type": "Templar Astrolabe",
+              "count": 13,
+              "price_each_chaos": 62
+            }
+          },
+          "combined_map_rolling_cost_per_map_chaos": null
+        }
+      },
+      "ancillary": {
+        "excluded_drops": {
+          "declared_count": 1,
+          "total_chaos": 5,
+          "entries": [
+            {
+              "name": "Synthetic exclusion",
+              "chaos": 5
+            }
+          ],
+          "complete": true
+        },
+        "gem_leveling": {
+          "count": 2,
+          "buy_chaos": 0,
+          "sell_chaos": 5,
+          "net_chaos": 5
+        },
+        "observed_delirium": null
+      },
+      "continuation_setup": {
+        "status": "unavailable",
+        "reason": "inactive_registration"
+      },
+      "lifecycle": {
+        "state": "current",
+        "continuation_reason": "inactive_registration"
+      }
+    },
+    {
+      "schema_version": 2,
+      "id": "11111111-1111-4111-8111-111111111111",
+      "revision": 2,
+      "title": "Synthetic Herd",
+      "notes": "Synthetic compatibility fixture",
+      "tags": [
+        "bestiary"
+      ],
+      "league": "Allflame",
+      "attribution": null,
+      "community": null,
+      "published_at": "2026-09-09T00:00:00.000Z",
+      "updated_at": "2026-09-09T00:00:00.000Z",
+      "score": null,
+      "setup": {
+        "map_type": "8-mod",
+        "group_play": false,
+        "party_size": 1,
+        "chisel": "None",
+        "scarabs": [
+          {
+            "name": "Bestiary Scarab",
+            "price_each_chaos": null
+          },
+          {
+            "name": "Bestiary Scarab of the Herd",
+            "price_each_chaos": null
+          },
+          {
+            "name": "Bestiary Scarab of the Herd",
+            "price_each_chaos": null
+          }
+        ],
+        "delirium": {
+          "type": "Fine",
+          "count_per_map": 1
+        },
+        "astrolabe": "Templar Astrolabe",
+        "multiplying_modifiers": {
+          "allocated": true,
+          "fragment_count": 5
+        },
+        "atlas": {
+          "url": "https://pathofpathing.com/#AAAA",
+          "points": null,
+          "points_max": null
+        },
+        "run_regex": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "slam_regex": null,
+        "game_data": {
+          "revision": 4,
+          "patch_version": "3.29"
+        }
+      },
+      "observed": {
+        "map_count": 2,
+        "mod_average": 8,
+        "mod_sample_size": 2,
+        "quantity_average": null,
+        "rarity_average": null,
+        "pack_size_average": null,
+        "currency_average": null,
+        "multiplier_average": 1.63
+      },
+      "economics": {
+        "all_in_cost_per_map_chaos": 0,
+        "recurring_cost_per_map_chaos": 0,
+        "net_per_map_divines": null,
+        "historical_net_divines": null,
+        "historical_invest_divines": null,
+        "total_invest_chaos": 0,
+        "net_profit_chaos": -2
+      },
+      "coverage": {
+        "run_count": 1,
+        "map_count": 2,
+        "timed_run_count": null,
+        "timed_map_count": null,
+        "timed_minutes": null,
+        "timed_net_divines": null,
+        "net_divines_per_hour": null,
+        "loot_available": false
+      },
+      "loot": null,
+      "scope": "current",
+      "snapshot_key": null,
+      "read_version": "22222222-2222-4222-8222-222222222222",
+      "reusable_setup": {
+        "status": "unavailable",
+        "reason": "regex_limit"
+      },
+      "authored_history": {
+        "observed": {
+          "map_count": 2,
+          "mod_average": 8,
+          "mod_sample_size": 2,
+          "quantity_average": null,
+          "rarity_average": null,
+          "pack_size_average": null,
+          "currency_average": null,
+          "multiplier": 1.63
+        },
+        "economics": {
+          "recurring_cost_per_map_chaos": 0,
+          "total_invest_chaos": 0,
+          "net_profit_chaos": -2,
+          "net_per_map_divines": null,
+          "divine_price_chaos": 200
+        },
+        "timing": {
+          "reported_minutes": 12
+        },
+        "setup_display": {
+          "source": "legacy_display",
+          "authored_map_count": 2,
+          "cost_breakdown": {
+            "chisel": null,
+            "scarabs": [],
+            "delirium": {
+              "type": "Fine",
+              "count_per_map": 1,
+              "price_each_chaos": 18
+            },
+            "astrolabe": {
+              "type": "Templar Astrolabe",
+              "count": 13,
+              "price_each_chaos": 62
+            }
+          },
+          "combined_map_rolling_cost_per_map_chaos": null
+        }
+      },
+      "ancillary": {
+        "excluded_drops": {
+          "declared_count": 1,
+          "total_chaos": 5,
+          "entries": [
+            {
+              "name": "Synthetic exclusion",
+              "chaos": 5
+            }
+          ],
+          "complete": true
+        },
+        "gem_leveling": {
+          "count": 2,
+          "buy_chaos": 0,
+          "sell_chaos": 5,
+          "net_chaos": 5
+        },
+        "observed_delirium": null
+      },
+      "continuation_setup": {
+        "status": "unavailable",
+        "reason": "inactive_registration"
+      },
+      "lifecycle": {
+        "state": "current",
+        "continuation_reason": "inactive_registration"
+      }
+    },
+    {
+      "schema_version": 2,
+      "id": "11111111-1111-4111-8111-111111111111",
+      "revision": 2,
+      "title": "Synthetic Herd",
+      "notes": "Synthetic compatibility fixture",
+      "tags": [
+        "bestiary"
+      ],
+      "league": "Allflame",
+      "attribution": null,
+      "community": null,
+      "published_at": "2026-09-09T00:00:00.000Z",
+      "updated_at": "2026-09-09T00:00:00.000Z",
+      "score": null,
+      "setup": {
+        "map_type": "8-mod",
+        "group_play": false,
+        "party_size": 1,
+        "chisel": "None",
+        "scarabs": [
+          {
+            "name": "Bestiary Scarab",
+            "price_each_chaos": null
+          },
+          {
+            "name": "Bestiary Scarab of the Herd",
+            "price_each_chaos": null
+          },
+          {
+            "name": "Bestiary Scarab of the Herd",
+            "price_each_chaos": null
+          }
+        ],
+        "delirium": {
+          "type": "Fine",
+          "count_per_map": 1
+        },
+        "astrolabe": "Templar Astrolabe",
+        "multiplying_modifiers": {
+          "allocated": true,
+          "fragment_count": 5
+        },
+        "atlas": {
+          "url": "https://pathofpathing.com/#AAAA",
+          "points": null,
+          "points_max": null
+        },
+        "run_regex": "\"quantity\"",
+        "slam_regex": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "game_data": {
+          "revision": 4,
+          "patch_version": "3.29"
+        }
+      },
+      "observed": {
+        "map_count": 2,
+        "mod_average": 8,
+        "mod_sample_size": 2,
+        "quantity_average": null,
+        "rarity_average": null,
+        "pack_size_average": null,
+        "currency_average": null,
+        "multiplier_average": 1.63
+      },
+      "economics": {
+        "all_in_cost_per_map_chaos": 0,
+        "recurring_cost_per_map_chaos": 0,
+        "net_per_map_divines": null,
+        "historical_net_divines": null,
+        "historical_invest_divines": null,
+        "total_invest_chaos": 0,
+        "net_profit_chaos": -2
+      },
+      "coverage": {
+        "run_count": 1,
+        "map_count": 2,
+        "timed_run_count": null,
+        "timed_map_count": null,
+        "timed_minutes": null,
+        "timed_net_divines": null,
+        "net_divines_per_hour": null,
+        "loot_available": false
+      },
+      "loot": null,
+      "scope": "current",
+      "snapshot_key": null,
+      "read_version": "22222222-2222-4222-8222-222222222222",
+      "reusable_setup": {
+        "status": "unavailable",
+        "reason": "regex_limit"
+      },
+      "authored_history": {
+        "observed": {
+          "map_count": 2,
+          "mod_average": 8,
+          "mod_sample_size": 2,
+          "quantity_average": null,
+          "rarity_average": null,
+          "pack_size_average": null,
+          "currency_average": null,
+          "multiplier": 1.63
+        },
+        "economics": {
+          "recurring_cost_per_map_chaos": 0,
+          "total_invest_chaos": 0,
+          "net_profit_chaos": -2,
+          "net_per_map_divines": null,
+          "divine_price_chaos": 200
+        },
+        "timing": {
+          "reported_minutes": 12
+        },
+        "setup_display": {
+          "source": "legacy_display",
+          "authored_map_count": 2,
+          "cost_breakdown": {
+            "chisel": null,
+            "scarabs": [],
+            "delirium": {
+              "type": "Fine",
+              "count_per_map": 1,
+              "price_each_chaos": 18
+            },
+            "astrolabe": {
+              "type": "Templar Astrolabe",
+              "count": 13,
+              "price_each_chaos": 62
+            }
+          },
+          "combined_map_rolling_cost_per_map_chaos": null
+        }
+      },
+      "ancillary": {
+        "excluded_drops": {
+          "declared_count": 1,
+          "total_chaos": 5,
+          "entries": [
+            {
+              "name": "Synthetic exclusion",
+              "chaos": 5
+            }
+          ],
+          "complete": true
+        },
+        "gem_leveling": {
+          "count": 2,
+          "buy_chaos": 0,
+          "sell_chaos": 5,
+          "net_chaos": 5
+        },
+        "observed_delirium": null
+      },
+      "continuation_setup": {
+        "status": "unavailable",
+        "reason": "inactive_registration"
+      },
+      "lifecycle": {
+        "state": "current",
+        "continuation_reason": "inactive_registration"
+      }
+    }
+  ],
+  "snapshot": "33333333-3333-4333-8333-333333333333",
+  "input": {
+    "league": "Allflame",
+    "mapType": "8-mod",
+    "groupSize": 1,
+    "isGroupPlay": false,
+    "chiselType": "None",
+    "scarabs": [
+      {
+        "name": "Bestiary Scarab"
+      },
+      {
+        "name": "Bestiary Scarab of the Herd"
+      },
+      {
+        "name": "Bestiary Scarab of the Herd"
+      }
+    ],
+    "deliriumType": "",
+    "deliriumCountPerMap": 0,
+    "astrolabeType": "",
+    "atlasTreeUrl": "https://pathofpathing.com/#AAAA",
+    "multiplier": 1.63,
+    "gameDataRevision": 4,
+    "gameDataPatchVersion": "3.29",
+    "multiplyingModifiersAllocated": true,
+    "multiplyingModifiersFragmentCount": 3
+  },
+  "payload": {
+    "strategy_name": "Synthetic Herd",
+    "strategy_notes": "Synthetic compatibility fixture",
+    "league": "Allflame",
+    "map_type": "8-mod",
+    "map_count": 2,
+    "observed_mod_average": 8,
+    "observed_mod_sample_size": 2,
+    "multiplier": 1.63,
+    "chisel": "None",
+    "scarabs": [
+      {
+        "name": "Bestiary Scarab"
+      },
+      {
+        "name": "Bestiary Scarab of the Herd"
+      },
+      {
+        "name": "Bestiary Scarab of the Herd"
+      }
+    ],
+    "atlas_tree_url": "https://pathofpathing.com/#AAAA",
+    "run_regex": "\"quantity\"",
+    "is_group_play": false,
+    "group_size": 1,
+    "total_invest": 0,
+    "net_profit": -2,
+    "divine_price": 200,
+    "per_map_cost": 0,
+    "session_minutes": 12,
+    "game_data_revision": 4,
+    "game_data_patch_version": "3.29",
+    "raw_export": "Multiplying Modifiers: 3 fragments",
+    "costBreakdown": {
+      "chisel": null,
+      "scarabs": [
+        {
+          "name": "Bestiary Scarab",
+          "priceEach": 0
+        },
+        {
+          "name": "Bestiary Scarab of the Herd",
+          "priceEach": 0
+        },
+        {
+          "name": "Bestiary Scarab of the Herd",
+          "priceEach": 0
+        }
+      ],
+      "delirium": null,
+      "astrolabe": null
+    },
+    "excluded_drops": {
+      "declared_count": 1,
+      "total_chaos": 5,
+      "entries": [
+        {
+          "name": "Synthetic exclusion",
+          "chaos": 5
+        }
+      ],
+      "complete": true
+    },
+    "gem_leveling": {
+      "count": 2,
+      "buy_chaos": 0,
+      "sell_chaos": 5,
+      "net_chaos": 5
+    }
+  }
+}

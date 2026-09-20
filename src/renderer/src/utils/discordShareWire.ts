@@ -7,6 +7,7 @@
  * invokes its existing parser/validation path.
  */
 import { strFromU8, strToU8, unzlibSync, zlibSync } from 'fflate';
+import { buildAuthorSubmission, type AuthorSubmissionMetadata } from '../../../shared/authorSubmission';
 import type { DiscordImport } from './parseDiscordExport';
 import type { ObservedDeliriumSummary } from './deliriumMetadata';
 import {
@@ -205,7 +206,13 @@ export function buildDiscordSharePayload(parsed: DiscordImport): string {
  * second validation path. */
 export function decodeDiscordSharePayload(payloadJson: string): DiscordImport | null {
   try {
-    const payload = JSON.parse(payloadJson) as unknown;
+    let payload = JSON.parse(payloadJson) as unknown;
+    if (tuple(payload, 3) && payload[0] === 5) {
+      // Public metadata never confers local recognition or an armed target.
+      // Validate the envelope, then import only through the existing core path.
+      if (buildAuthorSubmission(JSON.stringify(payload[1]), payload[2] as AuthorSubmissionMetadata) !== payloadJson) return null;
+      payload = payload[1];
+    }
     if (!tuple(payload, 12) || payload[0] !== DISCORD_SHARE_BROTLI_VERSION
       || !tuple(payload[3], 6) || !tuple(payload[5], 3)
       || typeof payload[9] !== 'string') return null;

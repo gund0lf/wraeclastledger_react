@@ -46,12 +46,27 @@ import { isStrategyBackIntent } from '../utils/strategyBackNavigation';
 import { applyImportedMapType } from '../utils/importBuildSettings';
 import { type ImportedSetupPlan } from '../utils/investmentSetup';
 import { MAP_DEVICE_SLOT_COUNT } from '../../../shared/mapDevice';
+import { SafeStrategyBrowser } from '../components/SafeStrategyBrowser';
+import type { SafeStrategyAction } from '../utils/safeStrategyActions';
 
 // API base (incl. the VITE_STRATEGY_API_URL dev override) moved to
 // strategyConstants.STRATEGY_API_URL — shared with the game-data loader.
 
 // ─── Main module ───────────────────────────────────────────────────────────────
 export const StrategyBrowserModule = () => {
+  const [safe, setSafe] = useState<boolean | null>(null);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    let stop = false;
+    void window.api.authorHandoff({ action: 'available' }).then(r => {
+      if (!stop) { if (r.ok) setSafe(r.value); else setError(true); }
+    }).catch(() => { if (!stop) setError(true); });
+    return () => { stop = true; };
+  }, []);
+  if (error) return <Alert color="red">Could not check browsing capabilities. Reopen Strategy Browser to retry.</Alert>;
+  return safe === null ? <Loader size="sm" /> : <StrategyBrowserContent safe={safe} />;
+};
+const StrategyBrowserContent = ({ safe }: { safe: boolean }) => {
   const isMaximized = usePanelMaximized('strategy-browser');
   const isSetupSidebarCollapsed = useSetupSidebarCollapsed();
   const browserCols = isMaximized ? BROWSER_MAXIMIZED_COLS : BROWSER_COLS;
@@ -108,7 +123,7 @@ export const StrategyBrowserModule = () => {
   if (!isNaN(divNum) && divNum > 0) params.set('min_div', String(divNum));
   if (period !== 'all') params.set('since', period);
   if (leagueFilter) params.set('league', leagueFilter);
-  const query = browserView === 'live' ? `${apiUrl}/strategies?${params}` : null;
+  const query = !safe && browserView === 'live' ? `${apiUrl}/strategies?${params}` : null;
   // Hide old-scope rows in the transition render; layout cleanup revokes all
   // old continuations before the new view becomes interactive.
   const visible = query && browserState.query === query ? browserState : EMPTY_LIVE_BROWSER;
@@ -184,8 +199,9 @@ export const StrategyBrowserModule = () => {
   const [importOpen, { open: openImport, close: closeImport }] = useDisclosure(false);
   const [replacementGuardOpen, { open: openReplacementGuard, close: closeReplacementGuard }] = useDisclosure(false);
   const [replacementName, setReplacementName] = useState('');
-  const [pendingReplacement, setPendingReplacement] = useState<(() => Promise<void>) | null>(null);
+  const [pendingReplacement, setPendingReplacement] = useState<{ run: () => Promise<void>; current: () => boolean } | null>(null);
   const [guardedWorkingMapCount, setGuardedWorkingMapCount] = useState(0);
+  const [setupCommitting, setSetupCommitting] = useState(false);
 
   const runReplacement = (action: () => Promise<void>): void => {
     void action().catch((error: unknown) => {
@@ -193,17 +209,19 @@ export const StrategyBrowserModule = () => {
     });
   };
 
-  const requestReplacement = (action: () => Promise<void>) => {
+  const requestReplacement = (action: () => Promise<void>, current: () => boolean = () => true) => {
     void inspectWorkingReplacement().then((inspection) => {
+      if (!current()) return;
       if (!inspection.requiresProtection) {
         runReplacement(action);
         return;
       }
-      setPendingReplacement(() => action);
+      setPendingReplacement({ run: action, current });
       setGuardedWorkingMapCount(inspection.mapCount);
       setReplacementName('');
       openReplacementGuard();
     }).catch((error: unknown) => {
+      if (!current()) return;
       setLoadedMsg(error instanceof Error ? error.message : 'Could not inspect the working session.');
     });
   };
@@ -218,6 +236,7 @@ export const StrategyBrowserModule = () => {
   const continueReplacement = async (saveFirst: boolean): Promise<void> => {
     const action = pendingReplacement;
     if (!action) return;
+    if (!action.current()) { cancelReplacement(); return; }
     try {
       if (saveFirst) {
         const name = replacementName.trim();
@@ -225,7 +244,7 @@ export const StrategyBrowserModule = () => {
         await nameWorking(name);
       }
       cancelReplacement();
-      await action();
+      if (action.current()) await action.run();
     } catch (error: unknown) {
       setLoadedMsg(error instanceof Error ? error.message : 'Could not switch sessions.');
     }
@@ -249,25 +268,34 @@ export const StrategyBrowserModule = () => {
   };
 
   // ── Load build (called by both StrategyCard and ImportModal) ─────────────────
-  const applySetupSource = async (setup: StrategySetupCode): Promise<void> => {
+  const applySetupSource = async (setup: StrategySetupCode, action?: SafeStrategyAction): Promise<void> => {
     const plan = buildSetupOnlyImportPlan(setup);
-    await startWorking(true);
-    applyReusableSetup(plan.investment);
-    const modifiers = plan.multiplyingModifiers;
-    if (modifiers.allocated !== null) {
-      updateSetting('multiplyingModifiersAllocated', modifiers.allocated);
-      updateSetting('fragmentCountOverride', modifiers.allocated ? modifiers.fragmentCount : null);
+    action?.assertCurrent();
+    if (action) setSetupCommitting(true);
+    try {
+      await startWorking(true, action);
+      action?.assertCurrent();
+      updateSetting('strategyTarget', null);
+      updateSetting('strategySourceParty', setup.party ?? null);
+      applyReusableSetup(plan.investment);
+      const modifiers = plan.multiplyingModifiers;
+      if (modifiers.allocated !== null) {
+        updateSetting('multiplyingModifiersAllocated', modifiers.allocated);
+        updateSetting('fragmentCountOverride', modifiers.allocated ? modifiers.fragmentCount : null);
+      }
+      setLoadedStrategyInfo(plan.source);
+      if (plan.atlasTreeUrl) {
+        updateSetting('atlasTreeUrl', plan.atlasTreeUrl);
+        requestCurrentAtlasApply(plan.atlasTreeUrl, {
+          multiplyingModifiersAllocated: modifiers.allocated,
+          multiplyingModifiersFragmentCount: modifiers.fragmentCount,
+        });
+      }
+      setLoadedMsg('Setup applied. Add current prices in Investment.');
+      setTimeout(() => setLoadedMsg(null), 6000);
+    } finally {
+      if (action) setSetupCommitting(false);
     }
-    setLoadedStrategyInfo(plan.source);
-    if (plan.atlasTreeUrl) {
-      updateSetting('atlasTreeUrl', plan.atlasTreeUrl);
-      requestCurrentAtlasApply(plan.atlasTreeUrl, {
-        multiplyingModifiersAllocated: modifiers.allocated,
-        multiplyingModifiersFragmentCount: modifiers.fragmentCount,
-      });
-    }
-    setLoadedMsg('Setup applied. Add current prices in Investment.');
-    setTimeout(() => setLoadedMsg(null), 6000);
   };
 
   const applyStrategyBuild = (strategy: Strategy): Promise<void> =>
@@ -426,6 +454,10 @@ export const StrategyBrowserModule = () => {
         onDiscard={() => continueReplacement(false)}
         onCancel={cancelReplacement}
       />
+      <Modal opened={setupCommitting} onClose={() => undefined} title="Loading setup"
+        withCloseButton={false} closeOnEscape={false} closeOnClickOutside={false}>
+        <Text size="sm">Saving the session change…</Text>
+      </Modal>
 
       <Modal opened={continueCandidate !== null}
         onClose={() => { if (!continueStarting) setContinueCandidate(null); }}
@@ -480,7 +512,9 @@ export const StrategyBrowserModule = () => {
         </Stack>
       </Modal>
 
-      <div style={{ height: '100%', overflowX: 'auto', overflowY: 'hidden' }}>
+      {safe ? <SafeStrategyBrowser onShare={handleOpenShare} onImport={openImport}
+        applySetup={applySetupSource} runAction={(action, fresh, current) => fresh ? requestReplacement(action, current) : runReplacement(action)}
+        onLoadPersonal={handleLoadPersonalSession} message={loadedMsg} /> : <div style={{ height: '100%', overflowX: 'auto', overflowY: 'hidden' }}>
       <Card shadow="sm" padding="sm" radius="md" withBorder h="100%" style={{ display: 'flex', flexDirection: 'column', minWidth: browserMinContentWidth }}>
         {/* session-16: "Strategy Browser" title dropped (redundant with the
             tab label); the count badge anchors the left. */}
@@ -689,7 +723,7 @@ export const StrategyBrowserModule = () => {
           </div>
         )}
       </Card>
-      </div>
+      </div>}
     </>
   );
 };

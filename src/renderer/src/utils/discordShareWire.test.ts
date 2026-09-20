@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { buildAuthorSubmission } from '../../../shared/authorSubmission';
 import type { DiscordImport } from './parseDiscordExport';
 import { parseDiscordExport } from './parseDiscordExport';
 import {
@@ -253,6 +254,19 @@ describe('compact Discord share wire', () => {
     expect(token.length).toBeLessThanOrEqual(DISCORD_SHARE_WIRE_MAX);
     expect(decodeDiscordSharePayload(decodeDiscordShareBrotli(token))?.lootSummary).toEqual(loot);
     expect(decodeDiscordShareWire(encodeDiscordShareWire(source))?.lootSummary).toEqual(loot);
+  });
+
+  it('imports a v5 core without treating its public metadata as recognition or load authority', () => {
+    const core = buildDiscordSharePayload(parsed());
+    const meta = { author: { name: 'Example', registration_id: '11111111-1111-4111-8111-111111111111' },
+      expected_revision: null, confirmation_request_id: '22222222-2222-4222-8222-222222222222' };
+    const payload = buildAuthorSubmission(core, meta);
+    expect(() => encodeDiscordShareBrotli(payload)).toThrow();
+    const decoded = decodeDiscordSharePayload(decodeDiscordShareBrotli(encodeDiscordShareBrotli(payload, true)));
+    expect(decoded).toEqual(decodeDiscordSharePayload(core));
+    expect(decoded).not.toHaveProperty('author');
+    expect(decodeDiscordSharePayload(JSON.stringify([5, JSON.parse(core), { ...meta, reader_secret: 'forbidden' }]))).toBeNull();
+    expect(decodeDiscordSharePayload(JSON.stringify([5, [5, JSON.parse(core), meta], meta]))).toBeNull();
   });
 
   it('round-trips the Brotli schema-v4 transport through the strict legacy validator', () => {

@@ -48,6 +48,7 @@ export const FIELD_OWNERSHIP = {
   liveSessionId: 'bootstrap-workflow',
 
   discordTag: 'user-preference-cache',
+  authorPreferences: 'user-preference-cache',
   regexSets: 'user-preference-cache',
   leagueOverride: 'user-preference-cache',
   atlasBonusByLeague: 'user-preference-cache',

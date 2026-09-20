@@ -170,6 +170,8 @@ export interface RegexSet {
 }
 
 export interface SessionSettings {
+  strategyTarget?: import('../../../shared/strategyTarget').StrategyTarget | null;
+  strategySourceParty?: { group: boolean | null; size: number | null } | null;
   divinePrice: number;
   /** Durable provenance for the session's stored divine quote. */
   divinePriceQuotedAt?: string | null;

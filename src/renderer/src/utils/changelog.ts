@@ -10,6 +10,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.98',
+    date: '',
+    changes: [
+      'Prepared a development preview of public-name sharing, safe current/frozen strategy browsing and saved continuation targets. Loading keeps new-run prices empty; replacing or adding a run rechecks the published revision and assigned public name before sharing. Availability remains gated pending coordinated compatibility validation.',
+      'The development preview ignores superseded Load/Continue requests, preserves unrecorded ancillary values, and shows recorded setup details even when a title or regex exceeds setup-import limits.',
+      'Prepared reliable private confirmations for replacement updates and added evidence runs, including safe retries and Discord card-sync failures. This remains part of the gated sharing preview.',
+      'The gated Strategy Browser preview accepts valid Unicode public names, including combining characters, without rejecting the surrounding results page.',
+    ],
+  },
+  {
     version: '1.0.97',
     date: '2026-09-08',
     changes: [

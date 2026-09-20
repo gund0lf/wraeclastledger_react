@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { emptyAuthorPreferences, parseAuthorPreferences, type AuthorPreferences } from '../../../shared/authorRecognition';
 import { useShallow } from 'zustand/react/shallow';
 import { MapData, SessionSettings, LootItem, ManualLootItem, ManualSessionStatistics, ManualRunTimer, SavedSession, ScarabSlot, ScarabPreset, RegexSet, ExclusionPreset, LeagueCloseouts } from '../types';
 import { v4 as uuidv4 } from 'uuid';
@@ -264,6 +265,8 @@ export function migrateLegacyStore(persisted: any): any {
 export const migrateState = migrateLegacyStore;
 
 export interface SessionState {
+  authorPreferences: AuthorPreferences;
+  setAuthorPreferences: (value: AuthorPreferences) => void;
   maps: MapData[];
   lootItems: LootItem[];
   baselineItems: LootItem[];
@@ -477,6 +480,8 @@ export const useSessionStore = create<SessionStoreState>()(
       maps: [], lootItems: [], baselineItems: [], baselineTotal: 0, manualLootItems: [], manualStatistics: {},
       manualRunTimer: { ...EMPTY_MANUAL_RUN_TIMER }, manualTimerRecoveryMs: null,
       settings: { ...DEFAULT_SETTINGS },
+      authorPreferences: emptyAuthorPreferences(),
+      setAuthorPreferences: (value) => set({ authorPreferences: parseAuthorPreferences(value) }),
       discordTag: DEFAULT_DISCORD_TAG, regexSets: [...DEFAULT_REGEX_SETS],
       leagueOverride: null,
       atlasBonusByLeague: {},
@@ -519,7 +524,9 @@ export const useSessionStore = create<SessionStoreState>()(
           return {
             settings: {
               ...s.settings,
-              [key]: value,
+              ...(key === 'strategyTarget'
+                ? withStrategyTarget(s.settings, value as StrategyTarget | null)
+                : { [key]: value, ...(LEGACY_TARGET_KEYS.includes(key as typeof LEGACY_TARGET_KEYS[number]) ? { strategyTarget: undefined } : {}) }),
               ...(atlasTreeChanged
                 ? { bestiaryAtlasSetup: undefined, mercenaryAtlasSetup: undefined }
                 : {}),
@@ -1318,3 +1325,4 @@ if (hydratedLeagueOverride !== useSessionStore.getState().leagueOverride) {
   useSessionStore.setState({ leagueOverride: hydratedLeagueOverride });
 }
 setLeagueOverrideValue(hydratedLeagueOverride);
+import { LEGACY_TARGET_KEYS, withStrategyTarget, type StrategyTarget } from '../../../shared/strategyTarget';

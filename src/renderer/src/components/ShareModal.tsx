@@ -33,6 +33,8 @@ import {
   type EvidenceSubmissionProof,
 } from '../utils/evidencePreflight';
 import './ShareModal.css';
+import { AuthorShareControls } from './AuthorShareControls';
+import { ManagePublicNames } from './ManagePublicNames';
 
 const SETUP_FIELD_LABELS: Record<string, string> = {
   leagueKey: 'League',
@@ -54,6 +56,22 @@ interface Props {
 }
 
 export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
+  const [authorReview, setAuthorReview] = useState<boolean | null>(null);
+  const [authorReviewError, setAuthorReviewError] = useState<string | null>(null);
+  const [manageNames, setManageNames] = useState(false);
+  const [authorFieldContainer, setAuthorFieldContainer] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!opened) return;
+    let stopped = false;
+    setAuthorReviewError(null);
+    window.api.authorHandoff({ action: 'available' }).then((r) => {
+      if (stopped) return;
+      if (r.ok) setAuthorReview(r.value);
+      else { setAuthorReview(null); setAuthorReviewError(r.error); }
+    }).catch(() => { if (!stopped) { setAuthorReview(null); setAuthorReviewError('Could not check sharing capabilities. Close and reopen Share to retry.'); } });
+    return () => { stopped = true; };
+  }, [opened]);
+  useEffect(() => { if (!opened) setManageNames(false); }, [opened]);
   const {
     maps, settings, lootItems, baselineItems, baselineTotal, manualLootItems,
     manualRunTimer, investmentNeutralization, discordTag, setDiscordTag, updateAdvSetting, updateSetting,
@@ -65,13 +83,13 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   // Versioning client half: a session carrying an update target shares as an
   // UPDATE (marker line in the export). "Share as new instead" CLEARS the
   // persisted target — matrix case (c): later shares must not silently update.
-  const updateTargetId   = settings.updateTargetStrategyId ?? null;
+  const updateTargetId   = authorReview === false ? settings.updateTargetStrategyId ?? null : null;
   const updateTargetName = settings.updateTargetStrategyName ?? null;
   const clearUpdateTarget = () => {
     updateSetting('updateTargetStrategyId', null);
     updateSetting('updateTargetStrategyName', null);
   };
-  const evidenceTargetId = settings.evidenceTargetStrategyId ?? null;
+  const evidenceTargetId = authorReview === false ? settings.evidenceTargetStrategyId ?? null : null;
   const evidenceTargetName = settings.evidenceTargetStrategyName ?? null;
   const evidenceExpectedRevision = settings.evidenceTargetExpectedRevision ?? null;
   const evidenceTargetFingerprint = settings.evidenceTargetSetupFingerprint ?? null;
@@ -158,6 +176,12 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   useEffect(() => {
     if (!opened) return;
     const est = computeTimeEstimate(maps);
+    if (settings.strategySourceParty?.group !== null && settings.strategySourceParty?.group !== undefined) {
+      setIsGroupPlay(settings.strategySourceParty.group);
+      setGroupSize(settings.strategySourceParty.size ?? 2);
+    }
+    const savedTarget = settings.strategyTarget;
+    if (savedTarget && savedTarget.state !== 'legacy_review' && stratName.trim() === '') setStratName(savedTarget.title);
     setTimeText(est ? String(Math.round(est.activeMs / 60_000)) : '');
     // Update run: prefill the strategy name from the target so an untouched
     // field can't blank the published name (the update replaces display
@@ -292,6 +316,10 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
        activeManifest.revision, activeManifest.patchVersion]);
 
   const parsedDiscordExport = useMemo(() => parseDiscordExport(discordExport), [discordExport]);
+  const authorCore = useMemo(() => {
+    try { return parsedDiscordExport ? buildDiscordSharePayload(parsedDiscordExport) : ''; }
+    catch { return ''; } // The existing encoder reports the field/size error below.
+  }, [parsedDiscordExport]);
   const [discordWireResult, setDiscordWireResult] = useState<{
     wire: string;
     error: string | null;
@@ -382,7 +410,8 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     || evidenceBlocked
     || shareIncomplete
     || costsIncomplete;
-  const copyDisabled = previewWithheld || discordWireResult.pending
+  const unsupportedSavedTarget = authorReview === false && settings.strategyTarget != null && settings.strategyTarget.state !== 'legacy_review';
+  const copyDisabled = authorReview !== false || unsupportedSavedTarget || previewWithheld || discordWireResult.pending
     || !discordWire || discordWire.length > DISCORD_SHARE_COMMAND_MAX || !budget.fitsPlain;
 
   // ── Update run: compare the about-to-publish numbers to what's live now ─────
@@ -540,14 +569,20 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
             )}
           </Stack>
         )}
-        <TextInput
+        {authorReviewError && <Alert color="red" p="xs">{authorReviewError}</Alert>}
+        {unsupportedSavedTarget && <Alert color="orange" p="xs">
+          This session retains a continuation target that requires the updated sharing feature. Copy is blocked until that feature is available, or you explicitly choose a separate publication.
+          <Button size="compact-xs" variant="subtle" onClick={() => updateSetting('strategyTarget', null)}>Clear target and share separately</Button>
+        </Alert>}
+        {authorReview && <div ref={setAuthorFieldContainer} />}
+        {authorReview === false && <TextInput
           size="xs"
           label="Your Discord tag"
           description="Used to highlight your own strategies in the Strategy Browser"
           placeholder="e.g. your-discord-name"
           value={discordTag}
           onChange={(e) => setDiscordTag(e.currentTarget.value)}
-        />
+        />}
         {maps.length === 0 && (
           <Alert color="orange" variant="light" p="xs">
             <Text size="xs">No maps parsed yet — parse some maps in Map Log first for complete stats.</Text>
@@ -735,7 +770,13 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
             </Text>
           </div>
         )}
-        <CopyButton value={discordWire} timeout={2000}>
+        {authorReview && opened && <AuthorShareControls enabled={!manageNames}
+          core={authorCore}
+          raw={discordExport} blocked={previewWithheld || !budget.fitsPlain}
+          fieldContainer={authorFieldContainer}
+          onManage={() => setManageNames(true)} />}
+        {authorReview && <ManagePublicNames opened={opened && manageNames} onClose={() => setManageNames(false)} />}
+        {authorReview === false && <CopyButton value={discordWire} timeout={2000}>
           {({ copied, copy }) => (
             <Button leftSection={copied ? <IconCheck size={14} /> : <IconBrandDiscord size={14} />} onClick={copy}
               disabled={copyDisabled}
@@ -747,7 +788,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
                   : 'Copy to Discord'}
             </Button>
           )}
-        </CopyButton>
+        </CopyButton>}
       </Stack>
     </Modal>
   );

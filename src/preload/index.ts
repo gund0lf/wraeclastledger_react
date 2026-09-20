@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import { AUTHOR_HANDOFF_CHANNEL, type AuthorBridge } from '../shared/authorHandoff'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { AtlasStatsReadResult } from '../shared/atlasStats'
 import type { ClipboardBridgeStatus } from '../shared/protonClipboardBridge'
@@ -29,6 +30,7 @@ type RepositoryFlushRequest = { requestId: string; mode: 'flush' | 'export-recov
 type RepositoryFlushResult = { requestId: string; ok: boolean; error?: string; recoveryDocument?: string };
 
 const api = {
+  authorHandoff: ((request) => ipcRenderer.invoke(AUTHOR_HANDOFF_CHANNEL, request)) as AuthorBridge,
   usesManagedOverlayBounds: process.platform === 'linux',
   sessionRepository: createSessionRepositoryBridge((channel, request) =>
     ipcRenderer.invoke(channel, request)),

@@ -167,6 +167,7 @@ export function isWorkingSessionMeaningful(
     ...Object.keys(state.settings),
   ] as (keyof SessionSettings)[]);
   for (const key of settingKeys) {
+    if ((key === 'strategyTarget' || key === 'strategySourceParty') && state.settings[key] == null) continue;
     if (AUTO_MANAGED_SETTINGS.has(key)) continue;
     if (key === 'regexExclusions' && valuesEqual(
       state.settings.regexExclusions,
