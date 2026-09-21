@@ -6,7 +6,7 @@ import { confirmedStrategyAuthor } from '../utils/safeStrategyTarget'
 import { useSessionStore } from '../store/useSessionStore'
 import { RegexLine } from './ui/RegexLine'
 import { PoeItemIcon } from './ui/PoeItemIcon'
-import { safeNumber, safePooledCostComponents } from '../utils/safeStrategyPresentation'
+import { safeNumber, safePooledCostComponents, safeCostEvidenceMessage } from '../utils/safeStrategyPresentation'
 
 function Metrics({ values }: { values: Array<[string, number | null | undefined, string?]> }) {
   return <Group gap="xs" grow>{values.map(([label, value, unit]) => <Card key={label} withBorder p="xs" style={{ minWidth: 105 }}>
@@ -78,7 +78,7 @@ export function SafeStrategyDetail({ detail: d, onLoad, onContinue, onName }: {
     <Text size="xs">Multiplying Modifiers: {d.setup.multiplying_modifiers?.allocated == null ? 'Unrecorded' : d.setup.multiplying_modifiers.allocated ? `allocated · ${safeNumber(d.setup.multiplying_modifiers.fragment_count)} fragments` : 'not allocated'}</Text>
     <Costs value={authored?.setup_display?.cost_breakdown ?? null} maps={authored?.setup_display?.authored_map_count ?? null} source={authored?.setup_display?.source === 'structured' ? 'Authored run prices' : 'Legacy display prices (not exact setup proof)'} />
     {(d.coverage.run_count ?? 0) > 1 && <><Text size="sm" fw={600}>Map-weighted historical setup costs / map</Text>
-      {pooledCosts ? <Metrics values={Object.entries(pooledCosts).map(([k, v]) => [k, v, 'c'])} /> : <Text size="xs" c="dimmed">{runs ? 'Incomplete cost evidence; no partial cost summary is calculated.' : 'Loading complete run evidence…'}</Text>}
+      {pooledCosts ? <Metrics values={Object.entries(pooledCosts).map(([k, v]) => [k, v, 'c'])} /> : <Text size="xs" c="dimmed">{safeCostEvidenceMessage(runs, error)}</Text>}
       <Text size="xs" c="dimmed">Base map / rolling split is unrecorded. All-in {safeNumber(d.economics.all_in_cost_per_map_chaos, 'c')} per map.</Text></>}
     {d.notes && <Card withBorder p="xs"><Text size="xs" c="dimmed">Notes</Text><Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{d.notes}</Text></Card>}
     <Metrics values={[[ 'Quantity', d.observed.quantity_average, '%' ], ['Rarity', d.observed.rarity_average, '%'], ['Pack size', d.observed.pack_size_average, '%'], ['Currency', d.observed.currency_average, '%']]} />

@@ -92,7 +92,7 @@ export function AuthorShareControls({ core, raw, blocked, onManage, fieldContain
       data={[{ value: '', label: 'Enter a public name' }, ...preferences.registrations.map((r) => ({ value: r.registrationId,
         label: r.name + (r.confirmed ? '' : ' (needs confirmation)'), disabled: !r.confirmed }))]} />
     {!target && !selection && <TextInput size="xs" label="Public name" value={name} maxLength={256} onChange={(e) => setName(e.currentTarget.value)} />}
-    <Checkbox size="xs" label="Prepare local name confirmation with this share" checked={confirmation}
+    <Checkbox size="xs" label="Include a confirmation step to save this name on this device" checked={confirmation}
       onChange={(e) => setConfirmation(e.currentTarget.checked)} />
     {!confirmation && <Text size="xs" c="dimmed">After sharing, use Recover in Manage public names to confirm this name on this installation.</Text>}
   </Stack>

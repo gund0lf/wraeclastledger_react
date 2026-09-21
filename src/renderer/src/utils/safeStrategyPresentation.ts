@@ -2,6 +2,11 @@ import type { SafeRun } from '../../../shared/safeStrategy'
 import { computePublishedSetupCostBreakdown } from './strategySetupCosts'
 export const safeNumber = (v: number | null | undefined, unit = '') => v == null ? 'Unrecorded' : v.toLocaleString(undefined, { maximumFractionDigits: unit === 'd' ? 3 : 1 }) + unit
 
+export function safeCostEvidenceMessage(runs: SafeRun[] | null, error: string | null): string {
+  if (error !== null) return 'Run evidence is unavailable. Retry below to load the historical cost summary.'
+  return runs === null ? 'Loading complete run evidence…' : 'Incomplete cost evidence; no partial cost summary is calculated.'
+}
+
 /** Complete-only component costs. Missing per-run prices never become zero. */
 export function safePooledCostComponents(runs: SafeRun[]): Record<string, number> | null {
   if (!runs.length) return null

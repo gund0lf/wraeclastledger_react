@@ -12,7 +12,7 @@ import { DEFAULT_SETTINGS } from '../store/useSessionStore'
 import { buildDiscordSharePayload, decodeDiscordSharePayload } from './discordShareWire'
 import { parseDiscordExport } from './parseDiscordExport'
 import { buildAuthorSubmission } from '../../../shared/authorSubmission'
-import { safeNumber, safePooledCostComponents } from './safeStrategyPresentation'
+import { safeNumber, safePooledCostComponents, safeCostEvidenceMessage } from './safeStrategyPresentation'
 const prefs = { ...emptyAuthorPreferences(), registrations: [{ registrationId: fixture.row.id, name: 'Fixture Author', confirmed: true, epoch: fixture.snapshot }] }
 const page = () => ({ schema_version: 2, scope: 'current', snapshot_key: null, read_version: fixture.row.read_version,
   total: 1, limit: 20, sort: 'activity', order: 'desc', strategies: [structuredClone(fixture.row)], next_cursor: null })
@@ -26,6 +26,14 @@ const attributionReaders = (attribution: unknown) => [
   () => parseSafeDetail({ ...fixture.frozen, attribution }).attribution
 ]
 describe('shared safe strategy reader contract', () => {
+  it('distinguishes pending, failed, retrying and incomplete historical costs', () => {
+    expect(safeCostEvidenceMessage(null, null)).toContain('Loading')
+    expect(safeCostEvidenceMessage(null, 'offline')).toContain('unavailable')
+    expect(safeCostEvidenceMessage(null, '')).not.toContain('Loading')
+    // Starting Retry clears the error, allowing a genuine loading state again.
+    expect(safeCostEvidenceMessage(null, null)).toContain('Loading')
+    expect(safeCostEvidenceMessage([], null)).toContain('Incomplete')
+  })
   it('preserves canonical public names using registration bounds, not code-unit display limits', () => {
     for (const name of ['Example', '\u0915\u093f\u0902'.repeat(27), '\u0915\u093f\u0902'.repeat(32), 'A' + '\u0338'.repeat(254) + 'B']) {
       expect(normalizePublicAuthorName(name).name).toBe(name)

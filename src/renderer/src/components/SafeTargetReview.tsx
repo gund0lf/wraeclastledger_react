@@ -33,9 +33,9 @@ export function SafeTargetReview({ target }: { target: StrategyTarget }) {
       if (active.current.generation !== generation) return
       if (target.state !== 'legacy_review' && target.operation === 'evidence' && target.state !== 'acknowledged' &&
         (target.revision !== next.revision || JSON.stringify(target.seed) !== JSON.stringify(next.seed)))
-        throw new Error('An existing evidence pin cannot be rebased. Clear it explicitly before choosing another operation.')
+        throw new Error('This run is linked to its original strategy version. Clear the saved link before choosing a different version or action.')
       useSessionStore.getState().updateSetting('strategyTarget', next)
-    } catch (e) { if (active.current.generation === generation) setError(e instanceof Error ? e.message : 'Could not bind target.') }
+    } catch (e) { if (active.current.generation === generation) setError(e instanceof Error ? e.message : 'Could not use this strategy version.') }
     finally { if (active.current.generation === generation) setBusy(false) }
   }
   const candidates = target.state === 'legacy_review'
@@ -47,7 +47,7 @@ export function SafeTargetReview({ target }: { target: StrategyTarget }) {
       <Button size="compact-xs" variant="default" loading={busy} onClick={() => void inspect(c.value!.id, c.operation)}>Review current revision</Button></Group>)}
     <Text size="xs">{target.state !== 'legacy_review' && `Pinned revision ${target.revision}. `}Your maps, loot and prices are retained if this target cannot be checked. A timeout does not mean the Discord submission failed.</Text>
     {review && <><Text size="xs">{review.detail.title} · current revision {review.detail.revision} · {review.detail.attribution?.display_name ?? 'Author name not set'}</Text>
-      <Button size="xs" variant="light" loading={busy} onClick={() => void bind()}>Bind this reviewed revision</Button></>}
+      <Button size="xs" variant="light" loading={busy} onClick={() => void bind()}>Use this version for my next share</Button></>}
     {error && <Text size="xs" c="red">{error}</Text>}
     <Button size="compact-xs" variant="subtle" onClick={() => { active.current.generation++; useSessionStore.getState().updateSetting('strategyTarget', null) }}>Clear target and share as a separate strategy</Button>
   </Stack></Alert>

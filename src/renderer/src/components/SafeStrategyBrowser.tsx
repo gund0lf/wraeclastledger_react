@@ -155,7 +155,7 @@ export function SafeStrategyBrowser({ onShare, onImport, applySetup, runAction, 
     <Modal opened={!!candidate} onClose={() => setCandidate(null)} title={`Continue ${candidate?.title ?? 'strategy'}`}>
       <Stack><Text size="sm">What should the next share do?</Text><SegmentedControl value={operation} onChange={v => setOperation(v as 'replace' | 'evidence')}
         data={[{ value: 'evidence', label: 'Add another run' }, { value: 'replace', label: 'Replace strategy' }]} />
-        <Text size="xs">{operation === 'evidence' ? 'Adds compatible evidence with its own historical prices.' : 'Creates a new revision and replaces the current evidence pool. Votes remain.'}</Text>
+        <Text size="xs">{operation === 'evidence' ? 'Adds a compatible run with its own recorded prices.' : 'Your next share publishes a new version and starts its combined results with this run. Votes stay.'}</Text>
         <SegmentedControl value={source} onChange={setSource} data={[{ value: 'current', label: 'Use current session' }, { value: 'fresh', label: 'Start fresh session' }]} />
         <Text size="xs">{source === 'current' ? 'Keeps maps, loot and authored prices. Sharing checks compatibility again.' : 'Loads reusable settings into a fresh session with empty prices.'}</Text>
         <Button onClick={continueRun}>Continue strategy</Button></Stack>

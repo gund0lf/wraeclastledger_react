@@ -17,6 +17,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'The development preview ignores superseded Load/Continue requests, preserves unrecorded ancillary values, and shows recorded setup details even when a title or regex exceeds setup-import limits.',
       'Prepared reliable private confirmations for replacement updates and added evidence runs, including safe retries and Discord card-sync failures. This remains part of the gated sharing preview.',
       'The gated Strategy Browser preview accepts valid Unicode public names, including combining characters, without rejecting the surrounding results page.',
+      'The gated sharing preview uses clearer confirmation and next-share wording. Failed run-evidence requests show an unavailable state with Retry instead of continuing to say Loading.',
     ],
   },
   {
