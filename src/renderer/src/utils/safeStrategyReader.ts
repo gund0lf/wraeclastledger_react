@@ -94,7 +94,10 @@ export class SafeBrowserRequests {
         throw new Error('The results changed. Refresh to continue.')
       const rows = more && previous ? [...previous.strategies, ...page.strategies.filter(r => !previous.strategies.some(p => p.id === r.id))] : page.strategies
       const expanded = rows.some(r => r.id === this.state.expanded) ? this.state.expanded : null
-      this.update({ page: { ...page, strategies: rows }, expanded })
+      // A card may have been opened while this list was loading. Its response and
+      // error belong to the old list, even if the new list no longer has that row.
+      this.detailAttempt++
+      this.update({ page: { ...page, strategies: rows }, expanded, detail: null, error: null })
       if (expanded) void this.expand(expanded)
     } catch (e) { if (owns()) this.update({ error: e instanceof Error ? e.message : 'Could not load strategies.' }) }
     finally { if (owns()) this.update({ loading: false }) }

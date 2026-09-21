@@ -129,7 +129,7 @@ export function SafeStrategyBrowser({ onShare, onImport, applySetup, runAction, 
       <Group><Button size="xs" variant="default" onClick={() => { actions.invalidate(); onImport() }}>Import Strategy</Button><Button size="xs" variant="default" onClick={() => { actions.invalidate(); onShare() }}>Share Strategy</Button></Group>
     </Group>
     {message && <Alert color="gray" p="xs">{message}</Alert>}
-    {error && <Alert color="red" p="xs">{error}<Button size="compact-xs" onClick={() => setCatalogueAttempt(v => v + 1)}>Retry</Button></Alert>}
+    {view === 'frozen' && error && <Alert color="red" p="xs">{error}<Button size="compact-xs" onClick={() => setCatalogueAttempt(v => v + 1)}>Retry</Button></Alert>}
     {view === 'current' ? <>
       <Group align="end" gap="xs">
         <TextInput size="xs" label="Search strategies" value={search} maxLength={120} onChange={e => setSearch(e.currentTarget.value)} />

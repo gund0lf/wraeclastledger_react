@@ -18,6 +18,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Prepared reliable private confirmations for replacement updates and added evidence runs, including safe retries and Discord card-sync failures. This remains part of the gated sharing preview.',
       'The gated Strategy Browser preview accepts valid Unicode public names, including combining characters, without rejecting the surrounding results page.',
       'The gated sharing preview uses clearer confirmation and next-share wording. Failed run-evidence requests show an unavailable state with Retry instead of continuing to say Loading.',
+      'The gated Strategy Browser preview discards outdated card responses when refreshed results replace them, and keeps Retrospectives errors and Retry controls out of the Live view.',
     ],
   },
   {

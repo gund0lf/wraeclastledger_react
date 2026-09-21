@@ -24,6 +24,36 @@ it('the gated public reader cannot address private routes or external hosts and 
   expect(exchange.mock.calls[0][1]).toEqual({ method: 'GET' })
   expect(storage).not.toHaveBeenCalled(); expect(clipboard).not.toHaveBeenCalled()
 })
+it.each([403, 410, 429, 503])('keeps a failed public read (%s) on its exact endpoint and masks the error body', async status => {
+  const path = '/web/v2/retrospectives/11111111-1111-4111-8111-111111111111/strategies?limit=20'
+  const payload = { schema_version: 2, scope: 'frozen' }
+  const fetcher = vi.fn().mockResolvedValueOnce(new Response('{"error":"private-upstream-detail"}', { status }))
+    .mockResolvedValueOnce(new Response(JSON.stringify(payload)))
+  const { service, vault, clipboard } = await setup((url, init) => authorJsonFetch(url, init, fetcher))
+  const storage = vi.spyOn(vault, 'discardInterrupted')
+  expect(await service.handle({ action: 'read', path })).toEqual({ ok: false, error: 'Could not load the public strategy data. Refresh and retry.' })
+  // A failed read cannot disable the safe reader and send the renderer to legacy routes.
+  expect(await service.handle({ action: 'available' })).toEqual({ ok: true, value: true })
+  expect(fetcher).toHaveBeenCalledTimes(1)
+  expect(await service.handle({ action: 'read', path })).toEqual({ ok: true, value: payload })
+  expect(fetcher.mock.calls.map(([url]) => url)).toEqual([origin + path, origin + path])
+  for (const [, init] of fetcher.mock.calls) {
+    expect(init).toMatchObject({ method: 'GET', credentials: 'omit', redirect: 'error', cache: 'no-store' })
+    expect(init.headers).toBeUndefined(); expect(init.body).toBeUndefined()
+  }
+  expect(storage).not.toHaveBeenCalled(); expect(clipboard).not.toHaveBeenCalled()
+})
+it('masks malformed public responses and network errors without retrying another endpoint', async () => {
+  const fetcher = vi.fn().mockResolvedValueOnce(new Response('private HTML, not JSON', { status: 503 }))
+    .mockRejectedValueOnce(new Error('private connection details'))
+    .mockResolvedValueOnce(new Response('"' + 'x'.repeat(16385) + '"'))
+  const { service } = await setup((url, init) => authorJsonFetch(url, init, fetcher))
+  for (let i = 0; i < 3; i++) {
+    expect(await service.handle({ action: 'read', path: '/web/v2/strategies?limit=20' }))
+      .toEqual({ ok: false, error: 'Could not load the public strategy data. Refresh and retry.' })
+    expect(fetcher).toHaveBeenCalledTimes(i + 1)
+  }
+})
 const epoch = randomUUID(), registration = randomUUID()
 async function setup(exchange?: (url: string, init: RequestInit) => Promise<unknown>) {
   const directory = await mkdtemp(join(tmpdir(), 'wl-author-exchange-'))
