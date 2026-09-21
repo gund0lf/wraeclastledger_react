@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } fr
 import { SAFE_SORTS, safeSortOrder, safeIdentityKey, type SafeDetail, type SafeRow, type SafeSnapshot, type SafeSort } from '../../../shared/safeStrategy'
 import type { StrategySetupCode } from '../../../shared/strategySetupCode'
 import { SafeBrowserRequests, safeStrategyReader } from '../utils/safeStrategyReader'
+import { safeStrategyQuery } from '../utils/safeStrategyQuery'
 import { bindSafeTarget, confirmedStrategyAuthor, refreshSafeAuthorState } from '../utils/safeStrategyTarget'
 import { useSessionStore } from '../store/useSessionStore'
 import { ALL_TYPE_TAGS, TAG_COLORS } from '../utils/strategyConstants'
@@ -84,13 +85,7 @@ export function SafeStrategyBrowser({ onShare, onImport, applySetup, runAction, 
     void safeStrategyReader.catalogue().then(v => { if (!stop) setSnapshots(v) }).catch(e => { if (!stop) setError(String(e.message)) })
     return () => { stop = true }
   }, [view, catalogueAttempt])
-  const q = new URLSearchParams({ limit: '20', sort, order, group, since })
-  if (search.trim()) q.set('search', search.trim())
-  if (league) q.set('league', league)
-  if (tags.length) q.set('tags', tags.join(','))
-  if (mapType) q.set('map_type', mapType)
-  if (/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(min) && Number(min) <= 1e15) q.set('min_div', min)
-  const query = q.toString()
+  const { query, error: minError } = safeStrategyQuery({ search, league, tags, group, mapType, since, min, sort, order })
   useLayoutEffect(() => { actions.invalidate(); return actions.invalidate }, [actions, view, query])
   const changeSort = (next: SafeSort) => { setSort(next); setOrder(next === sort ? order === 'asc' ? 'desc' : 'asc' : safeSortOrder(next)) }
   const load = (d: SafeDetail) => {
@@ -138,11 +133,12 @@ export function SafeStrategyBrowser({ onShare, onImport, applySetup, runAction, 
         <MultiSelect size="xs" label="Mechanics" value={tags} onChange={setTags} maxValues={24} data={ALL_TYPE_TAGS} searchable />
         <Select size="xs" label="Party" value={group} allowDeselect={false} onChange={v => setGroup(v ?? 'all')} data={[{ value: 'all', label: 'Solo & group' }, { value: 'solo', label: 'Solo only' }, { value: 'group', label: 'Group only' }]} />
         <Select size="xs" label="Activity" value={since} allowDeselect={false} onChange={v => setSince(v ?? 'all')} data={[{ value: 'all', label: 'All time' }, { value: '1d', label: '24 hours' }, { value: '3d', label: '3 days' }, { value: '7d', label: '7 days' }, { value: '30d', label: '30 days' }]} />
-        <TextInput size="xs" label="Min div / map" value={min} onChange={e => setMin(e.currentTarget.value)} />
+        <TextInput size="xs" label="Min div / map" value={min} error={minError} onChange={e => setMin(e.currentTarget.value)} />
         <Select size="xs" label="Sort" value={sort} allowDeselect={false} onChange={v => { if (v) { setSort(v as SafeSort); setOrder(safeSortOrder(v as SafeSort)) } }} data={Object.entries(SAFE_SORTS).map(([value, label]) => ({ value, label }))} />
         <Button size="xs" variant="default" onClick={() => setOrder(order === 'asc' ? 'desc' : 'asc')}>{order === 'asc' ? '↑' : '↓'}</Button>
       </Group>
-      <SafeBoard path={'/web/v2/strategies?' + q} {...boardActions} sort={sort} order={order} onSort={changeSort} />
+      {query !== null ? <SafeBoard path={'/web/v2/strategies?' + query} {...boardActions} sort={sort} order={order} onSort={changeSort} />
+        : <Text size="sm" c="dimmed">Correct or clear the minimum to show matching strategies.</Text>}
     </> : <>
       <PersonalRetrospectives onLoadSession={onLoadPersonal} />
       {snapshots.map(s => <Stack key={s.snapshot_key} gap="sm"><Text fw={600}>{s.league ?? 'Unknown league'} · Frozen {s.cutoff_utc ? new Date(s.cutoff_utc).toLocaleDateString() : 'date unrecorded'}</Text>

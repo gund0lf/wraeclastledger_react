@@ -7,7 +7,7 @@ const generation = '88888888-8888-4888-8888-888888888888'
 const detail = () => parseSafeDetail(fixture.detail)
 const page = (frozen = false) => ({ schema_version: 2, scope: frozen ? 'frozen' : 'current',
   snapshot_key: frozen ? fixture.snapshot : null, read_version: fixture.row.read_version,
-  total: 1, limit: 20, sort: 'activity', order: 'desc', next_cursor: null,
+  total: 1, limit: 20, sort: frozen ? 'score' : 'activity', order: 'desc', next_cursor: null,
   strategies: [frozen ? { ...fixture.row, scope: 'frozen', snapshot_key: fixture.snapshot, snapshot_schema_version: 1 } : fixture.row] })
 const listPath = (frozen = false) => frozen
   ? `/web/v2/retrospectives/${fixture.snapshot}/strategies?limit=20` : '/web/v2/strategies?limit=20'

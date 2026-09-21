@@ -19,7 +19,7 @@ export class SafeStrategyReader {
     const url = new URL(path, 'http://127.0.0.1'), snapshot = url.pathname.match(/retrospectives\/([^/]+)\//)?.[1] ?? null
     if (page.scope !== (snapshot ? 'frozen' : 'current') || page.snapshot_key !== snapshot ||
       page.limit !== Number(url.searchParams.get('limit') ?? 20) ||
-      page.sort !== (url.searchParams.get('sort') ?? 'activity') || page.order !== (url.searchParams.get('order') ?? safeSortOrder(page.sort)) ||
+      page.sort !== (url.searchParams.get('sort') ?? (snapshot ? 'score' : 'activity')) || page.order !== (url.searchParams.get('order') ?? safeSortOrder(page.sort)) ||
       page.strategies.length > page.limit || new Set(page.strategies.map(r => r.id)).size !== page.strategies.length ||
       page.strategies.some(r => r.scope !== page.scope || r.snapshot_key !== page.snapshot_key)) throw new Error('The strategy page identity changed. Refresh to continue.')
     return page
