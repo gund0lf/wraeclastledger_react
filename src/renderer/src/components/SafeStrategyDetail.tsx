@@ -6,7 +6,9 @@ import { confirmedStrategyAuthor } from '../utils/safeStrategyTarget'
 import { useSessionStore } from '../store/useSessionStore'
 import { RegexLine } from './ui/RegexLine'
 import { PoeItemIcon } from './ui/PoeItemIcon'
-import { safeNumber, safePooledCostComponents, safeCostEvidenceMessage } from '../utils/safeStrategyPresentation'
+import { safeNumber, safePooledCostComponents, safeCostEvidenceMessage, safeAuthorLabel, safeAuthorStatus, safeSetupUnavailableMessage, safeContinuationMessage } from '../utils/safeStrategyPresentation'
+import { FONT } from '../utils/uiTokens'
+import { lootCategoryLabel } from '../utils/lootCategories'
 
 function Metrics({ values }: { values: Array<[string, number | null | undefined, string?]> }) {
   return <Group gap="xs" grow>{values.map(([label, value, unit]) => <Card key={label} withBorder p="xs" style={{ minWidth: 105 }}>
@@ -26,11 +28,11 @@ function Costs({ value, maps, source }: { value: SafeRun['cost_breakdown']; maps
 }
 function Loot({ loot }: { loot: SafeDetail['loot'] }) {
   if (!loot) return <Text size="xs" c="dimmed">Loot evidence is unrecorded.</Text>
-  return <Stack gap="xs"><Group gap="xs">{loot.categories.map(c => <Card key={c.category} withBorder p="xs"><Text size="xs">{c.category}</Text><Text size="sm">{safeNumber(c.value_chaos, 'c')}</Text></Card>)}</Group>
+  return <Stack gap="xs"><Group gap="xs">{loot.categories.map(c => <Card key={c.category} withBorder p="xs"><Text size="xs">{lootCategoryLabel(c.category)}</Text><Text size="sm">{safeNumber(c.value_chaos, 'c')}</Text></Card>)}</Group>
     <Text size="xs" c="dimmed">{loot.has_baseline ? 'Baseline recorded' : 'No recorded baseline'} · Manual additions {safeNumber(loot.manual_total_chaos, 'c')} · Inventory flow {safeNumber(loot.inventory_flow_chaos, 'c')} · Market revaluation {safeNumber(loot.market_revaluation_chaos, 'c')}</Text>
-    <details><summary style={{ fontSize: 12, cursor: 'pointer' }}>Show item breakdown ({loot.rows.length} rows)</summary>
+    <details><summary style={{ fontSize: FONT.body, cursor: 'pointer' }}>Show item breakdown ({loot.rows.length} rows)</summary>
       <Table><Table.Thead><Table.Tr><Table.Th>Item</Table.Th><Table.Th>Quantity</Table.Th><Table.Th>Value</Table.Th></Table.Tr></Table.Thead><Table.Tbody>
-        {loot.rows.map((r, i) => <Table.Tr key={i}><Table.Td><Group gap={5}><PoeItemIcon name={r.name} size={18} /><Text size="xs">{r.name} · {r.category} · {r.source}</Text></Group>
+        {loot.rows.map((r, i) => <Table.Tr key={i}><Table.Td><Group gap={5}><PoeItemIcon name={r.name} size={18} /><Text size="xs">{r.name} · {lootCategoryLabel(r.category)} · {r.source === 'manual' ? 'Manual addition' : r.source === 'wealthyexile' ? 'CSV' : 'Recorded source'}</Text></Group>
           {r.note && <Text size="xs" c="dimmed">{r.note}</Text>}
           {r.identity && <Text size="xs" c="dimmed">{Object.entries(r.identity).filter(([k]) => k !== 'kind').map(([k, v]) => `${k.replaceAll('_', ' ')}: ${v ?? 'unrecorded'}`).join(' · ')}</Text>}
           {r.valuation && <Text size="xs" c="dimmed">Quantity {safeNumber(r.valuation.baseline_quantity)} → {safeNumber(r.valuation.current_quantity)} · Value {safeNumber(r.valuation.baseline_value_chaos, 'c')} → {safeNumber(r.valuation.current_value_chaos, 'c')}</Text>}
@@ -63,8 +65,8 @@ export function SafeStrategyDetail({ detail: d, onLoad, onContinue, onName }: {
     : [['Historical net', d.economics.historical_net_divines ?? ((d.coverage.run_count ?? 0) <= 1 && quote && d.economics.net_profit_chaos !== null ? d.economics.net_profit_chaos / quote : null), 'd'],
       ['Historical investment', d.economics.historical_invest_divines ?? ((d.coverage.run_count ?? 0) <= 1 && quote && d.economics.total_invest_chaos !== null ? d.economics.total_invest_chaos / quote : null), 'd']]
   return <Card withBorder p="sm"><Stack gap="sm">
-    <Group justify="space-between"><Text fw={700}>{d.title || 'Untitled strategy'}</Text><Badge color="gray">{d.scope} · Revision {d.revision}</Badge></Group>
-    <Text size="xs" c={own ? 'teal' : 'dimmed'}>{d.attribution?.display_name ?? 'Author name not set'}{d.attribution && ` · ${d.attribution.status}`} · {d.league ?? 'League unrecorded'}</Text>
+    <Group justify="space-between"><Text fw={700} style={{ overflowWrap: 'anywhere' }}>{d.title || 'Untitled strategy'}</Text><Badge color="gray">{d.scope === 'current' ? 'Live' : 'Frozen'} · Revision {d.revision}</Badge></Group>
+    <Text size="xs" style={{ overflowWrap: 'anywhere' }} c={own ? 'teal' : 'dimmed'}>{safeAuthorLabel(d.attribution)}{safeAuthorStatus(d.attribution) && ` · ${safeAuthorStatus(d.attribution)}`} · {d.league ?? 'League unrecorded'}</Text>
     <Text size="xs" c="dimmed">Published {d.published_at ? new Date(d.published_at).toLocaleString() : 'unrecorded'} · Updated {d.updated_at ? new Date(d.updated_at).toLocaleString() : 'unrecorded'}</Text>
     <Group gap={4}>{d.tags.map(t => <Badge key={t} size="xs" color="gray">{t}</Badge>)}</Group>
     <Group justify="space-between"><Text size="sm" fw={600}>Recorded results</Text><Button size="compact-xs" variant="default" onClick={() => setUnit(unit === 'c' ? 'd' : 'c')}>{unit === 'c' ? 'Show Divines' : 'Show Chaos'}</Button></Group>
@@ -78,7 +80,7 @@ export function SafeStrategyDetail({ detail: d, onLoad, onContinue, onName }: {
     <Text size="xs">Multiplying Modifiers: {d.setup.multiplying_modifiers?.allocated == null ? 'Unrecorded' : d.setup.multiplying_modifiers.allocated ? `allocated · ${safeNumber(d.setup.multiplying_modifiers.fragment_count)} fragments` : 'not allocated'}</Text>
     <Costs value={authored?.setup_display?.cost_breakdown ?? null} maps={authored?.setup_display?.authored_map_count ?? null} source={authored?.setup_display?.source === 'structured' ? 'Authored run prices' : 'Legacy display prices (not exact setup proof)'} />
     {(d.coverage.run_count ?? 0) > 1 && <><Text size="sm" fw={600}>Map-weighted historical setup costs / map</Text>
-      {pooledCosts ? <Metrics values={Object.entries(pooledCosts).map(([k, v]) => [k, v, 'c'])} /> : <Text size="xs" c="dimmed">{safeCostEvidenceMessage(runs, error)}</Text>}
+      {pooledCosts ? <Metrics values={Object.entries(pooledCosts).map(([k, v]) => [k, v, 'c'])} /> : <Text size="xs" c="dimmed">{safeCostEvidenceMessage(runs, error, d.scope)}</Text>}
       <Text size="xs" c="dimmed">Base map / rolling split is unrecorded. All-in {safeNumber(d.economics.all_in_cost_per_map_chaos, 'c')} per map.</Text></>}
     {d.notes && <Card withBorder p="xs"><Text size="xs" c="dimmed">Notes</Text><Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{d.notes}</Text></Card>}
     <Metrics values={[[ 'Quantity', d.observed.quantity_average, '%' ], ['Rarity', d.observed.rarity_average, '%'], ['Pack size', d.observed.pack_size_average, '%'], ['Currency', d.observed.currency_average, '%']]} />
@@ -88,7 +90,7 @@ export function SafeStrategyDetail({ detail: d, onLoad, onContinue, onName }: {
     {d.setup.run_regex && <RegexLine value={d.setup.run_regex} badge="Run" badgeColor="green" />}
     {d.setup.slam_regex && <RegexLine value={d.setup.slam_regex} badge="Slam" badgeColor="orange" />}
     {error && <Alert color="orange" p="xs">{error}<Button size="compact-xs" onClick={() => setRetry(v => v + 1)}>Retry evidence</Button></Alert>}
-    {runs && <details><summary style={{ fontSize: 12, cursor: 'pointer' }}>Evidence runs ({runs.length})</summary><Stack mt="xs">{runs.map(r => <Card key={r.ordinal} withBorder p="xs"><Stack gap="xs">
+    {runs && <details><summary style={{ fontSize: FONT.body, cursor: 'pointer' }}>Recorded runs ({runs.length})</summary><Stack mt="xs">{runs.map(r => <Card key={r.ordinal} withBorder p="xs"><Stack gap="xs">
       <Text size="sm" fw={600}>Run {r.ordinal} · {r.contributed_on ?? 'date unrecorded'}</Text>
       <Metrics values={[[ 'Maps', r.observed.map_count ], ['Investment', r.economics.total_invest_chaos, 'c'], ['Net', r.economics.net_profit_chaos, 'c'], ['Divine at time', r.economics.divine_price_chaos, 'c'], ['Minutes', r.timing.reported_minutes]]} />
       <Costs value={r.cost_breakdown ?? r.display_cost_breakdown} maps={r.observed.map_count} source={r.cost_breakdown ? 'Exact recorded run prices' : 'Legacy display prices'} /><Loot loot={r.loot} />
@@ -99,7 +101,7 @@ export function SafeStrategyDetail({ detail: d, onLoad, onContinue, onName }: {
       {(d.attribution === null || d.scope === 'current' && d.attribution.status === 'active') && <Button size="xs" variant="default" onClick={onName}>{d.attribution === null ? 'Name this strategy' : 'Manage attribution'}</Button>}
     </Group>
     {!continuing && <Text size="xs" c="dimmed">{d.scope === 'frozen' ? 'Frozen strategies cannot be continued.' : d.continuation_setup.status === 'unavailable'
-      ? `Continuation unavailable: ${d.continuation_setup.reason.replaceAll('_', ' ')}.` : 'Confirm the assigned public name to continue. Discord verifies ownership.'}</Text>}
-    {!reusable && <Text size="xs" c="dimmed">Reusable setup unavailable: {d.reusable_setup.status === 'unavailable' ? d.reusable_setup.reason : ''}.</Text>}
+        ? safeContinuationMessage(d.continuation_setup.reason) : 'Confirm the assigned public name to continue. Discord verifies ownership.'}</Text>}
+    {!reusable && <Text size="xs" c="dimmed">{d.reusable_setup.status === 'unavailable' && safeSetupUnavailableMessage(d.reusable_setup.reason)}</Text>}
   </Stack></Card>
 }

@@ -5,6 +5,7 @@
  * No React dependencies — safe to import from any component or util.
  */
 import type { LootSummary } from './lootSummary';
+import { PRODUCTION_STRATEGY_API_ORIGIN } from '../../../shared/strategyApi';
 
 // ─── Strategy server base URL ─────────────────────────────────────────────────
 // Single home for the API base (Browser fetches + game-data manifest fetch).
@@ -12,9 +13,8 @@ import type { LootSummary } from './lootSummary';
 // (e.g. `set VITE_STRATEGY_API_URL=http://localhost:3000` before `npm run dev`).
 // Never set in production builds — the default stays the live API.
 
-const DEFAULT_API_URL = 'https://wledger.richardpruett.com';
 export const STRATEGY_API_URL: string =
-  (import.meta.env.VITE_STRATEGY_API_URL as string | undefined) || DEFAULT_API_URL;
+  (import.meta.env.VITE_STRATEGY_API_URL as string | undefined) || PRODUCTION_STRATEGY_API_ORIGIN;
 
 // ─── Server types ─────────────────────────────────────────────────────────────
 

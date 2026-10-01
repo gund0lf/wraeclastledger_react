@@ -1,6 +1,7 @@
 import { app, shell, BrowserWindow, ipcMain, clipboard, dialog, globalShortcut, powerMonitor, screen, safeStorage } from 'electron'
 import { AuthorHandoffVault } from './authorHandoffVault'
-import { AuthorHandoffService, authorReviewOrigin } from './authorHandoffService'
+import { AuthorHandoffService } from './authorHandoffService'
+import { authorServiceOrigin } from '../shared/strategyApi'
 import { AUTHOR_HANDOFF_CHANNEL } from '../shared/authorHandoff'
 import { deriveRepositoryPaths } from './sessionRepositoryCore'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -212,7 +213,7 @@ let lastClipboardText = '';
 let watchWindow: BrowserWindow | null = null;
 let mainWindowRef: BrowserWindow | null = null;
 const authorHandoffs = new AuthorHandoffService({
-  origin: authorReviewOrigin(is.dev && !app.isPackaged, process.env.WL_AUTHOR_REVIEW_ORIGIN),
+  origin: authorServiceOrigin({ packaged: app.isPackaged, development: is.dev, reviewOrigin: process.env.WL_AUTHOR_REVIEW_ORIGIN }),
   vault: new AuthorHandoffVault(join(deriveRepositoryPaths(app.getPath('userData')).root, 'private'), {
     isEncryptionAvailable: () => safeStorage.isEncryptionAvailable() &&
       (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'),

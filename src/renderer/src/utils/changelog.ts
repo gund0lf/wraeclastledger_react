@@ -13,6 +13,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.98',
     date: '',
     changes: [
+      'Prepared the compatible Strategy Browser and public-name controls for the existing server address. Online holds and update-required responses now have clear messages and never fall back to older identity-exposing reads; local tracking remains available. Publication still awaits coordinated acceptance.',
+      'The compatible reader uses ordinary Back/Escape navigation without an extra back button, readable public-name and setup status labels, and explicit unavailable run costs for frozen strategies.',
       'Prepared a development preview of public-name sharing, safe current/frozen strategy browsing and saved continuation targets. Loading keeps new-run prices empty; replacing or adding a run rechecks the published revision and assigned public name before sharing. Availability remains gated pending coordinated compatibility validation.',
       'The development preview ignores superseded Load/Continue requests, preserves unrecorded ancillary values, and shows recorded setup details even when a title or regex exceeds setup-import limits.',
       'Prepared reliable private confirmations for replacement updates and added evidence runs, including safe retries and Discord card-sync failures. This remains part of the gated sharing preview.',

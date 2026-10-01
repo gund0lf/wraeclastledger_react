@@ -9,23 +9,13 @@ import {
   type PreparedAuthorRequest, type AuthorServiceState,
 } from '../shared/authorHandoff'
 
-/** Review builds may speak only to an explicitly supplied local fixture server.
- * Packaged builds cannot enable this through an environment override. */
-export function authorReviewOrigin(development: boolean, raw: string | undefined): string | null {
-  if (!development || !raw) return null
-  try {
-    const u = new URL(raw)
-    return u.protocol === 'http:' && u.hostname === '127.0.0.1' && !!u.port &&
-      !u.username && !u.password && u.pathname === '/' && !u.search && !u.hash ? u.origin : null
-  } catch { return null }
-}
 const digest = (domain: string, text: string) => createHash('sha256').update(domain + '\0').update(text).digest('hex')
 const contextKey = (c: AuthorContext) => JSON.stringify(c)
 const validDate = (v: unknown): v is string => typeof v === 'string' && v.length <= 40 && Number.isFinite(Date.parse(v))
 const id = (v: unknown): v is string => typeof v === 'string' && AUTHOR_UUID.test(v)
 
 export class AuthorExchangeError extends Error {
-  constructor(message: string, readonly terminal = false) { super(message) }
+  constructor(message: string, readonly terminal = false, readonly status?: number, readonly code?: string) { super(message) }
 }
 const messages: Record<string, string> = {
   author_service_unavailable: 'Author controls are temporarily unavailable. Retry later.',
@@ -34,32 +24,57 @@ const messages: Record<string, string> = {
   author_scope_changed: 'The affected strategies changed. Review a new request in Discord.',
   author_limit: 'You already have five active public names.',
   author_restore_locked: 'Author controls are awaiting recovery after a server restore.',
+  online_strategies_temporarily_unavailable: 'Online strategies are temporarily unavailable. Retry later. Local tracking and saved sessions are still available.',
+  protected_changes_temporarily_unavailable: 'This change is temporarily unavailable. Retry later.',
   invalid_confirmation: 'Copy the private confirmation token from Discord and try again.',
+}
+const publicReadMessages: Record<number, string> = {
+  404: 'This strategy or retrospective is no longer available. Refresh the results.',
+  409: 'The strategy results changed. Refresh to continue.',
+  410: 'Update WraeclastLedger to the latest stable version to continue browsing. Local tracking and saved sessions are still available.',
+  429: 'Too many strategy requests. Wait briefly and retry.',
+  503: messages.online_strategies_temporarily_unavailable,
+}
+/** Accept only the known error envelopes. Their explanatory text is never shown. */
+function errorCode(value: unknown): string | undefined {
+  if (!(exact(value, ['error']) || exact(value, ['error', 'message']) || exact(value, ['error', 'field', 'reason'])) ||
+    !Object.values(value).every(v => typeof v === 'string' && v.length <= 1024) ||
+    typeof value.error !== 'string' || !/^[a-z_]{1,80}$/.test(value.error)) return undefined
+  return value.error
+}
+function exchangeError(status: number, parsed?: unknown): AuthorExchangeError {
+  const code = errorCode(parsed)
+  return new AuthorExchangeError(status === 429
+    ? 'Too many author requests. Wait before preparing another.'
+    : code && Object.hasOwn(messages, code) ? messages[code]
+    : status === 503 ? messages.author_service_unavailable
+    : 'The author request could not be completed. Check its status or retry later.',
+  code === 'handoff_expired' || code === 'handoff_unavailable', status, code)
 }
 /** Bounded streaming reader: an untrusted error body is never relayed or logged. */
 export async function authorJsonFetch(url: string, init: RequestInit, fetcher = fetch, maxBytes = 16384): Promise<unknown> {
   const response = await fetcher(url, { ...init, redirect: 'error', credentials: 'omit',
     cache: 'no-store', signal: AbortSignal.timeout(10_000) })
-  if (!response.body) throw new Error('Missing author response')
-  const reader = response.body.getReader(), chunks: Uint8Array[] = []
-  let size = 0
+  let parsed: unknown
   try {
-    for (;;) {
-      const part = await reader.read()
-      if (part.done) break
-      size += part.value.byteLength
-      if (size > maxBytes) throw new Error('Oversized author response')
-      chunks.push(part.value)
-    }
-  } finally { await reader.cancel().catch(() => undefined) }
-  const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'))
-  if (!response.ok) {
-    const code = exact(parsed, ['error']) && typeof parsed.error === 'string' ? parsed.error : ''
-    throw new AuthorExchangeError(response.status === 429
-      ? 'Too many author requests. Wait before preparing another.'
-       : messages[code] ?? 'The author request could not be completed. Check its status or retry later.',
-      code === 'handoff_expired' || code === 'handoff_unavailable')
+    if (!response.body) throw new Error('Missing author response')
+    const reader = response.body.getReader(), chunks: Uint8Array[] = []
+    let size = 0
+    try {
+      for (;;) {
+        const part = await reader.read()
+        if (part.done) break
+        size += part.value.byteLength
+        if (size > maxBytes) throw new Error('Oversized author response')
+        chunks.push(part.value)
+      }
+    } finally { await reader.cancel().catch(() => undefined) }
+    parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  } catch (error) {
+    if (!response.ok) throw exchangeError(response.status)
+    throw error
   }
+  if (!response.ok) throw exchangeError(response.status, parsed)
   return parsed
 }
 
@@ -75,7 +90,7 @@ export class AuthorHandoffService {
   }) {}
   private current(c: AuthorContext) { return this.active === contextKey(c) }
   private async call(path: string, method = 'GET', body?: unknown, authorization?: string) {
-    if (!this.options.origin) throw new Error('Author review is disabled')
+    if (!this.options.origin) throw new Error('Author service is disabled')
     return (this.options.exchange ?? authorJsonFetch)(this.options.origin + '/desktop/v1/author-handoffs' + path,
       { method, headers: { 'Content-Type': 'application/json', ...(authorization ? { Authorization: authorization } : {}) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
@@ -144,7 +159,11 @@ export class AuthorHandoffService {
       if (url.origin !== this.options.origin || !new RegExp(`^/web/v2/(?:strategies(?:/${uuidPart}(?:/evidence)?)?|retrospectives(?:/${uuidPart}/strategies(?:/${uuidPart})?)?)$`).test(url.pathname))
         throw new Error('Invalid public read')
       try { return await (this.options.exchange ?? ((u, init) => authorJsonFetch(u, init, fetch, 2 * 1024 * 1024)))(url.href, { method: 'GET' }) }
-      catch { throw new AuthorExchangeError('Could not load the public strategy data. Refresh and retry.') }
+      catch (error) {
+        throw new AuthorExchangeError(error instanceof AuthorExchangeError && error.status !== undefined
+          ? publicReadMessages[error.status] ?? 'Could not load the public strategy data. Refresh and retry.'
+          : 'Could not reach online strategies. Retry later. Local tracking and saved sessions are still available.')
+      }
     }
     if (exact(input, ['action']) && input.action === 'state') {
       const r = await this.call('/state')

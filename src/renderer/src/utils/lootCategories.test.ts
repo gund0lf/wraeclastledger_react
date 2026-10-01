@@ -12,6 +12,11 @@ describe('loot category presentation', () => {
     expect(lootCategoryLabel('Unique Accessories')).toBe('Unique Jewellery');
     expect(lootCategoryLabel('Unique Jewels')).toBe('Unique Jewels');
   });
+  it('keeps unknown public categories as text, not inherited object properties', () => {
+    for (const category of ['__proto__', 'constructor', 'toString', 'Unknown category']) {
+      expect(lootCategoryLabel(category)).toBe(category);
+    }
+  });
 });
 
 describe('categorise — stash tab provenance', () => {

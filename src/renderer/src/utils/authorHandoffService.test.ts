@@ -5,12 +5,16 @@ import { join } from 'node:path'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { brotliDecompressSync } from 'node:zlib'
 import { AuthorHandoffVault } from '../../../main/authorHandoffVault'
-import { AuthorHandoffService, AuthorExchangeError, authorReviewOrigin, authorJsonFetch } from '../../../main/authorHandoffService'
+import { AuthorHandoffService, AuthorExchangeError, authorJsonFetch } from '../../../main/authorHandoffService'
+import { authorServiceOrigin, PRODUCTION_STRATEGY_API_ORIGIN } from '../../../shared/strategyApi'
 import { canonicalAuthorJson } from '../../../shared/authorSubmission'
 import { parseAuthorPreferences, emptyAuthorPreferences } from '../../../shared/authorRecognition'
 import { validateAuthorManagement } from '../../../shared/authorHandoff'
 const directories: string[] = []
-afterEach(async () => { for (const dir of directories.splice(0)) await rm(dir, { recursive: true, force: true }) })
+afterEach(async () => {
+  vi.restoreAllMocks(); vi.useRealTimers()
+  for (const dir of directories.splice(0)) await rm(dir, { recursive: true, force: true })
+})
 const context = () => ({ sessionId: 'working:1', generation: randomUUID() })
 const origin = 'http://127.0.0.1:43181'
 it('the gated public reader cannot address private routes or external hosts and never initializes the vault', async () => {
@@ -24,14 +28,21 @@ it('the gated public reader cannot address private routes or external hosts and 
   expect(exchange.mock.calls[0][1]).toEqual({ method: 'GET' })
   expect(storage).not.toHaveBeenCalled(); expect(clipboard).not.toHaveBeenCalled()
 })
-it.each([403, 410, 429, 503])('keeps a failed public read (%s) on its exact endpoint and masks the error body', async status => {
+it.each([
+  [403, { error: 'private_upstream_detail' }, 'Could not load the public strategy data. Refresh and retry.'],
+  [404, { error: 'not_found', field: 'strategy_id', reason: 'private detail' }, 'This strategy or retrospective is no longer available. Refresh the results.'],
+  [409, { error: 'refresh_required', field: 'cursor', reason: 'private detail' }, 'The strategy results changed. Refresh to continue.'],
+  [410, { error: 'update_required', message: 'private detail' }, 'Update WraeclastLedger to the latest stable version to continue browsing. Local tracking and saved sessions are still available.'],
+  [429, { error: 'private_upstream_detail' }, 'Too many strategy requests. Wait briefly and retry.'],
+  [503, { error: 'online_strategies_temporarily_unavailable', message: 'private detail' }, 'Online strategies are temporarily unavailable. Retry later. Local tracking and saved sessions are still available.'],
+] as const)('keeps a failed public read (%s) on its exact endpoint and masks the error body', async (status, error, message) => {
   const path = '/web/v2/retrospectives/11111111-1111-4111-8111-111111111111/strategies?limit=20'
   const payload = { schema_version: 2, scope: 'frozen' }
-  const fetcher = vi.fn().mockResolvedValueOnce(new Response('{"error":"private-upstream-detail"}', { status }))
+  const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(error), { status }))
     .mockResolvedValueOnce(new Response(JSON.stringify(payload)))
   const { service, vault, clipboard } = await setup((url, init) => authorJsonFetch(url, init, fetcher))
   const storage = vi.spyOn(vault, 'discardInterrupted')
-  expect(await service.handle({ action: 'read', path })).toEqual({ ok: false, error: 'Could not load the public strategy data. Refresh and retry.' })
+  expect(await service.handle({ action: 'read', path })).toEqual({ ok: false, error: message })
   // A failed read cannot disable the safe reader and send the renderer to legacy routes.
   expect(await service.handle({ action: 'available' })).toEqual({ ok: true, value: true })
   expect(fetcher).toHaveBeenCalledTimes(1)
@@ -48,14 +59,74 @@ it('masks malformed public responses and network errors without retrying another
     .mockRejectedValueOnce(new Error('private connection details'))
     .mockResolvedValueOnce(new Response('"' + 'x'.repeat(16385) + '"'))
   const { service } = await setup((url, init) => authorJsonFetch(url, init, fetcher))
-  for (let i = 0; i < 3; i++) {
+  const errors = ['Online strategies are temporarily unavailable. Retry later. Local tracking and saved sessions are still available.',
+    'Could not reach online strategies. Retry later. Local tracking and saved sessions are still available.',
+    'Could not reach online strategies. Retry later. Local tracking and saved sessions are still available.']
+  for (let i = 0; i < errors.length; i++) {
     expect(await service.handle({ action: 'read', path: '/web/v2/strategies?limit=20' }))
-      .toEqual({ ok: false, error: 'Could not load the public strategy data. Refresh and retry.' })
+      .toEqual({ ok: false, error: errors[i] })
     expect(fetcher).toHaveBeenCalledTimes(i + 1)
   }
 })
+it.each(['headers', 'body'] as const)('bounds a hanging public response at the %s stage, then retries without changing endpoints', async stage => {
+  const fetcher = vi.fn(async (_url: string, init: RequestInit): Promise<Response> => {
+    const signal = init.signal!
+    if (stage === 'headers') return new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+    })
+    return new Response(new ReadableStream<Uint8Array>({ start(controller) {
+      signal.addEventListener('abort', () => controller.error(signal.reason), { once: true })
+    } }))
+  })
+  const { service, vault, clipboard } = await setup((url, init) => authorJsonFetch(url, init, fetcher as typeof fetch))
+  const storage = vi.spyOn(vault, 'discardInterrupted')
+  vi.useFakeTimers()
+  const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation(delay => {
+    const controller = new AbortController()
+    setTimeout(() => controller.abort(new DOMException('private timeout detail', 'TimeoutError')), delay)
+    return controller.signal
+  })
+  const path = '/web/v2/strategies?limit=20'
+  let completed = false
+  const pending = service.handle({ action: 'read', path }).then(r => { completed = true; return r })
+  await vi.advanceTimersByTimeAsync(9999)
+  expect(completed).toBe(false)
+  await vi.advanceTimersByTimeAsync(1)
+  expect(await pending).toEqual({ ok: false,
+    error: 'Could not reach online strategies. Retry later. Local tracking and saved sessions are still available.' })
+  expect(timeout).toHaveBeenCalledWith(10_000)
+  expect(await service.handle({ action: 'available' })).toEqual({ ok: true, value: true })
+  fetcher.mockResolvedValueOnce(new Response('{"schema_version":2}'))
+  expect(await service.handle({ action: 'read', path })).toEqual({ ok: true, value: { schema_version: 2 } })
+  expect(fetcher.mock.calls.map(([url]) => url)).toEqual([origin + path, origin + path])
+  expect(storage).not.toHaveBeenCalled(); expect(clipboard).not.toHaveBeenCalled()
+})
+it('accepts only closed error envelopes and never relays their explanatory text', async () => {
+  for (const body of [
+    { error: 'handoff_expired', private_secret: 'private detail' },
+    { error: 'handoff_expired', message: { text: 'private detail' } },
+    { error: 'handoff_expired', message: 'x'.repeat(1025) },
+    ['handoff_expired'],
+  ]) {
+    await expect(authorJsonFetch(origin, {}, vi.fn(async () => new Response(JSON.stringify(body), { status: 410 })) as typeof fetch))
+      .rejects.toMatchObject({ terminal: false, code: undefined,
+        message: 'The author request could not be completed. Check its status or retry later.' })
+  }
+  const { service } = await setup((url, init) => authorJsonFetch(url, init,
+    vi.fn(async () => new Response(JSON.stringify({ error: 'online_strategies_temporarily_unavailable', message: 'private detail' }), { status: 503 })) as typeof fetch))
+  expect(await service.handle({ action: 'state' })).toEqual({ ok: false,
+    error: 'Online strategies are temporarily unavailable. Retry later. Local tracking and saved sessions are still available.' })
+})
+it('treats inherited error-map keys as unknown author errors', async () => {
+  for (const code of ['constructor', '__proto__', 'toString', 'valueOf']) {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ error: code }), { status: 400 }))
+    const { service } = await setup((url, init) => authorJsonFetch(url, init, fetcher as typeof fetch))
+    expect(await service.handle({ action: 'state' })).toEqual({ ok: false,
+      error: 'The author request could not be completed. Check its status or retry later.' })
+  }
+})
 const epoch = randomUUID(), registration = randomUUID()
-async function setup(exchange?: (url: string, init: RequestInit) => Promise<unknown>) {
+async function setup(exchange?: (url: string, init: RequestInit) => Promise<unknown>, serviceOrigin: string | null = origin) {
   const directory = await mkdtemp(join(tmpdir(), 'wl-author-exchange-'))
   directories.push(directory)
   const requests: { url: string; init: RequestInit }[] = []
@@ -64,7 +135,7 @@ async function setup(exchange?: (url: string, init: RequestInit) => Promise<unkn
   const clipboard = vi.fn(() => randomBytes(32).toString('base64url'))
   const vault = new AuthorHandoffVault(directory, { isEncryptionAvailable: () => true,
     encryptString: (v) => Buffer.from(v), decryptString: (v) => v.toString() })
-  const service = new AuthorHandoffService({ origin, vault, readClipboard: clipboard,
+  const service = new AuthorHandoffService({ origin: serviceOrigin, vault, readClipboard: clipboard,
     exchange: async (url, init) => {
       requests.push({ url, init })
       if (exchange) return exchange(url, init)
@@ -80,11 +151,40 @@ async function setup(exchange?: (url: string, init: RequestInit) => Promise<unkn
     } })
   return { service, vault, requests, clipboard, requestId, secrets: () => ({ secret, consumption }) }
 }
-it('cannot activate review endpoints in packaged builds or for a non-loopback destination', () => {
-  expect(authorReviewOrigin(true, origin)).toBe(origin)
-  for (const u of ['https://api.wraeclastledger.com', 'http://localhost:43181', 'http://127.0.0.1:43181/path', 'http://x@127.0.0.1:43181', origin + '?x=1'])
-    expect(authorReviewOrigin(true, u)).toBeNull()
-  expect(authorReviewOrigin(false, origin)).toBeNull()
+it('enables only explicit loopback fixtures in unpackaged development', () => {
+  const resolve = (reviewOrigin?: string, development = true) => authorServiceOrigin({ packaged: false, development, reviewOrigin })
+  expect(resolve(origin)).toBe(origin)
+  for (const raw of [undefined, '', 'invalid', PRODUCTION_STRATEGY_API_ORIGIN, 'https://api.wraeclastledger.com',
+    'http://localhost:43181', 'http://127.0.0.1', 'https://127.0.0.1:43181',
+    'http://127.0.0.1:43181/path', 'http://x@127.0.0.1:43181', origin + '?x=1', origin + '#x'])
+    expect(resolve(raw)).toBeNull()
+  expect(resolve(origin, false)).toBeNull()
+})
+it('pins packaged author and public-read endpoints even if development or environment overrides are supplied', async () => {
+  for (const development of [false, true]) {
+    for (const reviewOrigin of [undefined, origin, 'https://evil.invalid', 'invalid']) {
+      const resolved = authorServiceOrigin({ packaged: true, development, reviewOrigin })
+      expect(resolved).toBe(PRODUCTION_STRATEGY_API_ORIGIN)
+      const f = await setup(async () => ({}), resolved)
+      expect(await f.service.handle({ action: 'available' })).toEqual({ ok: true, value: true })
+      await f.service.handle({ action: 'read', path: '/web/v2/strategies?limit=20' })
+      await f.service.handle({ action: 'state' })
+      expect(f.requests.map(r => r.url)).toEqual([
+        PRODUCTION_STRATEGY_API_ORIGIN + '/web/v2/strategies?limit=20',
+        PRODUCTION_STRATEGY_API_ORIGIN + '/desktop/v1/author-handoffs/state',
+      ])
+      await f.service.handle({ action: 'read', path: origin + '/web/v2/strategies' })
+      await f.service.handle({ action: 'read', path: '/strategies' })
+      expect(f.requests).toHaveLength(2)
+    }
+  }
+})
+it('does not contact a service when unpackaged review is not enabled', async () => {
+  const f = await setup(undefined, authorServiceOrigin({ packaged: false, development: true, reviewOrigin: undefined }))
+  expect(await f.service.handle({ action: 'available' })).toEqual({ ok: true, value: false })
+  expect((await f.service.handle({ action: 'read', path: '/web/v2/strategies' })).ok).toBe(false)
+  expect((await f.service.handle({ action: 'state' })).ok).toBe(false)
+  expect(f.requests).toHaveLength(0)
 })
 it('exchanges private confirmation only in main, validates correlation, and reuses consumption ID', async () => {
   const f = await setup(), c = context()

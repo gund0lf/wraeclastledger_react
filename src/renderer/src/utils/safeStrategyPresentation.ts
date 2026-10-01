@@ -1,10 +1,46 @@
-import type { SafeRun } from '../../../shared/safeStrategy'
+import type { SafeDetail, SafeRow, SafeRun } from '../../../shared/safeStrategy'
 import { computePublishedSetupCostBreakdown } from './strategySetupCosts'
 export const safeNumber = (v: number | null | undefined, unit = '') => v == null ? 'Unrecorded' : v.toLocaleString(undefined, { maximumFractionDigits: unit === 'd' ? 3 : 1 }) + unit
 
-export function safeCostEvidenceMessage(runs: SafeRun[] | null, error: string | null): string {
+export function safeCostEvidenceMessage(runs: SafeRun[] | null, error: string | null, scope: SafeDetail['scope'] = 'current'): string {
+  if (scope === 'frozen') return 'Individual run costs are not available for this frozen strategy.'
   if (error !== null) return 'Run evidence is unavailable. Retry below to load the historical cost summary.'
   return runs === null ? 'Loading complete run evidence…' : 'Incomplete cost evidence; no partial cost summary is calculated.'
+}
+
+export function safeAuthorLabel(attribution: SafeRow['attribution']): string {
+  return attribution?.display_name ?? (attribution ? 'Public name unavailable' : 'Public name not set')
+}
+
+export function safeAuthorStatus(attribution: SafeRow['attribution']): string {
+  if (!attribution) return ''
+  return { active: '', suspended: 'Name suspended', retired: 'Name retired', removed: 'Name removed', quarantined: 'Name unavailable' }[attribution.status]
+}
+
+/** Closed presentation messages, never service-provided reason text. */
+export function safeSetupUnavailableMessage(reason: string): string {
+  const messages: Record<string, string> = {
+    missing_setup: 'Reusable setup was not recorded.',
+    malformed_source: 'The recorded setup cannot be loaded safely.',
+    title_limit: 'The recorded title is too long to import. The setup is still shown above.',
+    regex_limit: 'The recorded regex is too long to import. The setup is still shown above.',
+    invalid_atlas: 'The recorded Atlas link cannot be loaded safely.',
+    conflicting_source: 'The recorded setup contains conflicting details.',
+    unsupported_setup: 'This recorded setup cannot be imported by this version.'
+  }
+  return Object.hasOwn(messages, reason) ? messages[reason] : 'The reusable setup is unavailable.'
+}
+
+export function safeContinuationMessage(reason: string): string {
+  const messages: Record<string, string> = {
+    frozen: 'Frozen strategies cannot be continued.',
+    missing_membership: 'Continuation needs a confirmed public name for this strategy.',
+    incomplete_seed: 'This strategy lacks the setup information needed for another run.',
+    conflicting_seed: 'Conflicting setup details prevent continuing this strategy.',
+    unsupported_identity: 'This version cannot continue this recorded setup.',
+    inactive_registration: 'The assigned public name is not active. Continuation is unavailable.'
+  }
+  return Object.hasOwn(messages, reason) ? messages[reason] : 'Continuation is unavailable.'
 }
 
 /** Complete-only component costs. Missing per-run prices never become zero. */

@@ -6,14 +6,15 @@ import { SafeBrowserRequests, safeStrategyReader } from '../utils/safeStrategyRe
 import { safeStrategyQuery } from '../utils/safeStrategyQuery'
 import { bindSafeTarget, confirmedStrategyAuthor, refreshSafeAuthorState } from '../utils/safeStrategyTarget'
 import { useSessionStore } from '../store/useSessionStore'
-import { ALL_TYPE_TAGS, TAG_COLORS } from '../utils/strategyConstants'
+import { TAG_OPTIONS, TAG_COLORS } from '../utils/strategyConstants'
 import { activeKnownLeagues, KNOWN_LEAGUES } from '../utils/league'
 import { ManagePublicNames } from './ManagePublicNames'
 import { PersonalRetrospectives } from './PersonalRetrospectives'
 import { SafeStrategyDetail } from './SafeStrategyDetail'
 import { isStrategyBackIntent } from '../utils/strategyBackNavigation'
 
-import { safeNumber } from '../utils/safeStrategyPresentation'
+import { safeNumber, safeAuthorLabel, safeSetupUnavailableMessage } from '../utils/safeStrategyPresentation'
+import { FONT } from '../utils/uiTokens'
 import { SafeStrategyActions, type SafeStrategyAction } from '../utils/safeStrategyActions'
 const rowValues = (r: SafeRow) => [r.observed.mod_average, r.observed.map_count, r.results.all_in_cost_per_map_chaos,
   r.results.total_invest_chaos, r.results.net_profit_chaos, r.score, r.results.net_divines_per_hour, r.results.net_per_map_divines]
@@ -31,25 +32,26 @@ function SafeBoard({ path, title, onLoad, onContinue, onName, sort, order, onSor
   useLayoutEffect(() => { requests.activate(path); return () => requests.deactivate() }, [requests, path])
   const current = state.path === path ? state : null
   const expanded = current?.expanded
-  const back = () => { invalidate(); void requests.expand(null); requestAnimationFrame(() => viewport.current?.scrollTo({ top: scroll.current })) }
-  return <Stack gap="xs">
+  const back = () => { invalidate(); void requests.expand(null); requestAnimationFrame(() => { viewport.current?.scrollTo({ top: scroll.current }); viewport.current?.focus({ preventScroll: true }) }) }
+  return <Stack gap="xs" onKeyDown={e => {
+    const el = e.target as HTMLElement
+    if (expanded && isStrategyBackIntent({ kind: 'keyboard', key: e.key, altKey: e.altKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey,
+      defaultPrevented: e.defaultPrevented, targetEditable: !!el.closest('input,textarea,select,[contenteditable="true"]') })) { e.preventDefault(); back() }
+  }} onMouseDown={e => {
+    if (expanded && isStrategyBackIntent({ kind: 'mouse', button: e.button, defaultPrevented: e.defaultPrevented })) { e.preventDefault(); back() }
+  }}>
     <Group justify="space-between"><Text fw={600} size="sm">{title ?? 'Public strategies'} · {current?.page?.total ?? '…'}</Text>
       <Button size="compact-xs" variant="default" loading={current?.loading} onClick={() => { invalidate(); void requests.refresh() }}>Refresh</Button></Group>
-    {expanded && <Button size="compact-xs" variant="subtle" onClick={back}>Back to results</Button>}
     {current?.error && <Alert color="red" p="xs">{current.error}</Alert>}
-    <div ref={viewport} tabIndex={-1} style={{ maxHeight: '70vh', overflow: 'auto' }} onKeyDown={e => {
-      const el = e.target as HTMLElement
-      if (expanded && isStrategyBackIntent({ kind: 'keyboard', key: e.key, altKey: e.altKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey,
-        defaultPrevented: e.defaultPrevented, targetEditable: !!el.closest('input,textarea,select,[contenteditable="true"]') })) { e.preventDefault(); back() }
-    }} onMouseDown={e => { if (expanded && e.button === 3) { e.preventDefault(); back() } }}>
+    <div ref={viewport} tabIndex={-1} style={{ maxHeight: '70vh', overflow: 'auto' }}>
       {!expanded && <Table striped highlightOnHover withTableBorder horizontalSpacing="xs" verticalSpacing="sm">
         <Table.Thead><Table.Tr>{(['title', ...columns, 'activity'] as SafeSort[]).map(key => <Table.Th key={key}>
-          <UnstyledButton style={{ fontSize: 11 }} disabled={!onSort} onClick={() => onSort?.(key)}>{SAFE_SORTS[key]}{sort === key ? order === 'asc' ? ' ↑' : ' ↓' : ''}</UnstyledButton>
+          <UnstyledButton style={{ fontSize: FONT.small }} disabled={!onSort} onClick={() => onSort?.(key)}>{SAFE_SORTS[key]}{sort === key ? order === 'asc' ? ' ↑' : ' ↓' : ''}</UnstyledButton>
         </Table.Th>)}</Table.Tr></Table.Thead>
         <Table.Tbody>{current?.page?.strategies.map(r => <Table.Tr key={safeIdentityKey(r)}>
           <Table.Td><Button size="compact-xs" variant="subtle" onClick={() => { invalidate(); scroll.current = viewport.current?.scrollTop ?? 0; void requests.expand(r.id); viewport.current?.scrollTo({ top: 0 }); viewport.current?.focus() }}>{r.title || 'Untitled strategy'}</Button>
-            <Text size="xs" c={confirmedStrategyAuthor(r, prefs) ? 'teal' : 'dimmed'}>{r.attribution?.display_name ?? 'Author name not set'}</Text>
-            <Group gap={3}>{r.tags.map(t => <Badge key={t} color={TAG_COLORS[t] ?? 'gray'} size="xs">{t}</Badge>)}</Group></Table.Td>
+            <Text size="xs" style={{ overflowWrap: 'anywhere' }} c={confirmedStrategyAuthor(r, prefs) ? 'teal' : 'dimmed'}>{safeAuthorLabel(r.attribution)}</Text>
+            <Group gap={3}>{r.tags.map(t => <Badge key={t} color={Object.hasOwn(TAG_COLORS, t) ? TAG_COLORS[t] : 'gray'} size="xs">{TAG_OPTIONS.find(option => option.value === t)?.label ?? t}</Badge>)}</Group></Table.Td>
           {rowValues(r).map((v, i) => <Table.Td key={i}><Text size="xs">{safeNumber(v, i === 2 || i === 3 || i === 4 ? 'c' : i >= 6 ? 'd' : '')}</Text></Table.Td>)}
           <Table.Td><Text size="xs">{r.updated_at ? new Date(r.updated_at).toLocaleDateString() : 'Unrecorded'}</Text></Table.Td>
         </Table.Tr>)}</Table.Tbody>
@@ -93,7 +95,7 @@ export function SafeStrategyBrowser({ onShare, onImport, applySetup, runAction, 
     runAction(() => action.run(async () => {
       const fresh = await safeStrategyReader.detail(d)
       action.assertCurrent()
-      if (fresh.reusable_setup.status !== 'available') throw new Error('Reusable setup is unavailable: ' + fresh.reusable_setup.reason)
+      if (fresh.reusable_setup.status !== 'available') throw new Error(safeSetupUnavailableMessage(fresh.reusable_setup.reason))
       await applySetup(fresh.reusable_setup.value, action)
     }), true, action.current)
   }
@@ -130,7 +132,7 @@ export function SafeStrategyBrowser({ onShare, onImport, applySetup, runAction, 
         <TextInput size="xs" label="Search strategies" value={search} maxLength={120} onChange={e => setSearch(e.currentTarget.value)} />
         <Select size="xs" label="League" value={league} allowDeselect={false} onChange={v => setLeague(v ?? '')} data={[{ value: '', label: 'All leagues' }, ...KNOWN_LEAGUES.map(v => ({ value: v, label: v }))]} />
         <Select size="xs" label="Map setup" value={mapType} allowDeselect={false} onChange={v => setMapType(v ?? '')} data={[{ value: '', label: 'Any setup' }, { value: '6-mod', label: '6-mod' }, { value: '8-mod', label: '8-mod' }]} />
-        <MultiSelect size="xs" label="Mechanics" value={tags} onChange={setTags} maxValues={24} data={ALL_TYPE_TAGS} searchable />
+        <MultiSelect size="xs" label="Mechanics" value={tags} onChange={setTags} maxValues={24} data={TAG_OPTIONS.slice(1)} searchable />
         <Select size="xs" label="Party" value={group} allowDeselect={false} onChange={v => setGroup(v ?? 'all')} data={[{ value: 'all', label: 'Solo & group' }, { value: 'solo', label: 'Solo only' }, { value: 'group', label: 'Group only' }]} />
         <Select size="xs" label="Activity" value={since} allowDeselect={false} onChange={v => setSince(v ?? 'all')} data={[{ value: 'all', label: 'All time' }, { value: '1d', label: '24 hours' }, { value: '3d', label: '3 days' }, { value: '7d', label: '7 days' }, { value: '30d', label: '30 days' }]} />
         <TextInput size="xs" label="Min div / map" value={min} error={minError} onChange={e => setMin(e.currentTarget.value)} />
