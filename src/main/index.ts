@@ -2,7 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, clipboard, dialog, globalShortcut, 
 import { AuthorHandoffVault } from './authorHandoffVault'
 import { AuthorHandoffService } from './authorHandoffService'
 import { ClipboardWatcher } from './clipboardWatcher'
-import { isClipboardWatchToken, isMainClipboardSender } from '../shared/clipboardCapture'
+import { isClipboardWatchToken, isMainClipboardSender, observeClipboardDocumentReplacement } from '../shared/clipboardCapture'
 import { authorServiceOrigin } from '../shared/strategyApi'
 import { AUTHOR_HANDOFF_CHANNEL } from '../shared/authorHandoff'
 import { deriveRepositoryPaths } from './sessionRepositoryCore'
@@ -1245,7 +1245,13 @@ function createWindow(): void {
     void continueQuit('window-close', mainWindow)
   });
   mainWindow.on('session-end', () => { setClipboardWatch(false); quitBypass = true });
-  mainWindow.webContents.on('did-start-loading', () => setClipboardWatch(false));
+  observeClipboardDocumentReplacement(mainWindow.webContents, () => {
+    // Invariant: an unrelated load must never leave live Capture showing Active
+    // with polling silently stopped. Cancelled/failed attempts, hashes and child
+    // frames keep this document alive. A committed replacement invalidates old
+    // reads; its new renderer hydrates paused and owns a fresh activation token.
+    if (watchWindow === mainWindow) setClipboardWatch(false);
+  });
   mainWindow.webContents.on('render-process-gone', () => {
     setClipboardWatch(false)
     rendererFlushUnavailable = true
@@ -1309,7 +1315,7 @@ if (!hasSingleInstanceLock) {
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
   app.on('will-quit', () => setClipboardWatch(false));
   app.on('before-quit', (event) => {
-    stopProtonClipboardBridge()
+    // Capture stops at will-quit/closed, not while a final save may cancel quit.
     unregisterOverlayShortcuts()
     if (quitBypass) return
     const mainWindow = watchWindow

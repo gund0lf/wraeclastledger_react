@@ -16,6 +16,14 @@ export function isMainClipboardSender(
   return owner !== null && owner.mainFrame != null && sender === owner && senderFrame === owner.mainFrame;
 }
 
+/** did-navigate commits a new main document; starts, hashes and child frames do not. */
+export function observeClipboardDocumentReplacement(
+  contents: { on(event: 'did-navigate', listener: () => void): unknown },
+  invalidate: () => void,
+): void {
+  contents.on('did-navigate', invalidate);
+}
+
 const targetKey = (state: ClipboardCaptureTarget): string => JSON.stringify([
   state.sessionLifecycle, state.sessionNonce, state.activeSessionId, state.liveSessionId,
 ]);

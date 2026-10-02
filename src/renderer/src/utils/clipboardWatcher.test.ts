@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { EventEmitter } from 'node:events';
 import { ClipboardWatcher } from '../../../main/clipboardWatcher';
 import {
   ClipboardCaptureGuard, isClipboardWatchToken, isMainClipboardSender,
+  observeClipboardDocumentReplacement,
   type ClipboardCaptureTarget,
 } from '../../../shared/clipboardCapture';
 
@@ -132,6 +134,76 @@ describe('asynchronous OS clipboard watcher', () => {
     expect(readText).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(200);
     expect(publish.mock.calls).toEqual([['capture', 'first']]);
+    watcher.stop();
+  });
+});
+
+describe('capture owner-document navigation', () => {
+  it('binds only the committed main-document event, not starts, hashes or child-frame navigation', () => {
+    const contents = new EventEmitter(), invalidate = vi.fn();
+    observeClipboardDocumentReplacement(contents, invalidate);
+    contents.emit('did-start-loading');
+    contents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false });
+    contents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: true });
+    contents.emit('did-start-navigation', { isMainFrame: false, isSameDocument: false });
+    contents.emit('did-frame-navigate', {}, 'about:blank', -1, '', false);
+    contents.emit('did-navigate-in-page', {}, 'file:///app.html#hash', true);
+    expect(invalidate).not.toHaveBeenCalled();
+    contents.emit('did-navigate', {}, 'file:///app.html', -1, '');
+    expect(invalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['did-start-loading', [], 'a child-frame/webview loading spinner'],
+    ['did-start-navigation', [{ isMainFrame: true, isSameDocument: true }], 'main hash/history navigation'],
+    ['did-frame-navigate', [{}, 'about:blank', -1, '', false], 'subframe/webview document load'],
+    ['did-navigate-in-page', [{}, 'file:///app.html#hash', true], 'completed in-page navigation'],
+    ['did-start-navigation', [{ isMainFrame: true, isSameDocument: false }], 'an attempted/cancelled main navigation'],
+  ] as const)('keeps the pending read and polling through %s (%s)', async (event, args) => {
+    vi.useFakeTimers();
+    const contents = new EventEmitter();
+    const pending = deferred<string>();
+    const readText = vi.fn().mockResolvedValueOnce('baseline')
+      .mockReturnValueOnce(pending.promise).mockResolvedValue('next map');
+    const publish = vi.fn();
+    const watcher = new ClipboardWatcher({ readText, publish });
+    observeClipboardDocumentReplacement(contents, () => watcher.stop());
+    watcher.start('same-document-owner', () => true);
+    await settle();
+    await vi.advanceTimersByTimeAsync(200);
+    contents.emit(event, ...args);
+    pending.resolve('map copied during navigation');
+    await settle();
+    expect(publish.mock.calls).toEqual([['map copied during navigation', 'same-document-owner']]);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(publish.mock.calls).toEqual([
+      ['map copied during navigation', 'same-document-owner'], ['next map', 'same-document-owner'],
+    ]);
+    watcher.stop();
+  });
+
+  it('invalidates a pending read on committed main-document replacement and primes a fresh activation', async () => {
+    vi.useFakeTimers();
+    const contents = new EventEmitter();
+    const pending = deferred<string>();
+    const readText = vi.fn().mockResolvedValueOnce('old baseline')
+      .mockReturnValueOnce(pending.promise).mockResolvedValue('new baseline');
+    const publish = vi.fn();
+    const watcher = new ClipboardWatcher({ readText, publish });
+    observeClipboardDocumentReplacement(contents, () => watcher.stop());
+    watcher.start('old-document-owner', () => true);
+    await settle();
+    await vi.advanceTimersByTimeAsync(200);
+    contents.emit('did-navigate', {}, 'file:///app.html', -1, '');
+    watcher.start('new-document-owner', () => true);
+    expect(readText).toHaveBeenCalledTimes(2);
+    pending.resolve('stale old-document map');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(readText).toHaveBeenCalledTimes(3);
+    expect(publish).not.toHaveBeenCalled();
+    readText.mockResolvedValue('new-document map');
+    await vi.advanceTimersByTimeAsync(200);
+    expect(publish.mock.calls).toEqual([['new-document map', 'new-document-owner']]);
     watcher.stop();
   });
 });

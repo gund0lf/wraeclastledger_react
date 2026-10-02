@@ -13,6 +13,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.98',
     date: '',
     changes: [
+      'Automatic map Capture keeps running when Atlas Tree opens or a page changes within the same document. Full app reloads still invalidate pending reads, and cancelling a quit no longer stops Linux capture.',
       'Updated the desktop engine to Electron 44 and refreshed security fixes. Clipboard capture and private confirmation now handle delayed reads safely; Linux overlay opacity remains applied only once. Packaging verifies installed and shipped dependencies against the lockfile.',
       'Prepared the compatible Strategy Browser and public-name controls for the existing server address. Online holds and update-required responses now have clear messages and never fall back to older identity-exposing reads; local tracking remains available. Publication still awaits coordinated acceptance.',
       'The compatible reader uses ordinary Back/Escape navigation without an extra back button, readable public-name and setup status labels, and explicit unavailable run costs for frozen strategies.',
