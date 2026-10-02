@@ -20,7 +20,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "test": "vitest run && node --test scripts/after-pack.test.mjs scripts/cargo-query.test.mjs scripts/linux-windowing-evidence.test.mjs scripts/publish-win.test.mjs",
+    "test": "vitest run && node --test scripts/after-pack.test.mjs scripts/dependency-lock.test.mjs scripts/cargo-query.test.mjs scripts/linux-windowing-evidence.test.mjs scripts/publish-win.test.mjs",
     "test:watch": "vitest",
     "game-data:generate": "node scripts/gen-manifest-json.mjs",
     "trade-stats:check": "node scripts/check-tradestats.mjs",
@@ -32,13 +32,13 @@
     "wp14:profile-backup-check": "node scripts/run-vite-script.mjs scripts/verify-wp14-profile-backup.ts",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "node scripts/dependency-lock.cjs && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
-    "build:mac": "electron-vite build && electron-builder --mac",
+    "build:mac": "npm run build && electron-builder --mac",
     "build:linux-helper": "node scripts/build-linux-clipboard-helper.mjs",
-    "build:linux": "npm run build:linux-helper && electron-vite build && electron-builder --linux AppImage --x64 --publish never",
+    "build:linux": "npm run build:linux-helper && npm run build && electron-builder --linux AppImage --x64 --publish never",
     "verify:linux:canary": "node scripts/verify-linux-canary.mjs",
     "verify:linux:release": "node scripts/verify-linux-release.mjs",
     "publish:win": "npm run typecheck && npm test && npm run lint && npm run build && electron-builder --win --publish always"
@@ -64,7 +64,7 @@
     "@types/react-dom": "^19.1.9",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^5.0.3",
-    "electron": "^43.4.0",
+    "electron": "44.5.1",
     "electron-builder": "^26.15.3",
     "electron-vite": "^4.0.1",
     "eslint": "^9.36.0",
@@ -76,6 +76,6 @@
     "react-dom": "^19.1.1",
     "typescript": "^5.9.2",
     "vite": "^7.1.6",
-    "vitest": "^4.1.10"
+    "vitest": "4.1.11"
   }
 }

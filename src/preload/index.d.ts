@@ -44,14 +44,14 @@ declare global {
       onOverlayAction: (callback: (action: OverlayAction) => void) => () => void
       onOverlayBounds: (callback: (bounds: OverlayBounds) => void) => () => void
       sendOverlayBoundsInteraction: (interaction: OverlayBoundsInteraction) => void
-      onClipboardCapture:  (callback: (text: string) => void) => void
+      onClipboardCapture:  (callback: (text: string, token: string) => void) => void
       removeClipboardListener: () => void
       onClipboardBridgeStatus: (callback: (status: ClipboardBridgeStatus) => void) => () => void
       removeClipboardBridgeStatusListener: () => void
       getClipboardBridgeStatus: () => Promise<ClipboardBridgeStatus>
       encodeDiscordShare: (payloadJson: string) => Promise<{ token: string | null; error: string | null }>
       decodeDiscordShare: (token: string) => Promise<{ payloadJson: string | null; error: string | null }>
-      setClipboardWatch:   (on: boolean) => void
+      setClipboardWatch:   (on: boolean, token?: string) => void
       searchMapsOnTrade:   (params: TradeParams) => Promise<{ url: string | null; error: string | null }>
       getBrickMods:        () => Promise<BrickModResult>
       fetchCurrencyOverview: (league: string) => Promise<{ lines: { id: string; primaryValue?: number }[] | null; error: string | null }>

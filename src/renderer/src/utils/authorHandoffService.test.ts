@@ -132,7 +132,7 @@ async function setup(exchange?: (url: string, init: RequestInit) => Promise<unkn
   const requests: { url: string; init: RequestInit }[] = []
   const requestId = randomUUID()
   let clientId = '', secret = '', consumption = ''
-  const clipboard = vi.fn(() => randomBytes(32).toString('base64url'))
+  const clipboard = vi.fn<() => string | Promise<string>>(() => randomBytes(32).toString('base64url'))
   const vault = new AuthorHandoffVault(directory, { isEncryptionAvailable: () => true,
     encryptString: (v) => Buffer.from(v), decryptString: (v) => v.toString() })
   const service = new AuthorHandoffService({ origin: serviceOrigin, vault, readClipboard: clipboard,
@@ -234,6 +234,62 @@ it('does not read the clipboard or deliver a receipt after an operation change',
   expect((await f.service.handle({ action: 'paste', context: c, requestId: f.requestId })).ok).toBe(false)
   expect(f.clipboard).not.toHaveBeenCalled()
   expect(f.requests.some((r) => r.init.method === 'DELETE')).toBe(true)
+})
+it('waits for an asynchronous private clipboard read before consuming the exact token', async () => {
+  const f = await setup(), c = context(), token = randomBytes(32).toString('base64url')
+  let resolve!: (value: string) => void
+  f.clipboard.mockImplementationOnce(() => new Promise<string>(done => { resolve = done }))
+  await f.service.handle({ action: 'activate', context: c })
+  await f.service.handle({ action: 'prepare', context: c, operation: { kind: 'recovery', intent: null } })
+  const pending = f.service.handle({ action: 'paste', context: c, requestId: f.requestId })
+  expect(f.clipboard).toHaveBeenCalledTimes(1)
+  expect(f.requests).toHaveLength(1)
+  resolve('  ' + token + '\n')
+  expect((await pending).ok).toBe(true)
+  expect(JSON.parse(f.requests[1].init.body as string).completion_token).toBe(token)
+})
+it('masks a rejected clipboard read and keeps the same pending request retryable', async () => {
+  const f = await setup(), c = context()
+  f.clipboard.mockRejectedValueOnce(new Error('OS error with private clipboard detail'))
+  await f.service.handle({ action: 'activate', context: c })
+  await f.service.handle({ action: 'prepare', context: c, operation: { kind: 'recovery', intent: null } })
+  expect(await f.service.handle({ action: 'paste', context: c, requestId: f.requestId }))
+    .toEqual({ ok: false, error: 'Author confirmation could not be completed. Check the selected operation and try again.' })
+  expect(f.requests).toHaveLength(1)
+  expect((await f.service.handle({ action: 'paste', context: c, requestId: f.requestId })).ok).toBe(true)
+  expect(f.requests).toHaveLength(2)
+})
+it.each(['other-session', 'dismissal', 'deactivation', 'away-and-back'] as const)(
+  'refuses a delayed clipboard token after %s without any consume request', async transition => {
+    const f = await setup(), c = context()
+    let resolve!: (value: string) => void
+    f.clipboard.mockImplementationOnce(() => new Promise<string>(done => { resolve = done }))
+    await f.service.handle({ action: 'activate', context: c })
+    await f.service.handle({ action: 'prepare', context: c, operation: { kind: 'recovery', intent: null } })
+    const pending = f.service.handle({ action: 'paste', context: c, requestId: f.requestId })
+    if (transition === 'dismissal')
+      await f.service.handle({ action: 'cancel', context: c, requestId: f.requestId })
+    else {
+      await f.service.handle({ action: 'activate', context: transition === 'deactivation' ? null : context() })
+      if (transition === 'away-and-back') await f.service.handle({ action: 'activate', context: c })
+    }
+    resolve(randomBytes(32).toString('base64url'))
+    expect((await pending).ok).toBe(false)
+    expect(f.requests.some(request => request.url.endsWith('/consume'))).toBe(false)
+  },
+)
+it('refuses a delayed clipboard token after the pending confirmation expires locally', async () => {
+  vi.useFakeTimers()
+  const f = await setup(), c = context()
+  let resolve!: (value: string) => void
+  f.clipboard.mockImplementationOnce(() => new Promise<string>(done => { resolve = done }))
+  await f.service.handle({ action: 'activate', context: c })
+  await f.service.handle({ action: 'prepare', context: c, operation: { kind: 'recovery', intent: null } })
+  const pending = f.service.handle({ action: 'paste', context: c, requestId: f.requestId })
+  await vi.advanceTimersByTimeAsync(15 * 60_000)
+  resolve(randomBytes(32).toString('base64url'))
+  expect((await pending).ok).toBe(false)
+  expect(f.requests.some(request => request.url.endsWith('/consume'))).toBe(false)
 })
 it('rejects a delayed successful exchange after activation changed', async () => {
   let release!: (v: unknown) => void, clientId = ''

@@ -28,6 +28,7 @@ import {
 } from './layout/panelLayoutState';
 import { retryRepositorySave, saveRepositoryLayout } from './repository/sessionRepositoryRuntime';
 import { OverlayController } from './components/OverlayController';
+import { ClipboardCaptureGuard } from '../../shared/clipboardCapture';
 
 // APP_VERSION imported from UpdateBanner.tsx — single source of truth
 // window.electron and window.api are declared in src/preload/index.d.ts — no redeclaration needed here.
@@ -88,7 +89,7 @@ function App({ initialLayoutRawValue }: { initialLayoutRawValue: string | null }
   const clearPanelRequest = useUIStore((state) => state.clearPanelRequest);
 
   const addMapRef      = useRef(useSessionStore.getState().addMap);
-  const isWatchingRef  = useRef(useSessionStore.getState().isWatching);
+  const clipboardCaptureRef = useRef<ClipboardCaptureGuard | null>(null);
 
   useEffect(() => {
     if (initialLayout.migrated) {
@@ -105,19 +106,18 @@ function App({ initialLayoutRawValue }: { initialLayoutRawValue: string | null }
     // (rollover Phase 1 step 2). Fire-and-forget — bundled data is the
     // always-working floor; failures warn loudly inside initGameData.
     initGameData().finally(() => setGameDataStatus(getGameDataStatus()));
+    const capture = new ClipboardCaptureGuard({
+      createToken: () => crypto.randomUUID(),
+      setWatch: (on, token) => window.api?.setClipboardWatch(on, token),
+    });
+    clipboardCaptureRef.current = capture;
     const unsub = useSessionStore.subscribe((state) => {
       addMapRef.current = state.addMap;
-      // WP13: the Capture toggle drives the main-process polling lifecycle —
-      // polling only runs while watching. The isWatchingRef guard in
-      // handleCapture stays as a belt-and-suspenders filter.
-      if (state.isWatching !== isWatchingRef.current) {
-        isWatchingRef.current = state.isWatching;
-        window.api?.setClipboardWatch(state.isWatching);
-      }
+      // Correlate pending OS reads and queued IPC to this exact capture target.
+      capture.sync(state);
     });
-    // Initial sync (isWatching can start true when a layout restores mid-state)
-    window.api?.setClipboardWatch(isWatchingRef.current);
-    return () => { unsub(); window.api?.setClipboardWatch(false); };
+    capture.sync(useSessionStore.getState());
+    return () => { unsub(); capture.stop(); clipboardCaptureRef.current = null; };
   }, []);
 
   useEffect(() => {
@@ -134,8 +134,8 @@ function App({ initialLayoutRawValue }: { initialLayoutRawValue: string | null }
   }, []);
 
   useEffect(() => {
-    const handleCapture = (text: string) => {
-      if (!isWatchingRef.current) return;
+    const handleCapture = (text: string, token: string) => {
+      if (!clipboardCaptureRef.current?.accepts(token, useSessionStore.getState()) || typeof text !== 'string') return;
       const parsed = parseMapClipboard(text);
       if (parsed) addMapRef.current(parsed);
     };

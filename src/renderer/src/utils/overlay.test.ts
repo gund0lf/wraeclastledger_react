@@ -4,10 +4,16 @@ import {
   OVERLAY_PLACEMENT_REVISION,
   normalizeOverlayBoundsInteraction,
   normalizeOverlayPreferences,
+  usesNativeOverlayOpacity,
 } from '../../../shared/overlay';
 import { overlayCounterSnapshot, parseOverlayCounterId } from './overlayCounters';
 
 describe('overlay preferences', () => {
+  it('applies opacity in one place on every supported platform', () => {
+    expect(usesNativeOverlayOpacity('linux')).toBe(false);
+    expect(usesNativeOverlayOpacity('win32')).toBe(true);
+    expect(usesNativeOverlayOpacity('darwin')).toBe(true);
+  });
   it('hydrates bounded defaults and sanitizes user-managed configuration', () => {
     expect(normalizeOverlayPreferences(null).counterIds).toEqual([...DEFAULT_OVERLAY_COUNTER_IDS]);
     const normalized = normalizeOverlayPreferences({

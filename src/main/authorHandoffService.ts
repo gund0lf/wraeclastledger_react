@@ -85,7 +85,7 @@ export class AuthorHandoffService {
   private prepared = new Map<string, { context: AuthorContext; clientId: string }>()
   private initialization: Promise<void> | null = null
   constructor(private options: {
-    origin: string | null; vault: AuthorHandoffVault; readClipboard: () => string
+    origin: string | null; vault: AuthorHandoffVault; readClipboard: () => string | Promise<string>
     exchange?: (url: string, init: RequestInit) => Promise<unknown>
   }) {}
   private current(c: AuthorContext) { return this.active === contextKey(c) }
@@ -235,8 +235,12 @@ export class AuthorHandoffService {
       }
       // Clipboard access happens only on this explicit action, after context validation.
       const consuming = input.action === 'paste' || input.action === 'accept'
-      const token = input.action === 'paste' ? this.options.readClipboard().trim()
+      const token = input.action === 'paste' ? (await this.options.readClipboard()).trim()
         : input.action === 'accept' ? pending.completionToken ?? '' : null
+      // The OS clipboard read can outlive a session change, dismissal or expiry.
+      // Recheck before any capability consumption or network request.
+      this.requireContext(c)
+      if (this.pending.get(requestId) !== pending) throw new Error('Author operation changed')
       if (token !== null && (!/^[A-Za-z0-9_-]{43}$/.test(token) || Buffer.from(token, 'base64url').toString('base64url') !== token))
         throw new AuthorExchangeError(messages.invalid_confirmation)
       const r = await this.options.vault.consume(requestId, c.sessionId, c.generation,

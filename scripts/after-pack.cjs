@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/explicit-function-return-type */
 const { chmod, rename, writeFile } = require('node:fs/promises')
 const { join } = require('node:path')
+const { verifyAfterPack } = require('./dependency-lock.cjs')
 
 const LINUX_EXECUTABLE_NAME = 'wraeclastledger'
 const LINUX_WRAPPED_EXECUTABLE_NAME = 'wraeclastledger-bin'
@@ -20,6 +21,7 @@ async function installLinuxLauncher(appOutDir) {
 }
 
 async function afterPack(context) {
+  verifyAfterPack(context)
   if (context.electronPlatformName !== 'linux') return
   await installLinuxLauncher(context.appOutDir)
 }

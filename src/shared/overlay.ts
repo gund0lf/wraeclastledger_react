@@ -1,5 +1,10 @@
 export type OverlayMode = 'timer' | 'counters' | 'both';
 
+/** Linux keeps renderer opacity authoritative, including Electron 44+. */
+export function usesNativeOverlayOpacity(platform: string): boolean {
+  return platform !== 'linux';
+}
+
 export interface OverlayBounds {
   x: number;
   y: number;

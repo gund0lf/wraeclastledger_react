@@ -1,6 +1,8 @@
 import { app, shell, BrowserWindow, ipcMain, clipboard, dialog, globalShortcut, powerMonitor, screen, safeStorage } from 'electron'
 import { AuthorHandoffVault } from './authorHandoffVault'
 import { AuthorHandoffService } from './authorHandoffService'
+import { ClipboardWatcher } from './clipboardWatcher'
+import { isClipboardWatchToken, isMainClipboardSender } from '../shared/clipboardCapture'
 import { authorServiceOrigin } from '../shared/strategyApi'
 import { AUTHOR_HANDOFF_CHANNEL } from '../shared/authorHandoff'
 import { deriveRepositoryPaths } from './sessionRepositoryCore'
@@ -58,6 +60,7 @@ import {
   OVERLAY_MINIMAL_WIDTH,
   normalizeOverlayBoundsInteraction,
   normalizeOverlayPreferences,
+  usesNativeOverlayOpacity,
   type OverlayAction,
   type OverlayBounds,
   type OverlayPreferences,
@@ -208,7 +211,7 @@ async function continueQuit(reason: RepositoryQuitReason, mainWindow: BrowserWin
   }
 }
 
-let clipboardInterval: NodeJS.Timeout | null = null;
+let clipboardWatchToken: string | null = null;
 let lastClipboardText = '';
 let watchWindow: BrowserWindow | null = null;
 let mainWindowRef: BrowserWindow | null = null;
@@ -348,7 +351,7 @@ function createOverlayWindow(preferences: OverlayPreferences): BrowserWindow {
   });
   win.setAlwaysOnTop(true, 'screen-saver');
   if (linuxOverlay) win.setVisibleOnAllWorkspaces(true);
-  win.setOpacity(preferences.opacity);
+  if (usesNativeOverlayOpacity(process.platform)) win.setOpacity(preferences.opacity);
   win.setIgnoreMouseEvents(preferences.clickThrough, { forward: true });
   win.on('ready-to-show', () => win.showInactive());
   win.webContents.on('did-finish-load', () => {
@@ -395,7 +398,7 @@ function syncOverlayWindow(rawPreferences: unknown): OverlayShortcutStatus {
     return shortcutStatus;
   }
   if (!overlayWindow || overlayWindow.isDestroyed()) overlayWindow = createOverlayWindow(preferences);
-  overlayWindow.setOpacity(preferences.opacity);
+  if (usesNativeOverlayOpacity(process.platform)) overlayWindow.setOpacity(preferences.opacity);
   overlayWindow.setMovable(!preferences.locked);
   overlayWindow.setResizable(!preferences.locked);
   overlayWindow.setIgnoreMouseEvents(preferences.clickThrough, { forward: true });
@@ -467,12 +470,22 @@ function publishClipboardBridgeStatus(status: ClipboardBridgeStatus): void {
   }
 }
 
-function publishClipboardText(text: string): void {
+function publishClipboardText(text: string, token = clipboardWatchToken): void {
   const win = watchWindow;
-  if (!win || win.isDestroyed() || text === lastClipboardText) return;
+  if (!token || token !== clipboardWatchToken || !win || win.isDestroyed() ||
+      win.webContents.isDestroyed() || text === lastClipboardText) return;
   lastClipboardText = text;
-  win.webContents.send('on-clipboard-capture', text);
+  win.webContents.send('on-clipboard-capture', text, token);
 }
+
+const clipboardWatcher = new ClipboardWatcher({
+  readText: () => clipboard.readText(),
+  publish: (text, token) => {
+    const win = watchWindow;
+    if (token === clipboardWatchToken && win && !win.isDestroyed() && !win.webContents.isDestroyed())
+      win.webContents.send('on-clipboard-capture', text, token);
+  },
+});
 
 function stopProtonClipboardBridge(): void {
   clipboardBridgeGeneration += 1;
@@ -571,28 +584,29 @@ async function startProtonClipboardBridge(): Promise<void> {
 // stale map text must not populate a freshly cleared log. Copying the SAME map
 // twice in a row while watching still yields identical text and is skipped —
 // the manual Paste button remains the explicit answer for that case.
-function setClipboardWatch(on: boolean): void {
+function setClipboardWatch(on: boolean, token?: string): void {
+  if (on && !isClipboardWatchToken(token)) return;
+  const changed = on && token !== clipboardWatchToken;
+  clipboardWatchToken = on ? token! : null;
   if (process.platform === 'linux') {
+    if (changed) stopProtonClipboardBridge();
     if (on) void startProtonClipboardBridge();
     else stopProtonClipboardBridge();
     return;
   }
   if (on) {
-    if (clipboardInterval) return; // already polling
-    lastClipboardText = clipboard.readText();
-    clipboardInterval = setInterval(() => {
-      const win = watchWindow;
-      if (!win || win.isDestroyed()) return;
-      const text = clipboard.readText();
-      publishClipboardText(text);
-    }, 200);
-  } else if (clipboardInterval) {
-    clearInterval(clipboardInterval);
-    clipboardInterval = null;
-  }
+    const win = watchWindow;
+    clipboardWatcher.start(token!, () => watchWindow === win && !!win &&
+      !win.isDestroyed() && !win.webContents.isDestroyed());
+  } else clipboardWatcher.stop();
 }
 
-ipcMain.on('clipboard:set-watch', (_event, on: boolean) => setClipboardWatch(!!on));
+ipcMain.on('clipboard:set-watch', (event, on: unknown, token: unknown) => {
+  const owner = watchWindow && !watchWindow.isDestroyed() ? watchWindow.webContents : null;
+  if (!isMainClipboardSender(event.sender, event.senderFrame, owner) || typeof on !== 'boolean') return;
+  if (on && !isClipboardWatchToken(token)) return;
+  setClipboardWatch(on, on ? token as string : undefined);
+});
 ipcMain.handle('clipboard:get-bridge-status', () => clipboardBridgeStatus);
 ipcMain.handle('discord-share:brotli-encode', (_event, payloadJson: unknown) => {
   try {
@@ -1230,8 +1244,10 @@ function createWindow(): void {
     event.preventDefault()
     void continueQuit('window-close', mainWindow)
   });
-  mainWindow.on('session-end', () => { quitBypass = true });
+  mainWindow.on('session-end', () => { setClipboardWatch(false); quitBypass = true });
+  mainWindow.webContents.on('did-start-loading', () => setClipboardWatch(false));
   mainWindow.webContents.on('render-process-gone', () => {
+    setClipboardWatch(false)
     rendererFlushUnavailable = true
     for (const [requestId, resolve] of rendererFlushWaiters) {
       rendererFlushWaiters.delete(requestId)
@@ -1291,6 +1307,7 @@ if (!hasSingleInstanceLock) {
   });
 
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+  app.on('will-quit', () => setClipboardWatch(false));
   app.on('before-quit', (event) => {
     stopProtonClipboardBridge()
     unregisterOverlayShortcuts()

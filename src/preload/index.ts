@@ -66,8 +66,8 @@ const api = {
   sendOverlayBoundsInteraction: (interaction: OverlayBoundsInteraction): void => {
     ipcRenderer.send('overlay:bounds-interaction', interaction)
   },
-  onClipboardCapture: (callback: (text: string) => void): void => {
-    ipcRenderer.on('on-clipboard-capture', (_event, text) => callback(text))
+  onClipboardCapture: (callback: (text: string, token: string) => void): void => {
+    ipcRenderer.on('on-clipboard-capture', (_event, text, token) => callback(text, token))
   },
   removeClipboardListener: (): void => { ipcRenderer.removeAllListeners('on-clipboard-capture') },
   onClipboardBridgeStatus: (callback: (status: ClipboardBridgeStatus) => void): (() => void) => {
@@ -87,7 +87,7 @@ const api = {
   decodeDiscordShare: (token: string): Promise<{ payloadJson: string | null; error: string | null }> =>
     ipcRenderer.invoke('discord-share:brotli-decode', token),
   // WP13: renderer drives the main-process clipboard polling lifecycle.
-  setClipboardWatch: (on: boolean): void => { ipcRenderer.send('clipboard:set-watch', on) },
+  setClipboardWatch: (on: boolean, token?: string): void => { ipcRenderer.send('clipboard:set-watch', on, token) },
   searchMapsOnTrade: (params: TradeParams): Promise<{ url: string | null; error: string | null }> =>
     ipcRenderer.invoke('trade:search-maps', params),
   getBrickMods: (): Promise<BrickModResult> => ipcRenderer.invoke('trade:get-brick-mods'),
