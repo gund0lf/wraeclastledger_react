@@ -196,3 +196,12 @@ npm.cmd run wp14:bench
 The locked targets remain 100-session warm-bootstrap P95 <= 500 ms, 10 MiB
 durable-save P95 <= 500 ms, and renderer validation max <= 50 ms. The report
 records any threshold relaxation; Phase 6 accepts none.
+
+## Shared v2 list contract
+
+`safe-strategy-list-v2.json` is the canonical synthetic list contract. Server
+`scripts/sync-list-contract.cjs` and website `scripts/sync-safe-reader.mjs` copy
+these exact bytes with SHA-256 provenance. All three suites exercise the vectors;
+compare hashes before integration. No private or live records belong here.
+Expected historical totals are deliberately different from Chaos divided by the
+last quote; they are not regenerated from the implementation under test.

@@ -3,10 +3,21 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { parseSafeDetail, parseSafeRun, parseSafeRow } from '../../../shared/safeStrategy'
 import fixture from './__fixtures__/safe-strategy-v2.json'
-import { compactChaos, detailMoney, recordedCostBreakdown, recordedCount, singleRunQuote, publishedChiselName, safePooledPresentation } from './safeStrategyCardPresentation'
+import { compactChaos, detailMoney, recordedCostBreakdown, recordedCount, singleRunQuote, publishedChiselName, safePooledPresentation, listDivineTotal, groupLabel } from './safeStrategyCardPresentation'
 import { categoryArtwork, publicLootPresentation } from './strategyLootPresentation'
 
 describe('safe rich strategy presentation', () => {
+  it('shows only supplied historical list totals and distinguishes unknown party size', () => {
+    expect(listDivineTotal(null)).toBeNull()
+    expect(listDivineTotal(0, true)).toBe('+0.0d')
+    expect(listDivineTotal(-3, true)).toBe('-3.0d')
+    expect(listDivineTotal(71.5)).toBe('71.5d')
+    expect(groupLabel(true, 3)).toBe('Group · 3 players')
+    expect(groupLabel(true, null)).toBe('Group')
+    expect(groupLabel(null, null)).toBeNull()
+    expect(groupLabel(false, 1)).toBeNull()
+    expect(recordedCount(1234, 'map')).toBe('1,234 maps')
+  })
   it('reuses weighted costs only for complete matching evidence, preserving duplicate items and individual quotes', () => {
     const { buildPresentationFixtures } = createRequire(import.meta.url)('./__fixtures__/safe-strategy-presentation.mjs')
     const entry = buildPresentationFixtures().entries[1]
@@ -110,13 +121,13 @@ describe('safe rich strategy presentation', () => {
     expect(categoryArtwork('Currency')).toBe('Currency')
   })
   it('keeps restored public components independent of legacy identity and request modules', () => {
-    for (const name of ['SafeStrategyBrowser', 'SafeStrategyDetail', 'SafeStrategyRow', 'StrategyCardPresentation']) {
+    for (const name of ['SafeStrategyBrowser', 'SafeStrategyDetail', 'SafeStrategyRow', 'StrategyCardPresentation', 'PublicAuthorName']) {
       const source = readFileSync(new URL(`../components/${name}.tsx`, import.meta.url), 'utf8')
       expect(source).not.toMatch(/discord_username|raw_export|parseDiscordExport|from ['"].*\/(?:StrategyCard|evidenceApi)['"]|\/web\/strategies/)
     }
     const source = readFileSync(new URL('../components/SafeStrategyDetail.tsx', import.meta.url), 'utf8')
     expect(source).toContain('safeStrategyReader.evidence(d)')
-    expect(source).toContain('safeAuthorLabel(d.attribution)')
+    expect(source).toContain('<PublicAuthorName attribution={d.attribution}')
     expect(source).toContain('LootEvidenceSummary')
   })
 })

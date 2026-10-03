@@ -305,6 +305,8 @@ export function buildPresentationFixtures() {
     ])
       row[key] = clone(d[key])
     row.map_type = d.setup.map_type
+    row.group_play = d.setup.group_play
+    row.party_size = d.setup.party_size
     row.observed = {
       map_count: d.observed.map_count,
       mod_average: d.observed.mod_average,
@@ -315,7 +317,9 @@ export function buildPresentationFixtures() {
       net_per_map_divines: d.economics.net_per_map_divines,
       net_divines_per_hour: d.coverage.net_divines_per_hour,
       total_invest_chaos: d.economics.total_invest_chaos,
-      net_profit_chaos: d.economics.net_profit_chaos
+      net_profit_chaos: d.economics.net_profit_chaos,
+      historical_net_divines: d.economics.historical_net_divines,
+      historical_invest_divines: d.economics.historical_invest_divines
     }
     row.evidence = {
       run_count: d.coverage.run_count,

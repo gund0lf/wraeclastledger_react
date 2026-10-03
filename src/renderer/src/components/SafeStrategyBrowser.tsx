@@ -14,7 +14,7 @@ import { PersonalRetrospectives } from './PersonalRetrospectives'
 import { SafeStrategyDetail } from './SafeStrategyDetail'
 import { isStrategyBackIntent } from '../utils/strategyBackNavigation'
 
-import { safeSetupUnavailableMessage } from '../utils/safeStrategyPresentation'
+import { safeSetupUnavailableMessage, safeDate } from '../utils/safeStrategyPresentation'
 import { COLOR, FONT } from '../utils/uiTokens'
 import { usePanelMaximized, useSetupSidebarCollapsed } from '../layout/panelLayoutContext'
 import { SafeStrategyHeaders, SafeStrategyRow } from './SafeStrategyRow'
@@ -76,7 +76,7 @@ function SafeBoard({ path, title, onLoad, onContinue, onName, sort, order, onSor
       {!expanded && current?.page?.total === 0 && <Text m="sm" size="sm" c="dimmed">No strategies match these filters.</Text>}
       {!expanded && current?.page?.scope === 'current' && current.page.next_cursor && <Button mt="xs" size="xs" variant="subtle" onClick={() => void requests.more()}>Load more</Button>}
     </div>
-    <Text ta="center" c="dimmed" size="xs">Score reflects community reactions · Share submits your session · Load Build starts a fresh session</Text>
+    <Text ta="center" c="dimmed" size="xs">Vote with the thumbs reactions in Discord · Share submits your session · Load Build starts a fresh session</Text>
   </div>
 }
 
@@ -187,7 +187,7 @@ export function SafeStrategyBrowser({ onShare, onImport, applySetup, runAction, 
         {toolbar(null, false)}
         {error && <Alert color="red" p="xs">{error}<Button size="compact-xs" onClick={() => setCatalogueAttempt(v => v + 1)}>Retry</Button></Alert>}
         <PersonalRetrospectives onLoadSession={onLoadPersonal} />
-        {snapshots.map(s => <Stack key={s.snapshot_key} gap="sm"><Text fw={600}>{s.league ?? 'Unknown league'} · Frozen {s.cutoff_utc ? new Date(s.cutoff_utc).toLocaleDateString() : 'date unrecorded'}</Text>
+        {snapshots.map(s => <Stack key={s.snapshot_key} gap="sm"><Text fw={600}>{s.league ?? 'Unknown league'} · Frozen {safeDate(s.cutoff_utc)}</Text>
           <SafeBoard title="Top score" path={`/web/v2/retrospectives/${s.snapshot_key}/strategies?limit=10&sort=score&order=desc`} {...boardActions} />
           <SafeBoard title="Top profit per map" path={`/web/v2/retrospectives/${s.snapshot_key}/strategies?limit=10&sort=profit_per_map&order=desc`} {...boardActions} />
         </Stack>)}

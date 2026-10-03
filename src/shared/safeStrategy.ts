@@ -84,8 +84,9 @@ function scoped<T extends { scope: string; snapshot_key: string | null }>(check:
     return result
   }
 }
-export const parseSafeRow = scoped(shape({ ...common, map_type: nullable(string(32)), observed: shape(observedFields),
-  results: shape({ all_in_cost_per_map_chaos: metric, net_per_map_divines: metric, net_divines_per_hour: metric, total_invest_chaos: metric, net_profit_chaos: metric }),
+export const parseSafeRow = scoped(shape({ ...common, map_type: nullable(string(32)), group_play: nullable(bool), party_size: nullable(integer(6, 1)), observed: shape(observedFields),
+  results: shape({ all_in_cost_per_map_chaos: metric, net_per_map_divines: metric, net_divines_per_hour: metric, total_invest_chaos: metric, net_profit_chaos: metric,
+    historical_net_divines: metric, historical_invest_divines: amount }),
   evidence: shape({ run_count: count, timed_run_count: count, timed_map_count: count }) }))
 const reasons = literal('frozen', 'missing_membership', 'incomplete_seed', 'conflicting_seed', 'unsupported_identity', 'inactive_registration')
 const seed = shape({ ...setupFields, league_key: string(80), multiplier_milli: integer(1e15), atlas_tree_url: atlas })

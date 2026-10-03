@@ -10,6 +10,8 @@
 .safe-strategy-viewport { flex: 1; min-height: 120px; overflow: auto; outline: none; padding: 0 6px 6px; }
 .safe-strategy-headers { position: sticky; top: 0; z-index: 2; background: var(--wl-surface-raised); border-bottom: 1px solid var(--wl-border); }
 .safe-strategy-row { user-select: none; }
+.safe-strategy-byline { display: flex; align-items: baseline; gap: 3px; min-width: 0; line-height: 1.15; white-space: nowrap; }
+.safe-strategy-byline > span { flex-shrink: 0; }
 .safe-strategy-row:hover { background: var(--wl-surface-raised); }
 .safe-strategy-row:focus-visible { outline: 1px solid var(--mantine-color-blue-5); outline-offset: -2px; }
 .safe-strategy-filter-columns { display: grid; grid-template-columns: minmax(420px, 1fr) minmax(330px, 1fr); gap: 16px; }

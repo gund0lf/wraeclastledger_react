@@ -1,0 +1,335 @@
+{
+  "cases": [
+    {
+      "name": "pooled historical quotes, not last quote conversion",
+      "input": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "read_version": "22222222-2222-4222-8222-222222222222",
+        "current_revision": 2,
+        "strategy_name": "Recorded totals",
+        "league": "Allflame",
+        "is_group_play": true,
+        "group_size": 3,
+        "historical_total_divines": "3",
+        "historical_total_invest_divines": "5",
+        "total_invest": "1200",
+        "net_profit": "800",
+        "divine_price": 400
+      },
+      "expected": {
+        "schema_version": 2,
+        "id": "11111111-1111-4111-8111-111111111111",
+        "title": "Recorded totals",
+        "tags": [],
+        "league": "Allflame",
+        "attribution": null,
+        "community": null,
+        "published_at": null,
+        "updated_at": null,
+        "score": null,
+        "map_type": null,
+        "group_play": true,
+        "party_size": 3,
+        "observed": {
+          "map_count": null,
+          "mod_average": null,
+          "mod_sample_size": null
+        },
+        "results": {
+          "all_in_cost_per_map_chaos": null,
+          "net_per_map_divines": null,
+          "net_divines_per_hour": null,
+          "historical_net_divines": 3,
+          "historical_invest_divines": 5,
+          "total_invest_chaos": 1200,
+          "net_profit_chaos": 800
+        },
+        "evidence": {
+          "run_count": null,
+          "timed_run_count": null,
+          "timed_map_count": null
+        },
+        "scope": "current",
+        "snapshot_key": null,
+        "revision": 2,
+        "read_version": "22222222-2222-4222-8222-222222222222"
+      }
+    },
+    {
+      "name": "recorded zero and solo",
+      "input": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "read_version": "22222222-2222-4222-8222-222222222222",
+        "current_revision": 2,
+        "strategy_name": "Recorded totals",
+        "league": "Allflame",
+        "is_group_play": false,
+        "group_size": null,
+        "historical_total_divines": "0",
+        "historical_total_invest_divines": "0",
+        "total_invest": "1200",
+        "net_profit": "800",
+        "divine_price": 400
+      },
+      "expected": {
+        "schema_version": 2,
+        "id": "11111111-1111-4111-8111-111111111111",
+        "title": "Recorded totals",
+        "tags": [],
+        "league": "Allflame",
+        "attribution": null,
+        "community": null,
+        "published_at": null,
+        "updated_at": null,
+        "score": null,
+        "map_type": null,
+        "group_play": false,
+        "party_size": 1,
+        "observed": {
+          "map_count": null,
+          "mod_average": null,
+          "mod_sample_size": null
+        },
+        "results": {
+          "all_in_cost_per_map_chaos": null,
+          "net_per_map_divines": null,
+          "net_divines_per_hour": null,
+          "historical_net_divines": 0,
+          "historical_invest_divines": 0,
+          "total_invest_chaos": 1200,
+          "net_profit_chaos": 800
+        },
+        "evidence": {
+          "run_count": null,
+          "timed_run_count": null,
+          "timed_map_count": null
+        },
+        "scope": "current",
+        "snapshot_key": null,
+        "revision": 2,
+        "read_version": "22222222-2222-4222-8222-222222222222"
+      }
+    },
+    {
+      "name": "negative net, unknown group size",
+      "input": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "read_version": "22222222-2222-4222-8222-222222222222",
+        "current_revision": 2,
+        "strategy_name": "Recorded totals",
+        "league": "Allflame",
+        "is_group_play": true,
+        "group_size": null,
+        "historical_total_divines": "-3",
+        "historical_total_invest_divines": "5",
+        "total_invest": "1200",
+        "net_profit": "800",
+        "divine_price": 400
+      },
+      "expected": {
+        "schema_version": 2,
+        "id": "11111111-1111-4111-8111-111111111111",
+        "title": "Recorded totals",
+        "tags": [],
+        "league": "Allflame",
+        "attribution": null,
+        "community": null,
+        "published_at": null,
+        "updated_at": null,
+        "score": null,
+        "map_type": null,
+        "group_play": true,
+        "party_size": null,
+        "observed": {
+          "map_count": null,
+          "mod_average": null,
+          "mod_sample_size": null
+        },
+        "results": {
+          "all_in_cost_per_map_chaos": null,
+          "net_per_map_divines": null,
+          "net_divines_per_hour": null,
+          "historical_net_divines": -3,
+          "historical_invest_divines": 5,
+          "total_invest_chaos": 1200,
+          "net_profit_chaos": 800
+        },
+        "evidence": {
+          "run_count": null,
+          "timed_run_count": null,
+          "timed_map_count": null
+        },
+        "scope": "current",
+        "snapshot_key": null,
+        "revision": 2,
+        "read_version": "22222222-2222-4222-8222-222222222222"
+      }
+    },
+    {
+      "name": "missing evidence",
+      "input": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "read_version": "22222222-2222-4222-8222-222222222222",
+        "current_revision": 2,
+        "strategy_name": "Recorded totals",
+        "league": "Allflame",
+        "is_group_play": null,
+        "group_size": null,
+        "historical_total_divines": null,
+        "historical_total_invest_divines": null,
+        "total_invest": "1200",
+        "net_profit": "800",
+        "divine_price": 400
+      },
+      "expected": {
+        "schema_version": 2,
+        "id": "11111111-1111-4111-8111-111111111111",
+        "title": "Recorded totals",
+        "tags": [],
+        "league": "Allflame",
+        "attribution": null,
+        "community": null,
+        "published_at": null,
+        "updated_at": null,
+        "score": null,
+        "map_type": null,
+        "group_play": null,
+        "party_size": null,
+        "observed": {
+          "map_count": null,
+          "mod_average": null,
+          "mod_sample_size": null
+        },
+        "results": {
+          "all_in_cost_per_map_chaos": null,
+          "net_per_map_divines": null,
+          "net_divines_per_hour": null,
+          "historical_net_divines": null,
+          "historical_invest_divines": null,
+          "total_invest_chaos": 1200,
+          "net_profit_chaos": 800
+        },
+        "evidence": {
+          "run_count": null,
+          "timed_run_count": null,
+          "timed_map_count": null
+        },
+        "scope": "current",
+        "snapshot_key": null,
+        "revision": 2,
+        "read_version": "22222222-2222-4222-8222-222222222222"
+      }
+    },
+    {
+      "name": "invalid and out of bounds",
+      "input": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "read_version": "22222222-2222-4222-8222-222222222222",
+        "current_revision": 2,
+        "strategy_name": "Recorded totals",
+        "league": "Allflame",
+        "is_group_play": true,
+        "group_size": 7,
+        "historical_total_divines": "1000000000000001",
+        "historical_total_invest_divines": "-1",
+        "total_invest": "1200",
+        "net_profit": "800",
+        "divine_price": 400
+      },
+      "expected": {
+        "schema_version": 2,
+        "id": "11111111-1111-4111-8111-111111111111",
+        "title": "Recorded totals",
+        "tags": [],
+        "league": "Allflame",
+        "attribution": null,
+        "community": null,
+        "published_at": null,
+        "updated_at": null,
+        "score": null,
+        "map_type": null,
+        "group_play": true,
+        "party_size": null,
+        "observed": {
+          "map_count": null,
+          "mod_average": null,
+          "mod_sample_size": null
+        },
+        "results": {
+          "all_in_cost_per_map_chaos": null,
+          "net_per_map_divines": null,
+          "net_divines_per_hour": null,
+          "historical_net_divines": null,
+          "historical_invest_divines": null,
+          "total_invest_chaos": 1200,
+          "net_profit_chaos": 800
+        },
+        "evidence": {
+          "run_count": null,
+          "timed_run_count": null,
+          "timed_map_count": null
+        },
+        "scope": "current",
+        "snapshot_key": null,
+        "revision": 2,
+        "read_version": "22222222-2222-4222-8222-222222222222"
+      }
+    },
+    {
+      "name": "frozen original, no newer totals",
+      "input": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "read_version": "22222222-2222-4222-8222-222222222222",
+        "current_revision": 2,
+        "strategy_name": "Recorded totals",
+        "league": "Allflame",
+        "is_group_play": false,
+        "group_size": 1,
+        "historical_total_divines": null,
+        "historical_total_invest_divines": null,
+        "total_invest": "1200",
+        "net_profit": "800",
+        "divine_price": 400
+      },
+      "expected": {
+        "schema_version": 2,
+        "id": "11111111-1111-4111-8111-111111111111",
+        "title": "Recorded totals",
+        "tags": [],
+        "league": "Allflame",
+        "attribution": null,
+        "community": null,
+        "published_at": null,
+        "updated_at": null,
+        "score": null,
+        "map_type": null,
+        "group_play": false,
+        "party_size": 1,
+        "observed": {
+          "map_count": null,
+          "mod_average": null,
+          "mod_sample_size": null
+        },
+        "results": {
+          "all_in_cost_per_map_chaos": null,
+          "net_per_map_divines": null,
+          "net_divines_per_hour": null,
+          "historical_net_divines": null,
+          "historical_invest_divines": null,
+          "total_invest_chaos": 1200,
+          "net_profit_chaos": 800
+        },
+        "evidence": {
+          "run_count": null,
+          "timed_run_count": null,
+          "timed_map_count": null
+        },
+        "scope": "frozen",
+        "snapshot_key": "33333333-3333-4333-8333-333333333333",
+        "revision": 2,
+        "read_version": "22222222-2222-4222-8222-222222222222",
+        "snapshot_schema_version": 1
+      }
+    }
+  ]
+}

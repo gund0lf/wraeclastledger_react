@@ -1,6 +1,18 @@
 import type { SafeDetail, SafeRow, SafeRun } from '../../../shared/safeStrategy'
 import { computePublishedSetupCostBreakdown } from './strategySetupCosts'
-export const safeNumber = (v: number | null | undefined, unit = '') => v == null ? 'Unrecorded' : v.toLocaleString(undefined, { maximumFractionDigits: unit === 'd' ? 3 : 1 }) + unit
+export const safeNumber = (v: number | null | undefined, unit = '') => v == null ? 'Unrecorded' : v.toLocaleString('en-US', { maximumFractionDigits: unit === 'd' ? 3 : 1 }) + unit
+export function safeDate(value: string | null): string {
+  if (!value || !Number.isFinite(Date.parse(value))) return 'unrecorded'
+  return new Date(value).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+export function recordedQuantityPrice(quantity: number | null | undefined, price: number | null | undefined, perMap = false): string {
+  if (quantity == null && price == null) return 'Quantity and unit price unrecorded'
+  const count = quantity == null ? 'Quantity unrecorded' : `${safeNumber(quantity)}×${perMap ? '/map' : ''}`
+  return `${count} · ${price == null ? 'Unit price unrecorded' : `${safeNumber(price, 'c')} each`}`
+}
+export const ANONYMOUS_AUTHOR_TOOLTIP = 'No public author name displayed'
+export const hasPublicAuthorName = (attribution: SafeRow['attribution']): boolean =>
+  attribution?.status === 'active' && attribution.display_name !== null
 
 export function safeCostEvidenceMessage(runs: SafeRun[] | null, error: string | null, scope: SafeDetail['scope'] = 'current'): string {
   if (scope === 'frozen') return 'Individual run costs are not available for this frozen strategy.'
@@ -9,7 +21,7 @@ export function safeCostEvidenceMessage(runs: SafeRun[] | null, error: string | 
 }
 
 export function safeAuthorLabel(attribution: SafeRow['attribution']): string {
-  return attribution?.display_name ?? (attribution ? 'Public name unavailable' : 'Public name not set')
+  return hasPublicAuthorName(attribution) ? attribution!.display_name! : 'Anonymous'
 }
 
 export function safeAuthorStatus(attribution: SafeRow['attribution']): string {

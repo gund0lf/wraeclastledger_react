@@ -11,7 +11,15 @@ export function publishedChiselName(name: string | null | undefined): string | n
 }
 
 export const recordedCount = (value: number | null, noun: string) =>
-  value === null ? `${noun} count unrecorded` : `${value.toLocaleString()} ${noun}${value === 1 ? '' : 's'}`
+  value === null ? `${noun} count unrecorded` : `${value.toLocaleString('en-US')} ${noun}${value === 1 ? '' : 's'}`
+
+/** List totals are already historical server values, never a pooled conversion. */
+export function listDivineTotal(value: number | null, signed = false): string | null {
+  return value === null ? null : `${signed && value >= 0 ? '+' : ''}${value.toFixed(1)}d`
+}
+export function groupLabel(group: boolean | null, size: number | null): string | null {
+  return group === true || (size !== null && size > 1) ? size !== null && size > 1 ? `Group · ${size} players` : 'Group' : null
+}
 
 export function compactChaos(value: number | null, signed = false): string {
   if (value === null) return '—'

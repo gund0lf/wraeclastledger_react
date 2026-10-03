@@ -7,7 +7,8 @@ import { useSessionStore } from '../store/useSessionStore'
 import { RegexLine } from './ui/RegexLine'
 import { PoeItemIcon, type PoeItemCategory } from './ui/PoeItemIcon'
 import { checkStrategyCompat } from '../utils/strategyCompat'
-import { safeNumber, safePooledCostComponents, safeCostEvidenceMessage, safeAuthorLabel, safeAuthorStatus, safeSetupUnavailableMessage, safeContinuationMessage } from '../utils/safeStrategyPresentation'
+import { safeNumber, safeDate, recordedQuantityPrice, safePooledCostComponents, safeCostEvidenceMessage, safeSetupUnavailableMessage, safeContinuationMessage } from '../utils/safeStrategyPresentation'
+import { PublicAuthorName } from './PublicAuthorName'
 import { COLOR, FONT } from '../utils/uiTokens'
 import { EconomicTile } from './StrategyCardPresentation'
 import { LootEvidenceSummary } from './LootEvidenceSummary'
@@ -96,9 +97,8 @@ export function SafeStrategyDetail({ detail: d, onLoad, onContinue, onName }: {
         </Stack>
         <Stack className="strategy-card-hero-meta" gap={2}>
           <Stack className="strategy-card-hero-attribution" gap={2}>
-            <Text size="sm" c="dimmed">by <Text span fw={600} c={own ? 'gray.3' : 'dimmed'}>{safeAuthorLabel(d.attribution)}</Text></Text>
-            {safeAuthorStatus(d.attribution) && <Text size="xs" c="dimmed">{safeAuthorStatus(d.attribution)}</Text>}
-            <Text size="xs" c="dimmed">Published {d.published_at ? new Date(d.published_at).toLocaleDateString() : 'unrecorded'}</Text>
+            <Text size="sm" c="dimmed">by <PublicAuthorName attribution={d.attribution} /></Text>
+            <Text size="xs" c="dimmed">Published {safeDate(d.published_at)}</Text>
             <Text size="xs" c="dimmed">{d.league ?? 'League unrecorded'} · {recordedCount(d.coverage.run_count, 'run')}</Text>
           </Stack>
           <Stack className="strategy-card-hero-facts" gap={2}>
@@ -145,11 +145,11 @@ export function SafeStrategyDetail({ detail: d, onLoad, onContinue, onName }: {
       </Stack>
       <Stack gap={3} className="strategy-card-setup-deli"><SectionLabel>Delirium orbs</SectionLabel>
         {pooledView?.deliriumItems.length ? pooledView.deliriumItems.map(s => <SetupItem key={s.name} category="orb" name={deliOrbItemName(s.name) ?? s.name} color="grape" value={safeNumber(s.perMap, 'c/map')} />)
-          : deli?.type ? <SetupItem category="orb" name={deliOrbItemName(deli.type) ?? deli.type} color="grape" value={`${safeNumber(deli.count_per_map)}×/map · ${safeNumber(costs?.delirium?.price_each_chaos, 'c')} each`} /> : <Text size="xs" c="dimmed">{deli ? 'None' : 'Unrecorded'}</Text>}
+          : deli?.type ? <SetupItem category="orb" name={deliOrbItemName(deli.type) ?? deli.type} color="grape" value={recordedQuantityPrice(deli.count_per_map, costs?.delirium?.price_each_chaos, true)} /> : <Text size="xs" c="dimmed">{deli ? 'None' : 'Unrecorded'}</Text>}
       </Stack>
       <Stack gap={3} className="strategy-card-setup-astro"><SectionLabel>Astrolabe</SectionLabel>
         {pooledView?.astrolabeItems.length ? pooledView.astrolabeItems.map(s => <SetupItem key={s.name} category="astrolabe" name={s.name} color="teal" value={safeNumber(s.perMap, 'c/map')} />)
-          : astro?.type || d.setup.astrolabe ? <SetupItem category="astrolabe" name={astro?.type ?? d.setup.astrolabe!} color="teal" value={`${safeNumber(astro?.count)}× · ${safeNumber(astro?.price_each_chaos, 'c')} each`} /> : <Text size="xs" c="dimmed">Unrecorded</Text>}
+          : astro?.type || d.setup.astrolabe ? <SetupItem category="astrolabe" name={astro?.type ?? d.setup.astrolabe!} color="teal" value={recordedQuantityPrice(astro?.count, astro?.price_each_chaos)} /> : <Text size="xs" c="dimmed">Unrecorded</Text>}
         {authored?.setup_display?.source === 'legacy_display' && <Text size="xs" c="dimmed">Legacy display prices; not exact setup proof.</Text>}
       </Stack>
       <div className="strategy-card-cost-panel" style={panelStyle}>

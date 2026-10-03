@@ -246,12 +246,16 @@
     "updated_at": "2026-09-09T00:00:00.000Z",
     "score": null,
     "map_type": "8-mod",
+    "group_play": false,
+    "party_size": 1,
     "observed": {
       "map_count": 2,
       "mod_average": 8,
       "mod_sample_size": 2
     },
     "results": {
+      "historical_net_divines": null,
+      "historical_invest_divines": null,
       "all_in_cost_per_map_chaos": 0,
       "net_per_map_divines": null,
       "net_divines_per_hour": null,

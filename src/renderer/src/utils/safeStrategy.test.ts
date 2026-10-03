@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import fixture from './__fixtures__/safe-strategy-v2.json'
+import listContract from './__fixtures__/safe-strategy-list-v2.json'
 import { parseSafeDetail, parseSafeList, parseSafeRow, parseSafeRun, sameSafeIdentity } from '../../../shared/safeStrategy'
 import { normalizePublicAuthorName } from '../../../shared/authorNames'
 import { SafeBrowserRequests, SafeStrategyReader } from './safeStrategyReader'
@@ -26,6 +27,25 @@ const attributionReaders = (attribution: unknown) => [
   () => parseSafeDetail({ ...fixture.frozen, attribution }).attribution
 ]
 describe('shared safe strategy reader contract', () => {
+  it('accepts the shared server/website list contract without reconstructing recorded values', () => {
+    for (const { expected } of listContract.cases) {
+      const { snapshot_schema_version: _snapshotVersion, ...display } = expected
+      expect(parseSafeRow(expected)).toEqual(display)
+    }
+  })
+  it('keeps the extended list closed and rejects missing, private or invalid fields', () => {
+    const row = listContract.cases[0].expected
+    for (const invalid of [
+      { ...row, party_size: 0 }, { ...row, party_size: 7 }, { ...row, group_play: 'true' },
+      { ...row, discord_username: 'PRIVATE' }, { ...row, raw_export: 'PRIVATE' },
+      { ...row, results: { ...row.results, historical_net_divines: 1e16 } },
+      { ...row, results: { ...row.results, historical_invest_divines: -1 } }
+    ]) expect(() => parseSafeRow(invalid)).toThrow()
+    for (const key of ['group_play', 'party_size']) {
+      const missing: Record<string, unknown> = { ...row }; delete missing[key]
+      expect(() => parseSafeRow(missing)).toThrow()
+    }
+  })
   it('distinguishes pending, failed, retrying and incomplete historical costs', () => {
     expect(safeCostEvidenceMessage(null, null)).toContain('Loading')
     expect(safeCostEvidenceMessage(null, 'offline')).toContain('unavailable')
