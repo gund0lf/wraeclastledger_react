@@ -1,5 +1,6 @@
 import { STRATEGY_API_URL, type Strategy } from './strategyConstants';
 import type { LootSummary } from './lootSummary';
+import { recordedProfitPerMap } from './strategyCardMetrics';
 
 export interface EvidenceCostBreakdown {
   chisel: { name: string; priceEach: number } | null;
@@ -93,9 +94,7 @@ export function evidencePresentation(strategy: Strategy): EvidencePresentation {
   const costPerMap = strategy.total_invest != null && mapCount != null && mapCount > 0
     ? strategy.total_invest / mapCount
     : strategy.per_map_cost ?? null;
-  const profitPerMapChaos = strategy.net_profit != null && mapCount != null && mapCount > 0
-    ? strategy.net_profit / mapCount
-    : null;
+  const profitPerMapChaos = recordedProfitPerMap(strategy.net_profit, mapCount);
   // Pooled investment divines are materialized server-side from each run's
   // authored investment and Divine snapshot. Never apply one run's price to
   // the aggregate, and never display a partial pooled conversion.

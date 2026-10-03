@@ -1,68 +1,83 @@
-import { Alert, Badge, Button, Card, Group, Loader, Modal, MultiSelect, SegmentedControl, Select, Stack, Table, Text, TextInput, UnstyledButton } from '@mantine/core'
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { SAFE_SORTS, safeSortOrder, safeIdentityKey, type SafeDetail, type SafeRow, type SafeSnapshot, type SafeSort } from '../../../shared/safeStrategy'
+import { ActionIcon, Alert, Badge, Button, Card, Group, Loader, Modal, MultiSelect, Paper, SegmentedControl, Select, Stack, Text, TextInput } from '@mantine/core'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { IconBrandDiscord, IconRefresh, IconShare2 } from '@tabler/icons-react'
+import { SAFE_SORTS, safeSortOrder, safeIdentityKey, type SafeDetail, type SafeSnapshot, type SafeSort } from '../../../shared/safeStrategy'
 import type { StrategySetupCode } from '../../../shared/strategySetupCode'
 import { SafeBrowserRequests, safeStrategyReader } from '../utils/safeStrategyReader'
 import { safeStrategyQuery } from '../utils/safeStrategyQuery'
 import { bindSafeTarget, confirmedStrategyAuthor, refreshSafeAuthorState } from '../utils/safeStrategyTarget'
 import { useSessionStore } from '../store/useSessionStore'
-import { TAG_OPTIONS, TAG_COLORS } from '../utils/strategyConstants'
+import { TAG_OPTIONS, BROWSER_MIN_CONTENT_WIDTH, BROWSER_MAXIMIZED_MIN_CONTENT_WIDTH, BROWSER_SETUP_COLLAPSED_MIN_CONTENT_WIDTH, BROWSER_MAXIMIZED_SETUP_COLLAPSED_MIN_CONTENT_WIDTH } from '../utils/strategyConstants'
 import { activeKnownLeagues, KNOWN_LEAGUES } from '../utils/league'
 import { ManagePublicNames } from './ManagePublicNames'
 import { PersonalRetrospectives } from './PersonalRetrospectives'
 import { SafeStrategyDetail } from './SafeStrategyDetail'
 import { isStrategyBackIntent } from '../utils/strategyBackNavigation'
 
-import { safeNumber, safeAuthorLabel, safeSetupUnavailableMessage } from '../utils/safeStrategyPresentation'
-import { FONT } from '../utils/uiTokens'
+import { safeSetupUnavailableMessage } from '../utils/safeStrategyPresentation'
+import { COLOR, FONT } from '../utils/uiTokens'
+import { usePanelMaximized, useSetupSidebarCollapsed } from '../layout/panelLayoutContext'
+import { SafeStrategyHeaders, SafeStrategyRow } from './SafeStrategyRow'
+import { SectionLabel } from './ui/SectionLabel'
+import './SafeStrategyBrowser.css'
 import { SafeStrategyActions, type SafeStrategyAction } from '../utils/safeStrategyActions'
-const rowValues = (r: SafeRow) => [r.observed.mod_average, r.observed.map_count, r.results.all_in_cost_per_map_chaos,
-  r.results.total_invest_chaos, r.results.net_profit_chaos, r.score, r.results.net_divines_per_hour, r.results.net_per_map_divines]
-const columns: SafeSort[] = ['mod', 'maps', 'cost_per_map', 'total_invest', 'net_profit', 'score', 'div_per_hour', 'profit_per_map']
+type BoardToolbar = (total: number | null, loading: boolean, refresh?: () => void) => ReactNode
 
-function SafeBoard({ path, title, onLoad, onContinue, onName, sort, order, onSort, invalidate }: {
+function SafeBoard({ path, title, onLoad, onContinue, onName, sort, order, onSort, invalidate, toolbar, filters }: {
   path: string; title?: string; onLoad: (d: SafeDetail) => void; onContinue: (d: SafeDetail) => void; onName: (d: SafeDetail) => void
   sort?: SafeSort; order?: 'asc' | 'desc'; onSort?: (s: SafeSort) => void
-  invalidate: () => void
+  invalidate: () => void; toolbar?: BoardToolbar; filters?: ReactNode
 }) {
   const [requests] = useState(() => new SafeBrowserRequests())
   const state = useSyncExternalStore(requests.subscribe, requests.getSnapshot)
   const prefs = useSessionStore(s => s.authorPreferences)
   const viewport = useRef<HTMLDivElement>(null), scroll = useRef(0)
+  const maximized = usePanelMaximized('strategy-browser'), activity = useSetupSidebarCollapsed()
+  const minWidth = activity ? maximized ? BROWSER_MAXIMIZED_SETUP_COLLAPSED_MIN_CONTENT_WIDTH : BROWSER_SETUP_COLLAPSED_MIN_CONTENT_WIDTH
+    : maximized ? BROWSER_MAXIMIZED_MIN_CONTENT_WIDTH : BROWSER_MIN_CONTENT_WIDTH
   useLayoutEffect(() => { requests.activate(path); return () => requests.deactivate() }, [requests, path])
   const current = state.path === path ? state : null
   const expanded = current?.expanded
   const back = () => { invalidate(); void requests.expand(null); requestAnimationFrame(() => { viewport.current?.scrollTo({ top: scroll.current }); viewport.current?.focus({ preventScroll: true }) }) }
-  return <Stack gap="xs" onKeyDown={e => {
+  const refresh = () => { invalidate(); void requests.refresh() }
+  return <div className="safe-strategy-board" onKeyDown={e => {
     const el = e.target as HTMLElement
     if (expanded && isStrategyBackIntent({ kind: 'keyboard', key: e.key, altKey: e.altKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey,
       defaultPrevented: e.defaultPrevented, targetEditable: !!el.closest('input,textarea,select,[contenteditable="true"]') })) { e.preventDefault(); back() }
   }} onMouseDown={e => {
     if (expanded && isStrategyBackIntent({ kind: 'mouse', button: e.button, defaultPrevented: e.defaultPrevented })) { e.preventDefault(); back() }
   }}>
-    <Group justify="space-between"><Text fw={600} size="sm">{title ?? 'Public strategies'} · {current?.page?.total ?? '…'}</Text>
-      <Button size="compact-xs" variant="default" loading={current?.loading} onClick={() => { invalidate(); void requests.refresh() }}>Refresh</Button></Group>
+    {toolbar ? toolbar(current?.page?.total ?? null, !!current?.loading, refresh) :
+      <Group justify="space-between"><Text fw={600} size="sm">{title} · {current?.page?.total ?? '…'}</Text>
+        <ActionIcon size="md" variant="default" aria-label="Refresh strategies" loading={current?.loading} onClick={refresh}><IconRefresh size={14} /></ActionIcon></Group>}
+    {filters}
     {current?.error && <Alert color="red" p="xs">{current.error}</Alert>}
-    <div ref={viewport} tabIndex={-1} style={{ maxHeight: '70vh', overflow: 'auto' }}>
-      {!expanded && <Table striped highlightOnHover withTableBorder horizontalSpacing="xs" verticalSpacing="sm">
-        <Table.Thead><Table.Tr>{(['title', ...columns, 'activity'] as SafeSort[]).map(key => <Table.Th key={key}>
-          <UnstyledButton style={{ fontSize: FONT.small }} disabled={!onSort} onClick={() => onSort?.(key)}>{SAFE_SORTS[key]}{sort === key ? order === 'asc' ? ' ↑' : ' ↓' : ''}</UnstyledButton>
-        </Table.Th>)}</Table.Tr></Table.Thead>
-        <Table.Tbody>{current?.page?.strategies.map(r => <Table.Tr key={safeIdentityKey(r)}>
-          <Table.Td><Button size="compact-xs" variant="subtle" onClick={() => { invalidate(); scroll.current = viewport.current?.scrollTop ?? 0; void requests.expand(r.id); viewport.current?.scrollTo({ top: 0 }); viewport.current?.focus() }}>{r.title || 'Untitled strategy'}</Button>
-            <Text size="xs" style={{ overflowWrap: 'anywhere' }} c={confirmedStrategyAuthor(r, prefs) ? 'teal' : 'dimmed'}>{safeAuthorLabel(r.attribution)}</Text>
-            <Group gap={3}>{r.tags.map(t => <Badge key={t} color={Object.hasOwn(TAG_COLORS, t) ? TAG_COLORS[t] : 'gray'} size="xs">{TAG_OPTIONS.find(option => option.value === t)?.label ?? t}</Badge>)}</Group></Table.Td>
-          {rowValues(r).map((v, i) => <Table.Td key={i}><Text size="xs">{safeNumber(v, i === 2 || i === 3 || i === 4 ? 'c' : i >= 6 ? 'd' : '')}</Text></Table.Td>)}
-          <Table.Td><Text size="xs">{r.updated_at ? new Date(r.updated_at).toLocaleDateString() : 'Unrecorded'}</Text></Table.Td>
-        </Table.Tr>)}</Table.Tbody>
-      </Table>}
-      {expanded && (current?.detail ? <SafeStrategyDetail key={safeIdentityKey(current.detail)} detail={current.detail}
-        onLoad={() => onLoad(current.detail!)} onContinue={() => onContinue(current.detail!)} onName={() => onName(current.detail!)} /> : !current?.error && <Loader size="sm" />)}
+    <div ref={viewport} tabIndex={-1} className="safe-strategy-viewport">
+      {!expanded && <div style={{ minWidth, position: 'sticky', top: 0, zIndex: 2 }}><SafeStrategyHeaders maximized={maximized} activity={activity} sort={sort} order={order} onSort={onSort} /></div>}
+      <Stack gap={9} style={{ minWidth: expanded ? 0 : minWidth }}>{current?.page?.strategies.filter(r => !expanded || r.id === expanded).map(r => {
+        const own = confirmedStrategyAuthor(r, prefs)
+        return <div key={safeIdentityKey(r)} data-strategy-card={r.id} style={{
+          background: 'var(--mantine-color-dark-6)', border: `1px solid ${own ? COLOR.surfaceInfoBorder : COLOR.border}`,
+          borderRadius: 8, overflow: 'hidden', position: 'relative', boxShadow: expanded ? `0 5px 16px ${COLOR.bgDeep}` : undefined,
+        }}>
+          {own && <div aria-hidden style={{ position: 'absolute', inset: '0 auto 0 0', width: 3, background: COLOR.info }} />}
+          <div style={{ overflowX: 'auto' }}><div style={{ minWidth }}><SafeStrategyRow row={r} own={!!own} expanded={expanded === r.id} maximized={maximized} activity={activity}
+            onToggle={() => {
+              if (expanded) { back(); return }
+              invalidate(); scroll.current = viewport.current?.scrollTop ?? 0
+              void requests.expand(r.id); viewport.current?.scrollTo({ top: 0 }); viewport.current?.focus()
+            }} /></div></div>
+          {expanded === r.id && (current?.detail ? <SafeStrategyDetail key={safeIdentityKey(current.detail)} detail={current.detail}
+            onLoad={() => onLoad(current.detail!)} onContinue={() => onContinue(current.detail!)} onName={() => onName(current.detail!)} />
+            : !current?.error && <Loader m="sm" size="sm" />)}
+        </div>
+      })}</Stack>
+      {current?.loading && <Loader m="sm" size="sm" />}
+      {!expanded && current?.page?.total === 0 && <Text m="sm" size="sm" c="dimmed">No strategies match these filters.</Text>}
+      {!expanded && current?.page?.scope === 'current' && current.page.next_cursor && <Button mt="xs" size="xs" variant="subtle" onClick={() => void requests.more()}>Load more</Button>}
     </div>
-    {current?.loading && <Loader size="sm" />}
-    {!expanded && current?.page?.total === 0 && <Text size="sm" c="dimmed">No strategies match these filters.</Text>}
-    {!expanded && current?.page?.scope === 'current' && current.page.next_cursor && <Button size="xs" variant="subtle" onClick={() => void requests.more()}>Load more</Button>}
-  </Stack>
+    <Text ta="center" c="dimmed" size="xs">Score reflects community reactions · Share submits your session · Load Build starts a fresh session</Text>
+  </div>
 }
 
 export function SafeStrategyBrowser({ onShare, onImport, applySetup, runAction, onLoadPersonal, message }: {
@@ -120,35 +135,63 @@ export function SafeStrategyBrowser({ onShare, onImport, applySetup, runAction, 
     }), freshSession, action.current)
   }
   const boardActions = { invalidate: actions.invalidate, onLoad: load, onContinue: (d: SafeDetail) => { actions.invalidate(); setCandidate(d); setOperation('evidence'); setSource('current') }, onName: setNaming }
-  return <Card withBorder p="sm" style={{ height: '100%', overflow: 'auto' }}>
-    <Stack gap="sm"><Group justify="space-between">
-      <SegmentedControl value={view} onChange={setView} data={[{ value: 'current', label: 'Live' }, { value: 'frozen', label: 'Retrospectives' }]} />
-      <Group><Button size="xs" variant="default" onClick={() => { actions.invalidate(); onImport() }}>Import Strategy</Button><Button size="xs" variant="default" onClick={() => { actions.invalidate(); onShare() }}>Share Strategy</Button></Group>
+  const toolbar: BoardToolbar = (total, loading, refresh) => <Group justify="space-between" py={2}>
+    <Group gap="xs" wrap="nowrap"><SegmentedControl size="xs" value={view} onChange={setView}
+      data={[{ value: 'current', label: 'Live' }, { value: 'frozen', label: 'Retrospectives' }]} />
+      {view === 'current' && <Badge color="gray" variant="outline" size="sm">{total ?? '…'} strategies</Badge>}
     </Group>
-    {message && <Alert color="gray" p="xs">{message}</Alert>}
-    {view === 'frozen' && error && <Alert color="red" p="xs">{error}<Button size="compact-xs" onClick={() => setCatalogueAttempt(v => v + 1)}>Retry</Button></Alert>}
-    {view === 'current' ? <>
-      <Group align="end" gap="xs">
+    <Group gap="xs" wrap="nowrap">
+      <Button size="xs" variant="default" leftSection={<IconBrandDiscord size={12} />} onClick={() => { actions.invalidate(); onImport() }}>Import Strategy</Button>
+      <Button size="xs" variant="default" leftSection={<IconShare2 size={12} />} onClick={() => { actions.invalidate(); onShare() }}>Share Strategy</Button>
+      {view === 'current' && <ActionIcon size="md" variant="default" aria-label="Refresh strategies" loading={loading} disabled={!refresh} onClick={refresh}><IconRefresh size={14} /></ActionIcon>}
+    </Group>
+  </Group>
+  const filters = <Paper withBorder radius="md" p="sm">
+    <div className="safe-strategy-filter-columns">
+      <Stack gap={4}><SectionLabel>Filters</SectionLabel><div className="safe-strategy-filter-controls">
+        <MultiSelect size="xs" aria-label="Mechanics" placeholder="Any type" clearable style={{ flex: 1 }}
+          value={tags} onChange={setTags} maxValues={24} data={TAG_OPTIONS.slice(1)} searchable maxDropdownHeight={200} />
+        <Select size="xs" aria-label="League" style={{ width: 110 }} value={league} allowDeselect={false}
+          onChange={v => setLeague(v ?? '')} data={[{ value: '', label: 'All leagues' }, ...KNOWN_LEAGUES.map(v => ({ value: v, label: v }))]} />
+        <TextInput size="xs" aria-label="Min div / map" placeholder="Min d/map" style={{ width: 85 }} value={min} error={minError} onChange={e => setMin(e.currentTarget.value)} />
+        <Select size="xs" aria-label="Activity" style={{ width: 100 }} value={since} allowDeselect={false} onChange={v => setSince(v ?? 'all')}
+          data={[{ value: 'all', label: 'All time' }, { value: '1d', label: 'Last 24h' }, { value: '3d', label: 'Last 3 days' }, { value: '7d', label: 'Last 7 days' }, { value: '30d', label: 'Last 30 days' }]} />
+      </div></Stack>
+      <Stack gap={4}><SectionLabel>Sort and visibility</SectionLabel><div className="safe-strategy-filter-controls">
+        <Select size="xs" aria-label="Sort" style={{ flex: 1 }} value={sort} allowDeselect={false}
+          onChange={v => { if (v) { setSort(v as SafeSort); setOrder(safeSortOrder(v as SafeSort)) } }}
+          data={Object.entries(SAFE_SORTS).map(([value, label]) => ({ value, label }))} />
+        <Button size="xs" variant="default" aria-label="Reverse sort direction" onClick={() => setOrder(order === 'asc' ? 'desc' : 'asc')}>{order === 'asc' ? '↑' : '↓'}</Button>
+        <Button size="xs" variant={group === 'solo' ? 'light' : 'default'} onClick={() => setGroup(group === 'solo' ? 'all' : 'solo')}>
+          {group === 'solo' ? 'Show group' : 'Hide group'}
+        </Button>
+      </div></Stack>
+    </div>
+    <details className="safe-strategy-extra-filters">
+      <summary style={{ fontSize: FONT.small }}>More filters{search || mapType || group === 'group' ? ' · active' : ''}</summary>
+      <Group gap="xs" align="end">
         <TextInput size="xs" label="Search strategies" value={search} maxLength={120} onChange={e => setSearch(e.currentTarget.value)} />
-        <Select size="xs" label="League" value={league} allowDeselect={false} onChange={v => setLeague(v ?? '')} data={[{ value: '', label: 'All leagues' }, ...KNOWN_LEAGUES.map(v => ({ value: v, label: v }))]} />
-        <Select size="xs" label="Map setup" value={mapType} allowDeselect={false} onChange={v => setMapType(v ?? '')} data={[{ value: '', label: 'Any setup' }, { value: '6-mod', label: '6-mod' }, { value: '8-mod', label: '8-mod' }]} />
-        <MultiSelect size="xs" label="Mechanics" value={tags} onChange={setTags} maxValues={24} data={TAG_OPTIONS.slice(1)} searchable />
-        <Select size="xs" label="Party" value={group} allowDeselect={false} onChange={v => setGroup(v ?? 'all')} data={[{ value: 'all', label: 'Solo & group' }, { value: 'solo', label: 'Solo only' }, { value: 'group', label: 'Group only' }]} />
-        <Select size="xs" label="Activity" value={since} allowDeselect={false} onChange={v => setSince(v ?? 'all')} data={[{ value: 'all', label: 'All time' }, { value: '1d', label: '24 hours' }, { value: '3d', label: '3 days' }, { value: '7d', label: '7 days' }, { value: '30d', label: '30 days' }]} />
-        <TextInput size="xs" label="Min div / map" value={min} error={minError} onChange={e => setMin(e.currentTarget.value)} />
-        <Select size="xs" label="Sort" value={sort} allowDeselect={false} onChange={v => { if (v) { setSort(v as SafeSort); setOrder(safeSortOrder(v as SafeSort)) } }} data={Object.entries(SAFE_SORTS).map(([value, label]) => ({ value, label }))} />
-        <Button size="xs" variant="default" onClick={() => setOrder(order === 'asc' ? 'desc' : 'asc')}>{order === 'asc' ? '↑' : '↓'}</Button>
+        <Select size="xs" label="Map setup" value={mapType} allowDeselect={false} onChange={v => setMapType(v ?? '')}
+          data={[{ value: '', label: 'Any setup' }, { value: '6-mod', label: '6-mod' }, { value: '8-mod', label: '8-mod' }]} />
+        <Select size="xs" label="Party" value={group} allowDeselect={false} onChange={v => setGroup(v ?? 'all')}
+          data={[{ value: 'all', label: 'Solo & group' }, { value: 'solo', label: 'Solo only' }, { value: 'group', label: 'Group only' }]} />
       </Group>
-      {query !== null ? <SafeBoard path={'/web/v2/strategies?' + query} {...boardActions} sort={sort} order={order} onSort={changeSort} />
-        : <Text size="sm" c="dimmed">Correct or clear the minimum to show matching strategies.</Text>}
-    </> : <>
-      <PersonalRetrospectives onLoadSession={onLoadPersonal} />
-      {snapshots.map(s => <Stack key={s.snapshot_key} gap="sm"><Text fw={600}>{s.league ?? 'Unknown league'} · Frozen {s.cutoff_utc ? new Date(s.cutoff_utc).toLocaleDateString() : 'date unrecorded'}</Text>
-        <SafeBoard title="Top score" path={`/web/v2/retrospectives/${s.snapshot_key}/strategies?limit=10&sort=score&order=desc`} {...boardActions} />
-        <SafeBoard title="Top profit per map" path={`/web/v2/retrospectives/${s.snapshot_key}/strategies?limit=10&sort=profit_per_map&order=desc`} {...boardActions} />
-      </Stack>)}
-    </>}
-    </Stack>
+    </details>
+  </Paper>
+  return <Card withBorder p="sm" radius="md" className="safe-strategy-browser">
+    {message && <Alert color="gray" p="xs" mb="xs">{message}</Alert>}
+    {view === 'current' ? query !== null
+      ? <SafeBoard path={'/web/v2/strategies?' + query} {...boardActions} sort={sort} order={order} onSort={changeSort} toolbar={toolbar} filters={filters} />
+      : <Stack>{toolbar(null, false)}{filters}<Text size="sm" c="dimmed">Correct or clear the minimum to show matching strategies.</Text></Stack>
+      : <div className="safe-strategy-retrospectives">
+        {toolbar(null, false)}
+        {error && <Alert color="red" p="xs">{error}<Button size="compact-xs" onClick={() => setCatalogueAttempt(v => v + 1)}>Retry</Button></Alert>}
+        <PersonalRetrospectives onLoadSession={onLoadPersonal} />
+        {snapshots.map(s => <Stack key={s.snapshot_key} gap="sm"><Text fw={600}>{s.league ?? 'Unknown league'} · Frozen {s.cutoff_utc ? new Date(s.cutoff_utc).toLocaleDateString() : 'date unrecorded'}</Text>
+          <SafeBoard title="Top score" path={`/web/v2/retrospectives/${s.snapshot_key}/strategies?limit=10&sort=score&order=desc`} {...boardActions} />
+          <SafeBoard title="Top profit per map" path={`/web/v2/retrospectives/${s.snapshot_key}/strategies?limit=10&sort=profit_per_map&order=desc`} {...boardActions} />
+        </Stack>)}
+      </div>}
     <ManagePublicNames opened={!!naming} selectedStrategy={naming ? { id: naming.id, scope: naming.scope, snapshotKey: naming.snapshot_key } : undefined} onClose={() => setNaming(null)} />
     <Modal opened={!!candidate} onClose={() => setCandidate(null)} title={`Continue ${candidate?.title ?? 'strategy'}`}>
       <Stack><Text size="sm">What should the next share do?</Text><SegmentedControl value={operation} onChange={v => setOperation(v as 'replace' | 'evidence')}

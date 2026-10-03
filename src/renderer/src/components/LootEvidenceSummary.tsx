@@ -3,7 +3,7 @@ import {
 } from '@mantine/core';
 import { IconChevronDown, IconChevronRight } from '@tabler/icons-react';
 import { useState } from 'react';
-import type { LootSummary } from '../utils/lootSummary';
+import { categoryArtwork, type StrategyLootPresentation } from '../utils/strategyLootPresentation';
 import { CAT_COLORS, lootCategoryLabel } from '../utils/lootCategories';
 import { fcSep } from '../utils/parseDiscordExport';
 import { COLOR, FONT } from '../utils/uiTokens';
@@ -26,7 +26,7 @@ export const LootEvidenceSummary = ({
   summary,
   divinePrice,
 }: {
-  summary: LootSummary;
+  summary: StrategyLootPresentation;
   /** The exact authored snapshot for this run. Pooled summaries deliberately
    * omit it because their rows can span several historical Divine prices. */
   divinePrice?: number | null;
@@ -36,12 +36,15 @@ export const LootEvidenceSummary = ({
     'setLootCurrencyMode',
   );
   const [rowsOpen, setRowsOpen] = useState(false);
-  const categoryTotal = summary.categories.reduce((sum, entry) => sum + entry.value, 0) || 1;
+  const categoryTotal = summary.categories.reduce((sum, entry) => sum + entry.value, 0);
+  const proportionsAvailable = categoryTotal > 0 && summary.categories.every(entry => entry.value >= 0);
   const manualRows = summary.rows.filter((row) => row.source === 'manual');
   const valuationRows = summary.rows.filter((row) => row.valuation !== undefined);
-  const omittedRows = summary.omittedCsvRows + summary.omittedManualRows;
-  const omittedValue = summary.omittedCsvValue + summary.omittedManualValue;
-  const displayValue = (value: number, sign = false) => lootCurrencyPresentation(
+  const omittedRows = summary.omittedCsvRows === null || summary.omittedManualRows === null
+    ? null : summary.omittedCsvRows + summary.omittedManualRows;
+  const omittedValue = summary.omittedCsvValue === null || summary.omittedManualValue === null
+    ? null : summary.omittedCsvValue + summary.omittedManualValue;
+  const displayValue = (value: number | null, sign = false) => value === null ? 'Unrecorded' : lootCurrencyPresentation(
     value,
     divinePrice,
     lootCurrencyMode,
@@ -80,23 +83,23 @@ export const LootEvidenceSummary = ({
         </Group>
       </Group>
 
-      <Progress.Root size={8} radius="xl">
+      {proportionsAvailable && <Progress.Root size={8} radius="xl">
         {summary.categories.map((entry) => (
           <Progress.Section key={entry.category} value={(entry.value / categoryTotal) * 100}
-            color={CAT_COLORS[entry.category] ?? 'gray'} />
+            color={CAT_COLORS[categoryArtwork(entry.category)] ?? 'gray'} />
         ))}
-      </Progress.Root>
+      </Progress.Root>}
 
       <div className="loot-evidence-categories">
         {summary.categories.map((entry) => (
           <Tooltip key={entry.category}
-            label={`${lootCategoryLabel(entry.category)}: ${displayValue(entry.value)} (${((entry.value / categoryTotal) * 100).toFixed(0)}%)`}
+            label={`${lootCategoryLabel(entry.category)}: ${displayValue(entry.value)}${proportionsAvailable ? ` (${((entry.value / categoryTotal) * 100).toFixed(0)}%)` : ''}`}
             withArrow>
             <Stack gap={4} p={8} className="loot-evidence-category"
               style={{ background: COLOR.surfaceSectionBg, borderRadius: 6, cursor: 'help', minWidth: 0 }}>
               <Text size="xs" c="dimmed" lineClamp={1}>{lootCategoryLabel(entry.category)}</Text>
               <Group gap={8} wrap="nowrap" justify="center">
-                <LootCategoryIcon category={entry.category} size={28} />
+                <LootCategoryIcon category={categoryArtwork(entry.category)} size={28} />
                 <Stack gap={0} align="center">
                   <LootCurrencyValue
                     chaosValue={entry.value}
@@ -104,8 +107,8 @@ export const LootEvidenceSummary = ({
                     mode={lootCurrencyMode}
                     align="left"
                   />
-                  <Text size="xs" fw={600} c={CAT_COLORS[entry.category] ?? 'dimmed'}>
-                    {((entry.value / categoryTotal) * 100).toFixed(1)}%
+                  <Text size="xs" fw={600} c={CAT_COLORS[categoryArtwork(entry.category)] ?? 'dimmed'}>
+                    {proportionsAvailable ? `${((entry.value / categoryTotal) * 100).toFixed(1)}%` : '—'}
                   </Text>
                 </Stack>
               </Group>
@@ -118,7 +121,7 @@ export const LootEvidenceSummary = ({
         <Button size="compact-xs" variant="subtle" color="gray"
           leftSection={rowsOpen ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
           onClick={() => setRowsOpen((value) => !value)}>
-          {rowsOpen ? 'Hide item breakdown' : `Show item breakdown (${summary.rows.length}${omittedRows > 0 ? ` + ${omittedRows} omitted` : ''})`}
+          {rowsOpen ? 'Hide item breakdown' : `Show item breakdown (${summary.rows.length}${omittedRows === null ? ' · omitted count unrecorded' : omittedRows > 0 ? ` + ${omittedRows} omitted` : ''})`}
         </Button>
         <LootCurrencyToggle
           mode={lootCurrencyMode}
@@ -146,7 +149,7 @@ export const LootEvidenceSummary = ({
                   <Table.Td>
                     <Group gap={6} wrap="nowrap">
                       <PoeItemIcon name={manualLootIdentityArtName(row.identity) ?? row.name} size={22}
-                        fallback={<LootCategoryGlyph category={row.category} size={22} />} />
+                        fallback={<LootCategoryGlyph category={categoryArtwork(row.category)} size={22} />} />
                       <Stack gap={0} style={{ minWidth: 0 }}>
                         <Group gap={4} wrap="nowrap">
                           <Text size="xs" lineClamp={1}>{row.name}</Text>
@@ -167,6 +170,9 @@ export const LootEvidenceSummary = ({
                           )}
                         </Group>
                         <Text size="xs" c="dimmed" style={{ fontSize: FONT.label }}>{lootCategoryLabel(row.category)}</Text>
+                        {row.note && <Text size="xs" c="dimmed" style={{ overflowWrap: 'anywhere' }}>{row.note}</Text>}
+                        {row.identityDescription && <Text size="xs" c="dimmed">{row.identityDescription}</Text>}
+                        {row.source !== 'manual' && row.source !== 'wealthyexile' && <Text size="xs" c="dimmed">Recorded source</Text>}
                       </Stack>
                     </Group>
                   </Table.Td>
@@ -190,24 +196,26 @@ export const LootEvidenceSummary = ({
               })}
             </Table.Tbody>
           </Table>
-          {omittedRows > 0 && (
+          {omittedRows !== null && omittedRows > 0 && (
             <Text size="xs" c="dimmed">
               {omittedRows} lower-value row{omittedRows === 1 ? '' : 's'} omitted from the public top-30 view ({displayValue(omittedValue)}).
             </Text>
           )}
           <Group gap="md" wrap="wrap">
+            <Text size="xs" c="dimmed">{summary.hasBaseline ? 'Baseline recorded' : 'No recorded baseline'}</Text>
             <Text size="xs" c="dimmed">CSV net: {displayValue(summary.csvNet, true)}</Text>
             <Text size="xs" c="dimmed">
-              Inventory movement: {displayValue(summary.inventoryFlow ?? summary.csvNet - summary.csvAdjustment, true)}
+              Inventory movement: {displayValue(summary.inventoryFlow === undefined ? summary.csvNet - summary.csvAdjustment : summary.inventoryFlow, true)}
             </Text>
             <Text size="xs" c={summary.marketRevaluation ? 'blue' : 'dimmed'}>
-              Market revaluation: {displayValue(summary.marketRevaluation ?? 0, true)}
+              Market revaluation: {displayValue(summary.marketRevaluation === undefined ? 0 : summary.marketRevaluation, true)}
             </Text>
             {summary.csvAdjustment !== 0 && <Text size="xs" c="dimmed">CSV adjustment: {displayValue(summary.csvAdjustment, true)}</Text>}
             {summary.gemCorrection !== 0 && <Text size="xs" c="dimmed">Gem correction: {displayValue(summary.gemCorrection, true)}</Text>}
             {summary.investmentCorrection !== 0 && <Text size="xs" c="dimmed">Investment correction: {displayValue(summary.investmentCorrection, true)}</Text>}
             {summary.manualTotal !== 0 && <Text size="xs" c="yellow">Manual: {displayValue(summary.manualTotal, true)}</Text>}
           </Group>
+          <Text size="xs" c="dimmed">Omitted CSV rows: {summary.omittedCsvRows ?? 'Unrecorded'} ({displayValue(summary.omittedCsvValue)}); manual rows: {summary.omittedManualRows ?? 'Unrecorded'} ({displayValue(summary.omittedManualValue)}).</Text>
         </Stack>
       </Collapse>
     </Stack>

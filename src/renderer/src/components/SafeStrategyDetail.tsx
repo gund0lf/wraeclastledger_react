@@ -1,14 +1,26 @@
-import { Alert, Badge, Button, Card, Group, Stack, Table, Text } from '@mantine/core'
+import { Alert, Badge, Button, Card, Group, Stack, Text } from '@mantine/core'
 import { useEffect, useMemo, useState } from 'react'
 import { safeIdentityKey, type SafeDetail, type SafeRun } from '../../../shared/safeStrategy'
 import { safeStrategyReader } from '../utils/safeStrategyReader'
 import { confirmedStrategyAuthor } from '../utils/safeStrategyTarget'
 import { useSessionStore } from '../store/useSessionStore'
 import { RegexLine } from './ui/RegexLine'
-import { PoeItemIcon } from './ui/PoeItemIcon'
+import { PoeItemIcon, type PoeItemCategory } from './ui/PoeItemIcon'
+import { checkStrategyCompat } from '../utils/strategyCompat'
 import { safeNumber, safePooledCostComponents, safeCostEvidenceMessage, safeAuthorLabel, safeAuthorStatus, safeSetupUnavailableMessage, safeContinuationMessage } from '../utils/safeStrategyPresentation'
-import { FONT } from '../utils/uiTokens'
-import { lootCategoryLabel } from '../utils/lootCategories'
+import { COLOR, FONT } from '../utils/uiTokens'
+import { EconomicTile } from './StrategyCardPresentation'
+import { LootEvidenceSummary } from './LootEvidenceSummary'
+import { SectionLabel } from './ui/SectionLabel'
+import { StatTile } from './ui/StatTile'
+import { publicLootPresentation } from '../utils/strategyLootPresentation'
+import { detailMoney, recordedCostBreakdown, recordedCount, publishedChiselName, safePooledPresentation } from '../utils/safeStrategyCardPresentation'
+import { formatDivineValue } from '../utils/currencyDisplay'
+import { formatRelativeAge } from '../utils/relativeTime'
+import { TAG_COLORS } from '../utils/strategyConstants'
+import { deliOrbItemName } from '../utils/itemIcons'
+import { formatActiveTime } from '../utils/timeEstimate'
+import './StrategyCard.css'
 
 function Metrics({ values }: { values: Array<[string, number | null | undefined, string?]> }) {
   return <Group gap="xs" grow>{values.map(([label, value, unit]) => <Card key={label} withBorder p="xs" style={{ minWidth: 105 }}>
@@ -26,28 +38,28 @@ function Costs({ value, maps, source }: { value: SafeRun['cost_breakdown']; maps
     <Text size="xs">{r.label} · {safeNumber(r.price, 'c')}</Text>
   </Group>)}</Stack>
 }
-function Loot({ loot }: { loot: SafeDetail['loot'] }) {
-  if (!loot) return <Text size="xs" c="dimmed">Loot evidence is unrecorded.</Text>
-  return <Stack gap="xs"><Group gap="xs">{loot.categories.map(c => <Card key={c.category} withBorder p="xs"><Text size="xs">{lootCategoryLabel(c.category)}</Text><Text size="sm">{safeNumber(c.value_chaos, 'c')}</Text></Card>)}</Group>
-    <Text size="xs" c="dimmed">{loot.has_baseline ? 'Baseline recorded' : 'No recorded baseline'} · Manual additions {safeNumber(loot.manual_total_chaos, 'c')} · Inventory flow {safeNumber(loot.inventory_flow_chaos, 'c')} · Market revaluation {safeNumber(loot.market_revaluation_chaos, 'c')}</Text>
-    <details><summary style={{ fontSize: FONT.body, cursor: 'pointer' }}>Show item breakdown ({loot.rows.length} rows)</summary>
-      <Table><Table.Thead><Table.Tr><Table.Th>Item</Table.Th><Table.Th>Quantity</Table.Th><Table.Th>Value</Table.Th></Table.Tr></Table.Thead><Table.Tbody>
-        {loot.rows.map((r, i) => <Table.Tr key={i}><Table.Td><Group gap={5}><PoeItemIcon name={r.name} size={18} /><Text size="xs">{r.name} · {lootCategoryLabel(r.category)} · {r.source === 'manual' ? 'Manual addition' : r.source === 'wealthyexile' ? 'CSV' : 'Recorded source'}</Text></Group>
-          {r.note && <Text size="xs" c="dimmed">{r.note}</Text>}
-          {r.identity && <Text size="xs" c="dimmed">{Object.entries(r.identity).filter(([k]) => k !== 'kind').map(([k, v]) => `${k.replaceAll('_', ' ')}: ${v ?? 'unrecorded'}`).join(' · ')}</Text>}
-          {r.valuation && <Text size="xs" c="dimmed">Quantity {safeNumber(r.valuation.baseline_quantity)} → {safeNumber(r.valuation.current_quantity)} · Value {safeNumber(r.valuation.baseline_value_chaos, 'c')} → {safeNumber(r.valuation.current_value_chaos, 'c')}</Text>}
-        </Table.Td><Table.Td>{safeNumber(r.quantity)}</Table.Td><Table.Td>{safeNumber(r.value_chaos, 'c')}</Table.Td></Table.Tr>)}
-      </Table.Tbody></Table>
-    </details><Text size="xs" c="dimmed">Omitted CSV rows: {safeNumber(loot.omitted_csv_rows)} ({safeNumber(loot.omitted_csv_value_chaos, 'c')}); manual rows: {safeNumber(loot.omitted_manual_rows)} ({safeNumber(loot.omitted_manual_value_chaos, 'c')}).</Text>
-  </Stack>
+function Loot({ loot, quote }: { loot: SafeDetail['loot']; quote?: number | null }) {
+  return loot ? <LootEvidenceSummary summary={publicLootPresentation(loot)} divinePrice={quote} />
+    : <Text size="xs" c="dimmed">Loot evidence is unrecorded.</Text>
 }
+function SetupItem({ name, value, color = 'orange', category = 'scarab' }: { name: string; value: string; color?: string; category?: PoeItemCategory }) {
+  return <Group gap={6} wrap="nowrap" className="strategy-card-setup-item">
+    <PoeItemIcon name={name} size={20} category={category} /><Text size="xs" c={color} fw={600} style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{name}</Text>
+    <Text size="xs" c="dimmed" style={{ flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>{value}</Text>
+  </Group>
+}
+function CostLine({ name, value, total = false }: { name: string; value: number | null | undefined; total?: boolean }) {
+  return <Group gap="md" justify="space-between" wrap="nowrap" pt={total ? 5 : undefined} style={total ? { borderTop: `1px solid ${COLOR.border}` } : undefined}>
+    <Text size="xs" c="dimmed">{name}</Text><Text size="xs" fw={total ? 700 : undefined} c={total ? 'yellow' : undefined}>{safeNumber(value, 'c')}</Text>
+  </Group>
+}
+const panelStyle = { background: COLOR.surfaceSectionBg, border: `1px solid ${COLOR.border}`, borderRadius: 6, padding: 10 };
 
 export function SafeStrategyDetail({ detail: d, onLoad, onContinue, onName }: {
   detail: SafeDetail; onLoad: () => void; onContinue: () => void; onName: () => void
 }) {
   const prefs = useSessionStore(s => s.authorPreferences)
   const [runs, setRuns] = useState<SafeRun[] | null>(null), [error, setError] = useState<string | null>(null), [retry, setRetry] = useState(0)
-  const [unit, setUnit] = useState<'c' | 'd'>('c')
   const key = safeIdentityKey(d)
   useEffect(() => {
     let stop = false; setRuns(null); setError(null)
@@ -57,51 +69,135 @@ export function SafeStrategyDetail({ detail: d, onLoad, onContinue, onName }: {
     return () => { stop = true }
   }, [d, key, retry])
   const pooledCosts = useMemo(() => runs && safePooledCostComponents(runs), [runs])
+  const pooledView = useMemo(() => runs && (d.coverage.run_count ?? 0) > 1 ? safePooledPresentation(runs, d) : null, [runs, d])
   const authored = d.authored_history, reusable = d.reusable_setup.status === 'available' ? d.reusable_setup.value : null
   const own = confirmedStrategyAuthor(d, prefs), continuing = !!own && d.scope === 'current' && d.continuation_setup.status === 'available'
-  const quote = authored?.economics.divine_price_chaos
-  const economics: Array<[string, number | null | undefined, string?]> = unit === 'c'
-    ? [['Net profit', d.economics.net_profit_chaos, 'c'], ['Total investment', d.economics.total_invest_chaos, 'c'], ['Cost / map', d.economics.all_in_cost_per_map_chaos, 'c']]
-    : [['Historical net', d.economics.historical_net_divines ?? ((d.coverage.run_count ?? 0) <= 1 && quote && d.economics.net_profit_chaos !== null ? d.economics.net_profit_chaos / quote : null), 'd'],
-      ['Historical investment', d.economics.historical_invest_divines ?? ((d.coverage.run_count ?? 0) <= 1 && quote && d.economics.total_invest_chaos !== null ? d.economics.total_invest_chaos / quote : null), 'd']]
-  return <Card withBorder p="sm"><Stack gap="sm">
-    <Group justify="space-between"><Text fw={700} style={{ overflowWrap: 'anywhere' }}>{d.title || 'Untitled strategy'}</Text><Badge color="gray">{d.scope === 'current' ? 'Live' : 'Frozen'} · Revision {d.revision}</Badge></Group>
-    <Text size="xs" style={{ overflowWrap: 'anywhere' }} c={own ? 'teal' : 'dimmed'}>{safeAuthorLabel(d.attribution)}{safeAuthorStatus(d.attribution) && ` · ${safeAuthorStatus(d.attribution)}`} · {d.league ?? 'League unrecorded'}</Text>
-    <Text size="xs" c="dimmed">Published {d.published_at ? new Date(d.published_at).toLocaleString() : 'unrecorded'} · Updated {d.updated_at ? new Date(d.updated_at).toLocaleString() : 'unrecorded'}</Text>
-    <Group gap={4}>{d.tags.map(t => <Badge key={t} size="xs" color="gray">{t}</Badge>)}</Group>
-    <Group justify="space-between"><Text size="sm" fw={600}>Recorded results</Text><Button size="compact-xs" variant="default" onClick={() => setUnit(unit === 'c' ? 'd' : 'c')}>{unit === 'c' ? 'Show Divines' : 'Show Chaos'}</Button></Group>
-    <Metrics values={[...economics, ['Maps', d.observed.map_count], ['Observed Mod', d.observed.mod_average], ['Profit / map', d.economics.net_per_map_divines, 'd'], ['Div / hour', d.coverage.net_divines_per_hour, 'd']]} />
-    <Text size="xs" c="dimmed">{safeNumber(d.coverage.run_count)} runs · Timed sample {safeNumber(d.coverage.timed_run_count)} runs / {safeNumber(d.coverage.timed_map_count)} maps · {safeNumber(d.coverage.timed_minutes)} minutes. Prices remain historical.</Text>
-    <Loot loot={d.loot} />
-    <Text size="sm" fw={600}>Published setup</Text>
-    <Text size="xs">{d.setup.map_type ?? 'Map setup unrecorded'} · Party {d.setup.party_size ?? 'unrecorded'} · Author multiplier {safeNumber(authored?.observed.multiplier, '×')} · Game data {d.setup.game_data.revision ?? 'unrecorded'} / {d.setup.game_data.patch_version ?? 'unrecorded'}</Text>
-    <Group gap={6}>{d.setup.scarabs.map(({ name }, i) => <Group key={i} gap={4}><PoeItemIcon name={name} size={18} /><Text size="xs">{name}</Text></Group>)}</Group>
-    <Text size="xs">Chisel: {d.setup.chisel ?? 'Unrecorded'} · Delirium: {d.setup.delirium ? `${d.setup.delirium.type ?? 'Unrecorded'} (${safeNumber(d.setup.delirium.count_per_map)} / map)` : 'Unrecorded'} · Astrolabe: {d.setup.astrolabe ?? 'Unrecorded'}</Text>
-    <Text size="xs">Multiplying Modifiers: {d.setup.multiplying_modifiers?.allocated == null ? 'Unrecorded' : d.setup.multiplying_modifiers.allocated ? `allocated · ${safeNumber(d.setup.multiplying_modifiers.fragment_count)} fragments` : 'not allocated'}</Text>
-    <Costs value={authored?.setup_display?.cost_breakdown ?? null} maps={authored?.setup_display?.authored_map_count ?? null} source={authored?.setup_display?.source === 'structured' ? 'Authored run prices' : 'Legacy display prices (not exact setup proof)'} />
-    {(d.coverage.run_count ?? 0) > 1 && <><Text size="sm" fw={600}>Map-weighted historical setup costs / map</Text>
-      {pooledCosts ? <Metrics values={Object.entries(pooledCosts).map(([k, v]) => [k, v, 'c'])} /> : <Text size="xs" c="dimmed">{safeCostEvidenceMessage(runs, error, d.scope)}</Text>}
-      <Text size="xs" c="dimmed">Base map / rolling split is unrecorded. All-in {safeNumber(d.economics.all_in_cost_per_map_chaos, 'c')} per map.</Text></>}
-    {d.notes && <Card withBorder p="xs"><Text size="xs" c="dimmed">Notes</Text><Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{d.notes}</Text></Card>}
-    <Metrics values={[[ 'Quantity', d.observed.quantity_average, '%' ], ['Rarity', d.observed.rarity_average, '%'], ['Pack size', d.observed.pack_size_average, '%'], ['Currency', d.observed.currency_average, '%']]} />
-    {d.ancillary.observed_delirium && <Text size="xs">Observed Delirium: {d.ancillary.observed_delirium.sample_size} maps · {d.ancillary.observed_delirium.levels.map(l => `${l.percentage}% on ${l.count} maps`).join(', ')} · {d.ancillary.observed_delirium.rewards.map(r => `${r.name}: ${r.count}`).join(', ')}</Text>}
-    {d.ancillary.excluded_drops && <Text size="xs">Excluded drops ({safeNumber(d.ancillary.excluded_drops.declared_count)}): {d.ancillary.excluded_drops.entries.map(e => `${e.name} (${safeNumber(e.chaos, 'c')})`).join(', ')} · Total {safeNumber(d.ancillary.excluded_drops.total_chaos, 'c')} · {d.ancillary.excluded_drops.complete ? 'complete' : 'partial list'}</Text>}
-    {d.ancillary.gem_leveling && <Text size="xs">Gem leveling outside map profit: {safeNumber(d.ancillary.gem_leveling.count)} gems · Buy {safeNumber(d.ancillary.gem_leveling.buy_chaos, 'c')} · Sell {safeNumber(d.ancillary.gem_leveling.sell_chaos, 'c')} · Net {safeNumber(d.ancillary.gem_leveling.net_chaos, 'c')}</Text>}
-    {d.setup.run_regex && <RegexLine value={d.setup.run_regex} badge="Run" badgeColor="green" />}
-    {d.setup.slam_regex && <RegexLine value={d.setup.slam_regex} badge="Slam" badgeColor="orange" />}
+  const money = detailMoney(d), pooled = (d.coverage.run_count ?? 0) > 1
+  const costs = authored?.setup_display?.cost_breakdown ?? null
+  const breakdown = !pooled ? recordedCostBreakdown(costs,
+    { ...d.setup, scarabs: d.setup.scarabs.map(s => s.name) },
+    authored?.setup_display?.authored_map_count ?? null, d.economics.all_in_cost_per_map_chaos) : null
+  const scarabs = costs?.scarabs ?? d.setup.scarabs
+  const chisel = costs?.chisel?.name ?? d.setup.chisel
+  const deli = costs?.delirium ?? d.setup.delirium
+  const astro = costs?.astrolabe
+  const observedDeli = d.ancillary.observed_delirium
+  const multiplier = d.observed.multiplier_average ?? (!pooled ? authored?.observed.multiplier : null)
+  const costDivines = pooledView?.costPerMapDivines ?? money.costSecondary
+  const compatibility = checkStrategyCompat({ scarabs: d.setup.scarabs.map(s => ({ name: s.name, cost: s.price_each_chaos ?? 0 })),
+    chisel: d.setup.chisel, atlas_tree_url: d.setup.atlas.url, game_data_patch_version: d.setup.game_data.patch_version })
+  return <div data-safe-detail className="strategy-card-expanded strategy-card-triptych strategy-card-refined" style={{ padding: '16px 20px' }}>
+    <div className="strategy-card-header" style={{ marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${COLOR.border}` }}>
+      <div className="strategy-card-hero">
+        <Stack className="strategy-card-hero-identity" gap={6}>
+          <Text size="xl" fw={800} style={{ overflowWrap: 'anywhere' }}>{d.title || 'Untitled strategy'}</Text>
+          <Group className="strategy-card-hero-tags" gap={4} wrap="wrap">{d.tags.map(t => <Badge key={t} size="sm" color={Object.hasOwn(TAG_COLORS, t) ? TAG_COLORS[t] : 'gray'} variant="light">{t}</Badge>)}</Group>
+          <Badge color="gray" size="xs" variant="outline">{d.scope === 'current' ? 'Live' : 'Frozen'} · Revision {d.revision}</Badge>
+        </Stack>
+        <Stack className="strategy-card-hero-meta" gap={2}>
+          <Stack className="strategy-card-hero-attribution" gap={2}>
+            <Text size="sm" c="dimmed">by <Text span fw={600} c={own ? 'gray.3' : 'dimmed'}>{safeAuthorLabel(d.attribution)}</Text></Text>
+            {safeAuthorStatus(d.attribution) && <Text size="xs" c="dimmed">{safeAuthorStatus(d.attribution)}</Text>}
+            <Text size="xs" c="dimmed">Published {d.published_at ? new Date(d.published_at).toLocaleDateString() : 'unrecorded'}</Text>
+            <Text size="xs" c="dimmed">{d.league ?? 'League unrecorded'} · {recordedCount(d.coverage.run_count, 'run')}</Text>
+          </Stack>
+          <Stack className="strategy-card-hero-facts" gap={2}>
+            <Text size="xs" c="dimmed" tt="uppercase">{recordedCount(d.observed.map_count, 'map')} · {safeNumber(d.observed.mod_average)} mod</Text>
+            <Text size="xs" c="dimmed">Latest activity <Text span c="gray.3">{formatRelativeAge(d.updated_at ?? d.published_at)}</Text> · Time {d.coverage.timed_minutes === null ? 'Unrecorded' : formatActiveTime(d.coverage.timed_minutes * 60_000)}</Text>
+            <Text size="xs" c="dimmed">Divine {pooled ? 'per-run snapshots' : safeNumber(money.quote, 'c')} · Div/hr {safeNumber(d.coverage.net_divines_per_hour)}</Text>
+            <Text size="xs" c="dimmed">Game data r{d.setup.game_data.revision ?? '—'} · {d.setup.game_data.patch_version ?? 'unrecorded'} · Atlas {safeNumber(d.setup.atlas.points)}/{safeNumber(d.setup.atlas.points_max)}</Text>
+            <Text size="xs" c="dimmed">Author mult. <Text span c="blue">{multiplier == null ? 'Unrecorded' : `${multiplier.toFixed(3)}×`}</Text></Text>
+          </Stack>
+        </Stack>
+      </div>
+    </div>
+    <div className="strategy-card-economics" style={{ marginBottom: 14 }}>
+      <EconomicTile label={pooled ? 'Historical net' : 'Net profit'} primaryValue={money.net} secondaryValue={money.netSecondary} color={d.economics.net_profit_chaos === null ? COLOR.textMuted : d.economics.net_profit_chaos < 0 ? COLOR.loss : COLOR.profit} />
+      <EconomicTile label="Total investment" primaryValue={money.invest} secondaryValue={money.investSecondary} color={COLOR.textSoft} />
+      <EconomicTile label="Profit / map" primaryValue={money.perMapChaos} secondaryValue={d.economics.net_per_map_divines === null ? null : money.perMap} color={(d.economics.net_profit_chaos ?? 0) < 0 ? COLOR.loss : COLOR.gold} />
+      <EconomicTile label="Cost / map" primaryValue={money.cost} secondaryValue={costDivines === null ? null : formatDivineValue(costDivines)} color={COLOR.warning} />
+    </div>
+    <div className="strategy-card-loot-panel" style={{ ...panelStyle, padding: 8, marginBottom: 12 }}><Loot loot={d.loot} quote={money.quote} /></div>
     {error && <Alert color="orange" p="xs">{error}<Button size="compact-xs" onClick={() => setRetry(v => v + 1)}>Retry evidence</Button></Alert>}
-    {runs && <details><summary style={{ fontSize: FONT.body, cursor: 'pointer' }}>Recorded runs ({runs.length})</summary><Stack mt="xs">{runs.map(r => <Card key={r.ordinal} withBorder p="xs"><Stack gap="xs">
-      <Text size="sm" fw={600}>Run {r.ordinal} · {r.contributed_on ?? 'date unrecorded'}</Text>
-      <Metrics values={[[ 'Maps', r.observed.map_count ], ['Investment', r.economics.total_invest_chaos, 'c'], ['Net', r.economics.net_profit_chaos, 'c'], ['Divine at time', r.economics.divine_price_chaos, 'c'], ['Minutes', r.timing.reported_minutes]]} />
-      <Costs value={r.cost_breakdown ?? r.display_cost_breakdown} maps={r.observed.map_count} source={r.cost_breakdown ? 'Exact recorded run prices' : 'Legacy display prices'} /><Loot loot={r.loot} />
-    </Stack></Card>)}</Stack></details>}
-    <Group><Button size="xs" variant="light" disabled={!reusable} onClick={onLoad}>Load Build Settings</Button>
+    {runs && <details className="strategy-card-runs-panel" style={{ ...panelStyle, marginBottom: 8 }}>
+      <summary style={{ fontSize: FONT.body, cursor: 'pointer' }}>Recorded runs ({runs.length}) · {recordedCount(d.coverage.timed_run_count, 'timed run')} / {recordedCount(d.coverage.timed_map_count, 'timed map')}</summary>
+      <Stack mt="xs">{runs.map(r => <Card key={r.ordinal} withBorder p="xs"><Stack gap="xs">
+        <Text size="sm" fw={600}>Run {r.ordinal} · {r.contributed_on ?? 'date unrecorded'}</Text>
+        <Metrics values={[[ 'Maps', r.observed.map_count ], ['Investment', r.economics.total_invest_chaos, 'c'], ['Net', r.economics.net_profit_chaos, 'c'], ['Divine at time', r.economics.divine_price_chaos, 'c'], ['Minutes', r.timing.reported_minutes]]} />
+        <Costs value={r.cost_breakdown ?? r.display_cost_breakdown} maps={r.observed.map_count} source={r.cost_breakdown ? 'Exact recorded run prices' : 'Legacy display prices (not exact setup proof)'} /><Loot loot={r.loot} quote={r.economics.divine_price_chaos} />
+      </Stack></Card>)}</Stack>
+    </details>}
+    {d.scope === 'frozen' && <Text size="xs" c="dimmed">Frozen aggregate snapshot. Individual run evidence is not available.</Text>}
+    {compatibility.level !== 'ok' && <Alert color={compatibility.level === 'removed' ? 'red' : 'yellow'} p="xs" mb="xs" title="Historical setup compatibility">
+      {compatibility.issues.map(issue => <Text key={`${issue.kind}:${issue.storedName}`} size="xs">{issue.detail}</Text>)}
+    </Alert>}
+    <div className="strategy-card-lower-grid">
+      <div className="strategy-card-lower-panel" style={panelStyle} />
+      <Stack gap={3} className="strategy-card-setup-scarabs">
+        <SectionLabel>Scarabs · {pooledView ? 'map-weighted costs' : 'published setup prices'}</SectionLabel>
+        <div className="strategy-card-scarab-list">{pooledView?.scarabItems.length ? pooledView.scarabItems.map((s, i) => <SetupItem key={i} name={s.name} value={safeNumber(s.perMap, 'c/map')} />)
+          : scarabs.map((s, i) => <SetupItem key={i} name={s.name} value={safeNumber(s.price_each_chaos, 'c')} />)}</div>
+        {!scarabs.length && <Text size="xs" c="dimmed">No recorded scarabs</Text>}
+      </Stack>
+      <Stack gap={3} className="strategy-card-setup-chisel"><SectionLabel>Chisel</SectionLabel>
+        {pooledView?.chiselItems.length ? pooledView.chiselItems.map(s => <SetupItem key={s.name} category="chisel" name={publishedChiselName(s.name)!} color="yellow" value={safeNumber(s.perMap, 'c/map')} />)
+          : chisel && chisel.toLowerCase() !== 'none' ? <SetupItem category="chisel" name={publishedChiselName(chisel)!} color="yellow" value={safeNumber(costs?.chisel?.price_each_chaos, 'c/map')} /> : <Text size="xs" c="dimmed">{chisel ? 'None' : 'Unrecorded'}</Text>}
+      </Stack>
+      <Stack gap={3} className="strategy-card-setup-deli"><SectionLabel>Delirium orbs</SectionLabel>
+        {pooledView?.deliriumItems.length ? pooledView.deliriumItems.map(s => <SetupItem key={s.name} category="orb" name={deliOrbItemName(s.name) ?? s.name} color="grape" value={safeNumber(s.perMap, 'c/map')} />)
+          : deli?.type ? <SetupItem category="orb" name={deliOrbItemName(deli.type) ?? deli.type} color="grape" value={`${safeNumber(deli.count_per_map)}×/map · ${safeNumber(costs?.delirium?.price_each_chaos, 'c')} each`} /> : <Text size="xs" c="dimmed">{deli ? 'None' : 'Unrecorded'}</Text>}
+      </Stack>
+      <Stack gap={3} className="strategy-card-setup-astro"><SectionLabel>Astrolabe</SectionLabel>
+        {pooledView?.astrolabeItems.length ? pooledView.astrolabeItems.map(s => <SetupItem key={s.name} category="astrolabe" name={s.name} color="teal" value={safeNumber(s.perMap, 'c/map')} />)
+          : astro?.type || d.setup.astrolabe ? <SetupItem category="astrolabe" name={astro?.type ?? d.setup.astrolabe!} color="teal" value={`${safeNumber(astro?.count)}× · ${safeNumber(astro?.price_each_chaos, 'c')} each`} /> : <Text size="xs" c="dimmed">Unrecorded</Text>}
+        {authored?.setup_display?.source === 'legacy_display' && <Text size="xs" c="dimmed">Legacy display prices; not exact setup proof.</Text>}
+      </Stack>
+      <div className="strategy-card-cost-panel" style={panelStyle}>
+        <SectionLabel mb={3}>{pooled ? 'Historical cost breakdown / map' : 'Cost breakdown / map'}</SectionLabel>
+        <Stack gap={6} className="strategy-card-cost-list">
+          <CostLine name="Base map + rolling costs" value={pooled ? pooledView?.baseAndRolling : authored?.setup_display?.combined_map_rolling_cost_per_map_chaos ?? breakdown?.baseAndRolling} />
+          <CostLine name={publishedChiselName(chisel) ?? 'Chisels'} value={pooled ? pooledCosts?.Chisel : breakdown?.chisel} />
+          <CostLine name="Scarabs" value={pooled ? pooledCosts?.Scarabs : breakdown?.scarabs} />
+          <CostLine name="Delirium orbs" value={pooled ? pooledCosts?.['Delirium orbs'] : breakdown?.deliriumOrbs} />
+          <CostLine name="Astrolabe" value={pooled ? pooledCosts?.Astrolabe : breakdown?.astrolabe} />
+          <CostLine name={pooled ? 'Map-weighted all-in' : '= All-in'} value={d.economics.all_in_cost_per_map_chaos} total />
+          {pooled && <Text size="xs" c="dimmed">{pooledView ? 'Map-weighted authored costs. Base map and rolling costs remain combined.' : pooledCosts ? 'Map-weighted components only. The complete base / rolling remainder is unrecorded.' : safeCostEvidenceMessage(runs, error, d.scope)} Exact run prices remain under Recorded runs.</Text>}
+        </Stack>
+      </div>
+      <div className="strategy-card-map-panel" style={panelStyle}>
+        <Group justify="space-between" mb={6}><SectionLabel>Map requirements</SectionLabel>
+          {observedDeli && <Badge size="xs" color="grape" variant="outline">Observed Delirium · {observedDeli.sample_size} maps</Badge>}</Group>
+        <div className="strategy-card-map-stats">
+          <StatTile boxed centered label="Quantity" value={safeNumber(d.observed.quantity_average, '%')} color={COLOR.accent} />
+          <StatTile boxed centered label="Rarity" value={safeNumber(d.observed.rarity_average, '%')} color={COLOR.accent} />
+          <StatTile boxed centered label="Pack size" value={safeNumber(d.observed.pack_size_average, '%')} color={COLOR.accent} />
+          <StatTile boxed centered label="Currency" value={safeNumber(d.observed.currency_average, '%')} color={COLOR.accent} />
+        </div>
+        <Stack gap={4} mt="xs"><Text size="xs" c="dimmed">{d.setup.map_type ?? 'Map setup unrecorded'} · Party {d.setup.party_size ?? 'unrecorded'}</Text>
+          <Text size="xs" c="dimmed">Multiplying Modifiers: {d.setup.multiplying_modifiers?.allocated == null ? 'Unrecorded' : d.setup.multiplying_modifiers.allocated ? `allocated · ${safeNumber(d.setup.multiplying_modifiers.fragment_count)} fragments` : 'not allocated'}</Text>
+          {observedDeli && <Text size="xs" c="dimmed">{observedDeli.levels.map(l => `${l.percentage}% on ${l.count} maps`).join(', ')}{observedDeli.rewards.length > 0 && ` · ${observedDeli.rewards.map(r => `${r.name}: ${r.count}`).join(', ')}`}</Text>}
+        </Stack>
+      </div>
+      {d.notes && <div className="strategy-card-supporting-note" style={panelStyle}><SectionLabel>Notes</SectionLabel><Text size="sm" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{d.notes}</Text></div>}
+      <Stack gap={5} className="strategy-card-supporting-evidence">
+        {d.ancillary.excluded_drops && <Text size="xs">Excluded drops ({safeNumber(d.ancillary.excluded_drops.declared_count)}): {d.ancillary.excluded_drops.entries.map(e => `${e.name} (${safeNumber(e.chaos, 'c')})`).join(', ')} · Total {safeNumber(d.ancillary.excluded_drops.total_chaos, 'c')} · {d.ancillary.excluded_drops.complete ? 'complete' : 'partial list'}</Text>}
+        {d.ancillary.gem_leveling && <Text size="xs">Gem leveling outside map profit: {safeNumber(d.ancillary.gem_leveling.count)} gems · Buy {safeNumber(d.ancillary.gem_leveling.buy_chaos, 'c')} · Sell {safeNumber(d.ancillary.gem_leveling.sell_chaos, 'c')} · Net {safeNumber(d.ancillary.gem_leveling.net_chaos, 'c')}</Text>}
+      </Stack>
+    </div>
+    {(d.setup.run_regex || d.setup.slam_regex) && <Stack gap={6} className="strategy-card-regex-wide" style={panelStyle}>
+      {d.setup.run_regex && <RegexLine value={d.setup.run_regex} badge="Run" badgeColor="green" />}
+      {d.setup.slam_regex && <RegexLine value={d.setup.slam_regex} badge="Slam" badgeColor="orange" />}
+    </Stack>}
+    <Group className="strategy-card-actions">
+      <Button size="xs" variant="light" disabled={!reusable} onClick={onLoad}>Load Build Settings</Button>
       {d.setup.atlas.url && <Button size="xs" variant="default" onClick={() => window.open(d.setup.atlas.url!, '_blank', 'noopener,noreferrer')}>Atlas Tree · {safeNumber(d.setup.atlas.points)} / {safeNumber(d.setup.atlas.points_max)}</Button>}
       <Button size="xs" variant="light" disabled={!continuing} onClick={onContinue}>Continue strategy</Button>
       {(d.attribution === null || d.scope === 'current' && d.attribution.status === 'active') && <Button size="xs" variant="default" onClick={onName}>{d.attribution === null ? 'Name this strategy' : 'Manage attribution'}</Button>}
     </Group>
-    {!continuing && <Text size="xs" c="dimmed">{d.scope === 'frozen' ? 'Frozen strategies cannot be continued.' : d.continuation_setup.status === 'unavailable'
+    <Stack gap={3} mt="xs" align="center">
+      {!continuing && <Text size="xs" c="dimmed">{d.scope === 'frozen' ? 'Frozen strategies cannot be continued.' : d.continuation_setup.status === 'unavailable'
         ? safeContinuationMessage(d.continuation_setup.reason) : 'Confirm the assigned public name to continue. Discord verifies ownership.'}</Text>}
-    {!reusable && <Text size="xs" c="dimmed">{d.reusable_setup.status === 'unavailable' && safeSetupUnavailableMessage(d.reusable_setup.reason)}</Text>}
-  </Stack></Card>
+      {!reusable && <Text size="xs" c="dimmed">{d.reusable_setup.status === 'unavailable' && safeSetupUnavailableMessage(d.reusable_setup.reason)}</Text>}
+    </Stack>
+  </div>
 }

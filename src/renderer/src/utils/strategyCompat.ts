@@ -105,7 +105,7 @@ function checkName(
  * Pure w.r.t. its inputs (reads the module-level active manifest); safe to call
  * per-card in render.
  */
-export function checkStrategyCompat(strategy: Strategy): CompatResult {
+export function checkStrategyCompat(strategy: Pick<Strategy, 'scarabs' | 'chisel' | 'atlas_tree_url' | 'game_data_patch_version'>): CompatResult {
   const manifest = getManifest();
   const issues: CompatIssue[] = [];
   // A reworked entity describes the transition INTO the active patch. A card
