@@ -278,26 +278,28 @@ export const BROWSER_MAXIMIZED_ACTIVITY_WIDTH = 112;
 
 // Header and collapsed cards share this exact grid. The former paired flex
 // layouts drifted whenever content or border geometry differed between them.
+// Identity and tags share spare width (1:2), keeping their established minima
+// and fixed metric columns. Narrow panels still scroll the complete table.
 export const BROWSER_GRID_TEMPLATE =
-  `${BROWSER_COLS.chevron}px ${BROWSER_COLS.author}px minmax(${BROWSER_COLS.tags}px, 1fr) ` +
+  `${BROWSER_COLS.chevron}px minmax(${BROWSER_COLS.author}px, 1fr) minmax(${BROWSER_COLS.tags}px, 2fr) ` +
   `${BROWSER_COLS.mod}px ${BROWSER_COLS.maps}px ${BROWSER_COLS.cost}px ` +
   `${BROWSER_COLS.invest}px ${BROWSER_COLS.profit}px ${BROWSER_COLS.score}px ` +
   `${BROWSER_COLS.dph}px ${BROWSER_COLS.dpm}px`;
 
 export const BROWSER_MAXIMIZED_GRID_TEMPLATE =
-  `${BROWSER_MAXIMIZED_COLS.chevron}px ${BROWSER_MAXIMIZED_COLS.author}px minmax(${BROWSER_MAXIMIZED_COLS.tags}px, 1fr) ` +
+  `${BROWSER_MAXIMIZED_COLS.chevron}px minmax(${BROWSER_MAXIMIZED_COLS.author}px, 1fr) minmax(${BROWSER_MAXIMIZED_COLS.tags}px, 2fr) ` +
   `${BROWSER_MAXIMIZED_COLS.mod}px ${BROWSER_MAXIMIZED_COLS.maps}px ${BROWSER_MAXIMIZED_COLS.cost}px ` +
   `${BROWSER_MAXIMIZED_COLS.invest}px ${BROWSER_MAXIMIZED_COLS.profit}px ${BROWSER_MAXIMIZED_COLS.score}px ` +
   `${BROWSER_MAXIMIZED_COLS.dph}px ${BROWSER_MAXIMIZED_COLS.dpm}px`;
 
 export const BROWSER_SETUP_COLLAPSED_GRID_TEMPLATE =
-  `${BROWSER_COLS.chevron}px ${BROWSER_COLS.author}px minmax(${BROWSER_COLS.tags}px, 1fr) ` +
+  `${BROWSER_COLS.chevron}px minmax(${BROWSER_COLS.author}px, 1fr) minmax(${BROWSER_COLS.tags}px, 2fr) ` +
   `${BROWSER_ACTIVITY_WIDTH}px ${BROWSER_COLS.mod}px ${BROWSER_COLS.maps}px ${BROWSER_COLS.cost}px ` +
   `${BROWSER_COLS.invest}px ${BROWSER_COLS.profit}px ${BROWSER_COLS.score}px ` +
   `${BROWSER_COLS.dph}px ${BROWSER_COLS.dpm}px`;
 
 export const BROWSER_MAXIMIZED_SETUP_COLLAPSED_GRID_TEMPLATE =
-  `${BROWSER_MAXIMIZED_COLS.chevron}px ${BROWSER_MAXIMIZED_COLS.author}px minmax(${BROWSER_MAXIMIZED_COLS.tags}px, 1fr) ` +
+  `${BROWSER_MAXIMIZED_COLS.chevron}px minmax(${BROWSER_MAXIMIZED_COLS.author}px, 1fr) minmax(${BROWSER_MAXIMIZED_COLS.tags}px, 2fr) ` +
   `${BROWSER_MAXIMIZED_ACTIVITY_WIDTH}px ${BROWSER_MAXIMIZED_COLS.mod}px ${BROWSER_MAXIMIZED_COLS.maps}px ${BROWSER_MAXIMIZED_COLS.cost}px ` +
   `${BROWSER_MAXIMIZED_COLS.invest}px ${BROWSER_MAXIMIZED_COLS.profit}px ${BROWSER_MAXIMIZED_COLS.score}px ` +
   `${BROWSER_MAXIMIZED_COLS.dph}px ${BROWSER_MAXIMIZED_COLS.dpm}px`;

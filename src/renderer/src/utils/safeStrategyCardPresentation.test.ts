@@ -3,10 +3,18 @@ import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { parseSafeDetail, parseSafeRun, parseSafeRow } from '../../../shared/safeStrategy'
 import fixture from './__fixtures__/safe-strategy-v2.json'
-import { compactChaos, detailMoney, recordedCostBreakdown, recordedCount, singleRunQuote, publishedChiselName, safePooledPresentation, listDivineTotal, groupLabel } from './safeStrategyCardPresentation'
+import { compactChaos, detailMoney, recordedCostBreakdown, recordedCount, listRunCount, singleRunQuote, publishedChiselName, safePooledPresentation, listDivineTotal, groupLabel } from './safeStrategyCardPresentation'
 import { categoryArtwork, publicLootPresentation } from './strategyLootPresentation'
 
 describe('safe rich strategy presentation', () => {
+  it('omits unknown list run counts without hiding recorded zero or changing detail wording', () => {
+    expect(listRunCount(null)).toBeNull()
+    expect(listRunCount(0)).toBe('0 runs')
+    expect(listRunCount(1)).toBe('1 run')
+    expect(listRunCount(2)).toBe('2 runs')
+    expect(listRunCount(1234)).toBe('1,234 runs')
+    expect(recordedCount(null, 'run')).toBe('run count unrecorded')
+  })
   it('shows only supplied historical list totals and distinguishes unknown party size', () => {
     expect(listDivineTotal(null)).toBeNull()
     expect(listDivineTotal(0, true)).toBe('+0.0d')

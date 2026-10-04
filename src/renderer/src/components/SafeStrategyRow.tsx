@@ -1,10 +1,10 @@
-import { Badge, Group, Stack, Text, Tooltip, UnstyledButton } from '@mantine/core'
+import { Group, Stack, Text, Tooltip, UnstyledButton } from '@mantine/core'
 import { IconChevronDown, IconChevronRight, IconSnowflake, IconThumbDown, IconThumbUp, IconUsers } from '@tabler/icons-react'
 import type { SafeRow, SafeSort } from '../../../shared/safeStrategy'
 import { BROWSER_GRID_TEMPLATE, BROWSER_MAXIMIZED_GRID_TEMPLATE, BROWSER_SETUP_COLLAPSED_GRID_TEMPLATE,
   BROWSER_MAXIMIZED_SETUP_COLLAPSED_GRID_TEMPLATE, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X } from '../utils/strategyConstants'
 import { safeAuthorLabel } from '../utils/safeStrategyPresentation'
-import { compactChaos, recordedCount, listDivineTotal, groupLabel } from '../utils/safeStrategyCardPresentation'
+import { compactChaos, listRunCount, listDivineTotal, groupLabel } from '../utils/safeStrategyCardPresentation'
 import { formatRelativeAge } from '../utils/relativeTime'
 import { COLOR, FONT } from '../utils/uiTokens'
 import { TagStrip } from './StrategyCardPresentation'
@@ -43,6 +43,7 @@ export function SafeStrategyRow({ row: r, expanded, maximized, activity, onToggl
   const metric = (text: string, color: string = COLOR.textSoft, strong = false) => <Text size="xs" fw={strong ? 700 : 600}
     title={text === '—' ? 'Unrecorded' : undefined} ta="center" style={{ color, fontSize: FONT.body, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{text}</Text>
   const name = safeAuthorLabel(r.attribution)
+  const runs = listRunCount(r.evidence.run_count)
   const group = groupLabel(r.group_play, r.party_size)
   const total = (chaos: number | null, divines: number | null, signed = false) => <Text size="xs" ta="center" fw={600}
     style={{ color: signed ? chaos === null ? COLOR.textFaint : chaos < 0 ? COLOR.loss : COLOR.profit : COLOR.textSoft, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
@@ -55,11 +56,10 @@ export function SafeStrategyRow({ row: r, expanded, maximized, activity, onToggl
     <Stack gap={1} style={{ minWidth: 0 }}>
       <Group gap={3} wrap="nowrap"><Text size="xs" fw={700} truncate="end" title={r.title || 'Untitled strategy'} style={{ flex: 1, minWidth: 0, lineHeight: 1.15 }}>{r.title || 'Untitled strategy'}</Text>
         {group && <Tooltip withArrow label={group}><IconUsers size={12} color={COLOR.textMuted} aria-label={group} style={{ flexShrink: 0 }} /></Tooltip>}
-        {r.revision > 1 && <Badge size="xs" color="indigo" variant="light" style={{ flexShrink: 0, fontSize: FONT.micro }}>v{r.revision}</Badge>}
         {r.scope === 'frozen' && <IconSnowflake size={10} color={COLOR.accent} />}
       </Group>
-      <div title={`by ${name} · ${recordedCount(r.evidence.run_count, 'run')}`} className="safe-strategy-byline" style={{ color: COLOR.textMuted, fontSize: FONT.label }}>
-        <span>by</span><PublicAuthorName attribution={r.attribution} compact /><span>· {r.evidence.run_count === null ? '— runs' : recordedCount(r.evidence.run_count, 'run')}</span>
+      <div title={`by ${name}${runs === null ? '' : ` · ${runs}`}`} className="safe-strategy-byline" style={{ color: COLOR.textMuted, fontSize: FONT.label }}>
+        <span>by</span><PublicAuthorName attribution={r.attribution} compact />{runs !== null && <span>· {runs}</span>}
       </div>
     </Stack>
     <div style={{ minWidth: 0 }}><TagStrip tagStr={r.tags.join(',')} layoutKey={expanded} /></div>

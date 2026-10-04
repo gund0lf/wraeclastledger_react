@@ -9,7 +9,7 @@ export function PublicAuthorName({ attribution, compact = false }: { attribution
     <Text span c="dimmed" fs={named ? undefined : 'italic'} fw={named ? 600 : undefined}
       title={named ? label : ANONYMOUS_AUTHOR_TOOLTIP}
       aria-label={named ? label : `Anonymous — ${ANONYMOUS_AUTHOR_TOOLTIP}`}
-      style={{ fontSize: 'inherit', ...(compact ? { display: 'block', minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : { overflowWrap: 'anywhere' }) }}>
+      style={{ fontSize: 'inherit', ...(compact ? { display: 'block', minWidth: 0, flex: '0 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : { overflowWrap: 'anywhere' }) }}>
       {label}
     </Text>
   </Tooltip>
