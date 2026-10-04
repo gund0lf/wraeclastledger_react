@@ -10,6 +10,7 @@ import { authorServiceOrigin, PRODUCTION_STRATEGY_API_ORIGIN } from '../../../sh
 import { canonicalAuthorJson } from '../../../shared/authorSubmission'
 import { parseAuthorPreferences, emptyAuthorPreferences } from '../../../shared/authorRecognition'
 import { validateAuthorManagement } from '../../../shared/authorHandoff'
+import authorRoutes from './__fixtures__/author-handoff-routes.json'
 const directories: string[] = []
 afterEach(async () => {
   vi.restoreAllMocks(); vi.useRealTimers()
@@ -141,7 +142,7 @@ async function setup(exchange?: (url: string, init: RequestInit) => Promise<unkn
       if (exchange) return exchange(url, init)
       const body = init.body ? JSON.parse(init.body as string) : null
       if (url.endsWith('/state')) return { schema_version: 1, epoch, author_actions_available: true }
-      if (url.endsWith('/')) { clientId = body.client_request_id; return { request_id: requestId, expires_at: new Date(Date.now() + 600000).toISOString() } }
+      if (url === serviceOrigin + '/desktop/v1/author-handoffs' && init.method === 'POST') { clientId = body.client_request_id; return { request_id: requestId, expires_at: new Date(Date.now() + 600000).toISOString() } }
       if (init.method === 'DELETE') return { request_id: requestId, status: 'cancelled' }
       if (url.endsWith('/status')) return { request_id: requestId, epoch, status: 'confirmed', expires_at: new Date().toISOString(), outcome: { status: 'recovered' } }
       secret = (init.headers as Record<string, string>).Authorization
@@ -151,6 +152,27 @@ async function setup(exchange?: (url: string, init: RequestInit) => Promise<unkn
     } })
   return { service, vault, requests, clipboard, requestId, secrets: () => ({ secret, consumption }) }
 }
+it('matches the shared exact server method/path contract for all five author routes', async () => {
+  const f = await setup(), c = context()
+  expect((await f.service.handle({ action: 'state' })).ok).toBe(true)
+  expect((await f.service.handle({ action: 'activate', context: c })).ok).toBe(true)
+  const prepared = await f.service.handle({ action: 'prepare', context: c, operation: { kind: 'recovery', intent: null } })
+  expect(f.requests[1].url).toBe(origin + authorRoutes[1].path)
+  expect(prepared.ok).toBe(true)
+  expect((await f.service.handle({ action: 'status', context: c, requestId: f.requestId })).ok).toBe(true)
+  expect((await f.service.handle({ action: 'paste', context: c, requestId: f.requestId })).ok).toBe(true)
+  expect((await f.service.handle({ action: 'accept', context: c, requestId: f.requestId })).ok).toBe(true)
+  const cancelled = await setup(), other = context()
+  await cancelled.service.handle({ action: 'activate', context: other })
+  expect((await cancelled.service.handle({ action: 'prepare', context: other, operation: { kind: 'recovery', intent: null } })).ok).toBe(true)
+  expect((await cancelled.service.handle({ action: 'cancel', context: other, requestId: cancelled.requestId })).ok).toBe(true)
+  const seen = new Set([f, cancelled].flatMap(test => test.requests.map(({ url, init }) => {
+    expect(new URL(url).origin).toBe(origin)
+    expect(new URL(url).search).toBe('')
+    return init.method + ' ' + new URL(url).pathname.replace(test.requestId, '{requestId}')
+  })))
+  expect([...seen].sort()).toEqual(authorRoutes.map(route => route.method + ' ' + route.path).sort())
+})
 it('enables only explicit loopback fixtures in unpackaged development', () => {
   const resolve = (reviewOrigin?: string, development = true) => authorServiceOrigin({ packaged: false, development, reviewOrigin })
   expect(resolve(origin)).toBe(origin)
@@ -213,7 +235,7 @@ it('rejects unknown receipt fields and masks even secret-bearing upstream except
   let clientId = ''
   const requestId = randomUUID()
   const f = await setup(async (url, init) => {
-    if (url.endsWith('/')) { clientId = JSON.parse(init.body as string).client_request_id; return { request_id: requestId, expires_at: new Date().toISOString() } }
+    if (url === origin + '/desktop/v1/author-handoffs' && init.method === 'POST') { clientId = JSON.parse(init.body as string).client_request_id; return { request_id: requestId, expires_at: new Date().toISOString() } }
     return { schema_version: 1, request_id: requestId, client_request_id: clientId, epoch,
       outcome: { status: 'recovered' }, registrations: [], reader_secret: 'must-not-escape' }
   }), c = context()
@@ -295,7 +317,7 @@ it('rejects a delayed successful exchange after activation changed', async () =>
   let release!: (v: unknown) => void, clientId = ''
   const requestId = randomUUID()
   const f = await setup(async (url, init) => {
-    if (url.endsWith('/')) { clientId = JSON.parse(init.body as string).client_request_id; return { request_id: requestId, expires_at: new Date().toISOString() } }
+    if (url === origin + '/desktop/v1/author-handoffs' && init.method === 'POST') { clientId = JSON.parse(init.body as string).client_request_id; return { request_id: requestId, expires_at: new Date().toISOString() } }
     if (init.method === 'DELETE') return { request_id: requestId, status: 'cancelled' }
     return new Promise((resolve) => { release = resolve })
   }), c = context()
@@ -398,7 +420,7 @@ it.each(['expired', 'offline'])('dismisses a %s request and prepares a fresh cor
       if (failure === 'expired') throw new AuthorExchangeError('Expired', true)
       throw new Error('network unavailable')
     }
-    if (url.endsWith('/')) {
+    if (url === origin + '/desktop/v1/author-handoffs' && init.method === 'POST') {
       created.push(JSON.parse(init.body as string).client_request_id)
       return { request_id: requestId, expires_at: new Date().toISOString() }
     }
@@ -429,7 +451,7 @@ it('closing invalidates a receipt already in flight even when remote cancellatio
   let release!: (value: unknown) => void, clientId = ''
   const requestId = randomUUID()
   const f = await setup(async (url, init) => {
-    if (url.endsWith('/')) {
+    if (url === origin + '/desktop/v1/author-handoffs' && init.method === 'POST') {
       clientId = JSON.parse(init.body as string).client_request_id
       return { request_id: requestId, expires_at: new Date().toISOString() }
     }

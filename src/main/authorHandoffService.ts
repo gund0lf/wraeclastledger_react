@@ -118,7 +118,7 @@ export class AuthorHandoffService {
     this.prepared.set(local.client_request_id, { context: c, clientId: local.client_request_id })
     try {
       if (!this.current(c)) throw new Error('Author operation changed')
-      const result = await this.call('/', 'POST', { schema_version: 1, ...local, kind, payload_sha256: payload, intent })
+      const result = await this.call('', 'POST', { schema_version: 1, ...local, kind, payload_sha256: payload, intent })
       if (!exact(result, ['request_id', 'expires_at']) || !id(result.request_id) || !validDate(result.expires_at))
         throw new Error('Invalid author request response')
       await this.options.vault.bind(local.client_request_id, result.request_id)

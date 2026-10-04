@@ -1,0 +1,7 @@
+[
+  { "method": "GET", "path": "/desktop/v1/author-handoffs/state" },
+  { "method": "POST", "path": "/desktop/v1/author-handoffs" },
+  { "method": "GET", "path": "/desktop/v1/author-handoffs/{requestId}/status" },
+  { "method": "POST", "path": "/desktop/v1/author-handoffs/{requestId}/consume" },
+  { "method": "DELETE", "path": "/desktop/v1/author-handoffs/{requestId}" }
+]
