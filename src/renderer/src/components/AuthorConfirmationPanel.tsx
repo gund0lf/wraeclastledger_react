@@ -1,7 +1,7 @@
 import { Alert, Button, CopyButton, Group, Select, Stack, Text } from '@mantine/core'
 import { useEffect, useRef, useState } from 'react'
 import type { AuthorConfirmation, AuthorContext, AuthorStatus, PreparedAuthorRequest } from '../../../shared/authorHandoff'
-import { applyAuthorRecovery, invalidateAuthorEpoch, previewAuthorRecovery } from '../../../shared/authorRecognition'
+import { applyAuthorRecovery, authorConfirmationNeedsReview, invalidateAuthorEpoch, previewAuthorRecovery } from '../../../shared/authorRecognition'
 import { useSessionStore } from '../store/useSessionStore'
 import { flushRepositoryNow } from '../repository/sessionRepositoryRuntime'
 import { startAuthorPolling } from '../utils/authorPolling'
@@ -75,7 +75,7 @@ export function AuthorConfirmationPanel({ context, request, action, onCancel, on
       const refreshed = await window.api.authorHandoff({ action: 'accept', context, requestId: request.request_id })
       if (!live.current) return
       if (!refreshed.ok) { setError(refreshed.error); return }
-      if (refreshed.value.epoch !== receipt.epoch || JSON.stringify(refreshed.value.registrations) !== JSON.stringify(receipt.registrations)) {
+      if (authorConfirmationNeedsReview(receipt, refreshed.value)) {
         setReceipt(refreshed.value); setDefaultId(null)
         setError('The confirmed names changed. Review this updated list and choose the default again.')
         return

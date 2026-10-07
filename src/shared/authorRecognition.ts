@@ -1,4 +1,5 @@
 import { normalizePublicAuthorName } from './authorNames'
+import { canonicalAuthorJson } from './authorSubmission'
 
 export interface RecognizedAuthor {
   registrationId: string
@@ -17,6 +18,14 @@ export interface AuthorReceipt {
   client_request_id: string
   epoch: string
   registrations: { registration_id: string; name: string; status: 'active' }[]
+}
+
+/** Compare validated confirmation data, not JSON object property order. The
+ * server may redeliver the same registrations from persisted JSON. Epoch,
+ * values, membership and array order still require a fresh explicit review. */
+export function authorConfirmationNeedsReview(previous: AuthorReceipt, refreshed: AuthorReceipt): boolean {
+  return previous.epoch !== refreshed.epoch ||
+    canonicalAuthorJson(previous.registrations) !== canonicalAuthorJson(refreshed.registrations)
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 export const emptyAuthorPreferences = (): AuthorPreferences => ({

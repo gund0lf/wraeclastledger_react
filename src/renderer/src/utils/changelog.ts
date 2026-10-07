@@ -13,6 +13,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.98',
     date: '',
     changes: [
+      'Public-name confirmation no longer asks for a second review when the server returns unchanged name details in a different JSON property order. Actual name or identity changes still require review.',
       'Fixed the request address used to start public-name confirmation and recovery in the upcoming compatible release.',
       'Strategy list titles now share spare space with tags. Revision badges stay in the opened detail, group icons remain beside titles, and author/run bylines stay together without an empty suffix for unrecorded counts.',
       'Strategy lists retain recorded historical Divine totals and group indicators. Authors without a displayed public name appear as Anonymous; number/date formatting, long-name truncation and missing-price wording match the established browser.',

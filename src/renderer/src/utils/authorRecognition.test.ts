@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyAuthorRecovery,
+  authorConfirmationNeedsReview,
   canPrepareAuthorAction,
   emptyAuthorPreferences,
   forgetAuthor,
@@ -20,6 +21,39 @@ const receipt: AuthorReceipt = {
   registrations: [{ registration_id: id, name: 'Example', status: 'active' }]
 }
 describe('public author recognition', () => {
+  it('accepts the same confirmation after persisted JSON reorders registration properties', () => {
+    const redelivered: AuthorReceipt = {
+      ...receipt,
+      registrations: [{ name: 'Example', status: 'active', registration_id: id }]
+    }
+    expect(JSON.stringify(redelivered.registrations)).not.toBe(JSON.stringify(receipt.registrations))
+    expect(authorConfirmationNeedsReview(receipt, redelivered)).toBe(false)
+    expect(authorConfirmationNeedsReview(redelivered, receipt)).toBe(false)
+    expect(applyAuthorRecovery(emptyAuthorPreferences(), redelivered, {
+      defaultRegistrationId: id, forgetObsoleteIds: []
+    }).defaultRegistrationId).toBe(id)
+  })
+  it.each([
+    ['epoch', { ...receipt, epoch: second }],
+    ['identity', { ...receipt, registrations: [{ ...receipt.registrations[0], registration_id: second }] }],
+    ['name', { ...receipt, registrations: [{ ...receipt.registrations[0], name: 'Changed' }] }],
+    ['status', { ...receipt, registrations: [{ ...receipt.registrations[0], status: 'retired' }] }],
+    ['removed registration', { ...receipt, registrations: [] }],
+    ['added registration', { ...receipt, registrations: [...receipt.registrations, { registration_id: second, name: 'Second', status: 'active' }] }]
+  ])('requires explicit review for changed %s', (_label, changed) => {
+    // Main validates status before this boundary; retain that comparison too.
+    expect(authorConfirmationNeedsReview(receipt, changed as AuthorReceipt)).toBe(true)
+  })
+  it('does not hide a changed registration order or mutate either receipt', () => {
+    const original: AuthorReceipt = { ...receipt, registrations: [
+      ...receipt.registrations, { registration_id: second, name: 'Second', status: 'active' }
+    ] }
+    const reordered = { ...original, registrations: [...original.registrations].reverse() }
+    const before = JSON.stringify([original, reordered])
+    expect(authorConfirmationNeedsReview(original, reordered)).toBe(true)
+    expect(authorConfirmationNeedsReview(original, original)).toBe(false)
+    expect(JSON.stringify([original, reordered])).toBe(before)
+  })
   it('normalizes labels without inferring ownership', () => {
     expect(normalizePublicAuthorName(' Ｓａｄ  ')).toEqual({ name: 'Sad', key: 'sad' })
     expect(normalizePublicAuthorName('名前').name).toBe('名前')
