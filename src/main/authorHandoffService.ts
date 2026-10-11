@@ -89,6 +89,7 @@ export class AuthorHandoffService {
     origin: string | null; vault: AuthorHandoffVault; readClipboard: () => string | Promise<string>
     exchange?: (url: string, init: RequestInit) => Promise<unknown>
     shareIntent?: (sessionId: string, core: string, metadata: Parameters<typeof buildAuthorSubmission>[1], startNew: boolean, sessionIdentity: string) => Promise<ShareIntentSnapshot>
+    readShareCore?: (sessionId: string, sessionIdentity: string) => Promise<{ core: string } | null>
   }) {}
   private current(c: AuthorContext) { return this.active === contextKey(c) }
   private async call(path: string, method = 'GET', body?: unknown, authorization?: string) {
@@ -154,6 +155,14 @@ export class AuthorHandoffService {
   private async dispatch(input: unknown): Promise<unknown> {
     if (exact(input, ['action']) && input.action === 'available') return this.options.origin !== null
     if (!this.options.origin) throw new Error('Disabled')
+    if (exact(input, ['action', 'sessionId', 'sessionIdentity']) && input.action === 'share-draft') {
+      if (typeof input.sessionId !== 'string' || !input.sessionId || input.sessionId.length > 128 ||
+        typeof input.sessionIdentity !== 'string' || !input.sessionIdentity || input.sessionIdentity.length > 128)
+        throw new ShareIntentError('The selected session changed. Close and reopen Share.')
+      if (!this.options.readShareCore) throw new ShareIntentError('Saved sharing details are unavailable. Close and reopen Share to retry.')
+      // Local read only: no provider request, clipboard, capability or intent rotation.
+      return this.options.readShareCore(input.sessionId, input.sessionIdentity)
+    }
     if (exact(input, ['action', 'path']) && input.action === 'read') {
       if (typeof input.path !== 'string' || input.path.length > 4096 || /[\\#\r\n]/.test(input.path)) throw new Error('Invalid public read')
       const url = new URL(input.path, this.options.origin)

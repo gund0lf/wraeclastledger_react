@@ -959,18 +959,33 @@ export class FileSessionRepository implements SessionRepositoryPort {
     }, { root: this.paths.root, readPolicy: this.readPolicy });
   }
 
+  private async shareIntentView(contextSessionId: string, expectedSessionIdentity?: string) {
+    const target = this.workflow!.viewedTarget;
+    const session = await this.readBody(target);
+    if (expectedSessionIdentity !== undefined && expectedSessionIdentity !== this.shareIntentSessionKey(session))
+      throw new ShareIntentError('The selected session changed. Reopen Share.');
+    const contextPrefix = target.kind === 'working' ? 'working:' : target.sessionId + ':';
+    if (!contextSessionId.startsWith(contextPrefix)) throw new ShareIntentError('The selected session changed. Reopen Share.');
+    return { target, session };
+  }
+
+  /** Bounded public submission data only; private author metadata/intent IDs stay in main. */
+  async readShareCore(contextSessionId: string, expectedSessionIdentity: string): Promise<{ core: string } | null> {
+    await this.requireReady();
+    return this.queue.enqueue('repository', async () => {
+      const { target, session } = await this.shareIntentView(contextSessionId, expectedSessionIdentity);
+      const { snapshot } = await this.readShareIntent(target, session);
+      return snapshot ? { core: snapshot.core } : null;
+    });
+  }
+
   /** Main-only, per-session publication bookkeeping. Uses the repository queue,
    * atomic framing and recovery rules; never included in portable payloads. */
   async prepareShareIntent(contextSessionId: string, core: string, metadata: AuthorSubmissionMetadata,
     startNew: boolean, expectedSessionIdentity?: string): Promise<ShareIntentSnapshot> {
     await this.requireReady();
     return this.queue.enqueue('repository', async () => {
-      const target = this.workflow!.viewedTarget;
-      const session = await this.readBody(target);
-      if (expectedSessionIdentity !== undefined && expectedSessionIdentity !== this.shareIntentSessionKey(session))
-        throw new ShareIntentError('The selected session changed. Reopen Share.');
-      const contextPrefix = target.kind === 'working' ? 'working:' : target.sessionId + ':';
-      if (!contextSessionId.startsWith(contextPrefix)) throw new ShareIntentError('The selected session changed. Reopen Share.');
+      const { target, session } = await this.shareIntentView(contextSessionId, expectedSessionIdentity);
       const { snapshot: previous, generation } = await this.readShareIntent(target, session);
       const snapshot = selectShareIntent(previous, this.shareIntentSessionKey(session), core, metadata, startNew, randomUUID);
       if (previous?.intentId === snapshot.intentId) return snapshot;

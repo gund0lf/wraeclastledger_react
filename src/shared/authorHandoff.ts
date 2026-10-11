@@ -15,6 +15,7 @@ export type AuthorRequest =
   | { action: 'available' }
   | { action: 'read'; path: string }
   | { action: 'state' }
+  | { action: 'share-draft'; sessionId: string; sessionIdentity: string }
   | { action: 'activate'; context: AuthorContext | null }
   | { action: 'prepare'; context: AuthorContext; operation: AuthorManagement }
   | { action: 'publication'; context: AuthorContext; core: string; metadata: AuthorSubmissionMetadata; confirmation: boolean; newIntent?: boolean; sessionIdentity?: string }
@@ -35,6 +36,7 @@ export interface AuthorResults {
   available: boolean
   read: unknown
   state: AuthorServiceState
+  'share-draft': { core: string } | null
   activate: null
   prepare: PreparedAuthorRequest
   publication: { token: string; request: PreparedAuthorRequest | null }

@@ -4,7 +4,10 @@ import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { brotliDecompressSync } from 'node:zlib'
-import { defaultShareConfirmation, parseShareIntent, selectShareIntent } from '../../../shared/shareIntent'
+import { defaultShareConfirmation, parseShareIntent, selectShareIntent, SHARE_CONTENT_CHANGED } from '../../../shared/shareIntent'
+import { buildDiscordSharePayload } from './discordShareWire'
+import { parseDiscordExport } from './parseDiscordExport'
+import { shareDraftFields } from './shareDraft'
 import { FileSessionRepository } from '../../../main/sessionRepository'
 import { AuthorHandoffService } from '../../../main/authorHandoffService'
 import { AuthorHandoffVault } from '../../../main/authorHandoffVault'
@@ -72,6 +75,50 @@ it('serializes concurrent preparations and keeps the durable intent after a repo
   expect(again).toEqual(results[0])
   const deliberate = await restarted.prepareShareIntent(f.context.sessionId, core, metadata, true)
   expect(deliberate.intentId).not.toBe(again.intentId)
+})
+it('restores share-only fields through the queued read after reopen/restart without rotating identity', async () => {
+  const f = await setup()
+  const parsed = parseDiscordExport('WraeclastLedger\nMaps: 12\nType: 6-mod\nMultiplier: 1x\nLeague: Allflame')!
+  Object.assign(parsed, { strategyName: 'TEST ONLY Alpha', strategyNotes: 'Synthetic note', typeTags: ['regular'],
+    isGroupPlay: true, groupSize: 3, sessionMinutes: 22 })
+  const savedCore = buildDiscordSharePayload(parsed)
+  const first = await f.repository.prepareShareIntent(f.context.sessionId, savedCore, metadata, false, f.sessionIdentity)
+  for (const context of [f.context.sessionId, f.context.sessionId.replace(':1', ':2')]) {
+    const draft = await f.repository.readShareCore(context, f.sessionIdentity)
+    expect(draft).toEqual({ core: savedCore })
+    expect(shareDraftFields(draft!.core)).toEqual({ title: 'TEST ONLY Alpha', notes: 'Synthetic note',
+      tags: ['regular'], group: true, groupSize: 3, time: '22' })
+  }
+  await f.repository.releaseLock()
+  const restarted = new FileSessionRepository({ userDataPath: f.root }); repositories.push(restarted)
+  await restarted.bootstrap({ operation: 'bootstrap' })
+  expect(await restarted.readShareCore(f.context.sessionId, f.sessionIdentity)).toEqual({ core: savedCore })
+  expect((await restarted.prepareShareIntent(f.context.sessionId, savedCore, metadata, false, f.sessionIdentity)).intentId)
+    .toBe(first.intentId)
+  await expect(restarted.readShareCore(f.context.sessionId, 'another-session')).rejects.toThrow('selected session')
+  await expect(restarted.readShareCore('another:1', f.sessionIdentity)).rejects.toThrow('selected session')
+  parsed.strategyName = 'Corrected title'
+  await expect(restarted.prepareShareIntent(f.context.sessionId, buildDiscordSharePayload(parsed), metadata, false, f.sessionIdentity))
+    .rejects.toThrow(SHARE_CONTENT_CHANGED)
+  expect(SHARE_CONTENT_CHANGED).toContain('not posted')
+  expect(SHARE_CONTENT_CHANGED).toContain('already posted')
+  expect(SHARE_CONTENT_CHANGED).toContain('Replace and Continue strategy')
+})
+
+it('share-draft IPC is a closed, identity-bound local read without activating online author work', async () => {
+  const f = await setup(), exchange = vi.fn(), readClipboard = vi.fn()
+  const service = new AuthorHandoffService({ origin: 'http://127.0.0.1:43181',
+    vault: new AuthorHandoffVault(join(f.root, 'vault'), { isEncryptionAvailable: () => false,
+      encryptString: () => { throw Error('No vault') }, decryptString: () => { throw Error('No vault') } }),
+    exchange, readClipboard, readShareCore: (...args) => f.repository.readShareCore(...args) })
+  const request = { action: 'share-draft', sessionId: f.context.sessionId, sessionIdentity: f.sessionIdentity }
+  expect(await service.handle(request)).toEqual({ ok: true, value: null })
+  await f.repository.prepareShareIntent(f.context.sessionId, core, metadata, false, f.sessionIdentity)
+  expect(await service.handle(request)).toEqual({ ok: true, value: { core } })
+  for (const bad of [{ ...request, extra: true }, { ...request, sessionIdentity: '' },
+    { ...request, sessionId: 'x'.repeat(129) }, { ...request, sessionIdentity: 'old-view' }])
+    expect((await service.handle(bad)).ok).toBe(false)
+  expect(exchange).not.toHaveBeenCalled(); expect(readClipboard).not.toHaveBeenCalled()
 })
 it('refuses another selected session and corrupt intent state without replacing it', async () => {
   const f = await setup()
@@ -269,9 +316,12 @@ it('does not attach an old-view share queued behind an in-flight working replace
   // The existing New Session UI can still show the old view while this commit waits.
   const stale = repository.prepareShareIntent('working:1', core, metadata, false, saved.sessionIdentity)
   const refusal = expect(stale).rejects.toThrow('selected session')
+  const staleRead = repository.readShareCore('working:1', saved.sessionIdentity!)
+  const readRefusal = expect(staleRead).rejects.toThrow('selected session')
   release()
   await replacement
   await refusal
+  await readRefusal
   const current = await repository.load({ operation: 'load', target: working, mode: 'inspect' })
   expect(current.sessionIdentity).not.toBe(saved.sessionIdentity)
   const differentCore = JSON.stringify([4, 0, 'new run', null, null, null, null, null, null, null, null, null])

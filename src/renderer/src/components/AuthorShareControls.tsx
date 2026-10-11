@@ -31,6 +31,8 @@ export function AuthorShareControls({ core, raw, blocked, onManage, fieldContain
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const errorElement = useRef<HTMLDivElement | null>(null)
+  useEffect(() => { if (error) errorElement.current?.scrollIntoView({ block: 'nearest' }) }, [error])
   const [requestGeneration, setRequestGeneration] = useState(0)
   const [dismissalNotice, setDismissalNotice] = useState<string | null>(null)
   const [wire, setWire] = useState<{ context: AuthorContext; token: string; request: PreparedAuthorRequest | null } | null>(null)
@@ -60,9 +62,9 @@ export function AuthorShareControls({ core, raw, blocked, onManage, fieldContain
       if (state.ok) {
         const store = useSessionStore.getState()
         store.setAuthorPreferences(invalidateAuthorEpoch(store.authorPreferences, state.value.epoch))
-        if (!state.value.author_actions_available) setError('Author confirmation is unavailable. You can prepare a share without local confirmation and recover names later.')
-      } else setError('Local confirmation is unavailable. Prepare without confirmation to share offline; recover your names later.')
-    })().catch(() => { if (!stop) setError('Could not check the author service. You can retry or prepare without local confirmation.') })
+        if (!state.value.author_actions_available) setError(current => current ?? 'Author confirmation is unavailable. You can prepare a share without local confirmation and recover names later.')
+      } else setError(current => current ?? 'Local confirmation is unavailable. Prepare without confirmation to share offline; recover your names later.')
+    })().catch(() => { if (!stop) setError(current => current ?? 'Could not check the author service. You can retry or prepare without local confirmation.') })
     return () => { stop = true; void window.api.authorHandoff({ action: 'activate', context: null }) }
   }, [context, enabled])
   const prepare = async () => {
@@ -129,7 +131,7 @@ export function AuthorShareControls({ core, raw, blocked, onManage, fieldContain
     {newSeparate && <Alert color="orange" p="xs">The next preparation starts a new publication, even if you already posted these results.
       <Button size="compact-xs" variant="subtle" onClick={() => setNewSeparate(false)}>Keep the existing share instead</Button>
     </Alert>}
-    {error && <Alert color="orange" p="xs">{error}</Alert>}
+    {error && <Alert ref={errorElement} color="orange" p="xs" role="alert" title="Sharing needs attention">{error}</Alert>}
     {dismissalNotice && <Alert color="orange" p="xs">{dismissalNotice}</Alert>}
     <Button size="xs" variant="light" disabled={!ready || blocked || !usableSelection || !core} loading={busy} onClick={() => void prepare()}>
       {newSeparate ? 'Prepare new separate share' : target ? 'Prepare continuation share' : 'Prepare Discord share'}

@@ -13,6 +13,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.98',
     date: '',
     changes: [
+      'Reopening Share from Sessions or the Strategy Browser restores the prepared title, notes, tags, party and time, including after an app restart. Changed shares explain how to start over before posting or replace an already posted strategy without making an accidental duplicate.',
       'The upcoming public-name sharing flow keeps a saved share identity across repeated Copy, preparation and app restarts. Deliberately publishing the same results again requires starting a new separate share; compatible servers refuse accidental replays without posting another card.',
       'Saved public names no longer enable optional confirmation on every ordinary share. Adding or replacing a run still asks for its explicit acknowledgement.',
       'Sharing now distinguishes a separate strategy from an existing continuation target, with a clear final button to save the Continue choice.',

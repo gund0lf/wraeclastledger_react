@@ -2,9 +2,10 @@ import {
   Modal, Stack, Text, Alert, TextInput, NumberInput, MultiSelect,
   Textarea, Group, SegmentedControl, Divider, Button, CopyButton,
 } from '@mantine/core';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { IconBrandDiscord, IconCheck } from '@tabler/icons-react';
-import { useSessionKeys } from '../store/useSessionStore';
+import { useSessionKeys, useSessionStore } from '../store/useSessionStore';
+import { restoreShareDraft } from '../utils/shareDraft';
 import { buildDiscordExport } from '../utils/discordExport';
 import {
   buildDiscordSharePayload,
@@ -75,9 +76,11 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   const {
     maps, settings, lootItems, baselineItems, baselineTotal, manualLootItems,
     manualRunTimer, investmentNeutralization, discordTag, setDiscordTag, updateAdvSetting, updateSetting,
+    activeSessionId, sessionNonce, currentSessionIdentity,
   } = useSessionKeys(
     'maps', 'settings', 'lootItems', 'baselineItems', 'baselineTotal', 'manualLootItems',
     'manualRunTimer', 'investmentNeutralization', 'discordTag', 'setDiscordTag', 'updateAdvSetting', 'updateSetting',
+    'activeSessionId', 'sessionNonce', 'currentSessionIdentity',
   );
 
   // Versioning client half: a session carrying an update target shares as an
@@ -113,6 +116,47 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   const [isGroupPlay, setIsGroupPlay] = useState(false);
   const [groupSize,  setGroupSize]  = useState(2);
   const [timeText,   setTimeText]   = useState('');
+  const draftSessionId = `${activeSessionId ?? 'working'}:${sessionNonce}`;
+  const draftKey = JSON.stringify([draftSessionId, currentSessionIdentity, settings.strategyTarget ?? null]);
+  const activeDraftView = useRef({ opened, key: draftKey });
+  activeDraftView.current = { opened, key: draftKey };
+  const [draftRestoration, setDraftRestoration] = useState<{ key: string; error: string | null } | null>(null);
+  const restoreOrdinaryDraft = authorReview === true && !settings.strategyTarget;
+  const draftLoading = opened && (authorReview === null || (restoreOrdinaryDraft && draftRestoration?.key !== draftKey));
+  const draftError = draftRestoration?.key === draftKey ? draftRestoration.error : null;
+  useEffect(() => {
+    if (!opened) { setDraftRestoration(null); return; }
+    if (!restoreOrdinaryDraft) return;
+    let stopped = false;
+    setDraftRestoration(null);
+    const isCurrent = () => {
+      const store = useSessionStore.getState();
+      return !stopped && activeDraftView.current.opened && activeDraftView.current.key === draftKey &&
+        `${store.activeSessionId ?? 'working'}:${store.sessionNonce}` === draftSessionId &&
+        store.currentSessionIdentity === currentSessionIdentity &&
+        JSON.stringify([draftSessionId, currentSessionIdentity, store.settings.strategyTarget ?? null]) === draftKey;
+    };
+    if (!currentSessionIdentity) {
+      setDraftRestoration({ key: draftKey, error: 'This session is not ready. Close and reopen Share after it loads.' });
+      return;
+    }
+    void restoreShareDraft(window.api.authorHandoff, draftSessionId, currentSessionIdentity, isCurrent).then((draft) => {
+      if (!isCurrent() || draft === undefined) return;
+      setStratName(draft?.title ?? ''); setStratNotes(draft?.notes ?? '');
+      setShareTags(draft?.tags ?? initialTags);
+      setIsGroupPlay(draft?.group ?? settings.strategySourceParty?.group ?? false);
+      setGroupSize(draft?.groupSize ?? settings.strategySourceParty?.size ?? 2);
+      const estimate = computeTimeEstimate(maps);
+      setTimeText(draft ? draft.time : estimate ? String(Math.round(estimate.activeMs / 60_000)) : '');
+      setDraftRestoration({ key: draftKey, error: null });
+    }).catch((error) => {
+      if (isCurrent()) setDraftRestoration({ key: draftKey, error: error instanceof Error ? error.message :
+        'Could not restore saved sharing details. Close and reopen Share to retry.' });
+    });
+    return () => { stopped = true; };
+    // Defaults are sampled for this opening/view only, never reapplied over edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opened, restoreOrdinaryDraft, draftKey, draftSessionId, currentSessionIdentity]);
   const [evidenceCurrent, setEvidenceCurrent] = useState<Strategy | null>(null);
   const [evidenceFetchError, setEvidenceFetchError] = useState<string | null>(null);
   const [evidenceProof, setEvidenceProof] = useState<EvidenceSubmissionProof | null>(null);
@@ -449,6 +493,9 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
 
   return (
     <Modal opened={opened} onClose={onClose} title="Share My Session" size="md">
+      {draftLoading && <Text size="xs" role="status">Restoring saved sharing details…</Text>}
+      {draftError && restoreOrdinaryDraft && <Alert color="red" role="alert">{draftError}</Alert>}
+      <fieldset disabled={draftLoading} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <Stack gap="sm">
         <Text size="xs" c="dimmed">
           Copy the compact submission into your strategy Discord channel. The preview below is the readable card the bot will post.
@@ -772,7 +819,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
         )}
         {authorReview && opened && <AuthorShareControls enabled={!manageNames}
           core={authorCore}
-          raw={discordExport} blocked={previewWithheld || !budget.fitsPlain}
+          raw={discordExport} blocked={draftLoading || !!draftError || previewWithheld || !budget.fitsPlain}
           fieldContainer={authorFieldContainer}
           onManage={() => setManageNames(true)} />}
         {authorReview && <ManagePublicNames opened={opened && manageNames} onClose={() => setManageNames(false)} />}
@@ -790,6 +837,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
           )}
         </CopyButton>}
       </Stack>
+      </fieldset>
     </Modal>
   );
 };

@@ -10,6 +10,7 @@ export interface ShareIntentSnapshot {
   metadata: AuthorSubmissionMetadata
 }
 export class ShareIntentError extends Error {}
+export const SHARE_CONTENT_CHANGED = 'This share differs from the one already prepared. If you have not posted it, choose Start a new separate share explicitly, then prepare your changes and discard the old copied text. If you already posted it, do not start another share: finish confirmation (or Recover in Manage public names), then choose Replace and Continue strategy in the Strategy Browser.'
 
 export function parseShareIntent(value: unknown): ShareIntentSnapshot {
   if (!closedAuthorObject(value, ['version', 'sessionId', 'intentId', 'core', 'metadata']) || value.version !== 1 ||
@@ -36,7 +37,7 @@ export function selectShareIntent(previous: ShareIntentSnapshot | null, sessionI
         saved.metadata.author.registration_id === metadata.author.registration_id)
     if (saved.sessionId !== sessionId || !sameAuthor || metadata.expected_revision !== null ||
       canonicalAuthorJson(JSON.parse(saved.core)) !== canonicalAuthorJson(JSON.parse(core)))
-      throw new ShareIntentError('This session already has a different share prepared. Start a new separate share explicitly to publish the changed content.')
+      throw new ShareIntentError(SHARE_CONTENT_CHANGED)
     // A just-confirmed registration must not rewrite the originally submitted metadata.
     return structuredClone(saved)
   }
