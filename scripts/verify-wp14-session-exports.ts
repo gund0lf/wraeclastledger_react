@@ -19,6 +19,13 @@ import {
   workflowForHistoricalDuplicate,
 } from '../src/renderer/src/repository/sessionRepositoryRuntime';
 import { assertSessionFieldsEqual, payloadFromPortable, portableSession } from './wp14-session-export-contract';
+import { scriptTiming } from './vite-script-support.mjs';
+
+function timing(phase: string): void {
+  scriptTiming('export-verifier', phase);
+}
+
+timing('module.body');
 
 interface InputExport {
   sourcePath: string;
@@ -206,6 +213,7 @@ async function timed(
   name: string,
   operation: () => Promise<JsonObject | void>,
 ): Promise<void> {
+  timing(`check.start:${name}`);
   const startedAt = performance.now();
   const details = await operation();
   checks.push({
@@ -213,13 +221,16 @@ async function timed(
     elapsedMs: Number((performance.now() - startedAt).toFixed(3)),
     ...(details ? { details } : {}),
   });
+  timing(`check.end:${name}`);
 }
 
 function sameTarget(actual: SessionTarget, expected: SessionTarget): void {
   deepStrictEqual(actual, expected);
 }
 
+timing('inputs.read.start');
 const inputs = await Promise.all(sourceArguments.map(readInput));
+timing('inputs.read.end');
 const allSessions = inputs.flatMap(({ sessions }) => sessions);
 const allSessionIds = inputs.flatMap(({ sessionIds }) => sessionIds);
 equal(new Set(allSessionIds).size, allSessionIds.length, 'Input exports contain overlapping session ids');
@@ -237,13 +248,17 @@ async function tempProfile(prefix: string): Promise<string> {
 }
 
 async function verifyExports(): Promise<void> {
+  timing('profile.create.start');
   const profile = await tempProfile('wl-wp14-export-acceptance-');
   let repository = new FileSessionRepository({ userDataPath: profile, openPath: async () => '' });
   repositories.push(repository);
+  timing('profile.create.end');
+  timing('bootstrap.start');
   const bootstrap = await repository.bootstrap({
     operation: 'bootstrap',
     migrationPlan: await migrationPlan('primary'),
   });
+  timing('bootstrap.end');
   const fixtureSessionIds = new Set(bootstrap.sessions.map(({ id }) => id));
   ok(allSessionIds.every((id) => !fixtureSessionIds.has(id)), 'Fixture and input ids overlap');
 
@@ -740,9 +755,15 @@ try {
     temporaryRepositoriesRemoved: true,
   } as unknown as JsonObject;
 } finally {
+  timing('cleanup.releaseLocks.start');
   await Promise.all(repositories.map((repository) => repository.releaseLock().catch(() => undefined)));
+  timing('cleanup.releaseLocks.end');
+  timing('cleanup.removeProfiles.start');
   await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
+  timing('cleanup.removeProfiles.end');
 }
 
 ok(report);
+timing('report.write.start');
 console.log(JSON.stringify(report, null, 2));
+timing('report.write.end');

@@ -3,13 +3,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { AuthorContext, PreparedAuthorRequest } from '../../../shared/authorHandoff'
 import { invalidateAuthorEpoch } from '../../../shared/authorRecognition'
-import { normalizePublicAuthorName } from '../../../shared/authorNames'
+import { normalizePublicAuthorName, PUBLIC_NAME_RETENTION_NOTICE } from '../../../shared/authorNames'
 import { useSessionStore } from '../store/useSessionStore'
 import { AuthorConfirmationPanel } from './AuthorConfirmationPanel'
 import { migrateStrategyTarget, acknowledgeStrategyTarget } from '../../../shared/strategyTarget'
 import { safeStrategyReader } from '../utils/safeStrategyReader'
 import { prepareSafeContinuation, refreshSafeAuthorState } from '../utils/safeStrategyTarget'
 import { SafeTargetReview } from './SafeTargetReview'
+import { defaultShareConfirmation } from '../../../shared/shareIntent'
 
 export function AuthorShareControls({ core, raw, blocked, onManage, fieldContainer, enabled }: {
   core: string; raw: string; blocked: boolean; onManage: () => void; fieldContainer: HTMLElement | null; enabled: boolean
@@ -19,10 +20,14 @@ export function AuthorShareControls({ core, raw, blocked, onManage, fieldContain
   const maps = useSessionStore((s) => s.maps)
   const target = useMemo(() => migrateStrategyTarget(settings as unknown as Record<string, unknown>), [settings])
   const targetKey = JSON.stringify(target)
+  const isContinuation = !!target
   const sessionId = useSessionStore((s) => `${s.activeSessionId ?? 'working'}:${s.sessionNonce}`)
+  const sessionIdentity = useSessionStore((s) => s.currentSessionIdentity)
   const [selection, setSelection] = useState<string | null>(preferences.defaultRegistrationId)
   const [name, setName] = useState('')
-  const [confirmation, setConfirmation] = useState(true)
+  const [confirmation, setConfirmation] = useState(() => defaultShareConfirmation(!!target,
+    !!preferences.registrations.find(r => r.registrationId === preferences.defaultRegistrationId)?.confirmed))
+  const [newSeparate, setNewSeparate] = useState(false)
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -37,6 +42,10 @@ export function AuthorShareControls({ core, raw, blocked, onManage, fieldContain
   active.current = context
   const selected = preferences.registrations.find((r) => r.registrationId === (target && target.state !== 'legacy_review' ? target.registrationId : selection))
   const usableSelection = target ? target.state === 'ready' && !!selected?.confirmed : selection === null || !!selected?.confirmed
+  useEffect(() => {
+    setConfirmation(defaultShareConfirmation(isContinuation, !!selected?.confirmed))
+    setNewSeparate(false)
+  }, [targetKey, isContinuation, selection, selected?.confirmed, sessionId])
   useEffect(() => {
     if (!enabled) return
     let stop = false
@@ -58,7 +67,12 @@ export function AuthorShareControls({ core, raw, blocked, onManage, fieldContain
   }, [context, enabled])
   const prepare = async () => {
     setBusy(true); setError(null); setDismissalNotice(null)
+    // Consume the explicit rotation once. An uncertain result must retry the
+    // persisted intent, never silently mint another publication identity.
+    const newIntent = newSeparate
+    setNewSeparate(false)
     try {
+      if (!sessionIdentity) throw new Error('The selected session is not ready. Reopen Share after it loads.')
       let author = selected && selected.confirmed ? { name: selected.name, registration_id: selected.registrationId }
         : { name: normalizePublicAuthorName(name).name, registration_id: null }
       let preparedCore = core, revision: number | null = null
@@ -75,7 +89,8 @@ export function AuthorShareControls({ core, raw, blocked, onManage, fieldContain
         preparedCore = JSON.stringify(tuple); author = proof.author; revision = proof.revision
       }
       const r = await window.api.authorHandoff({ action: 'publication', context, core: preparedCore,
-        metadata: { author, expected_revision: revision, confirmation_request_id: null }, confirmation })
+        metadata: { author, expected_revision: revision, confirmation_request_id: null },
+        confirmation: !!target || confirmation, newIntent, sessionIdentity })
       if (active.current !== context) return
       if (!r.ok) { setError(r.error); return }
       setWire({ context, ...r.value })
@@ -92,17 +107,32 @@ export function AuthorShareControls({ core, raw, blocked, onManage, fieldContain
       data={[{ value: '', label: 'Enter a public name' }, ...preferences.registrations.map((r) => ({ value: r.registrationId,
         label: r.name + (r.confirmed ? '' : ' (needs confirmation)'), disabled: !r.confirmed }))]} />
     {!target && !selection && <TextInput size="xs" label="Public name" value={name} maxLength={256} onChange={(e) => setName(e.currentTarget.value)} />}
-    <Checkbox size="xs" label="Include a confirmation step to save this name on this device" checked={confirmation}
+    {!selected?.confirmed && <Text size="xs" c="dimmed">{PUBLIC_NAME_RETENTION_NOTICE}</Text>}
+    <Checkbox size="xs" label={target ? 'Acknowledge this continuation on this device after Discord saves it'
+      : 'Include a confirmation step to save this name on this device'} checked={!!target || confirmation} disabled={!!target}
       onChange={(e) => setConfirmation(e.currentTarget.checked)} />
-    {!confirmation && <Text size="xs" c="dimmed">After sharing, use Recover in Manage public names to confirm this name on this installation.</Text>}
+    {!confirmation && !selected?.confirmed && <Text size="xs" c="dimmed">After sharing, use Recover in Manage public names to confirm this name on this installation.</Text>}
+    {!confirmation && selected?.confirmed && <Text size="xs" c="dimmed">This name is already saved. Ordinary sharing does not need another local confirmation.</Text>}
   </Stack>
   return <Stack gap="xs">
     {fieldContainer && createPortal(fields, fieldContainer)}
     {target && <SafeTargetReview target={target} />}
+    {!target && <Alert color="gray" p="xs" title="Separate strategy">
+      This share creates a separate strategy. It does not add to or replace an existing strategy.
+      To add or replace, choose Continue in the Strategy Browser and save that choice first.
+    </Alert>}
+    {!target && <Text size="xs" c="dimmed">Repeated Copy or preparation reuses the saved share for this session.
+      Use a new separate share only when you deliberately want another publication.</Text>}
+    {!target && !newSeparate && <Button size="compact-xs" variant="subtle" disabled={busy} onClick={() => {
+      setWire(null); setReady(false); setRequestGeneration(v => v + 1); setNewSeparate(true)
+    }}>Start a new separate share</Button>}
+    {newSeparate && <Alert color="orange" p="xs">The next preparation starts a new publication, even if you already posted these results.
+      <Button size="compact-xs" variant="subtle" onClick={() => setNewSeparate(false)}>Keep the existing share instead</Button>
+    </Alert>}
     {error && <Alert color="orange" p="xs">{error}</Alert>}
     {dismissalNotice && <Alert color="orange" p="xs">{dismissalNotice}</Alert>}
     <Button size="xs" variant="light" disabled={!ready || blocked || !usableSelection || !core} loading={busy} onClick={() => void prepare()}>
-      Prepare Discord share
+      {newSeparate ? 'Prepare new separate share' : target ? 'Prepare continuation share' : 'Prepare Discord share'}
     </Button>
     {currentWire && <>
       {currentWire.token.length > 6000 ? <Alert color="red">The share exceeds the Discord command limit. Shorten the notes.</Alert>

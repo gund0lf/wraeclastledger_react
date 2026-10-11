@@ -1,6 +1,16 @@
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createServer } from 'vite';
+import { createOneShotScriptServer, scriptTiming } from './vite-script-support.mjs';
+
+function timing(phase) {
+  scriptTiming('vite-launcher', phase);
+}
+
+timing('module.body');
+if (process.env.WL_WP14_TIMING_DIAGNOSTICS === '1') {
+  process.once('beforeExit', () => timing('process.beforeExit'));
+  process.once('exit', () => timing('process.exit'));
+}
 
 const projectRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const scriptsRoot = resolve(projectRoot, 'scripts');
@@ -23,17 +33,16 @@ if (
 
 process.argv.splice(2, 1);
 const moduleUrl = `/${relative(projectRoot, targetPath).split(sep).join('/')}`;
-const server = await createServer({
-  root: projectRoot,
-  configFile: false,
-  logLevel: 'error',
-  optimizeDeps: { noDiscovery: true },
-  server: { middlewareMode: true },
-  appType: 'custom',
-});
+timing('createServer.start');
+const server = await createOneShotScriptServer(projectRoot);
+timing('createServer.end');
 
 try {
+  timing('ssrLoadModule.start');
   await server.ssrLoadModule(moduleUrl);
+  timing('ssrLoadModule.end');
 } finally {
+  timing('server.close.start');
   await server.close();
+  timing('server.close.end');
 }

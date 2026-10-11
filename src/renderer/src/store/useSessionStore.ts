@@ -356,6 +356,7 @@ export interface SessionState {
   repositorySessions: RepositorySessionSummary[];
   repositorySizeBytes: number;
   currentGeneration: number | null;
+  currentSessionIdentity: string | null;
   preferencesGeneration: number | null;
   layoutGeneration: number | null;
   saveStatus: 'idle' | 'saving' | 'saved' | 'failed';
@@ -496,7 +497,7 @@ export const useSessionStore = create<SessionStoreState>()(
       overlayPreferences: { ...DEFAULT_OVERLAY_PREFERENCES, counterIds: [...DEFAULT_OVERLAY_PREFERENCES.counterIds] },
       overlayShortcutStatus: null,
       repositoryStatus: 'dormant', repositoryError: null, repositorySessions: [], repositorySizeBytes: 0,
-      currentGeneration: null, preferencesGeneration: null, layoutGeneration: null,
+      currentGeneration: null, currentSessionIdentity: null, preferencesGeneration: null, layoutGeneration: null,
       saveStatus: 'idle', saveError: null, sessionLifecycle: 'live', liveSessionId: null,
       activationCheckpointNotice: null, historyStoragePressure: false,
 

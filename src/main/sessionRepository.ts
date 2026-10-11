@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { parseShareIntent, selectShareIntent, ShareIntentError, type ShareIntentSnapshot } from '../shared/shareIntent';
+import type { AuthorSubmissionMetadata } from '../shared/authorSubmission';
 import {
   cp,
   lstat,
@@ -575,6 +577,7 @@ export interface FileSessionRepositoryOptions {
   onSessionRead?: (target: SessionTarget) => void | Promise<void>;
   onSessionCommit?: (target: SessionTarget) => void | Promise<void>;
   onRecoveryRollback?: (recoveryDirectory: string, sourceDirectory: string) => void | Promise<void>;
+  onTrashRestoreBoundary?: () => void | Promise<void>;
 }
 
 export class FileSessionRepository implements SessionRepositoryPort {
@@ -923,6 +926,57 @@ export class FileSessionRepository implements SessionRepositoryPort {
       throw new RepositoryRecoveryRequiredError('damaged');
     }
     return recovered.record.body as JsonObject;
+  }
+
+  private shareIntentSessionKey(session: SessionBodyV1): string {
+    return session.shareIntentScope ?? session.id ?? 'working:' + session.createdAt;
+  }
+
+  private async readShareIntent(target: SessionTarget, session: SessionBodyV1): Promise<{
+    snapshot: ShareIntentSnapshot | null; generation: number | null
+  }> {
+    const recovered = await recoverRecordDirectory(join(this.targetDirectory(target), 'share-intent'),
+      this.readPolicy, 'preferences');
+    if (recovered.status === 'damaged' || recovered.status === 'unsupported')
+      throw new RepositoryRecoveryRequiredError(recovered.status);
+    if (!recovered.record) return { snapshot: null, generation: null };
+    const record = recovered.record.body as JsonObject;
+    if (Object.keys(record).sort().join(',') !== 'generation,snapshot')
+      throw new ShareIntentError('The saved share intent is invalid. Review its recovery data.');
+    const snapshot = parseShareIntent(record.snapshot);
+    if (snapshot.sessionId !== this.shareIntentSessionKey(session))
+      throw new ShareIntentError('The saved share belongs to another session.');
+    return { snapshot, generation: requireGeneration(record.generation, 'share intent generation') };
+  }
+
+  private async writeShareIntent(target: SessionTarget, snapshot: ShareIntentSnapshot,
+    generation: number | null): Promise<void> {
+    await commitRecordAtomically({ directory: join(this.targetDirectory(target), 'share-intent'),
+      entityKey: 'share-intent:' + snapshot.sessionId, operationId: randomUUID(), contentType: 'preferences',
+      contentVersion: SESSION_CONTENT_VERSION,
+      body: { generation: (generation ?? 0) + 1, snapshot: JSON.parse(JSON.stringify(snapshot)) },
+      expectedGeneration: generation,
+    }, { root: this.paths.root, readPolicy: this.readPolicy });
+  }
+
+  /** Main-only, per-session publication bookkeeping. Uses the repository queue,
+   * atomic framing and recovery rules; never included in portable payloads. */
+  async prepareShareIntent(contextSessionId: string, core: string, metadata: AuthorSubmissionMetadata,
+    startNew: boolean, expectedSessionIdentity?: string): Promise<ShareIntentSnapshot> {
+    await this.requireReady();
+    return this.queue.enqueue('repository', async () => {
+      const target = this.workflow!.viewedTarget;
+      const session = await this.readBody(target);
+      if (expectedSessionIdentity !== undefined && expectedSessionIdentity !== this.shareIntentSessionKey(session))
+        throw new ShareIntentError('The selected session changed. Reopen Share.');
+      const contextPrefix = target.kind === 'working' ? 'working:' : target.sessionId + ':';
+      if (!contextSessionId.startsWith(contextPrefix)) throw new ShareIntentError('The selected session changed. Reopen Share.');
+      const { snapshot: previous, generation } = await this.readShareIntent(target, session);
+      const snapshot = selectShareIntent(previous, this.shareIntentSessionKey(session), core, metadata, startNew, randomUUID);
+      if (previous?.intentId === snapshot.intentId) return snapshot;
+      await this.writeShareIntent(target, snapshot, generation);
+      return snapshot;
+    });
   }
 
   private async catalogEntry(body: SessionBodyV1): Promise<CatalogEntry> {
@@ -1278,6 +1332,7 @@ export class FileSessionRepository implements SessionRepositoryPort {
         target: request.target,
         generation: body.generation,
         payload: cloneJson(body.payload),
+        sessionIdentity: this.shareIntentSessionKey(body),
         workflow: this.workflow!,
         workflowGeneration: this.workflowGeneration!,
       };
@@ -1365,9 +1420,18 @@ export class FileSessionRepository implements SessionRepositoryPort {
         throw new GenerationConflictError(request.expectedGeneration, actualGeneration);
       }
       const semanticHash = await computeSemanticHash(request.payload);
+      let inheritedShare: ShareIntentSnapshot | null = null;
+      if (request.inheritShareIntentFrom) {
+        if (request.target.kind !== 'new') throw new ShareIntentError('Only a named copy can inherit a share.');
+        const source = await this.readBody(request.inheritShareIntentFrom);
+        if (source.semanticHash !== semanticHash) throw new ShareIntentError('The source session changed. Retry naming it.');
+        inheritedShare = (await this.readShareIntent(request.inheritShareIntentFrom, source)).snapshot;
+      }
       let replacementRecovery: { recoveryId: string; destination: string } | null = null;
+      const workingShare = target.kind === 'working' && request.replacement === true && prior
+        ? (await this.readShareIntent(target, prior)).snapshot : null;
       if (target.kind === 'working' && request.replacement === true && prior &&
-          !prior.freshEmptyWorking && prior.semanticHash !== semanticHash) {
+          (workingShare || (!prior.freshEmptyWorking && prior.semanticHash !== semanticHash))) {
         let preservedAsNamed = false;
         if (this.workflow!.activeTarget.kind === 'session') {
           try {
@@ -1378,7 +1442,10 @@ export class FileSessionRepository implements SessionRepositoryPort {
             preservedAsNamed = false;
           }
         }
-        if (!preservedAsNamed) {
+        // An explicitly replaced working slot starts a different local run.
+        // Keep its old publication bookkeeping with the recoverable old slot,
+        // even when its payload was also preserved under a named copy.
+        if (!preservedAsNamed || workingShare) {
           await this.writeCheckpoint(target, prior, 'destructive', {
             activationId: prior.activationId,
             afterSummary: summarizePayload(request.payload),
@@ -1451,6 +1518,9 @@ export class FileSessionRepository implements SessionRepositoryPort {
         semanticHash,
         summary: nextSummary,
         payload: cloneJson(request.payload),
+        ...(target.kind === 'working' && request.replacement === true
+          ? { shareIntentScope: randomUUID() }
+          : prior?.shareIntentScope ? { shareIntentScope: prior.shareIntentScope } : {}),
         ...(activationId ? { activationId } : {}),
         ...(activationBaselineCheckpointId ? { activationBaselineCheckpointId } : {}),
         ...(lastCheckpointAt ? { lastCheckpointAt } : {}),
@@ -1460,6 +1530,11 @@ export class FileSessionRepository implements SessionRepositoryPort {
       };
       let result: Awaited<ReturnType<typeof commitRecordAtomically>>;
       try {
+        // Persist the inherited identity before making the new session visible.
+        // Interruption may leave a recoverable incomplete directory, never a
+        // valid named copy that silently loses its publication identity.
+        if (inheritedShare) await this.writeShareIntent(target,
+          { ...inheritedShare, sessionId: this.shareIntentSessionKey(body) }, null);
         await this.options.onSessionCommit?.(target);
         result = await commitRecordAtomically({
           directory: this.targetDirectory(target),
@@ -1532,6 +1607,7 @@ export class FileSessionRepository implements SessionRepositoryPort {
         target,
         generation: result.generation,
         summary,
+        sessionIdentity: this.shareIntentSessionKey(body),
         workflow: this.workflow!,
         workflowGeneration: this.workflowGeneration!,
         checkpoint,
@@ -1659,6 +1735,9 @@ export class FileSessionRepository implements SessionRepositoryPort {
           ...body,
           kind: 'named',
           id: restoredSessionId,
+          // Preserve the sidecar association in the same atomic body conversion.
+          // No two-file rewrite is needed if restore is interrupted here.
+          shareIntentScope: this.shareIntentSessionKey(body),
           name: body.kind === 'working' ? entry.metadata.displayName : body.name,
           updatedAt: this.now().toISOString(),
           generation: body.generation + 1,
@@ -1675,6 +1754,7 @@ export class FileSessionRepository implements SessionRepositoryPort {
         body = converted.record.body as SessionBodyV1;
       }
       const currentDetails = await stat(currentPath(entry.directory));
+      await this.options.onTrashRestoreBoundary?.();
       const restoredCatalogEntry: CatalogEntry = {
         ...sessionSummary(body),
         recordBytes: currentDetails.size,

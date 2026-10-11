@@ -17,7 +17,7 @@ export type AuthorRequest =
   | { action: 'state' }
   | { action: 'activate'; context: AuthorContext | null }
   | { action: 'prepare'; context: AuthorContext; operation: AuthorManagement }
-  | { action: 'publication'; context: AuthorContext; core: string; metadata: AuthorSubmissionMetadata; confirmation: boolean }
+  | { action: 'publication'; context: AuthorContext; core: string; metadata: AuthorSubmissionMetadata; confirmation: boolean; newIntent?: boolean; sessionIdentity?: string }
   | { action: 'status' | 'paste' | 'accept' | 'cancel'; context: AuthorContext; requestId: string }
 export interface AuthorServiceState { schema_version: 1; epoch: string; author_actions_available: boolean }
 export type AuthorOutcome =

@@ -20,7 +20,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "test": "vitest run && node --test scripts/after-pack.test.mjs scripts/dependency-lock.test.mjs scripts/cargo-query.test.mjs scripts/linux-windowing-evidence.test.mjs scripts/publish-win.test.mjs",
+    "test": "vitest run && node --test scripts/after-pack.test.mjs scripts/dependency-lock.test.mjs scripts/cargo-query.test.mjs scripts/linux-windowing-evidence.test.mjs scripts/publish-win.test.mjs scripts/vite-script-support.test.mjs",
     "test:watch": "vitest",
     "game-data:generate": "node scripts/gen-manifest-json.mjs",
     "trade-stats:check": "node scripts/check-tradestats.mjs",

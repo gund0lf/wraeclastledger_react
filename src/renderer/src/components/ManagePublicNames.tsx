@@ -2,7 +2,7 @@ import { Alert, Button, Divider, Group, Modal, Select, Stack, Text, TextInput } 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AuthorContext, AuthorManagement, PreparedAuthorRequest } from '../../../shared/authorHandoff'
 import { forgetAuthor, invalidateAuthorEpoch } from '../../../shared/authorRecognition'
-import { normalizePublicAuthorName } from '../../../shared/authorNames'
+import { normalizePublicAuthorName, PUBLIC_NAME_RETENTION_NOTICE, PUBLIC_NAME_RETIRE_NOTICE } from '../../../shared/authorNames'
 import { useSessionStore } from '../store/useSessionStore'
 import { AuthorConfirmationPanel } from './AuthorConfirmationPanel'
 
@@ -110,9 +110,10 @@ export function ManagePublicNames({ opened, onClose, selectedStrategy }: { opene
         ]} />
       {kind === 'initial_assignment' && <TextInput size="xs" label="Public author name" value={name} maxLength={256}
         disabled={!!request} onChange={(e) => setName(e.currentTarget.value)} />}
+      {kind === 'initial_assignment' && <Text size="xs" c="dimmed">{PUBLIC_NAME_RETENTION_NOTICE}</Text>}
       {(kind === 'reassignment' || kind === 'unregister') && <Select size="xs" label="Confirmed public name" value={registration}
         disabled={!!request} onChange={setRegistration} data={preferences.registrations.filter((r) => r.confirmed).map((r) => ({ value: r.registrationId, label: r.name }))} />}
-      {kind === 'unregister' ? <Alert color="orange" p="xs">Unregistering ends continuation for all affected strategies and releases the name. Viewing and importing remain available. Discord will show the complete affected list and require confirmation.</Alert>
+      {kind === 'unregister' ? <Alert color="orange" p="xs">Unregistering ends continuation for all affected strategies and releases the name. {PUBLIC_NAME_RETIRE_NOTICE} Retirement does not erase the private recovery records. Viewing and importing remain available. Discord will show the complete affected list and require confirmation.</Alert>
         : kind !== 'recovery' && <Text size="xs">{selectedId
           ? 'This requests only the selected strategy. Initial naming includes its eligible unnamed current and frozen copies; reassignment applies only to an eligible current strategy.'
           : 'This requests all eligible strategies belonging to your Discord account.'} Review the exact list in Discord before confirming.</Text>}

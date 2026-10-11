@@ -199,7 +199,8 @@ export function SafeStrategyBrowser({ onShare, onImport, applySetup, runAction, 
         <Text size="xs">{operation === 'evidence' ? 'Adds a compatible run with its own recorded prices.' : 'Your next share publishes a new version and starts its combined results with this run. Votes stay.'}</Text>
         <SegmentedControl value={source} onChange={setSource} data={[{ value: 'current', label: 'Use current session' }, { value: 'fresh', label: 'Start fresh session' }]} />
         <Text size="xs">{source === 'current' ? 'Keeps maps, loot and authored prices. Sharing checks compatibility again.' : 'Loads reusable settings into a fresh session with empty prices.'}</Text>
-        <Button onClick={continueRun}>Continue strategy</Button></Stack>
+        <Text size="xs" fw={600}>Nothing is selected until you save this choice below. Closing this dialog leaves your previous share target unchanged.</Text>
+        <Button onClick={continueRun}>Save choice and continue strategy</Button></Stack>
     </Modal>
   </Card>
 }

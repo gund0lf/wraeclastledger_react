@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { AuthorHandoffVault } from './authorHandoffVault'
 import { encodeDiscordShareBrotli } from './discordShareCompression'
 import { buildAuthorSubmission, canonicalAuthorJson } from '../shared/authorSubmission'
+import { ShareIntentError, type ShareIntentSnapshot } from '../shared/shareIntent'
 import { emptyAuthorPreferences, previewAuthorRecovery } from '../shared/authorRecognition'
 import {
   AUTHOR_UUID, closedAuthorObject as exact, parseAuthorOutcome, validAuthorContext,
@@ -87,6 +88,7 @@ export class AuthorHandoffService {
   constructor(private options: {
     origin: string | null; vault: AuthorHandoffVault; readClipboard: () => string | Promise<string>
     exchange?: (url: string, init: RequestInit) => Promise<unknown>
+    shareIntent?: (sessionId: string, core: string, metadata: Parameters<typeof buildAuthorSubmission>[1], startNew: boolean, sessionIdentity: string) => Promise<ShareIntentSnapshot>
   }) {}
   private current(c: AuthorContext) { return this.active === contextKey(c) }
   private async call(path: string, method = 'GET', body?: unknown, authorization?: string) {
@@ -145,7 +147,7 @@ export class AuthorHandoffService {
   }
   async handle(input: unknown): Promise<{ ok: true; value: unknown } | { ok: false; error: string; terminal?: boolean }> {
     try { return { ok: true, value: await this.dispatch(input) } }
-    catch (e) { return { ok: false, error: e instanceof AuthorExchangeError ? e.message :
+    catch (e) { return { ok: false, error: e instanceof AuthorExchangeError || e instanceof ShareIntentError ? e.message :
       'Author confirmation could not be completed. Check the selected operation and try again.',
       ...(e instanceof AuthorExchangeError && e.terminal ? { terminal: true } : {}) } }
   }
@@ -198,17 +200,34 @@ export class AuthorHandoffService {
       return this.prepare(c, op.kind, op.intent, op.kind === 'recovery' ? null :
         digest('WL-AUTHOR-INTENT/1', canonicalAuthorJson(op)))
     }
-    if (exact(input, ['action', 'context', 'core', 'metadata', 'confirmation']) && input.action === 'publication') {
+    if ((exact(input, ['action', 'context', 'core', 'metadata', 'confirmation']) ||
+      exact(input, ['action', 'context', 'core', 'metadata', 'confirmation', 'newIntent', 'sessionIdentity'])) && input.action === 'publication') {
       const c = this.requireContext(input.context)
       if (typeof input.core !== 'string' || input.core.length > 128 * 1024 || typeof input.confirmation !== 'boolean' ||
         !exact(input.metadata, ['author', 'expected_revision', 'confirmation_request_id']) ||
         input.metadata.confirmation_request_id !== null) throw new Error('Invalid publication')
-      const meta = input.metadata as unknown as Parameters<typeof buildAuthorSubmission>[1]
-      const plain = buildAuthorSubmission(input.core, meta)
+      let core = input.core
+      let meta = input.metadata as unknown as Parameters<typeof buildAuthorSubmission>[1]
+      buildAuthorSubmission(core, meta)
+      if (Object.hasOwn(input, 'newIntent')) {
+        if (typeof input.newIntent !== 'boolean' || typeof input.sessionIdentity !== 'string' ||
+          input.sessionIdentity.length < 1 || input.sessionIdentity.length > 128) throw new Error('Invalid share intent')
+        if (JSON.parse(core)[1] === 0) {
+          if (!this.options.shareIntent) throw new ShareIntentError('Durable share storage is unavailable. No share was prepared.')
+          const snapshot = await this.options.shareIntent(c.sessionId, core, meta, input.newIntent, input.sessionIdentity)
+          this.requireContext(c)
+          core = snapshot.core
+          meta = { ...snapshot.metadata, share_intent_id: snapshot.intentId }
+        } else {
+          if (input.newIntent || !input.confirmation) throw new ShareIntentError('A continuation needs its explicit acknowledgement step.')
+          meta = { ...meta, share_intent_id: null }
+        }
+      }
+      const plain = buildAuthorSubmission(core, meta)
       const request = input.confirmation ? await this.prepare(c, 'publication', null,
         digest('WL-AUTHOR-HANDOFF/1', canonicalAuthorJson(JSON.parse(plain)))) : null
       if (!this.current(c)) throw new Error('Author operation changed')
-      return { token: encodeDiscordShareBrotli(buildAuthorSubmission(input.core,
+      return { token: encodeDiscordShareBrotli(buildAuthorSubmission(core,
         { ...meta, confirmation_request_id: request?.request_id ?? null }), true), request }
     }
     if (exact(input, ['action', 'context', 'requestId']) && ['status', 'paste', 'accept', 'cancel'].includes(input.action as string)) {

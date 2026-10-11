@@ -113,6 +113,7 @@ export type SessionRepositoryRequest =
       activationId?: string;
       checkpointReason?: 'destructive';
       freshEmptyWorking?: true;
+      inheritShareIntentFrom?: SessionTarget;
     }
   | { operation: 'rename'; sessionId: string; name: string; expectedGeneration: number }
   | { operation: 'delete'; sessionId: string; expectedGeneration: number }
@@ -142,6 +143,7 @@ export interface SessionRepositoryDataMap {
   load: {
     target: SessionTarget;
     generation: number;
+    sessionIdentity?: string;
     payload: JsonObject;
     workflow: RepositoryWorkflow;
     workflowGeneration: number;
@@ -149,6 +151,7 @@ export interface SessionRepositoryDataMap {
   save: {
     target: SessionTarget | { kind: 'preferences' | 'layout' | 'bootstrap' };
     generation: number;
+    sessionIdentity?: string;
     summary: RepositorySessionSummary | null;
     workflow: RepositoryWorkflow;
     workflowGeneration: number;
@@ -462,7 +465,9 @@ function assertSuccessData(operation: SessionRepositoryOperation, value: unknown
     assertSummaries(value.sessions);
     assertInteger(value.repositorySizeBytes, 'repositorySizeBytes');
   } else if (operation === 'load') {
-    assertExactKeys(value, ['target', 'generation', 'payload', 'workflow', 'workflowGeneration'], 'load data');
+    assertExactKeys(value, ['target', 'generation', 'payload', 'workflow', 'workflowGeneration',
+      ...(value.sessionIdentity !== undefined ? ['sessionIdentity'] : [])], 'load data');
+    if (value.sessionIdentity !== undefined) assertString(value.sessionIdentity, 'sessionIdentity');
     assertTarget(value.target);
     assertInteger(value.generation, 'generation');
     if (!isPlainObject(value.payload)) throw new SessionRepositoryRequestError('payload must be an object');
@@ -471,7 +476,7 @@ function assertSuccessData(operation: SessionRepositoryOperation, value: unknown
   } else if (operation === 'save') {
     assertExactKeys(value, [
       'target', 'generation', 'summary', 'workflow', 'workflowGeneration', 'checkpoint',
-      'historyStoragePressure',
+      'historyStoragePressure', ...(value.sessionIdentity !== undefined ? ['sessionIdentity'] : []),
     ], 'save data');
     assertResponseTarget(value.target);
     assertInteger(value.generation, 'generation');
@@ -482,6 +487,7 @@ function assertSuccessData(operation: SessionRepositoryOperation, value: unknown
       throw new SessionRepositoryRequestError('historyStoragePressure must be a boolean');
     }
     if (value.checkpoint !== null) assertCheckpointSummary(value.checkpoint);
+    if (value.sessionIdentity !== undefined) assertString(value.sessionIdentity, 'sessionIdentity');
   } else if (operation === 'rename') {
     assertExactKeys(value, ['sessionId', 'generation', 'name', 'sessions'], 'rename data');
     assertString(value.sessionId, 'sessionId');
@@ -574,6 +580,7 @@ export function parseSessionRepositoryRequest(value: unknown): SessionRepository
     if (value.activationId !== undefined) keys.push('activationId');
     if (value.checkpointReason !== undefined) keys.push('checkpointReason');
     if (value.freshEmptyWorking !== undefined) keys.push('freshEmptyWorking');
+    if (value.inheritShareIntentFrom !== undefined) keys.push('inheritShareIntentFrom');
     assertExactKeys(value, keys, 'save request');
     assertSaveTarget(value.target);
     assertGeneration(value.expectedGeneration, true);
@@ -595,6 +602,10 @@ export function parseSessionRepositoryRequest(value: unknown): SessionRepository
     if (value.freshEmptyWorking !== undefined &&
         (value.freshEmptyWorking !== true || value.target.kind !== 'working')) {
       throw new SessionRepositoryRequestError('freshEmptyWorking is valid only for a working-session save');
+    }
+    if (value.inheritShareIntentFrom !== undefined) {
+      if (value.target.kind !== 'new') throw new SessionRepositoryRequestError('share intent inheritance is valid only for a named copy');
+      assertTarget(value.inheritShareIntentFrom);
     }
   } else if (operation === 'rename') {
     assertExactKeys(value, ['operation', 'sessionId', 'name', 'expectedGeneration'], 'rename request');

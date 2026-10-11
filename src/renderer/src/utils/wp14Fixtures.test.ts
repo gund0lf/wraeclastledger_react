@@ -18,7 +18,7 @@ const parse = <T>(content: string): T => JSON.parse(content) as T;
 
 const POST_CUTOVER_ONLY_KEYS = new Set([
   'repositoryStatus', 'repositoryError', 'repositorySessions', 'repositorySizeBytes',
-  'currentGeneration', 'preferencesGeneration', 'layoutGeneration', 'saveStatus',
+  'currentGeneration', 'currentSessionIdentity', 'preferencesGeneration', 'layoutGeneration', 'saveStatus',
   'saveError', 'sessionLifecycle', 'liveSessionId', 'activationCheckpointNotice',
   'historyStoragePressure', 'manualRunTimer', 'manualTimerRecoveryMs',
   'overlayPreferences', 'overlayShortcutStatus', 'lootCurrencyMode',

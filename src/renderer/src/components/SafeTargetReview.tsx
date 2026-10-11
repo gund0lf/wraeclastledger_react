@@ -43,6 +43,9 @@ export function SafeTargetReview({ target }: { target: StrategyTarget }) {
     : [{ value: target, operation: target.operation }]
   return <Alert color="gray" p="xs"><Stack gap="xs">
     <Text size="sm" fw={600}>{target.state === 'legacy_review' ? 'Saved target needs review' : target.state === 'acknowledged' ? 'Submission confirmed — review before continuing again' : 'Saved continuation target'}</Text>
+    {target.state !== 'legacy_review' && <Text size="xs" fw={600}>{target.operation === 'replace'
+      ? 'This share replaces the saved strategy with a new revision; it does not create a separate strategy.'
+      : 'This share adds another run to the saved strategy; it does not create a separate strategy.'}</Text>}
     {candidates.map(c => <Group key={c.operation}><Text size="xs">{c.value!.title || c.value!.id} · {c.operation}</Text>
       <Button size="compact-xs" variant="default" loading={busy} onClick={() => void inspect(c.value!.id, c.operation)}>Review current revision</Button></Group>)}
     <Text size="xs">{target.state !== 'legacy_review' && `Pinned revision ${target.revision}. `}Your maps, loot and prices are retained if this target cannot be checked. A timeout does not mean the Discord submission failed.</Text>

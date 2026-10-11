@@ -56,6 +56,8 @@ export interface SessionBodyV1<
   lastCheckpointAt?: string;
   historyStoragePressure?: boolean;
   freshEmptyWorking?: boolean;
+  /** Local share bookkeeping survives an identity-changing Recently Deleted restore. */
+  shareIntentScope?: string;
   checkpoint?: SessionCheckpointV1;
 }
 
@@ -257,6 +259,10 @@ export function assertSessionBodyV1(value: unknown): asserts value is SessionBod
   }
   if (value.freshEmptyWorking !== undefined && value.freshEmptyWorking !== true) {
     throw new RecordValidationError('invalid-body', 'freshEmptyWorking must be true when present');
+  }
+  if (value.shareIntentScope !== undefined &&
+      (typeof value.shareIntentScope !== 'string' || value.shareIntentScope.length < 1 || value.shareIntentScope.length > 128)) {
+    throw new RecordValidationError('invalid-body', 'shareIntentScope must be a bounded non-empty string');
   }
   if (value.checkpoint !== undefined) {
     if (!isPlainObject(value.checkpoint)) {

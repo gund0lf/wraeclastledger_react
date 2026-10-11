@@ -5,6 +5,7 @@ import { applyAuthorRecovery, authorConfirmationNeedsReview, invalidateAuthorEpo
 import { useSessionStore } from '../store/useSessionStore'
 import { flushRepositoryNow } from '../repository/sessionRepositoryRuntime'
 import { startAuthorPolling } from '../utils/authorPolling'
+import { PUBLIC_NAME_RETIRE_NOTICE } from '../../../shared/authorNames'
 
 /** Receipts are previewed and explicitly accepted; status alone never recognizes a name. */
 export function AuthorConfirmationPanel({ context, request, action, onCancel, onAccepted }: {
@@ -98,6 +99,7 @@ export function AuthorConfirmationPanel({ context, request, action, onCancel, on
     <Text size="xs" c="dimmed">Expires {new Date(request.expires_at).toLocaleTimeString()}. {status ? `Status: ${status.status}.` : ''}</Text>
     {status?.outcome?.status === 'retired' ? <Alert color="orange">
       The name was unregistered for {status.outcome.count} strategies. Its saved entry is now unconfirmed; if it was the default, the default is now Choose each time.
+      {' '}{PUBLIC_NAME_RETIRE_NOTICE}
     </Alert> : !accepted && <Button size="xs" variant="light" loading={busy} onClick={() => void paste()}>
       Paste private confirmation from clipboard
     </Button>}

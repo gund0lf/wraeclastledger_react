@@ -3,6 +3,7 @@ import { EXPORT_EMOJI } from './discordEmoji';
 import {
   CARD_HEADER_ALLOWANCE,
   CURRENT_CARD_HEADER_ALLOWANCE,
+  POOLED_CARD_HEADER_ALLOWANCE,
   DISCORD_MSG_LIMIT,
   STRAT_NAME_MAX,
   compactPostedCardPreview,
@@ -43,10 +44,11 @@ describe('exportBudget', () => {
       + ' · Return -' + worstFixedInteger + '.9d'
       + ' · Net +' + worstFixedInteger + '.9d\n'
       + '\n';
-    expect(CARD_HEADER_ALLOWANCE).toBe(worstPooledHeader.length);
-    expect(CURRENT_CARD_HEADER_ALLOWANCE).toBeLessThan(CARD_HEADER_ALLOWANCE);
-    expect(CARD_HEADER_ALLOWANCE).toBeGreaterThan(150);
-    expect(CARD_HEADER_ALLOWANCE).toBeLessThan(250);
+    expect(POOLED_CARD_HEADER_ALLOWANCE).toBe(worstPooledHeader.length);
+    const publicHeader = '\uD83D\uDCE8 **Shared by:** ' + 'x'.repeat(288) + '\n'
+      + '*v2147483647 \u00B7 updated 28 Sep*\n\n';
+    expect(CURRENT_CARD_HEADER_ALLOWANCE).toBe(publicHeader.length);
+    expect(CARD_HEADER_ALLOWANCE).toBe(Math.max(publicHeader.length, worstPooledHeader.length));
   });
 
   it('projects short-ref decoration cost per occurrence, including VS16 markers', () => {
@@ -83,10 +85,10 @@ describe('exportBudget', () => {
     expect(budget.notesRemaining).toBeLessThan(0);
   });
 
-  it('reproduces the 2026-07-19 real-card finding: emotes can overflow while plain fits', () => {
-    // A realistic rich export: ~1,650 plain units carrying 20 markers.
+  it('emotes can overflow while plain fits with the longer public-name header', () => {
+    // Leave room for some emotes after the Unicode public-name allowance.
     const markers = Object.values(EXPORT_EMOJI).slice(0, 20).map((m) => m.uni).join('\n');
-    const filler = 'x'.repeat(1650 - markers.length);
+    const filler = 'x'.repeat(1550 - markers.length);
     const exportText = markers + filler;
     const budget = computeShareBudget(exportText, exportText, 0);
     expect(budget.fitsPlain).toBe(true);

@@ -48,7 +48,7 @@ const stateDefaults = (): Record<string, unknown> => {
   const state = JSON.parse(JSON.stringify(useSessionStore.getState())) as Record<string, unknown>;
   for (const key of [
     'repositoryStatus', 'repositoryError', 'repositorySessions', 'repositorySizeBytes',
-    'currentGeneration', 'preferencesGeneration', 'layoutGeneration', 'saveStatus',
+    'currentGeneration', 'currentSessionIdentity', 'preferencesGeneration', 'layoutGeneration', 'saveStatus',
     'saveError', 'sessionLifecycle', 'liveSessionId', 'activationCheckpointNotice',
     'historyStoragePressure', 'manualRunTimer', 'manualTimerRecoveryMs',
     'overlayPreferences', 'overlayShortcutStatus', 'lootCurrencyMode',

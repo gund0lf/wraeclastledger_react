@@ -13,6 +13,10 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.98',
     date: '',
     changes: [
+      'The upcoming public-name sharing flow keeps a saved share identity across repeated Copy, preparation and app restarts. Deliberately publishing the same results again requires starting a new separate share; compatible servers refuse accidental replays without posting another card.',
+      'Saved public names no longer enable optional confirmation on every ordinary share. Adding or replacing a run still asks for its explicit acknowledgement.',
+      'Sharing now distinguishes a separate strategy from an existing continuation target, with a clear final button to save the Continue choice.',
+      'Newly rendered Discord cards and loot images use the public name instead of a Discord username or mention. Registration explains private recovery-record retention; retiring a name explains that old Discord cards keep their byline until removed.',
       'Public-name confirmation no longer asks for a second review when the server returns unchanged name details in a different JSON property order. Actual name or identity changes still require review.',
       'Fixed the request address used to start public-name confirmation and recovery in the upcoming compatible release.',
       'Strategy list titles now share spare space with tags. Revision badges stay in the opened detail, group icons remain beside titles, and author/run bylines stay together without an empty suffix for unrecorded counts.',

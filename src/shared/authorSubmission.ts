@@ -3,6 +3,7 @@ export interface AuthorSubmissionMetadata {
   author: { name: string; registration_id: string | null }
   expected_revision: number | null
   confirmation_request_id: string | null
+  share_intent_id?: string | null
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 export function canonicalAuthorJson(value: unknown): string {
@@ -34,7 +35,7 @@ export function buildAuthorSubmission(
     core.length !== 12 ||
     core[0] !== 4 ||
     JSON.stringify(core) !== coreJson ||
-    Object.keys(metadata).sort().join(',') !== 'author,confirmation_request_id,expected_revision' ||
+    !['author,confirmation_request_id,expected_revision', 'author,confirmation_request_id,expected_revision,share_intent_id'].includes(Object.keys(metadata).sort().join(',')) ||
     Object.keys(metadata.author).sort().join(',') !== 'name,registration_id' ||
     normalizePublicAuthorName(metadata.author.name).name !== metadata.author.name ||
     (metadata.author.registration_id !== null && !uuid.test(metadata.author.registration_id)) ||
@@ -51,11 +52,15 @@ export function buildAuthorSubmission(
         metadata.author.registration_id === null
   )
     throw new Error('Invalid author target')
+  if (Object.hasOwn(metadata, 'share_intent_id') && (core[1] === 0
+    ? typeof metadata.share_intent_id !== 'string' || !uuid.test(metadata.share_intent_id)
+    : metadata.share_intent_id !== null)) throw new Error('Invalid share intent')
   if (Array.isArray(core[1]) && core[1][0] === 2 && core[1][2] !== metadata.expected_revision)
     throw new Error('Evidence revision changed')
-  const text = JSON.stringify([5, core, metadata])
+  const version = Object.hasOwn(metadata, 'share_intent_id') ? 6 : 5
+  const text = JSON.stringify([version, core, metadata])
   if (new TextEncoder().encode(text).length > 128 * 1024)
     throw new Error('Author share is too large')
-  canonicalAuthorJson([5, core, metadata])
+  canonicalAuthorJson([version, core, metadata])
   return text
 }

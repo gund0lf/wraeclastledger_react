@@ -189,7 +189,7 @@ function legacySnapshot(createSynthetic = false): LegacyStorageSnapshot {
       Object.entries(state).filter(([key, value]) => (
         typeof value !== 'function' && ![
           'repositoryStatus', 'repositoryError', 'repositorySessions', 'repositorySizeBytes',
-          'currentGeneration', 'preferencesGeneration', 'layoutGeneration', 'saveStatus',
+          'currentGeneration', 'currentSessionIdentity', 'preferencesGeneration', 'layoutGeneration', 'saveStatus',
           'saveError', 'sessionLifecycle', 'liveSessionId', 'activationCheckpointNotice',
           'historyStoragePressure',
         ].includes(key)
@@ -280,6 +280,7 @@ function applyPayload(data: LoadData, sessions: RepositorySessionSummary[]): Par
     activeSessionId: data.target.kind === 'session' ? data.target.sessionId : null,
     activeSessionName: summaryName(sessions, data.target),
     currentGeneration: data.generation,
+    currentSessionIdentity: data.sessionIdentity ?? null,
     sessionLifecycle: data.workflow.lifecycle,
     liveSessionId: workflowLiveSessionId(data.workflow),
     pendingAtlasBonusSeed: data.workflow.pendingAtlasBonusSeed,
@@ -369,6 +370,7 @@ async function drainSessionSaves(): Promise<void> {
         : useSessionStore.getState().repositorySessions;
       useSessionStore.setState({
         currentGeneration: data.generation,
+        currentSessionIdentity: data.sessionIdentity ?? null,
         repositorySessions: sessions,
         saveStatus: 'saving',
         saveError: null,
@@ -602,11 +604,13 @@ function mutateWorkflow(
 export async function nameCurrent(name: string): Promise<void> {
   await flushRepositoryNow();
   const previousWorkflow = repositoryWorkflow;
+  if (!previousWorkflow) throw new Error('Repository workflow is not hydrated');
   const data = await repositoryClient().request({
     operation: 'save',
     target: { kind: 'new', name },
     expectedGeneration: null,
     payload: sessionPayload(),
+    inheritShareIntentFrom: previousWorkflow.viewedTarget,
   });
   if (data.target.kind !== 'session' || !data.summary) throw new Error('Naming the session returned an invalid target');
   const duplicateTarget: SessionTarget = { kind: 'session', sessionId: data.target.sessionId };
@@ -617,6 +621,7 @@ export async function nameCurrent(name: string): Promise<void> {
     activeSessionId: data.target.kind === 'session' ? data.target.sessionId : state.activeSessionId,
     activeSessionName: name,
     currentGeneration: data.generation,
+    currentSessionIdentity: data.sessionIdentity ?? null,
     repositorySessions: [...state.repositorySessions.filter(({ id }) => id !== data.summary!.id), data.summary!],
     sessionLifecycle: data.workflow.lifecycle,
     liveSessionId: workflowLiveSessionId(data.workflow),
@@ -652,6 +657,7 @@ export async function nameWorking(name: string): Promise<void> {
     target: { kind: 'new', name },
     expectedGeneration: null,
     payload: working.payload,
+    inheritShareIntentFrom: workingTarget,
   });
   if (data.target.kind !== 'session' || !data.summary) {
     throw new Error('Naming the working session returned an invalid target');
@@ -665,6 +671,7 @@ export async function nameWorking(name: string): Promise<void> {
       activeSessionId: data.target.kind === 'session' ? data.target.sessionId : state.activeSessionId,
       activeSessionName: name,
       currentGeneration: data.generation,
+      currentSessionIdentity: data.sessionIdentity ?? null,
     } : {}),
     repositorySessions: [
       ...state.repositorySessions.filter(({ id }) => id !== data.summary!.id),
@@ -831,6 +838,7 @@ export async function forkCurrentToConfirmedLeague(name: string): Promise<void> 
   const loaded: LoadData = {
     target: forkTarget,
     generation: data.generation,
+    sessionIdentity: data.sessionIdentity,
     payload,
     workflow: data.workflow,
     workflowGeneration: data.workflowGeneration,
@@ -956,6 +964,7 @@ export async function startWorking(replaceExisting = false, action?: {
   const interim: LoadData = {
     target: workingTarget,
     generation: saved.generation,
+    sessionIdentity: saved.sessionIdentity,
     payload,
     workflow: saved.workflow,
     workflowGeneration: saved.workflowGeneration,

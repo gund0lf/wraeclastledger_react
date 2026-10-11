@@ -22,6 +22,17 @@ import { migrateSessionEnvelope } from '../repository/legacySessionMigration';
 import { decodeSessionPayload, encodeSessionPayload } from '../repository/sessionPayloadCodec';
 import { DEFAULT_SETTINGS } from '../store/useSessionStore';
 import { EMPTY_MANUAL_RUN_TIMER } from './manualRunTimer';
+import { scriptTiming } from '../../../../scripts/vite-script-support.mjs';
+
+function timing(phase: string): void {
+  scriptTiming('portable-test', phase);
+}
+
+const CLI_TIMEOUT_MS = 30_000;
+// Measured parent fixture/assertion/cleanup work is about 6ms, rounded up to
+// 10ms. Add 1s for scheduling, pipe drain and reporting the child's own timeout.
+// Vite startup and repository work remain inside the unchanged 30s child budget.
+const CLI_OUTER_TIMEOUT_MS = CLI_TIMEOUT_MS + 10 + 1_000;
 
 const timerCases: Array<[string, JsonObject | undefined]> = [
   ['omitted legacy field', undefined],
@@ -34,8 +45,10 @@ const timerCases: Array<[string, JsonObject | undefined]> = [
 const roots: string[] = [];
 const repositories: FileSessionRepository[] = [];
 afterEach(async () => {
+  timing('afterEach.start');
   await Promise.all(repositories.splice(0).map((repository) => repository.releaseLock()));
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  timing('afterEach.end');
 });
 
 function session(timer: JsonObject | undefined, id = 'timer-regression'): JsonObject {
@@ -126,6 +139,7 @@ describe('portable-session verification contract', () => {
 
   it.each(['portable-round-trip-only', 'full-acceptance'])(
     'runs the actual %s CLI against all timer states with byte-identical inputs', async (mode) => {
+    timing('fixture.start');
     const file = join(await tempRoot(), 'timers.json');
     const sessions = timerCases.map(([, timer], index) => session(timer, `timer-${index}`));
     // The default acceptance suite must still exercise its original scenario gates.
@@ -135,10 +149,27 @@ describe('portable-session verification contract', () => {
     };
     const source = JSON.stringify({ version: '1.0', sessions });
     await writeFile(file, source, 'utf8');
-    const { stdout } = await promisify(execFile)(process.execPath, [
+    timing('fixture.end');
+    timing('child.start');
+    const execution = promisify(execFile)(process.execPath, [
       'scripts/run-vite-script.mjs', 'scripts/verify-wp14-session-exports.ts',
       ...(mode === 'portable-round-trip-only' ? ['--round-trip-only'] : []), file,
-    ], { cwd: resolve('.'), timeout: 30_000 });
+    ], { cwd: resolve('.'), timeout: CLI_TIMEOUT_MS });
+    if (process.env.WL_WP14_TIMING_DIAGNOSTICS === '1') {
+      let diagnosticBuffer = '';
+      execution.child.stderr?.on('data', (chunk: Buffer) => {
+        diagnosticBuffer += chunk.toString();
+        const lines = diagnosticBuffer.split('\n');
+        diagnosticBuffer = lines.pop() ?? '';
+        for (const line of lines) {
+          if (line.startsWith('[WP14_TIMING] ')) console.error(line);
+        }
+      });
+      execution.child.once('exit', () => timing('child.exit'));
+      execution.child.once('close', () => timing('child.close'));
+    }
+    const { stdout } = await execution;
+    timing('assertions.start');
     const report = JSON.parse(stdout);
     expect(report.mode).toBe(mode);
     expect(report.suppliedSessions).toBe(6);
@@ -151,5 +182,6 @@ describe('portable-session verification contract', () => {
     expect(report.sourceFilesModified).toBe(false);
     expect(report.inputs[0].sha256).toBe(createHash('sha256').update(source).digest('hex'));
     expect(await readFile(file, 'utf8')).toBe(source);
-  }, 30_000);
+    timing('assertions.end');
+  }, CLI_OUTER_TIMEOUT_MS);
 });

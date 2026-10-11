@@ -33,13 +33,13 @@ export const DISCORD_MSG_LIMIT = 2000;
 export const STRAT_NAME_MAX = 80;
 
 // ── Bot card header allowance (mirrors bot/card.js buildCard) ───────────────
-// Normal header worst case: 32-char username, 20-digit snowflake, update-run
+// Normal header worst case: 256 UTF-16 units plus up to 32 escaped underscores,
+// update-run
 // version line with the longest PostgreSQL int4 revision and a "28 Sep" stamp.
 // 📨 = envelope-with-arrow header emoji; · = middot.
-const WORST_USERNAME = 'x'.repeat(32);
-const WORST_SNOWFLAKE = '9'.repeat(20);
+const WORST_PUBLIC_NAME = 'x'.repeat(288);
 const WORST_HEADER =
-  '\uD83D\uDCE8 **Shared by:** ' + WORST_USERNAME + ' (<@' + WORST_SNOWFLAKE + '>)\n' +
+  '\uD83D\uDCE8 **Shared by:** ' + WORST_PUBLIC_NAME + '\n' +
   '*v2147483647 \u00B7 updated 28 Sep*\n' +
   '\n';
 

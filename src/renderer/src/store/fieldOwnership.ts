@@ -36,6 +36,7 @@ export const FIELD_OWNERSHIP = {
   repositorySessions: 'runtime-derived',
   repositorySizeBytes: 'runtime-derived',
   currentGeneration: 'runtime-derived',
+  currentSessionIdentity: 'runtime-derived',
   preferencesGeneration: 'runtime-derived',
   layoutGeneration: 'runtime-derived',
   saveStatus: 'runtime-derived',
