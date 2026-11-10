@@ -14,6 +14,11 @@ import {
 } from './exportBudget';
 
 describe('exportBudget', () => {
+  it('omits the unsupported chisel glyph in the desktop preview without changing the export', () => {
+    const raw = `${EXPORT_EMOJI.chisel.uni} **Chisel:** None\n${EXPORT_EMOJI.maps.uni} **Maps:** 12`
+    expect(compactPostedCardPreview(raw, null)).toBe(`**Chisel:** None\n${EXPORT_EMOJI.maps.uni} **Maps:** 12`)
+    expect(raw.startsWith(EXPORT_EMOJI.chisel.uni)).toBe(true)
+  })
   it('presents only authored session totals in Divines at the one-Divine boundary', () => {
     const raw = [
       '**Per Map Cost:** 70.8c | **Total Invest:** 1415.0c',

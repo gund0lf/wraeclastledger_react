@@ -19,6 +19,8 @@ import {
 } from '../../../shared/sessionMigration';
 import { decodeRecordV1, encodeRecordV1, type JsonObject } from '../../../shared/sessionRecord';
 import { migrateSessionEnvelope } from '../repository/legacySessionMigration';
+import { AuthorHandoffVault } from '../../../main/authorHandoffVault';
+import { AuthorHandoffService } from '../../../main/authorHandoffService';
 
 const roots: string[] = [];
 const NOW = new Date('2026-08-22T16:00:00.000Z');
@@ -72,6 +74,36 @@ function portableSession(id: string, name: string, marker: string) {
 }
 
 describe('WP14 concrete file repository', () => {
+  it('bootstraps a fresh profile after background sharing starts without creating a premature private root', async () => {
+    const profile = await tempProfile();
+    const encryptString = vi.fn((value: string) => Buffer.from(value));
+    const exchange = vi.fn();
+    const vault = new AuthorHandoffVault(join(profile, 'ledger-data', 'private'), {
+      isEncryptionAvailable: () => true,
+      encryptString,
+      decryptString: (value: Buffer) => value.toString('utf8'),
+    });
+    const tracker = new AuthorHandoffService({
+      origin: 'http://127.0.0.1:43181', vault, readClipboard: () => '', exchange,
+    });
+    const repository = new FileSessionRepository({ userDataPath: profile });
+    try {
+      await tracker.startOperationTracking();
+      expect(await readdir(profile)).toEqual([]);
+      const plan = await migrationPlan();
+      const first = await repository.bootstrap({ operation: 'bootstrap', migrationPlan: plan });
+      const verified = await repository.bootstrap({ operation: 'bootstrap', migrationPlan: plan });
+      expect(verified.sessions).toEqual(first.sessions);
+      expect(verified.sessions.length).toBeGreaterThan(0);
+      expect(verified.migrationCleanup).toEqual(first.migrationCleanup);
+      expect(encryptString).not.toHaveBeenCalled();
+      expect(exchange).not.toHaveBeenCalled();
+    } finally {
+      tracker.stopOperationTracking();
+      await repository.releaseLock();
+    }
+  });
+
   it('opens the recovery folder even when bootstrap has not completed', async () => {
     const profile = await tempProfile();
     const openPath = vi.fn().mockResolvedValue('');

@@ -58,7 +58,7 @@ it('keeps a canonical immutable snapshot; registration confirmation does not mak
   expect(deliberate.core).toBe(first.core)
   expect(() => parseShareIntent({ ...first, token: 'not-persistable' })).toThrow()
 })
-it.each([[false, false, true], [false, true, false], [true, false, true], [true, true, true]])(
+it.each([[false, false, true], [false, true, false], [true, false, false], [true, true, false]])(
   'defaults confirmation for continuation=%s saved=%s to %s', (continuation, saved, expected) => {
     expect(defaultShareConfirmation(continuation, saved)).toBe(expected)
   })
@@ -85,14 +85,14 @@ it('restores share-only fields through the queued read after reopen/restart with
   const first = await f.repository.prepareShareIntent(f.context.sessionId, savedCore, metadata, false, f.sessionIdentity)
   for (const context of [f.context.sessionId, f.context.sessionId.replace(':1', ':2')]) {
     const draft = await f.repository.readShareCore(context, f.sessionIdentity)
-    expect(draft).toEqual({ core: savedCore })
+    expect(draft).toEqual({ core: savedCore, author: metadata.author })
     expect(shareDraftFields(draft!.core)).toEqual({ title: 'TEST ONLY Alpha', notes: 'Synthetic note',
       tags: ['regular'], group: true, groupSize: 3, time: '22' })
   }
   await f.repository.releaseLock()
   const restarted = new FileSessionRepository({ userDataPath: f.root }); repositories.push(restarted)
   await restarted.bootstrap({ operation: 'bootstrap' })
-  expect(await restarted.readShareCore(f.context.sessionId, f.sessionIdentity)).toEqual({ core: savedCore })
+  expect(await restarted.readShareCore(f.context.sessionId, f.sessionIdentity)).toEqual({ core: savedCore, author: metadata.author })
   expect((await restarted.prepareShareIntent(f.context.sessionId, savedCore, metadata, false, f.sessionIdentity)).intentId)
     .toBe(first.intentId)
   await expect(restarted.readShareCore(f.context.sessionId, 'another-session')).rejects.toThrow('selected session')
@@ -114,11 +114,62 @@ it('share-draft IPC is a closed, identity-bound local read without activating on
   const request = { action: 'share-draft', sessionId: f.context.sessionId, sessionIdentity: f.sessionIdentity }
   expect(await service.handle(request)).toEqual({ ok: true, value: null })
   await f.repository.prepareShareIntent(f.context.sessionId, core, metadata, false, f.sessionIdentity)
-  expect(await service.handle(request)).toEqual({ ok: true, value: { core } })
+  expect(await service.handle(request)).toEqual({ ok: true, value: { core, author: metadata.author } })
   for (const bad of [{ ...request, extra: true }, { ...request, sessionIdentity: '' },
     { ...request, sessionId: 'x'.repeat(129) }, { ...request, sessionIdentity: 'old-view' }])
     expect((await service.handle(bad)).ok).toBe(false)
   expect(exchange).not.toHaveBeenCalled(); expect(readClipboard).not.toHaveBeenCalled()
+})
+it.each(['unavailable', 'corrupt'] as const)('keeps an existing protected draft intact when storage is %s', async fault => {
+  const f = await setup(), directory = join(f.root, 'vault')
+  const protection = { isEncryptionAvailable: () => true,
+    encryptString: (v: string) => Buffer.from(v), decryptString: (v: Buffer) => v.toString() }
+  const vault = new AuthorHandoffVault(directory, protection), epoch = randomUUID()
+  await f.repository.prepareShareIntent(f.context.sessionId, core, metadata, false, f.sessionIdentity)
+  const savedCore = JSON.stringify([4, 0, null, null, null, null, null, null, null, 'Protected title', 'Protected notes', null])
+  await vault.prepareDurable({ sessionIdentity: f.sessionIdentity, sessionId: f.context.sessionId,
+    targetGeneration: null, operation: { kind: 'publication', strategy_id: null, revision: null }, epoch,
+    core: savedCore, metadata }, async raw => {
+      const body = raw as { id: string; draft_revision: number }
+      return { id: body.id, epoch, draft_revision: body.draft_revision, kind: 'publication', state: 'ready', outcome: null }
+    })
+  const file = join(directory, 'author-handoffs.enc')
+  if (fault === 'corrupt') await writeFile(file, 'synthetic unreadable protected store')
+  const before = await readFile(file)
+  const exchange = vi.fn(), readClipboard = vi.fn(() => '')
+  const service = new AuthorHandoffService({ origin: 'http://127.0.0.1:43181',
+    vault: new AuthorHandoffVault(directory, { ...protection, isEncryptionAvailable: () => fault !== 'unavailable' }),
+    exchange, readClipboard, readShareCore: (...args) => f.repository.readShareCore(...args) })
+  expect(await service.handle({ action: 'share-draft', sessionId: f.context.sessionId, sessionIdentity: f.sessionIdentity }))
+    .toMatchObject({ ok: false, error: expect.stringContaining('Saved drafts and results have not been changed') })
+  expect(await readFile(file)).toEqual(before)
+  expect(exchange).not.toHaveBeenCalled(); expect(readClipboard).not.toHaveBeenCalled()
+  if (fault === 'unavailable') expect(await vault.readableDurableDraft(f.sessionIdentity))
+    .toMatchObject({ core: savedCore, author: metadata.author })
+})
+it('explains why copying is blocked without encryption and preserves an older local draft', async () => {
+  const f = await setup(), directory = join(f.root, 'vault'), epoch = randomUUID()
+  await f.repository.prepareShareIntent(f.context.sessionId, core, metadata, false, f.sessionIdentity)
+  const before = await f.repository.readShareCore(f.context.sessionId, f.sessionIdentity)
+  const exchange = vi.fn(async (url: string, init: RequestInit) => {
+    expect(init.method).toBe('GET')
+    expect(url.endsWith('/state')).toBe(true)
+    return { schema_version: 1, epoch, author_actions_available: true }
+  })
+  const encryptString = vi.fn(() => { throw Error('Encryption unavailable') }), readClipboard = vi.fn(() => '')
+  const service = new AuthorHandoffService({ origin: 'http://127.0.0.1:43181',
+    vault: new AuthorHandoffVault(directory, { isEncryptionAvailable: () => false, encryptString,
+      decryptString: () => { throw Error('No encrypted store') } }), exchange, readClipboard,
+    shareIntent: (...args) => f.repository.prepareShareIntent(...args),
+    readShareCore: (...args) => f.repository.readShareCore(...args) })
+  await service.handle({ action: 'activate', context: f.context })
+  expect(await service.handle({ action: 'publication', context: f.context, core, metadata,
+    confirmation: true, newIntent: false, sessionIdentity: f.sessionIdentity })).toEqual({ ok: false,
+    error: 'Sharing is unavailable because this PC cannot open secure encrypted storage. Saved drafts and results have not been changed. Restore access to your system’s secure storage before sharing.' })
+  expect(await f.repository.readShareCore(f.context.sessionId, f.sessionIdentity)).toEqual(before)
+  await expect(readFile(join(directory, 'author-handoffs.enc'))).rejects.toMatchObject({ code: 'ENOENT' })
+  expect(encryptString).not.toHaveBeenCalled(); expect(readClipboard).not.toHaveBeenCalled()
+  expect(exchange).toHaveBeenCalledTimes(1)
 })
 it('refuses another selected session and corrupt intent state without replacing it', async () => {
   const f = await setup()
@@ -131,16 +182,30 @@ it('refuses another selected session and corrupt intent state without replacing 
   await expect(f.repository.prepareShareIntent(f.context.sessionId, core, metadata, true)).rejects.toThrow()
   expect(await readFile(file, 'utf8')).toBe('synthetic damaged record')
 })
-it('production handoff persists before Copy; re-preparation and confirmation refresh retain the v6 intent', async () => {
+it('production handoff persists before Copy; re-preparation and name confirmation refresh retain the v7 intent', async () => {
   const f = await setup()
-  const exchange = vi.fn(async (_url: string, init: RequestInit) => init.method === 'DELETE'
-    ? { request_id: '11111111-1111-4111-8111-111111111111', status: 'cancelled' }
-    : { request_id: randomUUID(), expires_at: new Date(Date.now() + 600000).toISOString() })
+  const epoch = randomUUID()
+  const requests = new Map<string, string>()
+  const exchange = vi.fn(async (url: string, init: RequestInit) => {
+    if (url.endsWith('/state')) return { schema_version: 1, epoch, author_actions_available: true }
+    if (init.method === 'PUT' && url.endsWith('/shares')) {
+      const body = JSON.parse(init.body as string)
+      const saved = JSON.parse(await readFile(join(f.root, 'vault', 'author-handoffs.enc'), 'utf8'))
+      expect(saved.shares[0].id).toBe(body.id)
+      expect(saved.shares[0].proposed.revision).toBe(body.draft_revision)
+      return { id: body.id, epoch, draft_revision: body.draft_revision, kind: 'publication', state: 'ready', outcome: null }
+    }
+    if (init.method === 'DELETE') return { request_id: url.split('/').at(-1), status: 'cancelled' }
+    const client = JSON.parse(init.body as string).client_request_id
+    if (!requests.has(client)) requests.set(client, randomUUID())
+    return { request_id: requests.get(client), expires_at: new Date(Date.now() + 600000).toISOString() }
+  })
   const service = new AuthorHandoffService({ origin: 'http://127.0.0.1:43181',
     vault: new AuthorHandoffVault(join(f.root, 'vault'), { isEncryptionAvailable: () => true,
       encryptString: v => Buffer.from(v), decryptString: v => v.toString() }),
     readClipboard: () => { throw Error('No implicit clipboard') }, exchange,
-    shareIntent: (...args) => f.repository.prepareShareIntent(...args) })
+    shareIntent: (...args) => f.repository.prepareShareIntent(...args),
+    readShareCore: (...args) => f.repository.readShareCore(...args) })
   const prepare = async (confirmation: boolean, context = f.context) => {
     await service.handle({ action: 'activate', context })
     const result = await service.handle({ action: 'publication', context, core, metadata, confirmation, newIntent: false,
@@ -158,34 +223,54 @@ it('production handoff persists before Copy; re-preparation and confirmation ref
   }
   expect(exchange).not.toHaveBeenCalled()
   const first = await prepare(false)
-  expect(first[0]).toBe(6)
+  expect(first[0]).toBe(7)
   expect(await prepare(false)).toEqual(first)
+  expect((await service.handle({ action: 'cancel-publication', context: f.context, sessionIdentity: f.sessionIdentity })).ok).toBe(true)
   const confirmed = await prepare(true)
   expect(confirmed[2].share_intent_id).toBe(first[2].share_intent_id)
   expect(confirmed[2].confirmation_request_id).not.toBeNull()
-  const refreshed = await prepare(true, { ...f.context, generation: randomUUID() })
+  const next = { ...f.context, generation: randomUUID() }
+  const refreshed = await prepare(true, next)
   expect(refreshed[2].share_intent_id).toBe(first[2].share_intent_id)
-  expect(refreshed[2].confirmation_request_id).not.toBe(confirmed[2].confirmation_request_id)
+  expect(refreshed[2].confirmation_request_id).toBe(confirmed[2].confirmation_request_id)
+  expect((await service.handle({ action: 'cancel', context: next, requestId: refreshed[2].confirmation_request_id })).ok).toBe(true)
+  const replacement = await prepare(true, next)
+  expect(replacement[2].share_intent_id).toBe(first[2].share_intent_id)
+  expect(replacement[2].confirmation_request_id).not.toBe(confirmed[2].confirmation_request_id)
 })
-it('an uncertain confirmation preparation keeps its persisted identity for a retry', async () => {
+it('an uncertain durable preparation keeps its persisted identity for a retry through the real selected repository', async () => {
   const f = await setup()
-  const exchange = vi.fn().mockRejectedValueOnce(Error('synthetic offline'))
-    .mockResolvedValue({ request_id: randomUUID(), expires_at: new Date(Date.now() + 600000).toISOString() })
+  const epoch = randomUUID(), proposals: Record<string, unknown>[] = []
+  const exchange = vi.fn(async (url: string, init: RequestInit) => {
+    if (url.endsWith('/state')) return { schema_version: 1, epoch, author_actions_available: true }
+    if (url.endsWith('/shares') && init.method === 'PUT') {
+      const body = JSON.parse(init.body as string)
+      proposals.push(body)
+      const persisted = JSON.parse(await readFile(join(f.root, 'vault', 'author-handoffs.enc'), 'utf8'))
+      expect(persisted.shares[0].id).toBe(body.id)
+      if (proposals.length === 1) throw Error('synthetic lost preparation response')
+      return { id: body.id, epoch, draft_revision: body.draft_revision, kind: 'publication', state: 'ready', outcome: null }
+    }
+    throw Error('Unexpected route')
+  })
   const service = new AuthorHandoffService({ origin: 'http://127.0.0.1:43181',
     vault: new AuthorHandoffVault(join(f.root, 'vault'), { isEncryptionAvailable: () => true,
       encryptString: v => Buffer.from(v), decryptString: v => v.toString() }),
     readClipboard: () => { throw Error('No clipboard') }, exchange,
-    shareIntent: (...args) => f.repository.prepareShareIntent(...args) })
+    shareIntent: (...args) => f.repository.prepareShareIntent(...args),
+    readShareCore: (...args) => f.repository.readShareCore(...args) })
   await service.handle({ action: 'activate', context: f.context })
-  const request = { action: 'publication', context: f.context, core, metadata, confirmation: true,
-    sessionIdentity: f.sessionIdentity }
-  expect((await service.handle({ ...request, newIntent: true })).ok).toBe(false)
-  const persisted = await f.repository.prepareShareIntent(f.context.sessionId, core, metadata, false)
-  const retry = await service.handle({ ...request, newIntent: false })
+  const request = { action: 'publication', context: f.context, core, metadata, confirmation: false,
+    sessionIdentity: f.sessionIdentity, newIntent: false }
+  expect((await service.handle(request)).ok).toBe(false)
+  expect(proposals).toHaveLength(1)
+  const retry = await service.handle(request)
   expect(retry.ok).toBe(true)
   if (!retry.ok) throw Error(retry.error)
   const decoded = JSON.parse(brotliDecompressSync(Buffer.from((retry.value as { token: string }).token.slice(4), 'base64url')).toString())
-  expect(decoded[2].share_intent_id).toBe(persisted.intentId)
+  expect(decoded[2].share_intent_id).toBe(proposals[0].id)
+  expect(proposals).toHaveLength(2)
+  expect(proposals[1]).toEqual(proposals[0])
 })
 
 it('keeps the same publication when an unnamed session is named or a saved session is duplicated', async () => {

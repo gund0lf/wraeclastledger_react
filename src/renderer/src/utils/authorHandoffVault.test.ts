@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -23,6 +23,32 @@ const protection = {
     return Buffer.concat([decipher.update(value.subarray(28)), decipher.final()]).toString('utf8')
   }
 }
+it('startup leaves operation-only vault bytes unchanged and removes only interrupted name requests', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'wl-vault-startup-'))
+  directories.push(dir)
+  const vault = new AuthorHandoffVault(dir, protection)
+  const binding = { sessionIdentity: 'saved-session', payloadSha256: 'a'.repeat(64),
+    operation: { kind: 'publication' as const, strategy_id: null, revision: null }, targetGeneration: null }
+  const prepared = await vault.prepare('session', 'operation', binding)
+  const operationId = randomUUID(), expiresAt = new Date(Date.now() + 600000).toISOString()
+  await vault.bind(prepared.client_request_id, operationId, expiresAt)
+  const file = join(dir, 'author-handoffs.enc'), before = await readFile(file)
+  const cancel = vi.fn(async () => undefined)
+  const restarted = new AuthorHandoffVault(dir, protection)
+  await restarted.discardInterrupted(cancel)
+  expect(await readFile(file)).toEqual(before)
+  expect(cancel).not.toHaveBeenCalled()
+  const readers = await restarted.operationReaders()
+  expect(readers).toEqual([{ requestId: operationId, expiresAt, binding, receipt: null }])
+  const legacy = await restarted.prepare('other-session', 'name-verification')
+  const legacyId = randomUUID()
+  await restarted.bind(legacy.client_request_id, legacyId)
+  await restarted.discardInterrupted(cancel)
+  expect(cancel).toHaveBeenCalledExactlyOnceWith(legacyId, expect.stringMatching(/^Handoff /))
+  expect(await restarted.operationReaders()).toEqual(readers)
+  expect(await restarted.prepare('session', 'operation', binding)).toEqual(prepared)
+})
+
 it('keeps capabilities encrypted, stable across restart, and bound to one operation', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'wl-vault-test-'))
   directories.push(dir)
@@ -101,7 +127,7 @@ it('fails visibly without protected storage and caps pending requests without ev
       'session',
       'one'
     )
-  ).rejects.toThrow('Protected storage')
+  ).rejects.toThrow('Saved drafts and results have not been changed')
   const vault = new AuthorHandoffVault(dir, protection)
   const first = await vault.prepare('session', 'one')
   await vault.prepare('session', 'two')

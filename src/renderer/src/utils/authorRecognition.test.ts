@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyAuthorRecovery,
+  acceptExactNameVerification,
   authorConfirmationNeedsReview,
   canPrepareAuthorAction,
   emptyAuthorPreferences,
@@ -21,6 +22,25 @@ const receipt: AuthorReceipt = {
   registrations: [{ registration_id: id, name: 'Example', status: 'active' }]
 }
 describe('public author recognition', () => {
+  it('saves only the exactly typed, privately revalidated name without changing the default or other names', () => {
+    const current = { ...emptyAuthorPreferences(), defaultRegistrationId: second,
+      registrations: [{ registrationId: second, name: 'Second', epoch, confirmed: true }] }
+    const saved = acceptExactNameVerification(current, receipt, 'Example')!
+    expect(saved.defaultRegistrationId).toBe(second)
+    expect(saved.registrations).toEqual([...current.registrations, { registrationId: id, name: 'Example', epoch, confirmed: true }])
+    expect(current.registrations).toHaveLength(1)
+    expect(acceptExactNameVerification(emptyAuthorPreferences(), receipt, 'Example')?.defaultRegistrationId).toBeNull()
+    expect(acceptExactNameVerification(saved, receipt, 'Example')).toEqual(saved)
+  })
+  it('keeps changed spelling, multiple names, a replaced registration and changed epochs in review', () => {
+    expect(acceptExactNameVerification(emptyAuthorPreferences(), receipt, 'example')).toBeNull()
+    expect(acceptExactNameVerification(emptyAuthorPreferences(), { ...receipt, registrations: [] }, 'Example')).toBeNull()
+    const other = { registrationId: second, name: 'Example', epoch, confirmed: true }
+    expect(acceptExactNameVerification({ ...emptyAuthorPreferences(), registrations: [other] }, receipt, 'Example')).toBeNull()
+    expect(acceptExactNameVerification({ ...emptyAuthorPreferences(), registrations: [{ ...other, name: 'Other', epoch: second }] }, receipt, 'Example')).toBeNull()
+    expect(acceptExactNameVerification(emptyAuthorPreferences(), { ...receipt, registrations: [...receipt.registrations,
+      { registration_id: second, name: 'Other', status: 'active' }] }, 'Example')).toBeNull()
+  })
   it('accepts the same confirmation after persisted JSON reorders registration properties', () => {
     const redelivered: AuthorReceipt = {
       ...receipt,

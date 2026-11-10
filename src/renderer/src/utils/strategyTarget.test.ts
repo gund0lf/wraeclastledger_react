@@ -33,10 +33,12 @@ describe('atomic saved strategy targets', () => {
       updateTargetStrategyId: null, evidenceTargetExpectedRevision: null })
     expect(withStrategyTarget(source, null).strategyTarget).toBeNull()
   })
-  it('does not acknowledge another operation or revision, and retains the old pin after success', () => {
+  it('records the completed revision without arming another operation', () => {
     expect(acknowledgeStrategyTarget(target, 'other', id, 4)).toBe(target)
     expect(acknowledgeStrategyTarget(target, id, id, 5)).toBe(target)
-    expect(acknowledgeStrategyTarget(target, id, id, 4)).toEqual({ ...target, state: 'acknowledged' })
+    const completed = acknowledgeStrategyTarget(target, id, id, 4)
+    expect(completed).toEqual({ ...target, revision: 4, state: 'acknowledged' })
+    expect(acknowledgeStrategyTarget(completed, id, id, 5)).toBe(completed)
   })
   it('fails closed for malformed saved records instead of silently clearing intent', () => {
     expect(() => migrateStrategyTarget({ strategyTarget: { ...target, scope: 'frozen' } })).toThrow()

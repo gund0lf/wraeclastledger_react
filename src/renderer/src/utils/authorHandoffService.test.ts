@@ -69,7 +69,7 @@ it('masks malformed public responses and network errors without retrying another
     expect(fetcher).toHaveBeenCalledTimes(i + 1)
   }
 })
-it.each(['headers', 'body'] as const)('bounds a hanging public response at the %s stage, then retries without changing endpoints', async stage => {
+it.each(['headers', 'body'] as const)('bounds a hanging continuation version response at the %s stage, then retries without changing endpoints', async stage => {
   const fetcher = vi.fn(async (_url: string, init: RequestInit): Promise<Response> => {
     const signal = init.signal!
     if (stage === 'headers') return new Promise((_resolve, reject) => {
@@ -87,7 +87,7 @@ it.each(['headers', 'body'] as const)('bounds a hanging public response at the %
     setTimeout(() => controller.abort(new DOMException('private timeout detail', 'TimeoutError')), delay)
     return controller.signal
   })
-  const path = '/web/v2/strategies?limit=20'
+  const path = '/web/v2/strategies/' + randomUUID()
   let completed = false
   const pending = service.handle({ action: 'read', path }).then(r => { completed = true; return r })
   await vi.advanceTimersByTimeAsync(9999)
