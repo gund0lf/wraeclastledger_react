@@ -34,7 +34,7 @@ it.each([
   [404, { error: 'not_found', field: 'strategy_id', reason: 'private detail' }, 'This strategy or retrospective is no longer available. Refresh the results.'],
   [409, { error: 'refresh_required', field: 'cursor', reason: 'private detail' }, 'The strategy results changed. Refresh to continue.'],
   [410, { error: 'update_required', message: 'private detail' }, 'Update WraeclastLedger to the latest stable version to continue browsing. Local tracking and saved sessions are still available.'],
-  [429, { error: 'private_upstream_detail' }, 'Too many strategy requests. Wait briefly and retry.'],
+  [429, { error: 'private_upstream_detail' }, 'Too many strategy requests. The server did not provide a retry time; try again later.'],
   [503, { error: 'online_strategies_temporarily_unavailable', message: 'private detail' }, 'Online strategies are temporarily unavailable. Retry later. Local tracking and saved sessions are still available.'],
 ] as const)('keeps a failed public read (%s) on its exact endpoint and masks the error body', async (status, error, message) => {
   const path = '/web/v2/retrospectives/11111111-1111-4111-8111-111111111111/strategies?limit=20'
@@ -372,6 +372,36 @@ it('bounds streaming responses and rejects redirects without leaking upstream er
   await expect(authorJsonFetch(origin, {}, f as typeof fetch)).rejects.toThrow('Oversized')
   await expect(authorJsonFetch(origin, {}, vi.fn(async () => new Response('{"error":"private-secret"}', { status: 500 })) as typeof fetch))
     .rejects.toThrow('could not be completed')
+})
+it.each([[1, '1 minute'], [61, '2 minutes'], [7200, '120 minutes'], [86400, '1440 minutes']])(
+  'shows the bounded server retry delay (%s seconds) without upstream message text', async (seconds, duration) => {
+    const response = vi.fn(async () => new Response(JSON.stringify({
+      error: 'author_rate_limited', message: 'untrusted server detail',
+    }), { status: 429, headers: { 'Retry-After': String(seconds) } }))
+    await expect(authorJsonFetch(origin, {}, response as typeof fetch)).rejects.toMatchObject({
+      code: 'author_rate_limited', status: 429, terminal: false, retryAfterSeconds: seconds,
+      message: `Too many sharing requests. Try again in ${duration}.`,
+    })
+  })
+it.each(['private-token', '-1', '0', '99999999', '1.5', ''])('rejects an invalid retry time without echoing it: %s', async value => {
+  const response = vi.fn(async () => new Response('not JSON', { status: 429, headers: { 'Retry-After': value } }))
+  await expect(authorJsonFetch(origin, {}, response as typeof fetch)).rejects.toMatchObject({
+    terminal: false, status: 429,
+    message: 'Too many sharing requests. The server did not provide a retry time; try again later.',
+  })
+})
+it('keeps retry timing for a public strategy read and explains pending name requests', async () => {
+  const fetcher = vi.fn(async () => new Response('{"error":"author_rate_limited"}', {
+    status: 429, headers: { 'Retry-After': '91' },
+  }))
+  const { service } = await setup((url, init) => authorJsonFetch(url, init, fetcher))
+  expect(await service.handle({ action: 'read', path: '/web/v2/strategies' }))
+    .toEqual({ ok: false, error: 'Too many strategy requests. Try again in 2 minutes.' })
+  const response = vi.fn(async () => new Response('{"error":"author_pending_limit"}', {
+    status: 429, headers: { 'Retry-After': '580' },
+  }))
+  await expect(authorJsonFetch(origin, {}, response as typeof fetch))
+    .rejects.toThrow('Two name requests are still open. Finish one, or try again in 10 minutes.')
 })
 it('keeps presentation preferences closed and selected management scope canonical', () => {
   expect(parseAuthorPreferences(undefined)).toEqual(emptyAuthorPreferences())

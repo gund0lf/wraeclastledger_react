@@ -13,6 +13,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.98',
     date: '',
     changes: [
+      'Unposted shares no longer use up a draft allowance. Copying an unchanged share again does not consume the preparation allowance, and sharing rate limits now show how long to wait.',
       'After copying an added run or replacement, Share correctly shows Copy again and the channel-paste hint. Unchanged copies keep the same prepared share; actual edits still show Copy updated share.',
       'If this PC cannot open secure encrypted storage, Share explains why sharing is unavailable, keeps saved drafts and results, and prevents overwriting them. Older local drafts remain readable when no protected sharing store exists.',
       'Switching sessions while Share is loading keeps delayed sharing details with their original session.',

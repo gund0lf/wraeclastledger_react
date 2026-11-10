@@ -17,7 +17,8 @@ const validDate = (v: unknown): v is string => typeof v === 'string' && v.length
 const id = (v: unknown): v is string => typeof v === 'string' && AUTHOR_UUID.test(v)
 
 export class AuthorExchangeError extends Error {
-  constructor(message: string, readonly terminal = false, readonly status?: number, readonly code?: string) { super(message) }
+  constructor(message: string, readonly terminal = false, readonly status?: number, readonly code?: string,
+    readonly retryAfterSeconds?: number) { super(message) }
 }
 const messages: Record<string, string> = {
   share_already_accepted: 'This share is already being processed or shared. Check its result in the Strategy Browser, then use Replace to change it.',
@@ -37,7 +38,6 @@ const publicReadMessages: Record<number, string> = {
   404: 'This strategy or retrospective is no longer available. Refresh the results.',
   409: 'The strategy results changed. Refresh to continue.',
   410: 'Update WraeclastLedger to the latest stable version to continue browsing. Local tracking and saved sessions are still available.',
-  429: 'Too many strategy requests. Wait briefly and retry.',
   503: messages.online_strategies_temporarily_unavailable,
 }
 /** Accept only the known error envelopes. Their explanatory text is never shown. */
@@ -47,14 +47,27 @@ function errorCode(value: unknown): string | undefined {
     typeof value.error !== 'string' || !/^[a-z_]{1,80}$/.test(value.error)) return undefined
   return value.error
 }
-function exchangeError(status: number, parsed?: unknown): AuthorExchangeError {
+function retrySeconds(value: string | null): number | undefined {
+  if (!value || !/^[0-9]{1,5}$/.test(value)) return undefined
+  const seconds = Number(value)
+  return seconds >= 1 && seconds <= 86400 ? seconds : undefined
+}
+function rateLimitMessage(seconds: number | undefined, subject: string): string {
+  if (seconds === undefined) return `Too many ${subject} requests. The server did not provide a retry time; try again later.`
+  const minutes = Math.ceil(seconds / 60)
+  return `Too many ${subject} requests. Try again in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`
+}
+function exchangeError(status: number, parsed?: unknown, retryAfter?: string | null): AuthorExchangeError {
   const code = errorCode(parsed)
+  const seconds = retrySeconds(retryAfter ?? null)
   return new AuthorExchangeError(status === 429
-    ? 'Too many author requests. Wait before preparing another.'
+    ? code === 'author_pending_limit' && seconds !== undefined
+      ? `Two name requests are still open. Finish one, or try again in ${Math.ceil(seconds / 60)} ${seconds <= 60 ? 'minute' : 'minutes'}.`
+      : rateLimitMessage(seconds, 'sharing')
     : code && Object.hasOwn(messages, code) ? messages[code]
     : status === 503 ? messages.author_service_unavailable
     : 'The author request could not be completed. Check its status or retry later.',
-  code === 'handoff_expired' || code === 'handoff_unavailable', status, code)
+  code === 'handoff_expired' || code === 'handoff_unavailable', status, code, seconds)
 }
 /** Bounded streaming reader: an untrusted error body is never relayed or logged. */
 export async function authorJsonFetch(url: string, init: RequestInit, fetcher = fetch, maxBytes = 16384): Promise<unknown> {
@@ -76,10 +89,10 @@ export async function authorJsonFetch(url: string, init: RequestInit, fetcher = 
     } finally { await reader.cancel().catch(() => undefined) }
     parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'))
   } catch (error) {
-    if (!response.ok) throw exchangeError(response.status)
+    if (!response.ok) throw exchangeError(response.status, undefined, response.headers.get('Retry-After'))
     throw error
   }
-  if (!response.ok) throw exchangeError(response.status, parsed)
+  if (!response.ok) throw exchangeError(response.status, parsed, response.headers.get('Retry-After'))
   return parsed
 }
 
@@ -352,7 +365,8 @@ export class AuthorHandoffService {
       try { return await (this.options.exchange ?? ((u, init) => authorJsonFetch(u, init, fetch, 2 * 1024 * 1024)))(url.href, { method: 'GET' }) }
       catch (error) {
         throw new AuthorExchangeError(error instanceof AuthorExchangeError && error.status !== undefined
-          ? publicReadMessages[error.status] ?? 'Could not load the public strategy data. Refresh and retry.'
+          ? error.status === 429 ? rateLimitMessage(error.retryAfterSeconds, 'strategy')
+            : publicReadMessages[error.status] ?? 'Could not load the public strategy data. Refresh and retry.'
           : 'Could not reach online strategies. Retry later. Local tracking and saved sessions are still available.')
       }
     }
