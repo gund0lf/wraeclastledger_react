@@ -195,7 +195,10 @@ export function compactPostedCardPreview(
   summary: LootSummary | null,
 ): string {
   const caption = lootCaption(summary);
-  const visible = presentAuthoredTotals(visibleCardExport(exportText));
+  // Preview-only fallback for a glyph missing in some desktop emoji fonts.
+  // The submission bytes and Discord decoration contract remain unchanged.
+  const visible = presentAuthoredTotals(visibleCardExport(exportText))
+    .replace(/^\uD83E\uDEA8\s*(?=\*\*Chisel:)/gm, '');
   return `${caption}${caption ? '\n' : ''}${visible}`;
 }
 

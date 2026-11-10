@@ -28,6 +28,7 @@ import {
 } from './layout/panelLayoutState';
 import { retryRepositorySave, saveRepositoryLayout } from './repository/sessionRepositoryRuntime';
 import { OverlayController } from './components/OverlayController';
+import { ShareResultNotice } from './components/ShareResultNotice';
 import { ClipboardCaptureGuard } from '../../shared/clipboardCapture';
 
 // APP_VERSION imported from UpdateBanner.tsx — single source of truth
@@ -272,6 +273,7 @@ function App({ initialLayoutRawValue }: { initialLayoutRawValue: string | null }
   return (
     <Box style={{ width: '100vw', height: '100vh', background: '#1A1B1E', display: 'flex', flexDirection: 'column' }}>
       <OverlayController />
+      <ShareResultNotice />
       {/* Toolbar */}
       <Box style={{
         height: 30, background: '#141517', borderBottom: '1px solid #2C2E33',

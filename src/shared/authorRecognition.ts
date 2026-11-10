@@ -27,6 +27,24 @@ export function authorConfirmationNeedsReview(previous: AuthorReceipt, refreshed
   return previous.epoch !== refreshed.epoch ||
     canonicalAuthorJson(previous.registrations) !== canonicalAuthorJson(refreshed.registrations)
 }
+
+/** Only the explicitly entered name may be saved without another review.
+ * This runs after main revalidates the private code, never from public status.
+ * Other names and the existing default are preserved; identity/epoch changes
+ * still require the ordinary recovery review. */
+export function acceptExactNameVerification(current: AuthorPreferences, receipt: AuthorReceipt,
+  expectedName: string): AuthorPreferences | null {
+  const preview = previewAuthorRecovery(current, receipt)
+  if (preview.confirmed.length !== 1) return null
+  const value = preview.confirmed[0]
+  if (value.name !== expectedName || value.obsoleteRegistrationIds.length ||
+    current.registrations.some(r => r.confirmed && r.epoch !== receipt.epoch)) return null
+  const { registrationId, name, epoch, confirmed } = value
+  const registrations = current.registrations.filter(r => r.registrationId !== registrationId)
+  registrations.push({ registrationId, name, epoch, confirmed })
+  if (registrations.length > 500) throw new Error('Forget unused local names before verifying more.')
+  return { ...current, registrations }
+}
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 export const emptyAuthorPreferences = (): AuthorPreferences => ({
   schemaVersion: 1,

@@ -6,7 +6,7 @@ import { useSessionStore } from '../store/useSessionStore'
 import { safeStrategyReader } from '../utils/safeStrategyReader'
 import { bindSafeTarget, refreshSafeAuthorState } from '../utils/safeStrategyTarget'
 
-export function SafeTargetReview({ target }: { target: StrategyTarget }) {
+export function SafeTargetReview({ target, disabled = false }: { target: StrategyTarget; disabled?: boolean }) {
   const [review, setReview] = useState<{ detail: SafeDetail; operation: 'replace' | 'evidence' } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -42,16 +42,16 @@ export function SafeTargetReview({ target }: { target: StrategyTarget }) {
     ? [{ value: target.replace, operation: 'replace' as const }, { value: target.evidence, operation: 'evidence' as const }].filter(v => v.value)
     : [{ value: target, operation: target.operation }]
   return <Alert color="gray" p="xs"><Stack gap="xs">
-    <Text size="sm" fw={600}>{target.state === 'legacy_review' ? 'Saved target needs review' : target.state === 'acknowledged' ? 'Submission confirmed — review before continuing again' : 'Saved continuation target'}</Text>
+    <Text size="sm" fw={600}>{target.state === 'legacy_review' ? 'Saved target needs review' : target.state === 'acknowledged' ? 'Update saved' : target.operation === 'evidence' ? 'Add a run' : 'Replace strategy'}</Text>
     {target.state !== 'legacy_review' && <Text size="xs" fw={600}>{target.operation === 'replace'
-      ? 'This share replaces the saved strategy with a new revision; it does not create a separate strategy.'
-      : 'This share adds another run to the saved strategy; it does not create a separate strategy.'}</Text>}
-    {candidates.map(c => <Group key={c.operation}><Text size="xs">{c.value!.title || c.value!.id} · {c.operation}</Text>
-      <Button size="compact-xs" variant="default" loading={busy} onClick={() => void inspect(c.value!.id, c.operation)}>Review current revision</Button></Group>)}
-    <Text size="xs">{target.state !== 'legacy_review' && `Pinned revision ${target.revision}. `}Your maps, loot and prices are retained if this target cannot be checked. A timeout does not mean the Discord submission failed.</Text>
+      ? 'Replaces the results on the same strategy and Discord card.'
+      : 'Adds this run to the same strategy and Discord card.'}</Text>}
+    {candidates.map(c => <Group key={c.operation}><Text size="xs">{c.value!.title || 'Saved strategy'}{target.state !== 'legacy_review' ? ` · revision ${target.revision}` : ''}</Text>
+      <Button size="compact-xs" variant="default" disabled={disabled} loading={busy} onClick={() => void inspect(c.value!.id, c.operation)}>Check latest version</Button></Group>)}
+    {target.state === 'acknowledged' && <Text size="xs">To submit another update, check the latest version and choose it below.</Text>}
     {review && <><Text size="xs">{review.detail.title} · current revision {review.detail.revision} · {review.detail.attribution?.display_name ?? 'Author name not set'}</Text>
-      <Button size="xs" variant="light" loading={busy} onClick={() => void bind()}>Use this version for my next share</Button></>}
+      <Button size="xs" variant="light" disabled={disabled} loading={busy} onClick={() => void bind()}>Use this version for my next share</Button></>}
     {error && <Text size="xs" c="red">{error}</Text>}
-    <Button size="compact-xs" variant="subtle" onClick={() => { active.current.generation++; useSessionStore.getState().updateSetting('strategyTarget', null) }}>Clear target and share as a separate strategy</Button>
+    <Button size="compact-xs" variant="subtle" disabled={disabled} onClick={() => { active.current.generation++; useSessionStore.getState().updateSetting('strategyTarget', null) }}>Clear target and share as a separate strategy</Button>
   </Stack></Alert>
 }

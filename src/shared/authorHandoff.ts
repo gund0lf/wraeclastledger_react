@@ -1,6 +1,7 @@
 import type { AuthorReceipt } from './authorRecognition'
 import type { AuthorSubmissionMetadata } from './authorSubmission'
 import { normalizePublicAuthorName } from './authorNames'
+import type { DurableShareView } from './durableShare'
 
 export const AUTHOR_HANDOFF_CHANNEL = 'author-handoff:request'
 export const AUTHOR_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -15,10 +16,18 @@ export type AuthorRequest =
   | { action: 'available' }
   | { action: 'read'; path: string }
   | { action: 'state' }
+  | { action: 'share-results' }
+  | { action: 'share-refresh' }
+  | { action: 'share-noticed'; shareId: string }
+  | { action: 'share-copied'; context: AuthorContext; sessionIdentity: string; shareId: string; draftRevision: number }
+  | { action: 'share-result'; context: AuthorContext; sessionIdentity: string; targetGeneration: string | null }
+  | { action: 'resume-name'; context: AuthorContext; sessionIdentity: string }
   | { action: 'share-draft'; sessionId: string; sessionIdentity: string }
   | { action: 'activate'; context: AuthorContext | null }
   | { action: 'prepare'; context: AuthorContext; operation: AuthorManagement }
-  | { action: 'publication'; context: AuthorContext; core: string; metadata: AuthorSubmissionMetadata; confirmation: boolean; newIntent?: boolean; sessionIdentity?: string }
+  | { action: 'publication'; context: AuthorContext; core: string; metadata: AuthorSubmissionMetadata; confirmation: boolean; newIntent?: boolean; sessionIdentity?: string; targetGeneration?: string | null }
+  | { action: 'resume-publication' | 'cancel-publication'; context: AuthorContext; sessionIdentity: string }
+  | { action: 'acknowledge-operation' | 'finish-operation'; context: AuthorContext; requestId: string }
   | { action: 'status' | 'paste' | 'accept' | 'cancel'; context: AuthorContext; requestId: string }
 export interface AuthorServiceState { schema_version: 1; epoch: string; author_actions_available: boolean }
 export type AuthorOutcome =
@@ -31,15 +40,37 @@ export interface AuthorStatus {
   expires_at: string; outcome: AuthorOutcome | null
 }
 export interface PreparedAuthorRequest { request_id: string; client_request_id: string; expires_at: string }
+export interface PublicationOperation {
+  kind: 'publication' | 'replace' | 'evidence'
+  strategy_id: string | null
+  revision: number | null
+}
+export interface ResumedPublication {
+  request: PreparedAuthorRequest
+  mode: 'operation'
+  operation: PublicationOperation
+  targetGeneration: string | null
+  status: AuthorStatus | null
+}
 export interface AuthorConfirmation extends AuthorReceipt { outcome: AuthorOutcome }
 export interface AuthorResults {
   available: boolean
   read: unknown
   state: AuthorServiceState
-  'share-draft': { core: string } | null
+  'share-results': DurableShareView[]
+  'share-refresh': null
+  'share-noticed': null
+  'share-copied': DurableShareView
+  'share-result': DurableShareView | null
+  'resume-name': PreparedAuthorRequest | null
+  'share-draft': { core: string; author?: AuthorSubmissionMetadata['author'] } | null
   activate: null
   prepare: PreparedAuthorRequest
-  publication: { token: string; request: PreparedAuthorRequest | null }
+  publication: { token: string; request: PreparedAuthorRequest | null; acknowledgement: 'name' | 'operation' | 'untracked'; reason?: string; share?: DurableShareView }
+  'resume-publication': ResumedPublication | null
+  'cancel-publication': { stopped: true; remoteCancellation: 'confirmed' | 'unknown' | 'not_needed' }
+  'acknowledge-operation': AuthorStatus
+  'finish-operation': null
   status: AuthorStatus
   paste: AuthorConfirmation
   accept: AuthorConfirmation

@@ -95,6 +95,7 @@ export function SafeStrategyBrowser({ onShare, onImport, applySetup, runAction, 
   const nonce = useSessionStore(s => s.sessionNonce)
   const [actions] = useState(() => new SafeStrategyActions(() => useSessionStore.getState().sessionNonce))
   useEffect(() => { void refreshSafeAuthorState().catch(() => undefined) }, [])
+  useEffect(() => { void window.api.authorHandoff({ action: 'share-refresh' }).catch(() => undefined) }, [])
   useEffect(() => { setCandidate(null); setNaming(null) }, [nonce, view])
   useEffect(() => {
     if (view !== 'frozen') return
@@ -196,10 +197,9 @@ export function SafeStrategyBrowser({ onShare, onImport, applySetup, runAction, 
     <Modal opened={!!candidate} onClose={() => setCandidate(null)} title={`Continue ${candidate?.title ?? 'strategy'}`}>
       <Stack><Text size="sm">What should the next share do?</Text><SegmentedControl value={operation} onChange={v => setOperation(v as 'replace' | 'evidence')}
         data={[{ value: 'evidence', label: 'Add another run' }, { value: 'replace', label: 'Replace strategy' }]} />
-        <Text size="xs">{operation === 'evidence' ? 'Adds a compatible run with its own recorded prices.' : 'Your next share publishes a new version and starts its combined results with this run. Votes stay.'}</Text>
+        <Text size="xs">{operation === 'evidence' ? 'Adds a compatible run with its own recorded prices.' : 'Replaces this strategy’s runs with this session. Votes are kept.'}</Text>
         <SegmentedControl value={source} onChange={setSource} data={[{ value: 'current', label: 'Use current session' }, { value: 'fresh', label: 'Start fresh session' }]} />
         <Text size="xs">{source === 'current' ? 'Keeps maps, loot and authored prices. Sharing checks compatibility again.' : 'Loads reusable settings into a fresh session with empty prices.'}</Text>
-        <Text size="xs" fw={600}>Nothing is selected until you save this choice below. Closing this dialog leaves your previous share target unchanged.</Text>
         <Button onClick={continueRun}>Save choice and continue strategy</Button></Stack>
     </Modal>
   </Card>

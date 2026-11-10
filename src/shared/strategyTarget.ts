@@ -55,5 +55,6 @@ export function withStrategyTarget<T extends object>(settings: T, target: Strate
 export function acknowledgeStrategyTarget(target: StrategyTarget | null, generation: string, id: string, committedRevision: number): StrategyTarget | null {
   if (!target || target.state !== 'ready' || target.generation !== generation || target.id !== id ||
     committedRevision !== target.revision + (target.operation === 'replace' ? 1 : 0)) return target
-  return { ...target, state: 'acknowledged' }
+  // Remember the exact completed revision without arming a further mutation.
+  return { ...target, revision: committedRevision, state: 'acknowledged' }
 }

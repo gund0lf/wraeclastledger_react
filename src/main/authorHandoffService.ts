@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
-import { AuthorHandoffVault } from './authorHandoffVault'
+import { AuthorHandoffVault, ProtectedShareStorageError, type OperationBinding, type NameShareBinding } from './authorHandoffVault'
+import { DurableShareTracker } from './durableShareTracker'
 import { encodeDiscordShareBrotli } from './discordShareCompression'
 import { buildAuthorSubmission, canonicalAuthorJson } from '../shared/authorSubmission'
 import { ShareIntentError, type ShareIntentSnapshot } from '../shared/shareIntent'
@@ -7,7 +8,7 @@ import { emptyAuthorPreferences, previewAuthorRecovery } from '../shared/authorR
 import {
   AUTHOR_UUID, closedAuthorObject as exact, parseAuthorOutcome, validAuthorContext,
   validateAuthorManagement, type AuthorContext, type AuthorConfirmation, type AuthorStatus,
-  type PreparedAuthorRequest, type AuthorServiceState,
+  type PreparedAuthorRequest, type AuthorServiceState, type PublicationOperation, type ResumedPublication, type AuthorResults,
 } from '../shared/authorHandoff'
 
 const digest = (domain: string, text: string) => createHash('sha256').update(domain + '\0').update(text).digest('hex')
@@ -19,6 +20,9 @@ export class AuthorExchangeError extends Error {
   constructor(message: string, readonly terminal = false, readonly status?: number, readonly code?: string) { super(message) }
 }
 const messages: Record<string, string> = {
+  share_already_accepted: 'This share is already being processed or shared. Check its result in the Strategy Browser, then use Replace to change it.',
+  share_draft_changed: 'A newer prepared copy exists. Reopen Share to use it.',
+  share_restore_review: 'The service no longer has this share record. Check the Strategy Browser before sharing again.',
   author_service_unavailable: 'Author controls are temporarily unavailable. Retry later.',
   handoff_unavailable: 'This confirmation is unavailable or expired. Prepare a new request.',
   handoff_expired: 'This confirmation expired. Close it and prepare a new request.',
@@ -80,17 +84,114 @@ export async function authorJsonFetch(url: string, init: RequestInit, fetcher = 
 }
 
 export class AuthorHandoffService {
+  private durable: DurableShareTracker
   private active: string | null = null
   private fingerprint: string | null = null
-  private pending = new Map<string, { context: AuthorContext; clientId: string; completionToken?: string }>()
-  private prepared = new Map<string, { context: AuthorContext; clientId: string }>()
+  private pending = new Map<string, { context: AuthorContext; clientId: string; completionToken?: string; operation?: OperationBinding; nameShare?: NameShareBinding; receipt?: AuthorStatus }>()
+  private prepared = new Map<string, { context: AuthorContext; clientId: string; resumable: boolean }>()
   private initialization: Promise<void> | null = null
+  private trackingEnabled = false
+  private tracking = new Map<string, {
+    sessionIdentity: string; expiresAt: string; attempt: number; stopped: boolean; status?: AuthorStatus;
+    error?: unknown; timer?: ReturnType<typeof setTimeout>; running?: Promise<AuthorStatus | null>
+  }>()
   constructor(private options: {
     origin: string | null; vault: AuthorHandoffVault; readClipboard: () => string | Promise<string>
     exchange?: (url: string, init: RequestInit) => Promise<unknown>
     shareIntent?: (sessionId: string, core: string, metadata: Parameters<typeof buildAuthorSubmission>[1], startNew: boolean, sessionIdentity: string) => Promise<ShareIntentSnapshot>
-    readShareCore?: (sessionId: string, sessionIdentity: string) => Promise<{ core: string } | null>
-  }) {}
+    readShareCore?: (sessionId: string, sessionIdentity: string) => Promise<AuthorResults['share-draft']>
+  }) { this.durable = new DurableShareTracker(options.vault, (id, authorization) => this.call('/shares/' + id, 'GET', undefined, authorization)) }
+  /** Enabled by the app lifecycle, not by opening Share. Existing encrypted
+   * requests are the only authority to check; this never prepares a new share. */
+  async startOperationTracking(): Promise<void> {
+    if (!this.options.origin) return
+    this.trackingEnabled = true
+    await this.initialize()
+    await this.refreshOperationTracking()
+    await this.durable.start()
+  }
+  stopOperationTracking(): void {
+    this.durable.stop()
+    this.trackingEnabled = false
+    for (const entry of this.tracking.values()) {
+      entry.stopped = true
+      clearTimeout(entry.timer)
+    }
+    this.tracking.clear()
+  }
+  private stopTrackingRequest(requestId: string): void {
+    const entry = this.tracking.get(requestId)
+    if (entry) { entry.stopped = true; clearTimeout(entry.timer); this.tracking.delete(requestId) }
+  }
+  private async refreshOperationTracking(): Promise<void> {
+    if (!this.trackingEnabled) return
+    const readers = await this.options.vault.operationReaders()
+    if (!this.trackingEnabled) return
+    for (const requestId of this.tracking.keys()) {
+      if (!readers.some(reader => reader.requestId === requestId)) this.stopTrackingRequest(requestId)
+    }
+    for (const reader of readers) {
+      if (this.tracking.has(reader.requestId)) continue
+      this.tracking.set(reader.requestId, { sessionIdentity: reader.binding.sessionIdentity,
+        expiresAt: reader.expiresAt, attempt: 0, stopped: false,
+        ...(reader.receipt ? { status: reader.receipt } : {}) })
+      if (!reader.receipt && Date.now() < Date.parse(reader.expiresAt))
+        void this.pollOperation(reader.requestId)
+    }
+  }
+  private pollOperation(requestId: string): Promise<AuthorStatus | null> {
+    const entry = this.tracking.get(requestId)
+    if (!entry || entry.stopped || !this.trackingEnabled) return Promise.resolve(null)
+    if (entry.running) return entry.running
+    if (entry.status?.status === 'consumed') return Promise.resolve(entry.status)
+    if (Date.now() >= Date.parse(entry.expiresAt)) return Promise.resolve(entry.status ?? null)
+    clearTimeout(entry.timer)
+    entry.running = this.options.vault.observeOperation(requestId, async (authorization, consumptionId, binding, expiresAt) => {
+      const status = this.status(await this.call('/' + requestId + '/status', 'GET', undefined, authorization), requestId, binding)
+      if (status.status === 'consumed') return status
+      if (status.status !== 'confirmed' || status.outcome?.status !== 'published') return status
+      if (entry.stopped || !this.trackingEnabled || Date.now() >= Date.parse(expiresAt))
+        throw new AuthorExchangeError('Not confirmed yet. Check the Strategy Browser.', true)
+      const receipt = this.status(await this.call('/' + requestId + '/consume', 'POST',
+        { acknowledgement: 'operation', consumption_id: consumptionId }, authorization), requestId, binding)
+      if (receipt.status !== 'consumed') throw new Error('Publication acknowledgement is incomplete')
+      return receipt
+    }).then(status => {
+      if (!entry.stopped && status) {
+        entry.status = status; entry.error = undefined
+        const pending = this.pending.get(requestId)
+        if (status.status === 'consumed' && pending?.operation) pending.receipt = status
+      }
+      return status
+    }).catch((error: unknown) => {
+      entry.error = error
+      if (error instanceof AuthorExchangeError && error.terminal) entry.stopped = true
+      return null
+    }).finally(() => {
+      entry.running = undefined
+      if (!this.trackingEnabled || entry.stopped ||
+        ['consumed', 'expired', 'cancelled'].includes(entry.status?.status ?? '')) return
+      const remaining = Date.parse(entry.expiresAt) - Date.now()
+      if (remaining <= 0) return
+      const delay = Math.min(remaining, [2000, 4000, 8000, 15000][Math.min(entry.attempt++, 3)])
+      entry.timer = setTimeout(() => { void this.pollOperation(requestId) }, delay)
+      entry.timer.unref()
+    })
+    return entry.running
+  }
+  private async trackedOperationStatus(requestId: string): Promise<AuthorStatus> {
+    await this.refreshOperationTracking()
+    const entry = this.tracking.get(requestId)
+    if (!entry) throw new AuthorExchangeError('Not confirmed yet. Check the Strategy Browser.', true)
+    if (entry.running) await entry.running
+    if (entry.status?.status === 'consumed') return entry.status
+    if (entry.stopped || Date.now() >= Date.parse(entry.expiresAt) ||
+      ['expired', 'cancelled'].includes(entry.status?.status ?? ''))
+      throw new AuthorExchangeError('Not confirmed yet. Check the Strategy Browser.', true)
+    if (entry.error instanceof AuthorExchangeError) throw entry.error
+    if (entry.status) return entry.status
+    throw new AuthorExchangeError('Not confirmed yet. Check the Strategy Browser.')
+  }
   private current(c: AuthorContext) { return this.active === contextKey(c) }
   private async call(path: string, method = 'GET', body?: unknown, authorization?: string) {
     if (!this.options.origin) throw new Error('Author service is disabled')
@@ -102,66 +203,145 @@ export class AuthorHandoffService {
     if (!validAuthorContext(value) || !this.current(value)) throw new Error('Author operation changed')
     return value
   }
-  private async prepare(c: AuthorContext, kind: string, intent: unknown, payload: string | null): Promise<PreparedAuthorRequest> {
-    // Only confirmation needs protected capabilities. Context activation and
-    // shares without confirmation must work even when the OS key store does not.
+  private async initialize(): Promise<void> {
+    // Name verification and resumable operation receipts need protected
+    // capabilities. Context activation itself does not open the key store.
     if (!this.initialization) {
       this.initialization = this.options.vault.discardInterrupted((requestId, authorization) =>
         this.call('/' + requestId, 'DELETE', undefined, authorization))
         .catch((error) => { this.initialization = null; throw error })
     }
     try { await this.initialization }
-    catch { throw new AuthorExchangeError('Protected confirmation storage is unavailable. You can prepare a share without local confirmation; retry confirmation when storage is available.') }
+    catch { throw new AuthorExchangeError('Protected sharing storage is unavailable. Restore access before preparing or resuming this share. Your local sessions are unchanged.', false, undefined, 'local_confirmation_unavailable') }
+  }
+  private async selectedSession(c: AuthorContext, identity: unknown): Promise<string> {
+    if (typeof identity !== 'string' || !identity || identity.length > 128 || !this.options.readShareCore)
+      throw new AuthorExchangeError('The selected session cannot be checked. Close and reopen Share.')
+    await this.options.readShareCore(c.sessionId, identity)
+    this.requireContext(c)
+    return identity
+  }
+  private async prepare(c: AuthorContext, kind: string, intent: unknown, payload: string | null,
+    operation?: OperationBinding, nameShare?: NameShareBinding): Promise<PreparedAuthorRequest> {
+    await this.initialize()
     // Startup cleanup can outlive an edit, dismissal or session switch.
     this.requireContext(c)
     const fingerprint = canonicalAuthorJson({ kind, intent, payload })
     if (this.fingerprint !== null && this.fingerprint !== fingerprint) throw new Error('Author operation changed')
     this.fingerprint = fingerprint
-    const local = await this.options.vault.prepare(c.sessionId, c.generation)
-    this.prepared.set(local.client_request_id, { context: c, clientId: local.client_request_id })
+    let local: Awaited<ReturnType<AuthorHandoffVault['prepare']>>
+    try { local = await this.options.vault.prepare(c.sessionId, c.generation, operation, nameShare) }
+    catch { throw new AuthorExchangeError('Reopen Share in an earlier session to save or stop its pending result before preparing another. If protected storage is unavailable, retry when it is available.') }
+    this.prepared.set(local.client_request_id, { context: c, clientId: local.client_request_id, resumable: !!operation || !!nameShare })
     try {
       if (!this.current(c)) throw new Error('Author operation changed')
       const result = await this.call('', 'POST', { schema_version: 1, ...local, kind, payload_sha256: payload, intent })
       if (!exact(result, ['request_id', 'expires_at']) || !id(result.request_id) || !validDate(result.expires_at))
         throw new Error('Invalid author request response')
-      await this.options.vault.bind(local.client_request_id, result.request_id)
+      await this.options.vault.bind(local.client_request_id, result.request_id, result.expires_at)
+      if (operation) await this.refreshOperationTracking()
       if (!this.current(c)) {
-        await this.options.vault.consume(result.request_id, c.sessionId, c.generation,
+        if (!operation && !nameShare) await this.options.vault.consume(result.request_id, c.sessionId, c.generation,
           (authorization) => this.call('/' + result.request_id, 'DELETE', undefined, authorization), () => true).catch(() => undefined)
         throw new Error('Author operation changed')
       }
       if (!this.pending.has(result.request_id)) {
-        this.pending.set(result.request_id, { context: c, clientId: local.client_request_id })
-        // Remove volatile completion material even if the window remains idle.
-        setTimeout(() => this.pending.delete(result.request_id as string), 15 * 60_000).unref()
+        this.pending.set(result.request_id, { context: c, clientId: local.client_request_id, ...(operation ? { operation } : {}), ...(nameShare ? { nameShare } : {}) })
+        // Only name confirmation retains a volatile completion token. Operation
+        // readers/receipts remain bounded in encrypted storage until finish/cancel.
+        if (!operation) setTimeout(() => this.pending.delete(result.request_id as string), 15 * 60_000).unref()
       }
       this.prepared.delete(local.client_request_id)
       return { request_id: result.request_id, expires_at: result.expires_at, client_request_id: local.client_request_id }
     } catch (e) {
       // Keep the same capability on an ambiguous network result for an idempotent retry.
-      if (!this.current(c)) {
+      if (!this.current(c) && !operation && !nameShare) {
         await this.options.vault.cancelPrepared(local.client_request_id, c.sessionId, c.generation)
         this.prepared.delete(local.client_request_id)
       }
       throw e
     }
   }
+  private status(r: unknown, requestId: string, operation?: OperationBinding): AuthorStatus {
+    if (!exact(r, ['request_id', 'epoch', 'status', 'expires_at', 'outcome']) || r.request_id !== requestId ||
+      !id(r.epoch) || !validDate(r.expires_at) || !['pending', 'confirmed', 'consumed', 'expired', 'cancelled'].includes(r.status as string))
+      throw new Error('Invalid status')
+    const outcome = r.outcome === null ? null : parseAuthorOutcome(r.outcome)
+    if (operation && outcome !== null) {
+      const op = operation.operation
+      if (outcome.status !== 'published' || (op.kind !== 'publication' &&
+        (outcome.strategy_id !== op.strategy_id || outcome.revision !== op.revision! + (op.kind === 'replace' ? 1 : 0))))
+        throw new Error('Publication receipt does not match its prepared operation')
+    }
+    if (operation && ['confirmed', 'consumed'].includes(r.status as string) && outcome === null)
+      throw new Error('Publication receipt has no result')
+    return { ...r, outcome } as AuthorStatus
+  }
   async handle(input: unknown): Promise<{ ok: true; value: unknown } | { ok: false; error: string; terminal?: boolean }> {
     try { return { ok: true, value: await this.dispatch(input) } }
-    catch (e) { return { ok: false, error: e instanceof AuthorExchangeError || e instanceof ShareIntentError ? e.message :
+    catch (e) { return { ok: false, error: e instanceof AuthorExchangeError || e instanceof ShareIntentError || e instanceof ProtectedShareStorageError ? e.message :
       'Author confirmation could not be completed. Check the selected operation and try again.',
       ...(e instanceof AuthorExchangeError && e.terminal ? { terminal: true } : {}) } }
   }
   private async dispatch(input: unknown): Promise<unknown> {
     if (exact(input, ['action']) && input.action === 'available') return this.options.origin !== null
     if (!this.options.origin) throw new Error('Disabled')
+    if (exact(input, ['action']) && input.action === 'share-results') {
+      return this.durable.views()
+    }
+    if (exact(input, ['action']) && input.action === 'share-refresh') { await this.durable.wake(); return null }
+    if (exact(input, ['action','context','sessionIdentity','shareId','draftRevision']) && input.action === 'share-copied') {
+      const c = this.requireContext(input.context)
+      const sessionIdentity = await this.selectedSession(c, input.sessionIdentity)
+      if (!id(input.shareId) || !Number.isInteger(input.draftRevision) || (input.draftRevision as number) < 1)
+        throw new Error('Invalid copied share')
+      const view = await this.options.vault.copiedDurable({ sessionIdentity, shareId: input.shareId,
+        draftRevision: input.draftRevision as number }, () => this.current(c))
+      await this.durable.wake(view.id)
+      this.requireContext(c)
+      return this.durable.view(view.id) ?? view
+    }
+    if (exact(input, ['action','shareId']) && input.action === 'share-noticed') {
+      if (!id(input.shareId)) throw new Error('Invalid share notice')
+      await this.options.vault.noticeDurable(input.shareId)
+      await this.durable.wake(input.shareId)
+      return null
+    }
+    if (exact(input, ['action','context','sessionIdentity','targetGeneration']) && input.action === 'share-result') {
+      const c = this.requireContext(input.context)
+      const sessionIdentity = await this.selectedSession(c, input.sessionIdentity)
+      if (input.targetGeneration !== null && !id(input.targetGeneration)) throw new Error('Invalid target generation')
+      const saved = await this.options.vault.durableForSession(sessionIdentity, input.targetGeneration as string | null)
+      if (!saved) return null
+      if (!this.durable.view(saved.id)) await this.durable.wake(saved.id)
+      await this.selectedSession(c, sessionIdentity)
+      this.requireContext(c)
+      return this.durable.view(saved.id) ?? saved
+    }
+    if (exact(input, ['action','context','sessionIdentity']) && input.action === 'resume-name') {
+      const c = this.requireContext(input.context)
+      const sessionIdentity = await this.selectedSession(c, input.sessionIdentity)
+      await this.initialize()
+      const share = await this.options.vault.durableForSession(sessionIdentity, null)
+      if (!share) return null
+      const binding = { shareId: share.id, draftRevision: share.draftRevision }
+      const request = await this.options.vault.resumeName(binding, c.sessionId, c.generation, () => this.current(c))
+      this.requireContext(c)
+      if (request) this.pending.set(request.request_id, { context: c, clientId: request.client_request_id, nameShare: binding })
+      return request
+    }
     if (exact(input, ['action', 'sessionId', 'sessionIdentity']) && input.action === 'share-draft') {
       if (typeof input.sessionId !== 'string' || !input.sessionId || input.sessionId.length > 128 ||
         typeof input.sessionIdentity !== 'string' || !input.sessionIdentity || input.sessionIdentity.length > 128)
         throw new ShareIntentError('The selected session changed. Close and reopen Share.')
       if (!this.options.readShareCore) throw new ShareIntentError('Saved sharing details are unavailable. Close and reopen Share to retry.')
       // Local read only: no provider request, clipboard, capability or intent rotation.
-      return this.options.readShareCore(input.sessionId, input.sessionIdentity)
+      const previous = await this.options.readShareCore(input.sessionId, input.sessionIdentity)
+      const durable = await this.options.vault.readableDurableDraft(input.sessionIdentity)
+      // Repository selection can change while the protected store is being read,
+      // before the renderer has sent its next activation.
+      await this.options.readShareCore(input.sessionId, input.sessionIdentity)
+      return durable ? { core: durable.core, author: durable.author } : previous
     }
     if (exact(input, ['action', 'path']) && input.action === 'read') {
       if (typeof input.path !== 'string' || input.path.length > 4096 || /[\\#\r\n]/.test(input.path)) throw new Error('Invalid public read')
@@ -190,9 +370,10 @@ export class AuthorHandoffService {
         this.fingerprint = null
         // Invalidate callbacks synchronously, then discard their local readers.
         const stale = [...this.pending].filter(([, p]) => contextKey(p.context) !== key)
-        const stalePrepared = [...this.prepared].filter(([, p]) => contextKey(p.context) !== key)
+        const stalePrepared = [...this.prepared].filter(([, p]) => contextKey(p.context) !== key && !p.resumable)
         for (const [requestId, p] of stale) {
           this.pending.delete(requestId)
+          if (p.operation || p.nameShare) continue // Closing detaches the UI; the encrypted request survives.
           await this.options.vault.consume(requestId, p.context.sessionId, p.context.generation,
             (authorization) => this.call('/' + requestId, 'DELETE', undefined, authorization), () => true).catch(() => undefined)
           await this.options.vault.forget(requestId)
@@ -204,13 +385,61 @@ export class AuthorHandoffService {
       }
       return null
     }
+    if (exact(input, ['action', 'context', 'sessionIdentity']) && input.action === 'resume-publication') {
+      const c = this.requireContext(input.context)
+      const sessionIdentity = await this.selectedSession(c, input.sessionIdentity)
+      await this.initialize()
+      this.requireContext(c)
+      const saved = await this.options.vault.resumeOperation(sessionIdentity, c.sessionId, c.generation, () => this.current(c))
+      if (!saved) return null
+      this.requireContext(c)
+      this.pending.set(saved.request.request_id, { context: c, clientId: saved.request.client_request_id,
+        operation: saved.binding, ...(saved.status ? { receipt: this.status(saved.status, saved.request.request_id, saved.binding) } : {}) })
+      await this.refreshOperationTracking()
+      this.requireContext(c)
+      return { request: saved.request, mode: 'operation', operation: saved.binding.operation,
+        targetGeneration: saved.binding.targetGeneration, status: saved.status } satisfies ResumedPublication
+    }
+    if (exact(input, ['action', 'context', 'sessionIdentity']) && input.action === 'cancel-publication') {
+      const c = this.requireContext(input.context)
+      const sessionIdentity = await this.selectedSession(c, input.sessionIdentity)
+      for (const [requestId, entry] of this.tracking) {
+        if (entry.sessionIdentity === sessionIdentity) this.stopTrackingRequest(requestId)
+      }
+      for (const [requestId, pending] of this.pending) {
+        if (pending.operation?.sessionIdentity === sessionIdentity) {
+          this.stopTrackingRequest(requestId)
+          this.pending.delete(requestId)
+        }
+      }
+      for (const [clientId, pending] of this.prepared) {
+        if (pending.resumable && contextKey(pending.context) === contextKey(c)) this.prepared.delete(clientId)
+      }
+      this.fingerprint = null
+      let stopped = false
+      let remoteCancellation: 'confirmed' | 'unknown' | 'not_needed' = 'not_needed'
+      try {
+        await this.options.vault.cancelOperation(sessionIdentity, async (requestId, authorization) => {
+          remoteCancellation = 'unknown'
+          const response = await this.call('/' + requestId, 'DELETE', undefined, authorization)
+          if (!exact(response, ['request_id', 'status']) || response.request_id !== requestId || response.status !== 'cancelled')
+            throw new Error('Invalid publication tracking cancellation')
+          remoteCancellation = 'confirmed'
+        }, () => this.current(c), () => { stopped = true })
+      } catch (error) {
+        if (!stopped) throw error
+        if (error instanceof AuthorExchangeError && error.terminal) remoteCancellation = 'not_needed'
+      }
+      return { stopped: true, remoteCancellation }
+    }
     if (exact(input, ['action', 'context', 'operation']) && input.action === 'prepare') {
       const c = this.requireContext(input.context), op = validateAuthorManagement(input.operation)
       return this.prepare(c, op.kind, op.intent, op.kind === 'recovery' ? null :
         digest('WL-AUTHOR-INTENT/1', canonicalAuthorJson(op)))
     }
     if ((exact(input, ['action', 'context', 'core', 'metadata', 'confirmation']) ||
-      exact(input, ['action', 'context', 'core', 'metadata', 'confirmation', 'newIntent', 'sessionIdentity'])) && input.action === 'publication') {
+      exact(input, ['action', 'context', 'core', 'metadata', 'confirmation', 'newIntent', 'sessionIdentity']) ||
+      exact(input, ['action', 'context', 'core', 'metadata', 'confirmation', 'newIntent', 'sessionIdentity', 'targetGeneration'])) && input.action === 'publication') {
       const c = this.requireContext(input.context)
       if (typeof input.core !== 'string' || input.core.length > 128 * 1024 || typeof input.confirmation !== 'boolean' ||
         !exact(input.metadata, ['author', 'expected_revision', 'confirmation_request_id']) ||
@@ -218,9 +447,50 @@ export class AuthorHandoffService {
       let core = input.core
       let meta = input.metadata as unknown as Parameters<typeof buildAuthorSubmission>[1]
       buildAuthorSubmission(core, meta)
+      if (Object.hasOwn(input, 'sessionIdentity')) {
+        const sessionIdentity = await this.selectedSession(c, input.sessionIdentity)
+        if (input.newIntent !== false) throw new AuthorExchangeError('Choose Continue in the Strategy Browser to change a published strategy.')
+        const action = JSON.parse(core)[1], targetGeneration = input.targetGeneration ?? null
+        const operation: PublicationOperation = action === 0
+          ? { kind: 'publication', strategy_id: null, revision: null }
+          : { kind: action[0] === 1 ? 'replace' : 'evidence', strategy_id: action[1], revision: meta.expected_revision }
+        if (action !== 0 && (!Array.isArray(action) || ![1,2].includes(action[0]) || !id(action[1]) || !id(targetGeneration)) ||
+          action === 0 && targetGeneration !== null) throw new Error('Invalid share target')
+        const state = await this.dispatch({ action: 'state' }) as AuthorServiceState
+        await this.selectedSession(c, sessionIdentity)
+        this.requireContext(c)
+        let prepared: Awaited<ReturnType<AuthorHandoffVault['prepareDurable']>>
+        try {
+          prepared = await this.options.vault.prepareDurable({ sessionIdentity, sessionId: c.sessionId,
+            targetGeneration: targetGeneration as string | null, operation, epoch: state.epoch, core, metadata: meta },
+          (body, auth) => this.call('/shares', 'PUT', body, auth))
+        } catch (error) {
+          await this.durable.wake()
+          if (error instanceof AuthorExchangeError || error instanceof ProtectedShareStorageError) throw error
+          throw new AuthorExchangeError(error instanceof Error && /already processing|recovery review|history is full/.test(error.message)
+            ? error.message : 'Could not prepare this share yet. Your saved draft is kept; try preparing it again when the service is available.')
+        }
+        await this.durable.wake(prepared.view.id)
+        await this.selectedSession(c, sessionIdentity)
+        this.requireContext(c)
+        meta = prepared.metadata
+        core = prepared.view.core
+        let request: PreparedAuthorRequest | null = null
+        if (input.confirmation && prepared.view.status !== 'complete') {
+          const plain = buildAuthorSubmission(core, meta)
+          request = await this.prepare(c, 'publication', null, digest('WL-AUTHOR-HANDOFF/1', canonicalAuthorJson(JSON.parse(plain))),
+            undefined, { shareId: prepared.view.id, draftRevision: prepared.view.draftRevision })
+        }
+        await this.selectedSession(c, sessionIdentity)
+        this.requireContext(c)
+        return { token: encodeDiscordShareBrotli(buildAuthorSubmission(core, { ...meta, confirmation_request_id: request?.request_id ?? null }), true),
+          request, acknowledgement: request ? 'name' : 'operation', share: prepared.view }
+      }
       if (Object.hasOwn(input, 'newIntent')) {
         if (typeof input.newIntent !== 'boolean' || typeof input.sessionIdentity !== 'string' ||
           input.sessionIdentity.length < 1 || input.sessionIdentity.length > 128) throw new Error('Invalid share intent')
+        if ((input.newIntent || input.confirmation) && await this.options.vault.hasOperation(input.sessionIdentity))
+          throw new AuthorExchangeError('Finish or stop tracking the pending share result before preparing a different share.')
         if (JSON.parse(core)[1] === 0) {
           if (!this.options.shareIntent) throw new ShareIntentError('Durable share storage is unavailable. No share was prepared.')
           const snapshot = await this.options.shareIntent(c.sessionId, core, meta, input.newIntent, input.sessionIdentity)
@@ -228,25 +498,95 @@ export class AuthorHandoffService {
           core = snapshot.core
           meta = { ...snapshot.metadata, share_intent_id: snapshot.intentId }
         } else {
-          if (input.newIntent || !input.confirmation) throw new ShareIntentError('A continuation needs its explicit acknowledgement step.')
+          if (input.newIntent) throw new ShareIntentError('Choose a separate share explicitly before starting a new share intent.')
           meta = { ...meta, share_intent_id: null }
         }
       }
       const plain = buildAuthorSubmission(core, meta)
-      const request = input.confirmation ? await this.prepare(c, 'publication', null,
-        digest('WL-AUTHOR-HANDOFF/1', canonicalAuthorJson(JSON.parse(plain)))) : null
+      const payload = digest('WL-AUTHOR-HANDOFF/1', canonicalAuthorJson(JSON.parse(plain)))
+      let request: PreparedAuthorRequest | null = null
+      let acknowledgement: 'name' | 'operation' | 'untracked' = 'untracked'
+      let reason: string | undefined
+      if (input.confirmation) {
+        request = await this.prepare(c, 'publication', null, payload)
+        acknowledgement = 'name'
+      } else if (Object.hasOwn(input, 'sessionIdentity')) {
+        const sessionIdentity = await this.selectedSession(c, input.sessionIdentity)
+        const action = JSON.parse(core)[1]
+        const targetGeneration = input.targetGeneration ?? null
+        if (targetGeneration !== null && !id(targetGeneration)) throw new Error('Invalid target generation')
+        const operation: PublicationOperation = action === 0
+          ? { kind: 'publication', strategy_id: null, revision: null }
+          : { kind: action[0] === 1 ? 'replace' : 'evidence', strategy_id: action[1], revision: meta.expected_revision }
+        if (action !== 0 && (!Array.isArray(action) || ![1, 2].includes(action[0]) || !id(action[1]) || !id(targetGeneration)) ||
+          action === 0 && targetGeneration !== null) throw new Error('Invalid publication target')
+        const binding: OperationBinding = { sessionIdentity, payloadSha256: payload, operation, targetGeneration }
+        try {
+          request = await this.prepare(c, 'publication', { mode: 'operation_only' }, payload, binding)
+          acknowledgement = 'operation'
+        } catch (error) {
+          // Existing ordinary sharing must remain possible during a status-service
+          // outage. A continuation never falls back, and malformed/refused replies
+          // are not treated as outages. The UI must display this untracked result.
+          const unavailable = error instanceof TypeError || error instanceof DOMException && ['AbortError', 'TimeoutError'].includes(error.name) ||
+            error instanceof AuthorExchangeError && error.status === 503
+          if (action !== 0 || !unavailable || !this.current(c)) throw error
+          if (!await this.options.vault.discardUnboundOperation(binding))
+            throw new AuthorExchangeError('An earlier share result is still pending. Check its status or stop tracking it before preparing again.')
+          for (const [clientId, pending] of this.prepared) {
+            if (pending.resumable && contextKey(pending.context) === contextKey(c)) this.prepared.delete(clientId)
+          }
+          reason = 'The share result cannot be tracked right now. Check Discord after posting; do not post again to check its status.'
+        }
+      }
       if (!this.current(c)) throw new Error('Author operation changed')
       return { token: encodeDiscordShareBrotli(buildAuthorSubmission(core,
-        { ...meta, confirmation_request_id: request?.request_id ?? null }), true), request }
+        { ...meta, confirmation_request_id: request?.request_id ?? null }), true), request, acknowledgement, ...(reason ? { reason } : {}) }
     }
-    if (exact(input, ['action', 'context', 'requestId']) && ['status', 'paste', 'accept', 'cancel'].includes(input.action as string)) {
+    if (exact(input, ['action', 'context', 'requestId']) && ['status', 'paste', 'accept', 'cancel', 'acknowledge-operation', 'finish-operation'].includes(input.action as string)) {
       const c = this.requireContext(input.context), requestId = input.requestId
       if (!id(requestId)) throw new Error('Invalid request')
       const pending = this.pending.get(requestId)
       if (!pending || contextKey(pending.context) !== contextKey(c)) throw new Error('Unbound request')
+      if (pending.operation) await this.selectedSession(c, pending.operation.sessionIdentity)
+      if (this.pending.get(requestId) !== pending) throw new Error('Author operation changed')
+      if (input.action === 'finish-operation') {
+        if (!pending.operation || pending.receipt?.status !== 'consumed') throw new Error('Publication result has not been acknowledged')
+        this.stopTrackingRequest(requestId)
+        await this.options.vault.forget(requestId)
+        this.pending.delete(requestId)
+        this.fingerprint = null
+        return null
+      }
+      if (pending.operation && this.trackingEnabled && ['status', 'acknowledge-operation'].includes(input.action as string)) {
+        const status = await this.trackedOperationStatus(requestId)
+        this.requireContext(c)
+        await this.selectedSession(c, pending.operation.sessionIdentity)
+        if (this.pending.get(requestId) !== pending) throw new Error('Author operation changed')
+        if (input.action === 'acknowledge-operation' && status.status !== 'consumed')
+          throw new AuthorExchangeError('Not confirmed yet. Check the Strategy Browser.')
+        if (status.status === 'consumed') pending.receipt = status
+        return status
+      }
+      if (input.action === 'acknowledge-operation') {
+        if (!pending.operation) throw new Error('This request requires its name confirmation')
+        if (pending.receipt) return pending.receipt
+        const r = await this.options.vault.consume(requestId, c.sessionId, c.generation,
+          (authorization, consumptionId) => this.call('/' + requestId + '/consume', 'POST',
+            { acknowledgement: 'operation', consumption_id: consumptionId }, authorization),
+          () => this.current(c) && this.pending.get(requestId) === pending,
+          value => this.status(value, requestId, pending.operation))
+        const receipt = this.status(r, requestId, pending.operation)
+        if (receipt.status !== 'consumed') throw new Error('Publication acknowledgement is incomplete')
+        await this.selectedSession(c, pending.operation.sessionIdentity)
+        if (this.pending.get(requestId) !== pending) throw new Error('Author operation changed')
+        pending.receipt = receipt
+        return receipt
+      }
       if (input.action === 'cancel') {
         // Closing is local first. A remote outage must not trap the form or let a
         // delayed receipt restore an explicitly dismissed confirmation.
+        this.stopTrackingRequest(requestId)
         this.pending.delete(requestId)
         this.prepared.delete(pending.clientId)
         this.fingerprint = null
@@ -262,6 +602,8 @@ export class AuthorHandoffService {
         return null
       }
       // Clipboard access happens only on this explicit action, after context validation.
+      if (pending.operation && input.action !== 'status') throw new Error('This publication does not need a private code')
+      if (input.action === 'status' && pending.receipt) return pending.receipt
       const consuming = input.action === 'paste' || input.action === 'accept'
       const token = input.action === 'paste' ? (await this.options.readClipboard()).trim()
         : input.action === 'accept' ? pending.completionToken ?? '' : null
@@ -278,10 +620,8 @@ export class AuthorHandoffService {
           consuming ? { completion_token: token, consumption_id: consumptionId } : undefined, authorization),
         () => this.current(c) && this.pending.get(requestId) === pending)
       if (input.action === 'status') {
-        if (!exact(r, ['request_id', 'epoch', 'status', 'expires_at', 'outcome']) || r.request_id !== requestId ||
-          !id(r.epoch) || !validDate(r.expires_at) || !['pending', 'confirmed', 'consumed', 'expired', 'cancelled'].includes(r.status as string))
-          throw new Error('Invalid status')
-        return { ...r, outcome: r.outcome === null ? null : parseAuthorOutcome(r.outcome) } as AuthorStatus
+        if (pending.operation) await this.selectedSession(c, pending.operation.sessionIdentity)
+        return this.status(r, requestId, pending.operation)
       }
       if (!exact(r, ['schema_version', 'request_id', 'client_request_id', 'epoch', 'outcome', 'registrations']) ||
         r.request_id !== requestId || r.client_request_id !== pending.clientId || !Array.isArray(r.registrations) ||

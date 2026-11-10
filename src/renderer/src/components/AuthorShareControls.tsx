@@ -1,85 +1,103 @@
-import { Alert, Button, Checkbox, CopyButton, Group, Select, Stack, Text, TextInput } from '@mantine/core'
+import { Alert, Button, Group, Select, Stack, Text, TextInput } from '@mantine/core'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { AuthorContext, PreparedAuthorRequest } from '../../../shared/authorHandoff'
+import type { AuthorContext, AuthorResults } from '../../../shared/authorHandoff'
+import { shareCopyPresentation, type DurableShareView } from '../../../shared/durableShare'
 import { invalidateAuthorEpoch } from '../../../shared/authorRecognition'
 import { normalizePublicAuthorName, PUBLIC_NAME_RETENTION_NOTICE } from '../../../shared/authorNames'
 import { useSessionStore } from '../store/useSessionStore'
 import { AuthorConfirmationPanel } from './AuthorConfirmationPanel'
-import { migrateStrategyTarget, acknowledgeStrategyTarget } from '../../../shared/strategyTarget'
+import { migrateStrategyTarget } from '../../../shared/strategyTarget'
 import { safeStrategyReader } from '../utils/safeStrategyReader'
 import { prepareSafeContinuation, refreshSafeAuthorState } from '../utils/safeStrategyTarget'
-import { SafeTargetReview } from './SafeTargetReview'
 import { defaultShareConfirmation } from '../../../shared/shareIntent'
+import { AuthorOperationPanel } from './AuthorOperationPanel'
 
-export function AuthorShareControls({ core, raw, blocked, onManage, fieldContainer, enabled }: {
+export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fieldContainer, confirmationContainer, enabled, onTrackingChange }: {
   core: string; raw: string; blocked: boolean; onManage: () => void; fieldContainer: HTMLElement | null; enabled: boolean
+  confirmationContainer: HTMLElement | null
+  onTrackingChange: (pending: boolean) => void; onClose: () => void
 }) {
-  const preferences = useSessionStore((s) => s.authorPreferences)
-  const settings = useSessionStore((s) => s.settings)
-  const maps = useSessionStore((s) => s.maps)
+  const preferences = useSessionStore(s => s.authorPreferences)
+  const settings = useSessionStore(s => s.settings)
+  const maps = useSessionStore(s => s.maps)
   const target = useMemo(() => migrateStrategyTarget(settings as unknown as Record<string, unknown>), [settings])
-  const targetKey = JSON.stringify(target)
-  const isContinuation = !!target
-  const sessionId = useSessionStore((s) => `${s.activeSessionId ?? 'working'}:${s.sessionNonce}`)
-  const sessionIdentity = useSessionStore((s) => s.currentSessionIdentity)
+  const targetGeneration = target && target.state !== 'legacy_review' ? target.generation : null
+  const sessionId = useSessionStore(s => `${s.activeSessionId ?? 'working'}:${s.sessionNonce}`)
+  const sessionIdentity = useSessionStore(s => s.currentSessionIdentity)
   const [selection, setSelection] = useState<string | null>(preferences.defaultRegistrationId)
   const [name, setName] = useState('')
-  const [confirmation, setConfirmation] = useState(() => defaultShareConfirmation(!!target,
-    !!preferences.registrations.find(r => r.registrationId === preferences.defaultRegistrationId)?.confirmed))
-  const [newSeparate, setNewSeparate] = useState(false)
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const errorElement = useRef<HTMLDivElement | null>(null)
-  useEffect(() => { if (error) errorElement.current?.scrollIntoView({ block: 'nearest' }) }, [error])
-  const [requestGeneration, setRequestGeneration] = useState(0)
-  const [dismissalNotice, setDismissalNotice] = useState<string | null>(null)
-  const [wire, setWire] = useState<{ context: AuthorContext; token: string; request: PreparedAuthorRequest | null } | null>(null)
+  const [wire, setWire] = useState<({ context: AuthorContext } & AuthorResults['publication']) | null>(null)
+  const [share, setShare] = useState<DurableShareView | null>(null)
+  const [nameRequest, setNameRequest] = useState<AuthorResults['resume-name']>(null)
+  const restoredNameFor = useRef<string | null>(null)
+  const selected = preferences.registrations.find(r => r.registrationId ===
+    (target && target.state !== 'legacy_review' ? target.registrationId : selection))
+  const confirmation = defaultShareConfirmation(!!target, !!selected?.confirmed)
+  // A completed target's bookkeeping may change while the same share stays open.
   const context: AuthorContext = useMemo(() => ({ sessionId, generation: crypto.randomUUID() }),
-    // Any edited submission input invalidates the previous confirmation context.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionId, core, selection, name, confirmation, enabled, requestGeneration, targetKey])
+    [sessionId, core, selection, name, confirmation, enabled, targetGeneration])
   const active = useRef(context)
   active.current = context
-  const selected = preferences.registrations.find((r) => r.registrationId === (target && target.state !== 'legacy_review' ? target.registrationId : selection))
-  const usableSelection = target ? target.state === 'ready' && !!selected?.confirmed : selection === null || !!selected?.confirmed
-  useEffect(() => {
-    setConfirmation(defaultShareConfirmation(isContinuation, !!selected?.confirmed))
-    setNewSeparate(false)
-  }, [targetKey, isContinuation, selection, selected?.confirmed, sessionId])
+  const currentTarget = useRef(target)
+  currentTarget.current = target
+  useEffect(() => { if (error) errorElement.current?.scrollIntoView({ block: 'nearest' }) }, [error])
+  useEffect(() => { onTrackingChange(busy || share?.accepted === true); return () => onTrackingChange(false) }, [busy, share?.accepted, onTrackingChange])
   useEffect(() => {
     if (!enabled) return
-    let stop = false
-    setReady(false); setWire(null); setError(null); setBusy(false)
+    let stopped = false
+    const current = () => !stopped && active.current === context
+    setReady(false); setWire(null); setShare(null); setNameRequest(null); setError(null); setBusy(false)
     void (async () => {
-      const a = await window.api.authorHandoff({ action: 'activate', context })
-      if (stop) return
-      if (!a.ok) { setError(a.error); return }
+      const activated = await window.api.authorHandoff({ action: 'activate', context })
+      if (!current()) return
+      if (!activated.ok) { setError(activated.error); return }
+      if (sessionIdentity) {
+        const result = await window.api.authorHandoff({ action: 'share-result', context, sessionIdentity, targetGeneration })
+        if (!current()) return
+        if (!result.ok) { setError(result.error); return }
+        setShare(result.value)
+        if (result.value && !currentTarget.current) {
+          const resumed = await window.api.authorHandoff({ action: 'resume-name', context, sessionIdentity })
+          if (!current()) return
+          if (!resumed.ok) { setError(resumed.error); return }
+          setNameRequest(resumed.value)
+        }
+        if (result.value && restoredNameFor.current !== sessionIdentity && !currentTarget.current) {
+          restoredNameFor.current = sessionIdentity
+          const registration = preferences.registrations.find(r => r.confirmed && r.name === result.value!.author.name)
+          if (registration) setSelection(registration.registrationId)
+          else { setSelection(null); setName(result.value.author.name) }
+        }
+      }
+      await window.api.authorHandoff({ action: 'share-refresh' })
+      if (!current()) return
       setReady(true)
       const state = await window.api.authorHandoff({ action: 'state' })
-      if (stop) return
+      if (!current()) return
       if (state.ok) {
         const store = useSessionStore.getState()
         store.setAuthorPreferences(invalidateAuthorEpoch(store.authorPreferences, state.value.epoch))
-        if (!state.value.author_actions_available) setError(current => current ?? 'Author confirmation is unavailable. You can prepare a share without local confirmation and recover names later.')
-      } else setError(current => current ?? 'Local confirmation is unavailable. Prepare without confirmation to share offline; recover your names later.')
-    })().catch(() => { if (!stop) setError(current => current ?? 'Could not check the author service. You can retry or prepare without local confirmation.') })
-    return () => { stop = true; void window.api.authorHandoff({ action: 'activate', context: null }) }
-  }, [context, enabled])
-  const prepare = async () => {
-    setBusy(true); setError(null); setDismissalNotice(null)
-    // Consume the explicit rotation once. An uncertain result must retry the
-    // persisted intent, never silently mint another publication identity.
-    const newIntent = newSeparate
-    setNewSeparate(false)
+      }
+    })().catch(() => { if (current()) setError('Could not reach sharing. Your draft is kept; try again when the service is available.') })
+    return () => { stopped = true; void window.api.authorHandoff({ action: 'activate', context: null }) }
+    // Preferences are read only for initial field restoration, not as a new request trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [context, enabled, sessionIdentity, targetGeneration])
+  const prepareAndCopy = async () => {
+    setBusy(true); setError(null)
     try {
-      if (!sessionIdentity) throw new Error('The selected session is not ready. Reopen Share after it loads.')
-      let author = selected && selected.confirmed ? { name: selected.name, registration_id: selected.registrationId }
+      if (!sessionIdentity) throw new Error('The selected session is still loading. Try again when it is ready.')
+      let author = selected?.confirmed ? { name: selected.name, registration_id: selected.registrationId }
         : { name: normalizePublicAuthorName(name).name, registration_id: null }
       let preparedCore = core, revision: number | null = null
       if (target) {
-        if (target.state !== 'ready') throw new Error('Review the saved strategy target first.')
+        if (target.state !== 'ready') throw new Error('Choose Continue from the Strategy Browser for your next update.')
         await refreshSafeAuthorState()
         if (active.current !== context) return
         const detail = await safeStrategyReader.detail({ scope: 'current', snapshot_key: null, id: target.id,
@@ -90,74 +108,76 @@ export function AuthorShareControls({ core, raw, blocked, onManage, fieldContain
         const tuple = JSON.parse(core); tuple[1] = proof.operation
         preparedCore = JSON.stringify(tuple); author = proof.author; revision = proof.revision
       }
-      const r = await window.api.authorHandoff({ action: 'publication', context, core: preparedCore,
-        metadata: { author, expected_revision: revision, confirmation_request_id: null },
-        confirmation: !!target || confirmation, newIntent, sessionIdentity })
+      let value = wire?.context === context ? wire : null
+      if (!value) {
+        const r = await window.api.authorHandoff({ action: 'publication', context, core: preparedCore,
+          metadata: { author, expected_revision: revision, confirmation_request_id: null },
+          confirmation, newIntent: false, sessionIdentity, targetGeneration })
+        if (active.current !== context) return
+        if (!r.ok) { setError(r.error); return }
+        value = { context, ...r.value }
+        setWire(value)
+        setNameRequest(value.acknowledgement === 'name' ? value.request : null)
+        if (value.share) setShare(value.share)
+      }
+      if (value.share?.accepted) return
+      if (value.token.length > 6000) throw new Error('The share is too long for Discord. Shorten the notes.')
+      // Clipboard writes happen only for this deliberate Copy action.
+      await navigator.clipboard.writeText(value.token)
       if (active.current !== context) return
-      if (!r.ok) { setError(r.error); return }
-      setWire({ context, ...r.value })
+      if (value.share) {
+        const marked = await window.api.authorHandoff({ action: 'share-copied', context, sessionIdentity,
+          shareId: value.share.id, draftRevision: value.share.draftRevision })
+        if (active.current !== context) return
+        if (!marked.ok) { setError(marked.error); return }
+        setShare(marked.value)
+      }
     } catch (e) { if (active.current === context) setError(e instanceof Error ? e.message : 'Could not prepare the share.') }
     finally { if (active.current === context) setBusy(false) }
   }
-  const currentWire = wire?.context === context ? wire : null
   if (!enabled) return null
+  const complete = share?.status === 'complete'
+  const accepted = share?.accepted === true
+  const currentWire = wire?.context === context ? wire : null
+  const canChoose = !target || target.state === 'ready'
+  const copy = shareCopyPresentation(share, core, selected?.confirmed ? selected.name : name, target)
   const fields = <Stack gap="xs">
-    <Group justify="space-between"><Text size="sm" fw={600}>Public author name</Text>
-      <Button size="compact-xs" variant="subtle" onClick={onManage}>Manage public names</Button></Group>
-    <Text size="xs" c="dimmed">This name is public on your strategies. Discord confirms that it belongs to you. Copying a share does not confirm it.</Text>
-    <Select size="xs" label="Use a saved name" value={target && target.state !== 'legacy_review' ? target.registrationId : selection ?? ''} disabled={!!target} allowDeselect={false} onChange={(v) => setSelection(v || null)}
-      data={[{ value: '', label: 'Enter a public name' }, ...preferences.registrations.map((r) => ({ value: r.registrationId,
-        label: r.name + (r.confirmed ? '' : ' (needs confirmation)'), disabled: !r.confirmed }))]} />
-    {!target && !selection && <TextInput size="xs" label="Public name" value={name} maxLength={256} onChange={(e) => setName(e.currentTarget.value)} />}
-    {!selected?.confirmed && <Text size="xs" c="dimmed">{PUBLIC_NAME_RETENTION_NOTICE}</Text>}
-    <Checkbox size="xs" label={target ? 'Acknowledge this continuation on this device after Discord saves it'
-      : 'Include a confirmation step to save this name on this device'} checked={!!target || confirmation} disabled={!!target}
-      onChange={(e) => setConfirmation(e.currentTarget.checked)} />
-    {!confirmation && !selected?.confirmed && <Text size="xs" c="dimmed">After sharing, use Recover in Manage public names to confirm this name on this installation.</Text>}
-    {!confirmation && selected?.confirmed && <Text size="xs" c="dimmed">This name is already saved. Ordinary sharing does not need another local confirmation.</Text>}
+    <Group justify="space-between"><Text size="sm" fw={600}>Public name</Text>
+      <Button size="compact-xs" variant="subtle" disabled={busy} onClick={onManage}>Manage public names</Button></Group>
+    <Select size="xs" label="Use a saved name" value={target && target.state !== 'legacy_review' ? target.registrationId : selection ?? ''}
+      disabled={!!target || busy || accepted} allowDeselect={false} onChange={v => setSelection(v || null)}
+      data={[{ value: '', label: 'Enter a public name' }, ...preferences.registrations.map(r => ({ value: r.registrationId,
+        label: r.name + (r.confirmed ? '' : ' (needs verification)'), disabled: !r.confirmed }))]} />
+    {!target && !selection && <TextInput size="xs" label="Public name" value={name} maxLength={256}
+      disabled={busy || accepted} onChange={e => setName(e.currentTarget.value)} />}
+    {!target && !selected?.confirmed && !complete && <>
+      <Text size="xs" c="dimmed">Verify this name once using the private code sent in Discord.</Text>
+      <Text size="xs" c="dimmed">{PUBLIC_NAME_RETENTION_NOTICE}</Text>
+      <Text size="xs" c="dimmed">People in the Discord channel can see who pastes a share before the bot removes it.</Text>
+    </>}
+    {selected?.confirmed && <Text size="xs" c="dimmed">Name verified.</Text>}
   </Stack>
   return <Stack gap="xs">
     {fieldContainer && createPortal(fields, fieldContainer)}
-    {target && <SafeTargetReview target={target} />}
-    {!target && <Alert color="gray" p="xs" title="Separate strategy">
-      This share creates a separate strategy. It does not add to or replace an existing strategy.
-      To add or replace, choose Continue in the Strategy Browser and save that choice first.
-    </Alert>}
-    {!target && <Text size="xs" c="dimmed">Repeated Copy or preparation reuses the saved share for this session.
-      Use a new separate share only when you deliberately want another publication.</Text>}
-    {!target && !newSeparate && <Button size="compact-xs" variant="subtle" disabled={busy} onClick={() => {
-      setWire(null); setReady(false); setRequestGeneration(v => v + 1); setNewSeparate(true)
-    }}>Start a new separate share</Button>}
-    {newSeparate && <Alert color="orange" p="xs">The next preparation starts a new publication, even if you already posted these results.
-      <Button size="compact-xs" variant="subtle" onClick={() => setNewSeparate(false)}>Keep the existing share instead</Button>
-    </Alert>}
+    {!complete && <Text size="sm">{target && target.state !== 'legacy_review'
+      ? `${target.operation === 'evidence' ? 'Adding to' : 'Replacing'}: ${target.title || 'Saved strategy'}`
+      : target ? 'Choose Continue in the Strategy Browser to review this older saved target.' : 'Creates a new strategy and Discord card.'}</Text>}
     {error && <Alert ref={errorElement} color="orange" p="xs" role="alert" title="Sharing needs attention">{error}</Alert>}
-    {dismissalNotice && <Alert color="orange" p="xs">{dismissalNotice}</Alert>}
-    <Button size="xs" variant="light" disabled={!ready || blocked || !usableSelection || !core} loading={busy} onClick={() => void prepare()}>
-      {newSeparate ? 'Prepare new separate share' : target ? 'Prepare continuation share' : 'Prepare Discord share'}
-    </Button>
-    {currentWire && <>
-      {currentWire.token.length > 6000 ? <Alert color="red">The share exceeds the Discord command limit. Shorten the notes.</Alert>
-        : <CopyButton value={currentWire.token}>{({ copied, copy }) => <Button size="xs" variant="light"
-          disabled={blocked || !usableSelection} onClick={copy}>
-          {copied ? 'Share copied' : currentWire.token.length > 2000 ? 'Copy for /wledger-share' : 'Copy to Discord'}
-        </Button>}</CopyButton>}
-      {currentWire.request && <AuthorConfirmationPanel key={currentWire.request.request_id} context={context}
-        onAccepted={(receipt) => {
-          if (active.current !== context || !target || target.state !== 'ready' || receipt.outcome.status !== 'published') return
-          const store = useSessionStore.getState()
-          if (`${store.activeSessionId ?? 'working'}:${store.sessionNonce}` !== context.sessionId ||
-            !receipt.registrations.some(r => r.registration_id === target.registrationId)) return
-          const current = migrateStrategyTarget(store.settings as unknown as Record<string, unknown>)
-          const next = acknowledgeStrategyTarget(current, target.generation, receipt.outcome.strategy_id, receipt.outcome.revision)
-          if (next !== current) store.updateSetting('strategyTarget', next)
-        }}
-        request={currentWire.request} action="confirmation" onCancel={() => {
-          setWire(null); setReady(false); setRequestGeneration((v) => v + 1)
-          void window.api.authorHandoff({ action: 'cancel', context, requestId: currentWire.request!.request_id })
-            .then((r) => { if (!r.ok) setDismissalNotice(r.error) })
-            .catch(() => setDismissalNotice('Closed locally. Server cancellation could not be confirmed; the old request may remain active until it expires.'))
-        }} />}
-    </>}
+    {share && sessionIdentity && <AuthorOperationPanel context={context} share={share} sessionIdentity={sessionIdentity} onChange={setShare} />}
+    {!accepted && share?.status !== 'restore_review' && <Button size="xs" variant="light" disabled={!ready || blocked || !canChoose || !core}
+      loading={busy} onClick={() => void prepareAndCopy()}>
+      {copy.label === 'Copy to Discord' && currentWire && currentWire.token.length > 2000 ? 'Copy for /wledger-share' : copy.label}
+    </Button>}
+    {copy.pasteHint && <Text size="xs" c="dimmed">Paste it in the sharing channel. You can close this window; the app keeps checking.</Text>}
+    {nameRequest && !selected?.confirmed &&
+      <AuthorConfirmationPanel key={nameRequest.request_id} context={context} firstNameVerification
+        expectedName={share?.author.name ?? name}
+        onAccepted={receipt => { const registration = receipt.registrations.find(r => r.name === (share?.author.name ?? name));
+          if (registration) setSelection(registration.registration_id) }}
+        request={nameRequest} action="confirmation" onCancel={onClose} detailsContainer={confirmationContainer} />}
+    {complete && !target && !selected?.confirmed && !nameRequest && <Text size="xs" c="dimmed">
+      Your share is published. To verify its name on this device, open Manage public names and choose Recover.
+    </Text>}
+    <Button size="xs" variant={complete ? 'filled' : 'subtle'} onClick={onClose}>Close</Button>
   </Stack>
 }

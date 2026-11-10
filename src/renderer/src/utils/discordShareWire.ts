@@ -207,7 +207,7 @@ export function buildDiscordSharePayload(parsed: DiscordImport): string {
 export function decodeDiscordSharePayload(payloadJson: string): DiscordImport | null {
   try {
     let payload = JSON.parse(payloadJson) as unknown;
-    if (tuple(payload, 3) && (payload[0] === 5 || payload[0] === 6)) {
+    if (tuple(payload, 3) && (payload[0] === 5 || payload[0] === 6 || payload[0] === 7)) {
       // Public metadata never confers local recognition or an armed target.
       // Validate the envelope, then import only through the existing core path.
       if (buildAuthorSubmission(JSON.stringify(payload[1]), payload[2] as AuthorSubmissionMetadata) !== payloadJson) return null;

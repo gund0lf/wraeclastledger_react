@@ -969,13 +969,13 @@ export class FileSessionRepository implements SessionRepositoryPort {
     return { target, session };
   }
 
-  /** Bounded public submission data only; private author metadata/intent IDs stay in main. */
-  async readShareCore(contextSessionId: string, expectedSessionIdentity: string): Promise<{ core: string } | null> {
+  /** Public submission data only; reader secrets and intent IDs stay in main. */
+  async readShareCore(contextSessionId: string, expectedSessionIdentity: string): Promise<{ core: string; author: AuthorSubmissionMetadata['author'] } | null> {
     await this.requireReady();
     return this.queue.enqueue('repository', async () => {
       const { target, session } = await this.shareIntentView(contextSessionId, expectedSessionIdentity);
       const { snapshot } = await this.readShareIntent(target, session);
-      return snapshot ? { core: snapshot.core } : null;
+      return snapshot ? { core: snapshot.core, author: { ...snapshot.metadata.author } } : null;
     });
   }
 

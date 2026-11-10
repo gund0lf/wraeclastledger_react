@@ -45,5 +45,5 @@ export function selectShareIntent(previous: ShareIntentSnapshot | null, sessionI
 }
 
 export function defaultShareConfirmation(continuation: boolean, confirmedName: boolean): boolean {
-  return continuation || !confirmedName
+  return !continuation && !confirmedName
 }

@@ -4,3 +4,26 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
 }
+
+.share-scroll-body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 0;
+  padding: 0 16px 16px;
+  margin: 0;
+}
+
+.share-footer {
+  flex-shrink: 0;
+  padding: 12px 16px;
+}
+
+.share-form {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}

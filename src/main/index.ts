@@ -1308,6 +1308,9 @@ if (!hasSingleInstanceLock) {
     electronApp.setAppUserModelId('com.wraeclastledger.app');
     app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window));
     createWindow();
+    void authorHandoffs.startOperationTracking().catch(() => {
+      console.warn('[Sharing] Automatic status tracking is unavailable. Local sessions are unchanged.');
+    });
     powerMonitor.on('suspend', () => sendOverlayAction({ type: 'timer-pause' }));
     powerMonitor.on('lock-screen', () => sendOverlayAction({ type: 'timer-pause' }));
     ipcMain.on('ping', () => console.log('pong'));
@@ -1315,7 +1318,7 @@ if (!hasSingleInstanceLock) {
   });
 
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-  app.on('will-quit', () => setClipboardWatch(false));
+  app.on('will-quit', () => { setClipboardWatch(false); authorHandoffs.stopOperationTracking(); });
   app.on('before-quit', (event) => {
     // Capture stops at will-quit/closed, not while a final save may cancel quit.
     unregisterOverlayShortcuts()
