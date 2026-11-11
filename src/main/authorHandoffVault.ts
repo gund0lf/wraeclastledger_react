@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID, createHash } from 'node:crypto'
-import { readFile, writeFile, rename, mkdir, stat } from 'node:fs/promises'
+import { readFile, open, rename, mkdir, stat, lstat, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { closedAuthorObject, type PublicationOperation } from '../shared/authorHandoff'
+import { closedAuthorObject, type PublicationOperation, type ShareStorageCode } from '../shared/authorHandoff'
 import { shareDraft, shareView, validDurableShare, completedShare, completedView, validCompletedShare,
   type DurableShareRecord, type CompletedShareRecord } from './durableShareRecord'
 import { parseDurableShareResult, type DurableShareView, type ActiveDurableShareView,
@@ -30,6 +30,7 @@ interface PendingAuthorRequest {
 interface VaultRecord {
   version: 1
   installationId: string
+  recoveredAt?: number
   pending: PendingAuthorRequest[]
   shares?: DurableShareRecord[]
   completed?: CompletedShareRecord[]
@@ -44,11 +45,20 @@ function compactCompleted(data: VaultRecord): DurableShareRecord[] {
   data.shares = data.shares!.filter(s => !ids.has(s.id))
   return eligible
 }
-function fullRecordsFit(data: VaultRecord): boolean {
+function fullRecordsFit(data: VaultRecord, progressMetadata = false): boolean {
   // Completed replay markers contain only closed, bounded identity/result
   // fields. They do not consume the quota for unresolved payloads/capabilities.
   const { completed: _completed, ...full } = data
-  return (data.shares?.length ?? 0) <= 512 && Buffer.byteLength(JSON.stringify(full)) <= fullRecordBudget
+  // A payload admitted just below the byte limit must still be able to save
+  // its result and finish name verification. Only closed, bounded progress
+  // fields get this allowance; all payload and unknown fields stay charged.
+  const charged = progressMetadata ? { ...full,
+    shares: full.shares?.map(({ result: _result, copiedRevision: _copied, pollingActivityAt: _activity, ...share }) =>
+      ({ ...share, result: null })),
+    pending: full.pending.map(p => Object.fromEntries(Object.entries(p).filter(([key, value]) =>
+      !boundedReaderField(key, value)))).filter(p => Object.keys(p).length > 0)
+  } : full
+  return (data.shares?.length ?? 0) <= 512 && Buffer.byteLength(JSON.stringify(charged)) <= fullRecordBudget
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 function validNameShare(value: unknown): value is ResumableName {
@@ -57,14 +67,57 @@ function validNameShare(value: unknown): value is ResumableName {
     Number.isSafeInteger(value.draftRevision) && (value.draftRevision as number) > 0 &&
     (value.expiresAt === null || typeof value.expiresAt === 'string' && value.expiresAt.length <= 40 && Number.isFinite(Date.parse(value.expiresAt)))
 }
+function boundedReaderField(key: string, value: unknown): boolean {
+  switch (key) {
+    case 'clientRequestId': case 'consumptionId':
+      return typeof value === 'string' && uuid.test(value)
+    case 'requestId': return value === null || typeof value === 'string' && uuid.test(value)
+    case 'sessionId': case 'operationGeneration': return typeof value === 'string' && value.length <= 128
+    case 'readerSecret': return typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value)
+    case 'createdAt': return typeof value === 'number' && Number.isFinite(value)
+    case 'nameShare': return validNameShare(value)
+    default: return false
+  }
+}
 const domainHash = (name: string, value: Buffer) =>
   createHash('sha256')
     .update(name + '\0')
     .update(value)
     .digest('hex')
 
+export type ProtectedShareStorageCode = ShareStorageCode
+const storageMessages: Record<ProtectedShareStorageCode, string> = {
+  encryption_unavailable: 'Sharing is unavailable because this PC cannot open secure encrypted storage. Saved drafts and results have not been changed. Restore access to your system’s secure storage before sharing.',
+  damaged: 'The sharing history on this PC can\'t be read, so sharing is paused to avoid posting anything twice. Your sessions and saved names are not affected. You can start a new sharing history; the old files are kept.',
+  full: 'Unfinished sharing storage is full. No saved shares were removed. Finish shares you already copied and let the app receive their results before preparing another share. Unposted copies still take space; waiting alone does not free it. If existing shares cannot be opened, ask in the WraeclastLedger Discord without deleting the sharing history.',
+  io: 'Your sharing history could not be read or saved because of a disk or file-access problem. Sharing is paused. Check free disk space and access to this app profile, then try again; do not delete the sharing history.',
+  recovery_required: 'A sharing save was interrupted, so sharing is paused to avoid posting anything twice. You can start a new sharing history; the old files are kept.'
+}
 export class ProtectedShareStorageError extends Error {
-  constructor() { super('Sharing is unavailable because this PC cannot open secure encrypted storage. Saved drafts and results have not been changed. Restore access to your system’s secure storage before sharing.') }
+  constructor(readonly code: ProtectedShareStorageCode = 'encryption_unavailable') {
+    super(storageMessages[code])
+    this.name = 'ProtectedShareStorageError'
+  }
+}
+export class ShareRecoveryConfirmationError extends Error {
+  constructor() {
+    super('This session is from before the recovery. If you already shared it, use Continue in the Strategy Browser. Share as new anyway?')
+    this.name = 'ShareRecoveryConfirmationError'
+  }
+}
+interface RecoveryFile {
+  name: string
+  digest: string
+  size: number
+  modified: number
+  changed: number
+  device: number
+  inode: number
+}
+const pendingFile = /^author-handoffs\.[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.pending$/
+const validRecoveryTime = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0
+function predatesRecovery(data: VaultRecord, createdAt: number | null | undefined): boolean {
+  return data.recoveredAt !== undefined && (!validRecoveryTime(createdAt) || createdAt <= data.recoveredAt)
 }
 
 /** Main-only encrypted capabilities; never portable session or renderer state.
@@ -75,6 +128,9 @@ export class AuthorHandoffVault {
   // unfinished work. Closing a window keeps exact values while the app runs.
   private completedDisplays = new Map<string, { binding: string; snapshot: ShareDisplaySnapshot; bytes: number }>()
   private completedDisplayBytes = 0
+  // The renderer receives only an opaque approval token. File fingerprints and
+  // names remain main-process state and are rechecked before recovery writes.
+  private recoveryPreview: { id: string; files: RecoveryFile[] } | null = null
   constructor(
     private directory: string,
     private protection: Protection,
@@ -104,21 +160,38 @@ export class AuthorHandoffVault {
     this.completedDisplays.set(record.id, display)
     return { ...view, displaySnapshot: { core: display.snapshot.core, author: { ...display.snapshot.author } } }
   }
-  private async load(): Promise<VaultRecord> {
-    if (!this.protection.isEncryptionAvailable())
-      throw new ProtectedShareStorageError()
+  private async requireNoInterruptedStore(): Promise<void> {
+    // Inspect only this private vault directory, never select a candidate by
+    // timestamp or silently turn a lost current store into a fresh identity.
+    try {
+      if ((await readdir(this.directory)).some(name => pendingFile.test(name)))
+        throw new ProtectedShareStorageError('recovery_required')
+    } catch (error) {
+      if (error instanceof ProtectedShareStorageError) throw error
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new ProtectedShareStorageError('io')
+    }
+  }
+  private async load(persistCompaction = true): Promise<VaultRecord> {
+    try {
+      if (!this.protection.isEncryptionAvailable()) throw new Error('Encryption unavailable')
+    } catch { throw new ProtectedShareStorageError('encryption_unavailable') }
     let bytes: Buffer
     try {
       bytes = await readFile(join(this.directory, 'author-handoffs.enc'))
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        await this.requireNoInterruptedStore()
         return { version: 1, installationId: randomUUID(), pending: [] }
-      throw error
+      }
+      throw new ProtectedShareStorageError('io')
     }
-    const data = JSON.parse(this.protection.decryptString(bytes)) as VaultRecord
+    let data: VaultRecord
+    try { data = JSON.parse(this.protection.decryptString(bytes)) as VaultRecord }
+    catch { throw new ProtectedShareStorageError('damaged') }
     if (
-      data.version !== 1 ||
+      !data || typeof data !== 'object' || Array.isArray(data) || data.version !== 1 ||
       !uuid.test(data.installationId) ||
+      (data.recoveredAt !== undefined && !validRecoveryTime(data.recoveredAt)) ||
       (data.shares !== undefined && (!Array.isArray(data.shares) ||
         data.shares.some(s => !validDurableShare(s)) || new Set(data.shares.map(s => s.id)).size !== data.shares.length)) ||
       (data.completed !== undefined && (!Array.isArray(data.completed) || data.completed.some(s => !validCompletedShare(s)))) ||
@@ -126,7 +199,7 @@ export class AuthorHandoffVault {
       data.pending.length > 2 ||
       data.pending.some(
         (p) =>
-          !uuid.test(p.clientRequestId) ||
+          !p || typeof p !== 'object' || !uuid.test(p.clientRequestId) ||
           !uuid.test(p.consumptionId) ||
           typeof p.sessionId !== 'string' ||
           p.sessionId.length > 128 ||
@@ -138,23 +211,119 @@ export class AuthorHandoffVault {
           (p.nameShare !== undefined && (!validNameShare(p.nameShare) || Object.hasOwn(p, 'operation')))
       )
     )
-      throw new Error('Author confirmation storage is invalid.')
+      throw new ProtectedShareStorageError('damaged')
     const records = [...data.shares ?? [], ...data.completed ?? []]
     if (new Set(records.map(s => s.id)).size !== records.length ||
       new Set(records.map(s => JSON.stringify([s.sessionIdentity, s.targetGeneration]))).size !== records.length)
-      throw new Error('Protected share identities conflict.')
+      throw new ProtectedShareStorageError('damaged')
     // Development-only operation acknowledgements never establish a durable
     // share result or a name. Discard their readers without consuming or
     // cancelling anything remotely; current name readers remain unchanged.
     data.pending = data.pending.filter((p) => !Object.hasOwn(p, 'operation') &&
       p.createdAt <= this.now() && this.now() - p.createdAt < 15 * 60_000)
     const compacted = compactCompleted(data)
-    if (!fullRecordsFit(data)) throw new Error('Protected unfinished sharing storage is too large.')
-    if (compacted.length) { await this.save(data); this.rememberCompleted(compacted) }
+    if (!fullRecordsFit(data, true)) throw new ProtectedShareStorageError('full')
+    if (compacted.length && persistCompaction) { await this.save(data); this.rememberCompleted(compacted) }
     return data
   }
+  private async recoveryInventory(): Promise<RecoveryFile[]> {
+    try {
+      const root = await lstat(this.directory)
+      if (!root.isDirectory() || root.isSymbolicLink()) throw new ProtectedShareStorageError('io')
+      const names = (await readdir(this.directory)).filter(name => name === 'author-handoffs.enc' || pendingFile.test(name)).sort()
+      const files: RecoveryFile[] = []
+      for (const name of names) {
+        const file = join(this.directory, name), before = await lstat(file)
+        if (!before.isFile() || before.isSymbolicLink()) throw new ProtectedShareStorageError('io')
+        const bytes = await readFile(file), after = await lstat(file)
+        if (!after.isFile() || after.isSymbolicLink() || before.dev !== after.dev || before.ino !== after.ino ||
+          before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs)
+          throw new ProtectedShareStorageError('io')
+        files.push({ name, digest: createHash('sha256').update(bytes).digest('hex'), size: after.size,
+          modified: after.mtimeMs, changed: after.ctimeMs, device: after.dev, inode: after.ino })
+      }
+      return files
+    } catch (error) {
+      if (error instanceof ProtectedShareStorageError) throw error
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new ProtectedShareStorageError('recovery_required')
+      throw new ProtectedShareStorageError('io')
+    }
+  }
+  private async requireRecoverable(): Promise<void> {
+    try { await this.load(false) }
+    catch (error) {
+      if (error instanceof ProtectedShareStorageError && (error.code === 'damaged' || error.code === 'recovery_required')) return
+      throw error
+    }
+    throw new Error('Sharing history is readable. Recovery is not needed.')
+  }
+  previewRecovery(): Promise<{ recoveryId: string }> {
+    return this.run(async () => {
+      this.recoveryPreview = null
+      const files = await this.recoveryInventory()
+      await this.requireRecoverable()
+      if (!files.length) throw new Error('There are no sharing files to recover.')
+      const id = randomUUID()
+      this.recoveryPreview = { id, files }
+      return { recoveryId: id }
+    })
+  }
+  confirmRecovery(recoveryId: string, stillCurrent: () => boolean): Promise<{ recoveredAt: number }> {
+    return this.run(async () => {
+      const preview = this.recoveryPreview
+      this.recoveryPreview = null
+      const requireCurrent = () => {
+        if (!stillCurrent()) throw new Error('The recovery context changed. Review recovery again.')
+      }
+      requireCurrent()
+      if (!preview || preview.id !== recoveryId) throw new Error('Review sharing recovery before confirming it.')
+      const files = await this.recoveryInventory()
+      if (canonicalAuthorJson(files) !== canonicalAuthorJson(preview.files))
+        throw new Error('The sharing files changed. Review recovery again.')
+      await this.requireRecoverable()
+      requireCurrent()
+      const recoveredAt = this.now()
+      if (!validRecoveryTime(recoveredAt)) throw new ProtectedShareStorageError('io')
+      const fresh: VaultRecord = { version: 1, installationId: randomUUID(), recoveredAt, pending: [] }
+      let bytes: Buffer
+      try {
+        if (!this.protection.isEncryptionAvailable()) throw new Error('Encryption unavailable')
+        bytes = this.protection.encryptString(JSON.stringify(fresh))
+      } catch { throw new ProtectedShareStorageError('encryption_unavailable') }
+      // A candidate exists before any old file is moved. If interrupted, normal
+      // loading stays held; even a readable candidate is never adopted on its own.
+      const candidate = join(this.directory, 'author-handoffs.' + randomUUID() + '.pending')
+      const preserved = join(this.directory, 'author-handoffs-preserved.' + randomUUID())
+      try {
+        const handle = await open(candidate, 'wx', 0o600)
+        try { await handle.writeFile(bytes); await handle.sync() }
+        finally { await handle.close() }
+        requireCurrent()
+        const unchanged = (await this.recoveryInventory()).filter(file => join(this.directory, file.name) !== candidate)
+        if (canonicalAuthorJson(unchanged) !== canonicalAuthorJson(files))
+          throw new Error('The sharing files changed. Review recovery again.')
+        await mkdir(preserved, { mode: 0o700 })
+        for (const file of files) {
+          requireCurrent()
+          await rename(join(this.directory, file.name), join(preserved, file.name))
+        }
+        requireCurrent()
+        await rename(candidate, join(this.directory, 'author-handoffs.enc'))
+      } catch { throw new ProtectedShareStorageError('io') }
+      this.completedDisplays.clear()
+      this.completedDisplayBytes = 0
+      return { recoveredAt }
+    })
+  }
+  recoveryRequiredForSession(sessionCreatedAt: number | null): Promise<boolean> {
+    return this.run(async () => predatesRecovery(await this.load(), sessionCreatedAt))
+  }
   durableShares(): Promise<DurableShareView[]> {
-    return this.run(async () => (await this.load()).shares?.map(s => shareView(s)) ?? [])
+    return this.durableTrackingShares().then(records => records.map(record => record.view))
+  }
+  durableTrackingShares(): Promise<{ view: DurableShareView; pollingActivityAt: number | null }[]> {
+    return this.run(async () => (await this.load()).shares?.map(s => ({ view: shareView(s),
+      pollingActivityAt: s.pollingActivityAt ?? null })) ?? [])
   }
   durableForSession(sessionIdentity: string, targetGeneration: string | null): Promise<DurableShareView | null> {
     return this.run(async () => {
@@ -170,19 +339,26 @@ export class AuthorHandoffVault {
     return this.run(async () => {
       try { await stat(join(this.directory, 'author-handoffs.enc')) }
       catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
-        throw new ProtectedShareStorageError()
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          await this.requireNoInterruptedStore()
+          return null
+        }
+        throw new ProtectedShareStorageError('io')
       }
       try {
         const data = await this.load()
         const s = data.shares?.find(s => s.sessionIdentity === sessionIdentity && s.targetGeneration === null)
         const done = data.completed?.find(s => s.sessionIdentity === sessionIdentity && s.targetGeneration === null)
         return s ? shareView(s) : done ? this.completedDisplayView(done) : null
-      } catch { throw new ProtectedShareStorageError() }
+      } catch (error) {
+        if (error instanceof ProtectedShareStorageError) throw error
+        throw new ProtectedShareStorageError('damaged')
+      }
     })
   }
   prepareDurable(input: { sessionIdentity: string; sessionId: string; targetGeneration: string | null;
-    operation: PublicationOperation; epoch: string; core: string; metadata: AuthorSubmissionMetadata },
+    operation: PublicationOperation; epoch: string; core: string; metadata: AuthorSubmissionMetadata;
+    sessionCreatedAt?: number | null; recoveryConfirmed?: boolean },
     exchange: (body: unknown, authorization: string) => Promise<unknown>): Promise<{ view: ActiveDurableShareView; metadata: AuthorSubmissionMetadata }> {
     return this.run(async () => {
       const data = await this.load()
@@ -191,7 +367,9 @@ export class AuthorHandoffVault {
       data.shares ??= []
       let s = data.shares.find(s => s.sessionIdentity === input.sessionIdentity && s.targetGeneration === input.targetGeneration)
       if (!s) {
-        if (data.shares.length >= 512) throw new Error('Protected unfinished share storage is full. Keep this profile for review.')
+        if (input.operation.kind === 'publication' && predatesRecovery(data, input.sessionCreatedAt) && input.recoveryConfirmed !== true)
+          throw new ShareRecoveryConfirmationError()
+        if (data.shares.length >= 512) throw new ProtectedShareStorageError('full')
         s = { id: randomUUID(), readerSecret: randomBytes(32).toString('base64url'), sessionIdentity: input.sessionIdentity,
           sessionId: input.sessionId, epoch: input.epoch, operation: input.operation, targetGeneration: input.targetGeneration,
           draft: null, proposed: null, result: null, noticed: false }
@@ -223,6 +401,10 @@ export class AuthorHandoffVault {
         if (s.result && s.result.state !== 'ready')
           throw new Error('This share is already processing or shared. Open it in the Strategy Browser and choose Replace to change it.')
         s.proposed = shareDraft(s.id, (s.draft?.revision ?? 0) + 1, input.core, metadata)
+        s.pollingActivityAt = this.now()
+        // Only a new/changed proposal spends payload capacity. A retry of an
+        // admitted proposal or unchanged Copy never reapplies this admission.
+        if (!fullRecordsFit(data)) throw new ProtectedShareStorageError('full')
         await commitProposal()
       }
       return { view: shareView(s), metadata: s.draft!.metadata }
@@ -277,23 +459,33 @@ export class AuthorHandoffVault {
       if (!current() || !s?.draft || s.draft.revision !== input.draftRevision)
         throw new Error('The copied share changed. Close and reopen Share.')
       s.copiedRevision = input.draftRevision
+      s.pollingActivityAt = this.now()
       await this.save(data)
       return shareView(s)
     })
   }
   private async save(data: VaultRecord): Promise<void> {
     if (data.shares?.some(s => !validDurableShare(s)) || data.completed?.some(s => !validCompletedShare(s)))
-      throw new Error('Protected share history could not be saved safely.')
+      throw new ProtectedShareStorageError('damaged')
     const compacted = compactCompleted(data)
-    if (!fullRecordsFit(data)) throw new Error('Protected unfinished share storage could not be saved safely.')
-    const bytes = this.protection.encryptString(JSON.stringify(data))
-    await mkdir(this.directory, { recursive: true })
-    const temp = join(this.directory, 'author-handoffs.' + randomUUID() + '.pending')
-    await writeFile(temp, bytes, {
-      flag: 'wx',
-      mode: 0o600
-    })
-    await rename(temp, join(this.directory, 'author-handoffs.enc'))
+    if (!fullRecordsFit(data, true)) throw new ProtectedShareStorageError('full')
+    let bytes: Buffer
+    try {
+      if (!this.protection.isEncryptionAvailable()) throw new Error('Encryption unavailable')
+      bytes = this.protection.encryptString(JSON.stringify(data))
+    } catch { throw new ProtectedShareStorageError('encryption_unavailable') }
+    try {
+      await mkdir(this.directory, { recursive: true })
+      const temp = join(this.directory, 'author-handoffs.' + randomUUID() + '.pending')
+      const handle = await open(temp, 'wx', 0o600)
+      try {
+        await handle.writeFile(bytes)
+        // Flush before replacing the last acknowledged store. The disk/OS may
+        // still have hardware-specific durability limits; this is not rollback.
+        await handle.sync()
+      } finally { await handle.close() }
+      await rename(temp, join(this.directory, 'author-handoffs.enc'))
+    } catch { throw new ProtectedShareStorageError('io') }
     this.rememberCompleted(compacted)
   }
   private run<T>(fn: () => Promise<T>): Promise<T> {

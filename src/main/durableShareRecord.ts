@@ -22,6 +22,8 @@ export interface DurableShareRecord {
   result: DurableShareResult | null
   noticed: boolean
   copiedRevision?: number | null
+  /** Main-process scheduling metadata, not a deadline or publication authority. */
+  pollingActivityAt?: number
 }
 export interface CompletedShareRecord {
   id: string
@@ -68,7 +70,8 @@ export function shareDraft(id: string, revision: number, core: string, metadata:
 export function validDurableShare(value: unknown): value is DurableShareRecord {
   if (!closedAuthorObject(value, ['id','readerSecret','sessionIdentity','sessionId','epoch','operation',
     'targetGeneration','draft','proposed','result','noticed',
-    ...(value && typeof value === 'object' && Object.hasOwn(value, 'copiedRevision') ? ['copiedRevision'] : [])]) ||
+    ...(value && typeof value === 'object' && Object.hasOwn(value, 'copiedRevision') ? ['copiedRevision'] : []),
+    ...(value && typeof value === 'object' && Object.hasOwn(value, 'pollingActivityAt') ? ['pollingActivityAt'] : [])]) ||
     typeof value.id !== 'string' || !AUTHOR_UUID.test(value.id) ||
     typeof value.epoch !== 'string' || !AUTHOR_UUID.test(value.epoch) ||
     typeof value.readerSecret !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(value.readerSecret) ||
@@ -93,6 +96,7 @@ export function validDurableShare(value: unknown): value is DurableShareRecord {
         built.metadata.expected_revision !== o.revision) return false
     }
     const s = value as unknown as DurableShareRecord
+    if (s.pollingActivityAt !== undefined && (!Number.isSafeInteger(s.pollingActivityAt) || s.pollingActivityAt < 0)) return false
     if (s.copiedRevision != null && (!Number.isInteger(s.copiedRevision) || s.copiedRevision < 1 ||
       !s.draft || s.copiedRevision > s.draft.revision)) return false
     if (!s.draft && !s.proposed || s.proposed && s.proposed.revision !== (s.draft?.revision ?? 0) + 1) return false

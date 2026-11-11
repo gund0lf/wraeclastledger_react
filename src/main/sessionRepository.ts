@@ -979,6 +979,21 @@ export class FileSessionRepository implements SessionRepositoryPort {
     });
   }
 
+  /** Recovery age comes from the selected durable session, never renderer input. */
+  async readShareSessionCreatedAt(contextSessionId: string, expectedSessionIdentity: string): Promise<number | null> {
+    await this.requireReady();
+    return this.queue.enqueue('repository', async () => {
+      const { session } = await this.shareIntentView(contextSessionId, expectedSessionIdentity);
+      // Only canonical UTC dates establish that a session is newer than recovery.
+      // Legacy ambiguous formats remain unknown rather than bypassing its warning.
+      const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,3}))?Z$/.exec(session.createdAt);
+      if (!match) return null;
+      const canonical = `${match[1]}.${(match[2] ?? '').padEnd(3, '0')}Z`;
+      const timestamp = Date.parse(canonical);
+      return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === canonical ? timestamp : null;
+    });
+  }
+
   /** Main-only, per-session publication bookkeeping. Uses the repository queue,
    * atomic framing and recovery rules; never included in portable payloads. */
   async prepareShareIntent(contextSessionId: string, core: string, metadata: AuthorSubmissionMetadata,
@@ -1440,6 +1455,8 @@ export class FileSessionRepository implements SessionRepositoryPort {
         if (request.target.kind !== 'new') throw new ShareIntentError('Only a named copy can inherit a share.');
         const source = await this.readBody(request.inheritShareIntentFrom);
         if (source.semanticHash !== semanticHash) throw new ShareIntentError('The source session changed. Retry naming it.');
+        // Naming this run must not make it appear newer than a sharing recovery.
+        createdAt = source.createdAt;
         inheritedShare = (await this.readShareIntent(request.inheritShareIntentFrom, source)).snapshot;
       }
       let replacementRecovery: { recoveryId: string; destination: string } | null = null;

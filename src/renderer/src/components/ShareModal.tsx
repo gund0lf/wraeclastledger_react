@@ -176,6 +176,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   const activeDraftView = useRef({ opened, key: draftKey });
   activeDraftView.current = { opened, key: draftKey };
   const [draftRestoration, setDraftRestoration] = useState<{ key: string; error: string | null } | null>(null);
+  const [storageRecoveryGeneration, setStorageRecoveryGeneration] = useState(0);
   const restoreOrdinaryDraft = authorReview === true && !settings.strategyTarget;
   const draftLoading = opened && (authorReview === null || (restoreOrdinaryDraft && draftRestoration?.key !== draftKey));
   const draftError = draftRestoration?.key === draftKey ? draftRestoration.error : null;
@@ -211,7 +212,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     return () => { stopped = true; };
     // Defaults are sampled for this opening/view only, never reapplied over edits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opened, restoreOrdinaryDraft, draftKey, draftSessionId, currentSessionIdentity]);
+  }, [opened, restoreOrdinaryDraft, draftKey, draftSessionId, currentSessionIdentity, storageRecoveryGeneration]);
   const [evidenceCurrent, setEvidenceCurrent] = useState<Strategy | null>(null);
   const [evidenceFetchError, setEvidenceFetchError] = useState<string | null>(null);
   const [evidenceProof, setEvidenceProof] = useState<EvidenceSubmissionProof | null>(null);
@@ -577,7 +578,8 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
         body: { display: 'flex', flexDirection: 'column', flex: contentSizedDialog ? '0 1 auto' : 1, minHeight: 0, padding: 0 },
       }}>
       {draftLoading && <Text size="xs" role="status">Restoring saved sharing details…</Text>}
-      {draftError && restoreOrdinaryDraft && <Alert color="red" role="alert">{draftError}</Alert>}
+      {draftError && restoreOrdinaryDraft && !(authorReview && opened && !manageNames) &&
+        <Alert color="red" role="alert">{draftError}</Alert>}
       {authorReview && !manageNames && <Group gap="sm" mx={16} mb="sm" p="sm" wrap="nowrap"
         style={{ background: COLOR.surfaceSectionBg, borderLeft: `3px solid ${COLOR.info}`, borderRadius: 6 }}>
         <IntentIcon size={18} color={COLOR.accent} style={{ flexShrink: 0 }} />
@@ -928,11 +930,13 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
         style={{ background: COLOR.bgRaised, borderTop: `1px solid ${COLOR.borderSoft}`, ...(manageNames ? { display: 'none' } : {}) }}>
         {sharePosted && postedDisplay.error && <Alert color="orange" role="alert">{postedDisplay.error}</Alert>}
         {authorReview && opened && <AuthorShareControls enabled={!manageNames}
+          restorationError={restoreOrdinaryDraft ? draftError : null}
           onTrackingChange={setShareTracking}
           onPostedChange={setSharePosted}
           onArchivedChange={setShareArchived}
           onCompletedChange={setShareCompleted}
           onPresentationChange={setSharePresentation}
+          onStorageRecovered={() => setStorageRecoveryGeneration(generation => generation + 1)}
           onClose={onClose}
           core={authorCore}
           raw={discordExport} blocked={draftLoading || !!draftError || previewWithheld || !budget.fitsPlain}

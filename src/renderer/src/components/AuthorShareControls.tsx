@@ -2,7 +2,7 @@ import { ActionIcon, Alert, Badge, Box, Button, Combobox, Divider, Group, InputB
 import { IconAlertTriangle, IconCheck, IconCopy, IconSettings } from '@tabler/icons-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { AuthorContext, AuthorResults } from '../../../shared/authorHandoff'
+import type { AuthorContext, AuthorResult, AuthorResults } from '../../../shared/authorHandoff'
 import { shareCopyPresentation, shareStatusText, type DurableShareView } from '../../../shared/durableShare'
 import { invalidateAuthorEpoch } from '../../../shared/authorRecognition'
 import { normalizePublicAuthorName, PUBLIC_NAME_RETENTION_NOTICE, SHARE_STATUS_RETENTION_NOTICE } from '../../../shared/authorNames'
@@ -15,6 +15,7 @@ import { prepareSafeContinuation, refreshSafeAuthorState } from '../utils/safeSt
 import { defaultShareConfirmation } from '../../../shared/shareIntent'
 import { AuthorOperationPanel } from './AuthorOperationPanel'
 import { observeShareWindowPresentation, type ShareWindowPresentation } from '../utils/shareWindowPresentation'
+import { ShareStorageRecovery } from './ShareStorageRecovery'
 
 function ShareStatusHeading({ children, icon, color }: { children: ReactNode; icon: ReactNode; color?: string }) {
   return <Box style={{ position: 'relative', maxWidth: '100%' }}>
@@ -23,13 +24,15 @@ function ShareStatusHeading({ children, icon, color }: { children: ReactNode; ic
   </Box>
 }
 
-export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fieldContainer, enabled, onTrackingChange, onPostedChange, onArchivedChange, onCompletedChange, onPresentationChange }: {
+export function AuthorShareControls({ core, raw, blocked, restorationError, onManage, onClose, fieldContainer, enabled, onTrackingChange, onPostedChange, onArchivedChange, onCompletedChange, onPresentationChange, onStorageRecovered }: {
   core: string; raw: string; blocked: boolean; onManage: (initialAction?: 'recover') => void; fieldContainer: HTMLElement | null; enabled: boolean
+  restorationError?: string | null
   onTrackingChange: (pending: boolean) => void; onClose: () => void
   onPostedChange: (posted: boolean) => void
   onArchivedChange: (archived: boolean) => void
   onCompletedChange: (completed: boolean) => void
   onPresentationChange: (presentation: ShareWindowPresentation | null) => void
+  onStorageRecovered: () => void
 }) {
   const preferences = useSessionStore(s => s.authorPreferences)
   const settings = useSessionStore(s => s.settings)
@@ -45,6 +48,11 @@ export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fie
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [storageRecovery, setStorageRecovery] = useState(false)
+  const [recoveryWarning, setRecoveryWarning] = useState<AuthorContext | null>(null)
+  const [recoveryGeneration, setRecoveryGeneration] = useState(0)
+  const [observationError, setObservationError] = useState<string | null>(null)
+  const visibleError = error ?? observationError ?? restorationError ?? null
   const errorElement = useRef<HTMLDivElement | null>(null)
   const [wire, setWire] = useState<({ context: AuthorContext } & AuthorResults['publication']) | null>(null)
   const [observedShare, setShare] = useState<DurableShareView | null>(null)
@@ -61,7 +69,7 @@ export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fie
   // A completed target's bookkeeping may change while the same share stays open.
   const context: AuthorContext = useMemo(() => ({ sessionId, generation: crypto.randomUUID() }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessionId, core, selection, name, confirmation, enabled, targetGeneration])
+    [sessionId, core, selection, name, confirmation, enabled, targetGeneration, recoveryGeneration])
   const active = useRef(context)
   active.current = context
   const currentTarget = useRef(target)
@@ -69,7 +77,11 @@ export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fie
   const shareScope = JSON.stringify([sessionIdentity, targetGeneration])
   windowPresentation.current = observeShareWindowPresentation(windowPresentation.current, shareScope, share)
   const presentation = windowPresentation.current
-  useEffect(() => { if (error) errorElement.current?.scrollIntoView({ block: 'nearest' }) }, [error])
+  const showFailure = (result: Extract<AuthorResult<keyof AuthorResults>, { ok: false }>) => {
+    setError(result.error)
+    setStorageRecovery(result.storageCode === 'damaged' || result.storageCode === 'recovery_required')
+  }
+  useEffect(() => { if (visibleError) errorElement.current?.scrollIntoView({ block: 'nearest' }) }, [visibleError])
   useEffect(() => { onTrackingChange(busy || share?.accepted === true); return () => onTrackingChange(false) }, [busy, share?.accepted, onTrackingChange])
   useEffect(() => { onPostedChange(share?.accepted === true); return () => onPostedChange(false) }, [share?.accepted, onPostedChange])
   useEffect(() => { onArchivedChange(presentation.compact); return () => onArchivedChange(false) }, [presentation.compact, onArchivedChange])
@@ -86,20 +98,26 @@ export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fie
       setShare(null); windowPresentation.current = null
     }
     shownShareScope.current = { sessionIdentity, targetGeneration }
-    setReady(false); setWire(null); setNameRequest(null); setError(null); setBusy(false)
+    setReady(false); setWire(null); setNameRequest(null); setError(null); setObservationError(null); setBusy(false)
+    setStorageRecovery(false); setRecoveryWarning(null)
     void (async () => {
       const activated = await window.api.authorHandoff({ action: 'activate', context })
       if (!current()) return
-      if (!activated.ok) { setError(activated.error); return }
+      if (!activated.ok) { showFailure(activated); return }
       if (sessionIdentity) {
         const result = await window.api.authorHandoff({ action: 'share-result', context, sessionIdentity, targetGeneration })
         if (!current()) return
-        if (!result.ok) { setError(result.error); return }
+        if (!result.ok) { showFailure(result); return }
         setShare(result.value)
+        if (result.value && !result.value.archived) {
+          const refreshed = await window.api.authorHandoff({ action: 'share-refresh', shareId: result.value.id })
+          if (!current()) return
+          if (!refreshed.ok) { showFailure(refreshed); return }
+        }
         if (result.value && !result.value.archived && !currentTarget.current) {
           const resumed = await window.api.authorHandoff({ action: 'resume-name', context, sessionIdentity })
           if (!current()) return
-          if (!resumed.ok) { setError(resumed.error); return }
+          if (!resumed.ok) { showFailure(resumed); return }
           setNameRequest(resumed.value)
         }
         if (result.value && !result.value.archived && restoredNameFor.current !== sessionIdentity && !currentTarget.current) {
@@ -110,7 +128,6 @@ export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fie
           else { setSelection(null); setNewName(true); setName(result.value.author.name) }
         }
       }
-      await window.api.authorHandoff({ action: 'share-refresh' })
       if (!current()) return
       setReady(true)
       const state = await window.api.authorHandoff({ action: 'state' })
@@ -124,7 +141,7 @@ export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fie
     // Preferences are read only for initial field restoration, not as a new request trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context, enabled, sessionIdentity, targetGeneration])
-  const prepareAndCopy = async () => {
+  const prepareAndCopy = async (recoveryConfirmed = false) => {
     setBusy(true); setError(null)
     try {
       if (!sessionIdentity) throw new Error('The selected session is still loading. Try again when it is ready.')
@@ -147,9 +164,15 @@ export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fie
       if (!value) {
         const r = await window.api.authorHandoff({ action: 'publication', context, core: preparedCore,
           metadata: { author, expected_revision: revision, confirmation_request_id: null },
-          confirmation, newIntent: false, sessionIdentity, targetGeneration })
+          confirmation, newIntent: false, sessionIdentity, targetGeneration,
+          ...(recoveryConfirmed ? { recoveryConfirmed: true as const } : {}) })
         if (active.current !== context) return
-        if (!r.ok) { setError(r.error); return }
+        if (!r.ok) {
+          if (r.recoveryConfirmationRequired) { setRecoveryWarning(context); setError(null) }
+          else showFailure(r)
+          return
+        }
+        setRecoveryWarning(null)
         value = { context, ...r.value }
         setWire(value)
         setNameRequest(value.acknowledgement === 'name' ? value.request : null)
@@ -164,7 +187,7 @@ export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fie
         const marked = await window.api.authorHandoff({ action: 'share-copied', context, sessionIdentity,
           shareId: value.share.id, draftRevision: value.share.draftRevision })
         if (active.current !== context) return
-        if (!marked.ok) { setError(marked.error); return }
+        if (!marked.ok) { showFailure(marked); return }
         setShare(marked.value)
       }
     } catch (e) { if (active.current === context) setError(e instanceof Error ? e.message : 'Could not prepare the share.') }
@@ -181,8 +204,10 @@ export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fie
   const changed = copy.label === 'Copy updated share'
   const checking = share?.status === 'checking'
   const needsReview = share?.status === 'restore_review'
-  const verifyName = complete && !!nameRequest && !selected?.confirmed
-  const showCopy = !accepted && !checking && !needsReview
+  const verifyName = complete && !!nameRequest && !selected?.confirmed && !storageRecovery
+  const needsRecoveryConfirmation = recoveryWarning === context
+  const showCopy = !accepted && !checking && !needsReview && !observationError && !storageRecovery && !needsRecoveryConfirmation
+  const copyBlocked = !ready || blocked || !canChoose || !core || (selected != null && !selected.confirmed) || (!target && !selected && !newName)
   const resultDescription = share?.operation.kind === 'evidence' ? 'Your run is on the strategy’s Discord card.'
     : share?.operation.kind === 'replace' ? 'Your strategy and its Discord card are updated.' : 'Your card is in Discord.'
   const fields = <Stack gap={6}>
@@ -242,9 +267,30 @@ export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fie
   </Stack>
   return <Stack gap="xs">
     {fieldContainer && createPortal(fields, fieldContainer)}
-    {error && <Alert ref={errorElement} color="orange" p="xs" role="alert" title="Sharing needs attention">{error}</Alert>}
-    {share && sessionIdentity && <AuthorOperationPanel context={context} share={share} sessionIdentity={sessionIdentity} onChange={setShare} observeOnly />}
-    {complete ? <Stack gap={5} p="sm" role="status" align="center" style={{ background: COLOR.tintGreenBg, borderRadius: 6, textAlign: 'center' }}>
+    {visibleError && <Alert ref={errorElement} color="orange" p="xs" role="alert" title="Sharing needs attention">{visibleError}</Alert>}
+    {storageRecovery && <ShareStorageRecovery key={context.generation} context={context} onBusyChange={setBusy}
+      onRecovered={() => {
+        if (active.current !== context) return
+        setReady(false); setWire(null); setShare(null); setNameRequest(null); setVerifiedHere(null)
+        setError(null); setObservationError(null); setStorageRecovery(false); setRecoveryWarning(null)
+        restoredNameFor.current = null; shownShareScope.current = null; windowPresentation.current = null
+        setRecoveryGeneration(generation => generation + 1)
+        onStorageRecovered()
+      }} />}
+    {needsRecoveryConfirmation && <Alert color="orange" p="sm" role="alert" title="Review this older session">
+      <Stack gap="xs">
+        <Text size="xs">This session is from before the recovery. If you already shared it, use Continue in the Strategy Browser. Share as new anyway?</Text>
+        <Group gap="xs" justify="center">
+          <Button size="xs" loading={busy} disabled={copyBlocked} onClick={() => void prepareAndCopy(true)}>Share as new anyway</Button>
+          <Button size="xs" variant="subtle" c={COLOR.textDim} disabled={busy}
+            onClick={() => { setRecoveryWarning(null); setError(null) }}>Back</Button>
+        </Group>
+      </Stack>
+    </Alert>}
+    {share && sessionIdentity && !storageRecovery && <AuthorOperationPanel context={context} share={share} sessionIdentity={sessionIdentity}
+      onChange={setShare} onError={setObservationError}
+      onStorageError={code => setStorageRecovery(code === 'damaged' || code === 'recovery_required')} observeOnly />}
+    {observationError || storageRecovery ? null : complete ? <Stack gap={5} p="sm" role="status" align="center" style={{ background: COLOR.tintGreenBg, borderRadius: 6, textAlign: 'center' }}>
       <ShareStatusHeading icon={<IconCheck size={19} color={COLOR.profit} />} color={COLOR.profit}>{shareStatusText(share)}</ShareStatusHeading>
       <Text size="xs" c="dimmed" maw={300}>{verifiedHere ? `${verifiedHere} is verified on this PC.` : resultDescription}</Text>
     </Stack> : checking ? <Stack gap={5} p="sm" role="status" align="center" style={{ background: COLOR.tintGoldBg, borderRadius: 6, textAlign: 'center' }}>
@@ -264,7 +310,7 @@ export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fie
     {showCopy && <Button size="sm" variant={changed ? 'filled' : copy.pasteHint ? 'default' : 'filled'}
       styles={copy.pasteHint && !changed ? { root: { background: COLOR.bgInset } } : undefined}
       leftSection={copy.pasteHint ? undefined : <IconCopy size={17} />}
-      disabled={!ready || blocked || !canChoose || !core || (selected != null && !selected.confirmed) || (!target && !selected && !newName)}
+      disabled={copyBlocked}
       loading={busy} onClick={() => void prepareAndCopy()}>
       {copy.label === 'Copy to Discord' && currentWire && currentWire.token.length > 2000 ? 'Copy for /wledger-share' : copy.label}
     </Button>}

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto'
-import { AuthorHandoffVault } from '../../../main/authorHandoffVault'
+import { AuthorHandoffVault, ProtectedShareStorageError } from '../../../main/authorHandoffVault'
 import { AuthorHandoffService } from '../../../main/authorHandoffService'
 import { DurableShareTracker } from '../../../main/durableShareTracker'
 import { shareDraft, type DurableShareRecord, type CompletedShareRecord } from '../../../main/durableShareRecord'
@@ -182,7 +182,7 @@ it('unfinished work still has the unchanged count bound and is never evicted to 
   })
   await f.store(shares)
   const bytes = await readFile(f.file), exchange = vi.fn(async () => undefined)
-  await expect(f.vault.prepareDurable(input(record()), exchange)).rejects.toThrow('unfinished share storage is full')
+  await expect(f.vault.prepareDurable(input(record()), exchange)).rejects.toEqual(new ProtectedShareStorageError('full'))
   expect(exchange).not.toHaveBeenCalled()
   expect(await readFile(f.file)).toEqual(bytes)
 })
@@ -191,7 +191,7 @@ it('compaction failure preserves the full encrypted record and a retry keeps the
   await f.store([s])
   const bytes = await readFile(f.file)
   const blocked = new AuthorHandoffVault(f.directory, { ...f.protection, encryptString() { throw new Error('Synthetic secure-store write failure') } })
-  await expect(blocked.noticeDurable(s.id)).rejects.toThrow('Synthetic secure-store write failure')
+  await expect(blocked.noticeDurable(s.id)).rejects.toEqual(new ProtectedShareStorageError('encryption_unavailable'))
   expect(await readFile(f.file)).toEqual(bytes)
   await f.vault.noticeDurable(s.id)
   expect((await f.inspect()).completed).toEqual([marker(s)])
@@ -206,7 +206,7 @@ it('unfinished payloads retain the eight MB bound without evicting any saved wor
   })
   await f.store(shares)
   const bytes = await readFile(f.file)
-  await expect(f.vault.durableShares()).rejects.toThrow('unfinished sharing storage is too large')
+  await expect(f.vault.durableShares()).rejects.toEqual(new ProtectedShareStorageError('full'))
   expect((await readFile(f.file)).equals(bytes)).toBe(true)
 })
 it('noticed completion leaves the background queue and cannot repeat its notification', async () => {
@@ -229,7 +229,7 @@ it('corrupt or conflicting compact markers are refused without replacing saved b
     expect(await readFile(f.file)).toEqual(bytes)
   }
   await f.store([s], [done])
-  await expect(f.vault.durableShares()).rejects.toThrow('identities conflict')
+  await expect(f.vault.durableShares()).rejects.toEqual(new ProtectedShareStorageError('damaged'))
 })
 
 it.each(['publication', 'evidence', 'replace'] as const)('%s: close/reopen keeps only an exact display snapshot after compaction; restart has only the marker', async kind => {

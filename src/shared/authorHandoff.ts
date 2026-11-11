@@ -6,6 +6,7 @@ import type { DurableShareView } from './durableShare'
 export const AUTHOR_HANDOFF_CHANNEL = 'author-handoff:request'
 export const AUTHOR_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 export interface AuthorContext { sessionId: string; generation: string }
+export type ShareStorageCode = 'encryption_unavailable' | 'damaged' | 'full' | 'io' | 'recovery_required'
 export type AuthorScope = { kind: 'all_eligible' } | { kind: 'selected'; strategy_ids: string[] }
 export type AuthorManagement =
   | { kind: 'recovery'; intent: null }
@@ -17,15 +18,17 @@ export type AuthorRequest =
   | { action: 'read'; path: string }
   | { action: 'state' }
   | { action: 'share-results' }
-  | { action: 'share-refresh' }
+  | { action: 'share-refresh'; shareId?: string }
   | { action: 'share-noticed'; shareId: string }
   | { action: 'share-copied'; context: AuthorContext; sessionIdentity: string; shareId: string; draftRevision: number }
   | { action: 'share-result'; context: AuthorContext; sessionIdentity: string; targetGeneration: string | null }
   | { action: 'resume-name'; context: AuthorContext; sessionIdentity: string }
   | { action: 'share-draft'; sessionId: string; sessionIdentity: string }
   | { action: 'activate'; context: AuthorContext | null }
+  | { action: 'storage-recovery-preview'; context: AuthorContext }
+  | { action: 'storage-recovery-confirm'; context: AuthorContext; recoveryId: string; confirmed: true }
   | { action: 'prepare'; context: AuthorContext; operation: AuthorManagement }
-  | { action: 'publication'; context: AuthorContext; core: string; metadata: AuthorSubmissionMetadata; confirmation: boolean; newIntent: false; sessionIdentity: string; targetGeneration?: string | null }
+  | { action: 'publication'; context: AuthorContext; core: string; metadata: AuthorSubmissionMetadata; confirmation: boolean; newIntent: false; sessionIdentity: string; targetGeneration?: string | null; recoveryConfirmed?: true }
   | { action: 'status' | 'paste' | 'accept' | 'cancel'; context: AuthorContext; requestId: string }
 export interface AuthorServiceState { schema_version: 1; epoch: string; author_actions_available: boolean }
 export type AuthorOutcome =
@@ -56,6 +59,8 @@ export interface AuthorResults {
   'resume-name': PreparedAuthorRequest | null
   'share-draft': { core: string; author?: AuthorSubmissionMetadata['author'] } | null
   activate: null
+  'storage-recovery-preview': { recoveryId: string }
+  'storage-recovery-confirm': { recoveredAt: number }
   prepare: PreparedAuthorRequest
   publication: { token: string; request: PreparedAuthorRequest | null; acknowledgement: 'name' | 'operation'; share: DurableShareView }
   status: AuthorStatus
@@ -65,7 +70,7 @@ export interface AuthorResults {
 }
 export type AuthorResult<K extends keyof AuthorResults> =
   | { ok: true; value: AuthorResults[K] }
-  | { ok: false; error: string; terminal?: boolean }
+  | { ok: false; error: string; terminal?: boolean; storageCode?: ShareStorageCode; recoveryConfirmationRequired?: true }
 export type AuthorBridge = <T extends AuthorRequest>(request: T) => Promise<AuthorResult<T['action']>>
 
 export function closedAuthorObject(value: unknown, keys: string[]): value is Record<string, unknown> {

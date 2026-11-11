@@ -141,7 +141,9 @@ it.each(['unavailable', 'corrupt'] as const)('keeps an existing protected draft 
     vault: new AuthorHandoffVault(directory, { ...protection, isEncryptionAvailable: () => fault !== 'unavailable' }),
     exchange, readClipboard, readShareCore: (...args) => f.repository.readShareCore(...args) })
   expect(await service.handle({ action: 'share-draft', sessionId: f.context.sessionId, sessionIdentity: f.sessionIdentity }))
-    .toMatchObject({ ok: false, error: expect.stringContaining('Saved drafts and results have not been changed') })
+    .toMatchObject({ ok: false, error: expect.stringContaining(fault === 'corrupt'
+      ? 'sharing is paused to avoid posting anything twice'
+      : 'Saved drafts and results have not been changed') })
   expect(await readFile(file)).toEqual(before)
   expect(exchange).not.toHaveBeenCalled(); expect(readClipboard).not.toHaveBeenCalled()
   if (fault === 'unavailable') expect(await vault.readableDurableDraft(f.sessionIdentity))
@@ -164,11 +166,12 @@ it('explains why copying is blocked without encryption and preserves an older lo
   await service.handle({ action: 'activate', context: f.context })
   expect(await service.handle({ action: 'publication', context: f.context, core, metadata,
     confirmation: true, newIntent: false, sessionIdentity: f.sessionIdentity })).toEqual({ ok: false,
+    storageCode: 'encryption_unavailable',
     error: 'Sharing is unavailable because this PC cannot open secure encrypted storage. Saved drafts and results have not been changed. Restore access to your system’s secure storage before sharing.' })
   expect(await f.repository.readShareCore(f.context.sessionId, f.sessionIdentity)).toEqual(before)
   await expect(readFile(join(directory, 'author-handoffs.enc'))).rejects.toMatchObject({ code: 'ENOENT' })
   expect(encryptString).not.toHaveBeenCalled(); expect(readClipboard).not.toHaveBeenCalled()
-  expect(exchange).toHaveBeenCalledTimes(1)
+  expect(exchange).not.toHaveBeenCalled()
 })
 it('refuses another selected session and corrupt intent state without replacing it', async () => {
   const f = await setup()

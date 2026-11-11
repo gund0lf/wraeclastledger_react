@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto'
-import { AuthorHandoffVault } from '../../../main/authorHandoffVault'
+import { AuthorHandoffVault, ProtectedShareStorageError } from '../../../main/authorHandoffVault'
 const directories: string[] = []
 afterEach(async () => {
   for (const dir of directories.splice(0)) await rm(dir, { recursive: true, force: true })
@@ -73,7 +73,7 @@ it('refuses a legacy entry that also claims to be a current name request', async
   data.pending[0].operation = {}
   const bytes = protection.encryptString(JSON.stringify(data))
   await writeFile(file, bytes)
-  await expect(vault.durableShares()).rejects.toThrow('Author confirmation storage is invalid')
+  await expect(vault.durableShares()).rejects.toEqual(new ProtectedShareStorageError('damaged'))
   expect(await readFile(file)).toEqual(bytes)
 })
 

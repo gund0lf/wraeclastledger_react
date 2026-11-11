@@ -3,9 +3,10 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto'
-import { AuthorHandoffVault } from '../../../main/authorHandoffVault'
+import { AuthorHandoffVault, ProtectedShareStorageError } from '../../../main/authorHandoffVault'
 import { DurableShareTracker } from '../../../main/durableShareTracker'
 import { AuthorHandoffService } from '../../../main/authorHandoffService'
+import { validDurableShare } from '../../../main/durableShareRecord'
 import { parseDurableShareResult, shareCopyPresentation, shareStatusText, type DurableShareResult } from '../../../shared/durableShare'
 import type { StrategyTarget } from '../../../shared/strategyTarget'
 
@@ -14,7 +15,7 @@ afterEach(async () => {
   for (const tracker of trackers.splice(0)) tracker.stop()
   for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true })
 })
-async function setup(kind: 'publication' | 'evidence' | 'replace' = 'publication') {
+async function setup(kind: 'publication' | 'evidence' | 'replace' = 'publication', now = Date.now) {
   const dir = await mkdtemp(join(tmpdir(), 'wl-durable-share-')); dirs.push(dir)
   const key = randomBytes(32)
   const protection = { isEncryptionAvailable: () => true,
@@ -43,9 +44,71 @@ async function setup(kind: 'publication' | 'evidence' | 'replace' = 'publication
       state: saved.value?.state ?? 'ready', outcome: saved.value?.outcome ?? null }
     return structuredClone(saved.value)
   })
-  const reopen = () => new AuthorHandoffVault(dir, protection)
-  return { dir, input, saved, exchange, reopen, vault: reopen() }
+  const reopen = () => new AuthorHandoffVault(dir, protection, now)
+  return { dir, input, saved, exchange, reopen, protection, vault: reopen() }
 }
+
+it('polling age survives restart; unchanged preparation keeps it and deliberate Copy or edits renew it', async () => {
+  let now = 1_000_000
+  const f = await setup('publication', () => now), first = await f.vault.prepareDurable(f.input, f.exchange)
+  expect(await f.reopen().durableTrackingShares()).toEqual([{ view: first.view, pollingActivityAt: now }])
+  now += 8 * 24 * 60 * 60_000
+  await f.reopen().prepareDurable(f.input, f.exchange)
+  expect((await f.reopen().durableTrackingShares())[0].pollingActivityAt).toBe(1_000_000)
+  await f.reopen().copiedDurable({ sessionIdentity: f.input.sessionIdentity, shareId: first.view.id, draftRevision: 1 }, () => true)
+  expect((await f.reopen().durableTrackingShares())[0].pollingActivityAt).toBe(now)
+  expect(f.exchange).toHaveBeenCalledTimes(1)
+  now += 1000
+  const core = JSON.parse(f.input.core); core[9] = 'A changed title'
+  const updated = await f.reopen().prepareDurable({ ...f.input, core: JSON.stringify(core) }, f.exchange)
+  expect(updated.view).toMatchObject({ id: first.view.id, draftRevision: 2 })
+  expect((await f.reopen().durableTrackingShares())[0].pollingActivityAt).toBe(now)
+  expect(updated.view).not.toHaveProperty('pollingActivityAt')
+  expect(f.exchange.mock.calls[1][0]).not.toHaveProperty('pollingActivityAt')
+  const stored = JSON.parse(f.protection.decryptString(await readFile(join(f.dir, 'author-handoffs.enc')))).shares[0]
+  expect(validDurableShare(stored)).toBe(true)
+  const legacy = { ...stored }; delete legacy.pollingActivityAt
+  expect(validDurableShare(legacy)).toBe(true)
+  for (const invalid of [-1, 1.5, '1000', Infinity, Number.MAX_SAFE_INTEGER + 1])
+    expect(validDurableShare({ ...stored, pollingActivityAt: invalid })).toBe(false)
+})
+
+it('Share refresh targets its one share while the Browser refresh remains global; malformed scope is refused', async () => {
+  const f = await setup(), shareId = randomUUID()
+  const wake = vi.spyOn(DurableShareTracker.prototype, 'wake').mockResolvedValue()
+  try {
+    const service = new AuthorHandoffService({ origin: 'http://127.0.0.1:43181', vault: f.vault,
+      readClipboard: () => '', exchange: async () => { throw new Error('Refresh must not call providers directly') } })
+    expect(await service.handle({ action: 'share-refresh', shareId })).toEqual({ ok: true, value: null })
+    expect(wake).toHaveBeenLastCalledWith(shareId)
+    expect(await service.handle({ action: 'share-refresh' })).toEqual({ ok: true, value: null })
+    expect(wake.mock.calls[1]).toEqual([])
+    expect((await service.handle({ action: 'share-refresh', shareId: 'invalid' })).ok).toBe(false)
+    expect((await service.handle({ action: 'share-refresh', shareId, unexpected: true })).ok).toBe(false)
+    expect(wake).toHaveBeenCalledTimes(2)
+  } finally { wake.mockRestore() }
+})
+
+it('a storage fault during background observation reaches an already-open Share as a typed message, never a result', async () => {
+  const f = await setup(), first = await f.vault.prepareDurable(f.input, f.exchange)
+  const error = new ProtectedShareStorageError('damaged')
+  const observe = vi.spyOn(f.vault, 'observeDurable').mockRejectedValue(error)
+  const service = new AuthorHandoffService({ origin: 'http://127.0.0.1:43181', vault: f.vault,
+    readClipboard: () => '', readShareCore: async () => ({ core: f.input.core }), exchange: async () => f.saved.value! })
+  const context = { sessionId: f.input.sessionId, generation: randomUUID() }
+  try {
+    await service.handle({ action: 'activate', context })
+    await service.startOperationTracking()
+    await vi.waitFor(() => expect(observe).toHaveBeenCalled())
+    expect(await service.handle({ action: 'share-results' })).toEqual({ ok: false, error: error.message, storageCode: 'damaged' })
+    expect(await service.handle({ action: 'share-result', context, sessionIdentity: f.input.sessionIdentity,
+      targetGeneration: null })).toEqual({ ok: false, error: error.message, storageCode: 'damaged' })
+    observe.mockRestore()
+    expect(await service.handle({ action: 'share-refresh', shareId: first.view.id })).toEqual({ ok: true, value: null })
+    expect(await service.handle({ action: 'share-result', context, sessionIdentity: f.input.sessionIdentity,
+      targetGeneration: null })).toMatchObject({ ok: true, value: { id: first.view.id, status: 'ready', accepted: false } })
+  } finally { service.stopOperationTracking(); observe.mockRestore() }
+})
 function formCore(core: string): string {
   const form = JSON.parse(core); form[1] = 0
   return JSON.stringify(form)

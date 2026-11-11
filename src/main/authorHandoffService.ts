@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { AuthorHandoffVault, ProtectedShareStorageError, type NameShareBinding } from './authorHandoffVault'
+import { AuthorHandoffVault, ProtectedShareStorageError, ShareRecoveryConfirmationError, type NameShareBinding } from './authorHandoffVault'
 import { DurableShareTracker } from './durableShareTracker'
 import { encodeDiscordShareBrotli } from './discordShareCompression'
 import { buildAuthorSubmission, canonicalAuthorJson } from '../shared/authorSubmission'
@@ -8,7 +8,7 @@ import { emptyAuthorPreferences, previewAuthorRecovery } from '../shared/authorR
 import {
   AUTHOR_UUID, closedAuthorObject as exact, parseAuthorOutcome, validAuthorContext,
   validateAuthorManagement, type AuthorContext, type AuthorConfirmation, type AuthorStatus,
-  type PreparedAuthorRequest, type AuthorServiceState, type PublicationOperation, type AuthorResults,
+  type PreparedAuthorRequest, type AuthorServiceState, type PublicationOperation, type AuthorResults, type ShareStorageCode,
 } from '../shared/authorHandoff'
 
 const digest = (domain: string, text: string) => createHash('sha256').update(domain + '\0').update(text).digest('hex')
@@ -103,19 +103,25 @@ export class AuthorHandoffService {
   private pending = new Map<string, { context: AuthorContext; clientId: string; completionToken?: string; nameShare?: NameShareBinding }>()
   private prepared = new Map<string, { context: AuthorContext; clientId: string; resumable: boolean }>()
   private initialization: Promise<void> | null = null
+  private trackingRequested = false
+  private recovering = false
+  private recoveryPreview: { id: string; context: string } | null = null
   constructor(private options: {
     origin: string | null; vault: AuthorHandoffVault; readClipboard: () => string | Promise<string>
     exchange?: (url: string, init: RequestInit) => Promise<unknown>
     readShareCore?: (sessionId: string, sessionIdentity: string) => Promise<AuthorResults['share-draft']>
+    readSessionCreatedAt?: (sessionId: string, sessionIdentity: string) => Promise<number | null>
   }) { this.durable = new DurableShareTracker(options.vault, (id, authorization) => this.call('/shares/' + id, 'GET', undefined, authorization)) }
   /** Enabled by the app lifecycle, not by opening Share. Existing encrypted
    * requests are the only authority to check; this never prepares a new share. */
   async startOperationTracking(): Promise<void> {
     if (!this.options.origin) return
+    this.trackingRequested = true
     await this.initialize()
     await this.durable.start()
   }
   stopOperationTracking(): void {
+    this.trackingRequested = false
     this.durable.stop()
   }
   private current(c: AuthorContext) { return this.active === contextKey(c) }
@@ -138,7 +144,10 @@ export class AuthorHandoffService {
         .catch((error) => { this.initialization = null; throw error })
     }
     try { await this.initialization }
-    catch { throw new AuthorExchangeError('Protected sharing storage is unavailable. Restore access before preparing or resuming this share. Your local sessions are unchanged.', false, undefined, 'local_confirmation_unavailable') }
+    catch (error) {
+      if (error instanceof ProtectedShareStorageError) throw error
+      throw new AuthorExchangeError('Protected sharing storage is unavailable. Restore access before preparing or resuming this share. Your local sessions are unchanged.', false, undefined, 'local_confirmation_unavailable')
+    }
   }
   private async selectedSession(c: AuthorContext, identity: unknown): Promise<string> {
     if (typeof identity !== 'string' || !identity || identity.length > 128 || !this.options.readShareCore)
@@ -157,7 +166,10 @@ export class AuthorHandoffService {
     this.fingerprint = fingerprint
     let local: Awaited<ReturnType<AuthorHandoffVault['prepare']>>
     try { local = await this.options.vault.prepare(c.sessionId, c.generation, nameShare) }
-    catch { throw new AuthorExchangeError('A name request could not be prepared. Reopen Share to finish any pending name verification, or retry when protected storage is available.') }
+    catch (error) {
+      if (error instanceof ProtectedShareStorageError) throw error
+      throw new AuthorExchangeError('A name request could not be prepared. Reopen Share to finish any pending name verification, or retry when protected storage is available.')
+    }
     this.prepared.set(local.client_request_id, { context: c, clientId: local.client_request_id, resumable: !!nameShare })
     try {
       if (!this.current(c)) throw new Error('Author operation changed')
@@ -193,19 +205,65 @@ export class AuthorHandoffService {
     const outcome = r.outcome === null ? null : parseAuthorOutcome(r.outcome)
     return { ...r, outcome } as AuthorStatus
   }
-  async handle(input: unknown): Promise<{ ok: true; value: unknown } | { ok: false; error: string; terminal?: boolean }> {
+  async handle(input: unknown): Promise<{ ok: true; value: unknown } | { ok: false; error: string; terminal?: boolean;
+    storageCode?: ShareStorageCode; recoveryConfirmationRequired?: true }> {
     try { return { ok: true, value: await this.dispatch(input) } }
-    catch (e) { return { ok: false, error: e instanceof AuthorExchangeError || e instanceof ShareIntentError || e instanceof ProtectedShareStorageError ? e.message :
+    catch (e) { return { ok: false, error: e instanceof AuthorExchangeError || e instanceof ShareIntentError || e instanceof ProtectedShareStorageError || e instanceof ShareRecoveryConfirmationError ? e.message :
       'Author confirmation could not be completed. Check the selected operation and try again.',
+      ...(e instanceof ProtectedShareStorageError ? { storageCode: e.code } : {}),
+      ...(e instanceof ShareRecoveryConfirmationError ? { recoveryConfirmationRequired: true as const } : {}),
       ...(e instanceof AuthorExchangeError && e.terminal ? { terminal: true } : {}) } }
   }
   private async dispatch(input: unknown): Promise<unknown> {
     if (exact(input, ['action']) && input.action === 'available') return this.options.origin !== null
     if (!this.options.origin) throw new Error('Disabled')
+    // Closing/switching Share must still invalidate the confirmation context.
+    if (this.recovering && !(exact(input, ['action', 'context']) && input.action === 'activate'))
+      throw new AuthorExchangeError('Sharing recovery is in progress. Wait for it to finish.')
+    if (exact(input, ['action', 'context']) && input.action === 'storage-recovery-preview') {
+      const c = this.requireContext(input.context)
+      this.recoveryPreview = null
+      const preview = await this.options.vault.previewRecovery()
+      this.requireContext(c)
+      this.recoveryPreview = { id: preview.recoveryId, context: contextKey(c) }
+      return preview
+    }
+    if (exact(input, ['action', 'context', 'recoveryId', 'confirmed']) && input.action === 'storage-recovery-confirm') {
+      const c = this.requireContext(input.context)
+      if (input.confirmed !== true || !id(input.recoveryId) || this.recoveryPreview?.id !== input.recoveryId ||
+        this.recoveryPreview.context !== contextKey(c)) throw new Error('Sharing recovery must be reviewed again')
+      this.recoveryPreview = null
+      this.recovering = true
+      let recovered = false
+      try {
+        await this.durable.pauseForRecovery()
+        this.requireContext(c)
+        const result = await this.options.vault.confirmRecovery(input.recoveryId, () => this.current(c))
+        this.pending.clear(); this.prepared.clear(); this.fingerprint = null
+        this.initialization = null
+        this.durable.resetAfterRecovery()
+        recovered = true
+        if (this.trackingRequested) await this.durable.start()
+        return result
+      } catch (error) {
+        // An abandoned or refused recovery must not cancel background checks.
+        // The app lifecycle can still stop them while recovery is draining.
+        if (!recovered && this.trackingRequested) {
+          try { await this.durable.start() }
+          catch { /* The observer keeps its storage fault; report the original recovery error. */ }
+        }
+        throw error
+      } finally { this.recovering = false }
+    }
     if (exact(input, ['action']) && input.action === 'share-results') {
       return this.durable.views()
     }
     if (exact(input, ['action']) && input.action === 'share-refresh') { await this.durable.wake(); return null }
+    if (exact(input, ['action', 'shareId']) && input.action === 'share-refresh') {
+      if (!id(input.shareId)) throw new Error('Invalid share refresh')
+      await this.durable.wake(input.shareId)
+      return null
+    }
     if (exact(input, ['action','context','sessionIdentity','shareId','draftRevision']) && input.action === 'share-copied') {
       const c = this.requireContext(input.context)
       const sessionIdentity = await this.selectedSession(c, input.sessionIdentity)
@@ -293,6 +351,7 @@ export class AuthorHandoffService {
       const key = input.context === null ? null : contextKey(input.context as AuthorContext)
       if (key !== this.active) {
         this.active = key
+        this.recoveryPreview = null
         this.fingerprint = null
         // Invalidate callbacks synchronously, then discard their local readers.
         const stale = [...this.pending].filter(([, p]) => contextKey(p.context) !== key)
@@ -316,12 +375,14 @@ export class AuthorHandoffService {
       return this.prepare(c, op.kind, op.intent, op.kind === 'recovery' ? null :
         digest('WL-AUTHOR-INTENT/1', canonicalAuthorJson(op)))
     }
-    if ((exact(input, ['action', 'context', 'core', 'metadata', 'confirmation', 'newIntent', 'sessionIdentity']) ||
-      exact(input, ['action', 'context', 'core', 'metadata', 'confirmation', 'newIntent', 'sessionIdentity', 'targetGeneration'])) && input.action === 'publication') {
+    const publicationKeys = ['action', 'context', 'core', 'metadata', 'confirmation', 'newIntent', 'sessionIdentity']
+    if ((exact(input, publicationKeys) || exact(input, [...publicationKeys, 'targetGeneration']) ||
+      exact(input, [...publicationKeys, 'recoveryConfirmed']) || exact(input, [...publicationKeys, 'targetGeneration', 'recoveryConfirmed'])) && input.action === 'publication') {
       const c = this.requireContext(input.context)
       if (typeof input.core !== 'string' || input.core.length > 128 * 1024 || typeof input.confirmation !== 'boolean' ||
         !exact(input.metadata, ['author', 'expected_revision', 'confirmation_request_id']) ||
-        input.metadata.confirmation_request_id !== null) throw new Error('Invalid publication')
+        input.metadata.confirmation_request_id !== null ||
+        Object.hasOwn(input, 'recoveryConfirmed') && input.recoveryConfirmed !== true) throw new Error('Invalid publication')
       let core = input.core
       let meta = input.metadata as unknown as Parameters<typeof buildAuthorSubmission>[1]
       buildAuthorSubmission(core, meta)
@@ -333,18 +394,28 @@ export class AuthorHandoffService {
         : { kind: action[0] === 1 ? 'replace' : 'evidence', strategy_id: action[1], revision: meta.expected_revision }
       if (action !== 0 && (!Array.isArray(action) || ![1,2].includes(action[0]) || !id(action[1]) || !id(targetGeneration)) ||
         action === 0 && targetGeneration !== null) throw new Error('Invalid share target')
+      const sessionCreatedAt = this.options.readSessionCreatedAt
+        ? await this.options.readSessionCreatedAt(c.sessionId, sessionIdentity) : null
+      this.requireContext(c)
+      // Ask before any request leaves the app. The vault repeats this check
+      // inside its serialized preparation, so retries cannot rotate identities.
+      if (operation.kind === 'publication' && input.recoveryConfirmed !== true &&
+        await this.options.vault.recoveryRequiredForSession(sessionCreatedAt) &&
+        !await this.options.vault.durableForSession(sessionIdentity, null))
+        throw new ShareRecoveryConfirmationError()
       const state = await this.dispatch({ action: 'state' }) as AuthorServiceState
       await this.selectedSession(c, sessionIdentity)
       this.requireContext(c)
       let prepared: Awaited<ReturnType<AuthorHandoffVault['prepareDurable']>>
       try {
         prepared = await this.options.vault.prepareDurable({ sessionIdentity, sessionId: c.sessionId,
-          targetGeneration: targetGeneration as string | null, operation, epoch: state.epoch, core, metadata: meta },
+          targetGeneration: targetGeneration as string | null, operation, epoch: state.epoch, core, metadata: meta,
+          sessionCreatedAt, recoveryConfirmed: input.recoveryConfirmed === true },
         (body, auth) => this.call('/shares', 'PUT', body, auth))
       } catch (error) {
         await this.durable.wake()
-        if (error instanceof AuthorExchangeError || error instanceof ProtectedShareStorageError) throw error
-        throw new AuthorExchangeError(error instanceof Error && /already processing|recovery review|history is full/.test(error.message)
+        if (error instanceof AuthorExchangeError || error instanceof ProtectedShareStorageError || error instanceof ShareRecoveryConfirmationError) throw error
+        throw new AuthorExchangeError(error instanceof Error && /already processing|recovery review/.test(error.message)
           ? error.message : 'Could not prepare this share yet. Your saved draft is kept; try preparing it again when the service is available.')
       }
       await this.durable.wake(prepared.view.id)

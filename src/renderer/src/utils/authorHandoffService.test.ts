@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { AuthorHandoffVault } from '../../../main/authorHandoffVault'
+import { AuthorHandoffVault, ProtectedShareStorageError, type ProtectedShareStorageCode } from '../../../main/authorHandoffVault'
 import { AuthorHandoffService, AuthorExchangeError, authorJsonFetch } from '../../../main/authorHandoffService'
 import { authorServiceOrigin, PRODUCTION_STRATEGY_API_ORIGIN } from '../../../shared/strategyApi'
 import { parseAuthorPreferences, emptyAuthorPreferences } from '../../../shared/authorRecognition'
@@ -16,6 +16,22 @@ afterEach(async () => {
 })
 const context = () => ({ sessionId: 'working:1', generation: randomUUID() })
 const origin = 'http://127.0.0.1:43181'
+it.each(['encryption_unavailable', 'damaged', 'full', 'io', 'recovery_required'] as ProtectedShareStorageCode[])(
+  'shows the distinct %s storage message without provider contact or secret details', async code => {
+    const exchange = vi.fn(async () => { throw new Error('No provider call expected') })
+    const { service, vault } = await setup(exchange), c = context()
+    await service.handle({ action: 'activate', context: c })
+    const error = new ProtectedShareStorageError(code)
+    const initialization = vi.spyOn(vault, 'discardInterrupted').mockRejectedValueOnce(error)
+    const request = { action: 'prepare', context: c, operation: { kind: 'recovery', intent: null } }
+    expect(await service.handle(request)).toEqual({ ok: false, error: error.message, storageCode: code })
+    expect(exchange).not.toHaveBeenCalled()
+    // A retry rechecks the same store; it does not hide a later save error.
+    initialization.mockResolvedValueOnce()
+    vi.spyOn(vault, 'prepare').mockRejectedValueOnce(error)
+    expect(await service.handle(request)).toEqual({ ok: false, error: error.message, storageCode: code })
+    expect(exchange).not.toHaveBeenCalled()
+  })
 it('the gated public reader cannot address private routes or external hosts and never initializes the vault', async () => {
   const exchange = vi.fn(async () => ({ schema_version: 2 }))
   const { service, vault, clipboard } = await setup(exchange)
