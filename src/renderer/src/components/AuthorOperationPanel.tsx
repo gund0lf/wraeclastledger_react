@@ -7,8 +7,9 @@ import { useSessionStore } from '../store/useSessionStore'
 import { flushRepositoryNow } from '../repository/sessionRepositoryRuntime'
 
 /** Local UI observation only; main owns the private read key and network checks. */
-export function AuthorOperationPanel({ context, share, sessionIdentity, onChange }: {
+export function AuthorOperationPanel({ context, share, sessionIdentity, onChange, observeOnly = false }: {
   context: AuthorContext; share: DurableShareView; sessionIdentity: string; onChange: (view: DurableShareView) => void
+  observeOnly?: boolean
 }) {
   const changed = useRef(onChange)
   changed.current = onChange
@@ -36,6 +37,7 @@ export function AuthorOperationPanel({ context, share, sessionIdentity, onChange
     void poll().catch(() => undefined)
     return () => { stopped = true; clearTimeout(timer) }
   }, [context, sessionIdentity, share.id, share.targetGeneration])
+  if (observeOnly) return null
   return <Alert color={share.status === 'complete' ? 'teal' : share.status === 'restore_review' ? 'orange' : 'gray'}
     p="sm" styles={{ title: { justifyContent: 'center', width: '100%' }, message: { textAlign: 'center' } }}
     title={shareStatusText(share)}>

@@ -20,6 +20,7 @@ import { computeProfit, computeMultiplier, resolveFragmentCount } from './profit
 import { EXPORT_EMOJI as E } from './discordEmoji';
 import { buildLootSummary, lootSummaryWireLine } from './lootSummary';
 import { isSafeStrategyAtlasUrl } from './atlasUrl';
+import type { DiscordImport } from './parseDiscordExport';
 import {
   formatObservedDeliriumLine,
   summarizeObservedDelirium,
@@ -132,50 +133,101 @@ export function buildDiscordExport(input: DiscordExportInput): string {
   const avgRarity  = trimmedMean(maps.map((m) => m.rarity));
   const avgScarabs = trimmedMean(maps.map((m) => m.moreScarabs));
 
-  const chiselLine  = settings.chiselType
-    ? E.chisel.uni + ' **Chisel:** ' + settings.chiselType + ' (' + settings.chiselPrice + 'c)'
-    : E.chisel.uni + ' **Chisel:** None';
-  // Un-indented bullets (2026-07-20): Discord rendered the old two-space
-  // indent as inconsistent NESTED bullets. Both parsers match `^\s*-`, so the
-  // flat form imports identically.
-  const scarabLines = settings.scarabs.filter((s) => s.name).map((s) => `- ${s.name} (${s.cost}c)`).join('\n');
-  const deliLine    = settings.advDeliOrbType && settings.advDeliOrbQtyPerMap > 0
-    ? E.delirium.uni + ' **Delirium Orbs:** ' + settings.advDeliOrbQtyPerMap + 'x ' + settings.advDeliOrbType +
-      ' @ ' + compactPrice(settings.advDeliOrbPriceEach) + 'c ea'
-    : null;
-  const astroLine = settings.advAstrolabeType
-    ? E.astrolabe.uni + ' **Astrolabe:** ' + compactAstrolabeType(settings.advAstrolabeType) +
-      ' \u00B7 ' + settings.advAstrolabeCount + 'x @ ' + compactPrice(settings.advAstrolabePrice) + 'c ea'
-    : null;
-  const atlasUrl = isSafeStrategyAtlasUrl(settings.atlasTreeUrl) ? settings.atlasTreeUrl : null;
-
-  let regexBlock = '';
-  if (n > 0) {
-    const avg    = { avgQuant, avgPack, avgCurr, avgRarity, avgScarabs };
-    // Shared regexes are emitted WITHOUT the author's brick exclusions
-    // (2026-07-20): exclusions are build-specific noise for everyone else,
-    // which also retires the disclaimer line. In-app importers regenerate
-    // with their own exclusions anyway; Discord-only readers get the neutral
-    // form. Card-budget bonus: shorter regex strings.
-    regexBlock = ['', `${E.search.uni} **Regex**`,
-      `${E.run.uni} Run: \`${generateRunRegex(avg, [])}\``,
-    ].join('\n');
-  }
-
-  // ALL-IN per-map cost - same definition as the in-app Investment badge:
-  // total investment (incl. one-time scarabs + session costs) / maps.
-  // One user-facing definition everywhere (decision 2026-07-02).
   const allInPerMap = n > 0 ? profit.totalInvest / n : profit.perMapBase;
-
-  const updateStrategyId = input.updateStrategyId ?? null;
-  const evidence = input.evidence ?? null;
-  if (updateStrategyId && evidence) {
+  if (input.updateStrategyId && input.evidence) {
     throw new TypeError('Discord export cannot be both an update and evidence');
   }
   const gameDataRevision = input.gameDataRevision ?? null;
   const gameDataPatchVersion = input.gameDataPatchVersion?.trim() ?? '';
   const hasGameDataProvenance = Number.isInteger(gameDataRevision)
     && gameDataRevision! > 0 && gameDataPatchVersion.length > 0;
+  return formatDiscordExport({
+    mapCount: n, mapType: settings.mapType, multiplier,
+    avgQuant, avgRarity, avgPack, avgCurr, perMapCost: allInPerMap,
+    totalInvest: profit.totalInvest, totalReturn: profit.lootGain, netProfit: profit.net,
+    divPerMap: profit.divPerMap, divPrice: profit.div,
+    chisel: settings.chiselType || 'None', chiselPrice: settings.chiselPrice, chiselConfigured: !!settings.chiselType,
+    scarabs: settings.scarabs.filter(s => s.name).map(s => s.name),
+    scarabCosts: settings.scarabs.filter(s => s.name).map(s => s.cost),
+    deliOrbType: settings.advDeliOrbType, deliOrbQty: settings.advDeliOrbQtyPerMap,
+    deliOrbPrice: settings.advDeliOrbPriceEach, observedDelirium,
+    astroType: settings.advAstrolabeType, astroCount: settings.advAstrolabeCount,
+    astroPrice: settings.advAstrolabePrice,
+    atlasTreeUrl: isSafeStrategyAtlasUrl(settings.atlasTreeUrl) ? settings.atlasTreeUrl : '',
+    atlasPoints: hasPoints ? atlasPts : null, atlasPointsMax: hasPoints ? atlasPtsMax : null,
+    league, gameDataRevision: hasGameDataProvenance ? gameDataRevision : null,
+    gameDataPatchVersion: hasGameDataProvenance ? gameDataPatchVersion : null,
+    multiplyingModifiersAllocated: multiplyingModifiers.source !== 'off',
+    multiplyingModifiersFragmentCount: multiplyingModifiers.count,
+    strategyName: stratName, strategyNotes: stratNotes, typeTags: shareTags,
+    isGroupPlay, groupSize, sessionMinutes,
+    excludedDrops: excludedItems.map(i => ({ name: i.name, value: i.total })),
+    gemInfo: settings.advGemCount > 0 ? { count: settings.advGemCount,
+      buy: settings.advGemCount * settings.advGemBuyPrice,
+      sell: settings.advGemCount * settings.advGemSellPrice, net: gemNetPL } : null,
+    runRegex: n > 0 ? generateRunRegex({ avgQuant, avgPack, avgCurr, avgRarity, avgScarabs }, []) : '',
+    observedModAverage: usesObservedMods ? observedModAverage : null,
+    updateStrategyId: input.updateStrategyId ?? null,
+    evidenceTargetStrategyId: input.evidence?.targetStrategyId ?? null,
+    evidenceExpectedRevision: input.evidence?.expectedRevision ?? null,
+    evidenceRunKey: input.evidence?.runKey ?? null,
+    evidenceRunStartedAt: input.evidence?.runStartedAt ?? null,
+    evidenceRunEndedAt: input.evidence?.runEndedAt ?? null,
+    setupFingerprint: input.evidence?.setupFingerprint ?? null,
+    lootSummary,
+  });
+}
+
+type DiscordExportPresentation = Omit<DiscordImport, 'slamRegex' | 'operation' | 'operationError'
+  | 'observedModSampleSize' | 'lootSummaryInvalid'> & { chiselConfigured?: boolean };
+
+/** Render recorded values directly. No session, catalogue or profit calculation
+ * belongs here: the same formatter also displays the exact accepted payload. */
+export function formatDiscordExport(p: DiscordExportPresentation): string {
+  const n = p.mapCount;
+  const chiselLine = p.chiselConfigured ?? (!!p.chisel && p.chisel !== 'None')
+    ? E.chisel.uni + ' **Chisel:** ' + p.chisel + ' (' + p.chiselPrice + 'c)'
+    : E.chisel.uni + ' **Chisel:** None';
+  // Un-indented bullets (2026-07-20): Discord rendered the old two-space
+  // indent as inconsistent NESTED bullets. Both parsers match `^\s*-`, so the
+  // flat form imports identically.
+  const scarabLines = p.scarabs.map((name, i) => `- ${name} (${p.scarabCosts[i]}c)`).join('\n');
+  const deliLine = p.deliOrbType && p.deliOrbQty > 0
+    ? E.delirium.uni + ' **Delirium Orbs:** ' + p.deliOrbQty + 'x ' + p.deliOrbType +
+      ' @ ' + compactPrice(p.deliOrbPrice) + 'c ea'
+    : null;
+  const astroLine = p.astroType
+    ? E.astrolabe.uni + ' **Astrolabe:** ' + compactAstrolabeType(p.astroType) +
+      ' \u00B7 ' + p.astroCount + 'x @ ' + compactPrice(p.astroPrice) + 'c ea'
+    : null;
+  const atlasUrl = isSafeStrategyAtlasUrl(p.atlasTreeUrl) ? p.atlasTreeUrl : null;
+
+  let regexBlock = '';
+  if (n > 0) {
+    // Shared regexes are emitted WITHOUT the author's brick exclusions
+    // (2026-07-20): exclusions are build-specific noise for everyone else,
+    // which also retires the disclaimer line. In-app importers regenerate
+    // with their own exclusions anyway; Discord-only readers get the neutral
+    // form. Card-budget bonus: shorter regex strings.
+    regexBlock = ['', `${E.search.uni} **Regex**`,
+      `${E.run.uni} Run: \`${p.runRegex}\``,
+    ].join('\n');
+  }
+
+  const updateStrategyId = p.updateStrategyId;
+  const evidence = p.evidenceTargetStrategyId ? {
+    targetStrategyId: p.evidenceTargetStrategyId, expectedRevision: p.evidenceExpectedRevision,
+    runKey: p.evidenceRunKey, runStartedAt: p.evidenceRunStartedAt,
+    runEndedAt: p.evidenceRunEndedAt, setupFingerprint: p.setupFingerprint,
+  } : null;
+  if (updateStrategyId && evidence) {
+    throw new TypeError('Discord export cannot be both an update and evidence');
+  }
+  const gameDataRevision = p.gameDataRevision;
+  const gameDataPatchVersion = p.gameDataPatchVersion ?? '';
+  const hasGameDataProvenance = Number.isInteger(gameDataRevision)
+    && gameDataRevision! > 0 && gameDataPatchVersion.length > 0;
+  const hasPoints = p.atlasPoints != null && p.atlasPointsMax != null && p.atlasPointsMax > 0 && p.atlasPoints >= 0;
 
   return [
     `[WraeclastLedger Session]`,
@@ -194,50 +246,50 @@ export function buildDiscordExport(input: DiscordExportInput): string {
     // 2026-07-20: it duplicated the bracket header above, no parser anchors
     // on it (the bot triggers on the 'WraeclastLedger' substring, both
     // parsers key on field labels), and it cost ~33 card-budget units.
-    `${E.maps.uni} **Maps:** ${n} | **Type:** ${settings.mapType} | **Multiplier:** ${multiplier.toFixed(2)}\u00D7`,
-    ...(usesObservedMods && observedModAverage != null
-      ? [`**Observed Mods:** ${observedModAverage.toFixed(1)} avg`]
+    `${E.maps.uni} **Maps:** ${n} | **Type:** ${p.mapType} | **Multiplier:** ${p.multiplier.toFixed(2)}\u00D7`,
+    ...(p.observedModAverage != null
+      ? [`**Observed Mods:** ${p.observedModAverage.toFixed(1)} avg`]
       : []),
     chiselLine,
-    `${E.stats.uni} **Avg Quant:** ${avgQuant.toFixed(0)}% | **Avg Rarity:** ${avgRarity.toFixed(0)}% | **Avg Pack:** ${avgPack.toFixed(0)}% | **Avg Currency:** ${avgCurr.toFixed(0)}%`,
-    `${E.cost.uni} **Per Map Cost:** ${allInPerMap.toFixed(1)}c | **Total Invest:** ${profit.totalInvest.toFixed(1)}c`,
-    `${E.returns.uni} **Total Return:** ${profit.lootGain.toFixed(1)}c | **Net Profit:** ${profit.net >= 0 ? '+' : ''}${profit.net.toFixed(1)}c`,
-    `${E.div.uni} **Div / Map:** ${profit.divPerMap.toFixed(3)}d | **Divine Price:** ${profit.div}c`,
-    ...(sessionMinutes != null && sessionMinutes > 0
-      ? [`${E.time.uni} **Session Time:** ${Math.round(sessionMinutes)} min`] : []),
+    `${E.stats.uni} **Avg Quant:** ${p.avgQuant.toFixed(0)}% | **Avg Rarity:** ${p.avgRarity.toFixed(0)}% | **Avg Pack:** ${p.avgPack.toFixed(0)}% | **Avg Currency:** ${p.avgCurr.toFixed(0)}%`,
+    `${E.cost.uni} **Per Map Cost:** ${p.perMapCost.toFixed(1)}c | **Total Invest:** ${p.totalInvest.toFixed(1)}c`,
+    `${E.returns.uni} **Total Return:** ${p.totalReturn.toFixed(1)}c | **Net Profit:** ${p.netProfit >= 0 ? '+' : ''}${p.netProfit.toFixed(1)}c`,
+    `${E.div.uni} **Div / Map:** ${p.divPerMap.toFixed(3)}d | **Divine Price:** ${p.divPrice}c`,
+    ...(p.sessionMinutes != null && p.sessionMinutes > 0
+      ? [`${E.time.uni} **Session Time:** ${Math.round(p.sessionMinutes)} min`] : []),
     ...(scarabLines ? [E.scarabs.uni + ' **Scarabs:**\n' + scarabLines] : []),
     ...(deliLine  ? [deliLine]  : []),
-    ...(observedDelirium
-      ? [formatObservedDeliriumLine(observedDelirium, n).replace(
+    ...(p.observedDelirium
+      ? [formatObservedDeliriumLine(p.observedDelirium, n).replace(
           'Observed Delirium:',
           '**Observed Delirium:**',
         )]
       : []),
     ...(astroLine ? [astroLine] : []),
     ...(atlasUrl  ? [`${E.atlas.uni} **Atlas Tree:** ${atlasUrl}`] : []),
-    ...(hasPoints ? [`${E.points.uni} **Atlas Points:** ${atlasPts}/${atlasPtsMax}`] : []),
-    ...(league    ? [`${E.league.uni} **League:** ${league}`] : []),
+    ...(hasPoints ? [`${E.points.uni} **Atlas Points:** ${p.atlasPoints}/${p.atlasPointsMax}`] : []),
+    ...(p.league ? [`${E.league.uni} **League:** ${p.league}`] : []),
     ...(hasGameDataProvenance
       ? [`**Data:** r${gameDataRevision}/${gameDataPatchVersion}`]
       : []),
-    `**Multiplying Modifiers:** ${multiplyingModifiers.source === 'off'
+    `**Multiplying Modifiers:** ${!p.multiplyingModifiersAllocated
       ? 'Off'
-      : `${multiplyingModifiers.count} fragments`}`,
-    ...(stratName   ? [`${E.strategy.uni} **Strategy:** ${stratName}`] : []),
-    ...(shareTags.length > 0 ? [`${E.tags.uni} **Tags:** ${shareTags.join(', ')}`] : []),
-    ...(stratNotes  ? [`${E.notes.uni} **Notes:** ${stratNotes}`] : []),
-    ...(isGroupPlay ? [
+      : `${p.multiplyingModifiersFragmentCount} fragments`}`,
+    ...(p.strategyName ? [`${E.strategy.uni} **Strategy:** ${p.strategyName}`] : []),
+    ...(p.typeTags.length > 0 ? [`${E.tags.uni} **Tags:** ${p.typeTags.join(', ')}`] : []),
+    ...(p.strategyNotes ? [`${E.notes.uni} **Notes:** ${p.strategyNotes}`] : []),
+    ...(p.isGroupPlay ? [
       // Legacy-compatible extension: bare "Yes" stays valid for old parsers;
       // the "(N players)" suffix is only read by post-batch parsers.
-      `${E.party.uni} **Party Play:** Yes${groupSize != null && groupSize >= 2 ? ` (${groupSize} players)` : ''}`,
+      `${E.party.uni} **Party Play:** Yes${p.groupSize != null && p.groupSize >= 2 ? ` (${p.groupSize} players)` : ''}`,
     ] : []),
-    ...(excludedItems.length > 0 ? [
-      `${E.excluded.uni} **Excluded drops (${excludedItems.length}):** ${excludedItems.map((i) => `${i.name} (${i.total.toFixed(0)}c)`).join(', ')}`
+    ...(p.excludedDrops.length > 0 ? [
+      `${E.excluded.uni} **Excluded drops (${p.excludedDrops.length}):** ${p.excludedDrops.map((i) => `${i.name} (${i.value.toFixed(0)}c)`).join(', ')}`
     ] : []),
-    ...(settings.advGemCount > 0 ? [
-      `${E.gem.uni} **Gem leveling:** ${settings.advGemCount} gems | buy ${(settings.advGemCount * settings.advGemBuyPrice).toFixed(0)}c | sell ${(settings.advGemCount * settings.advGemSellPrice).toFixed(0)}c | net ${gemNetPL >= 0 ? '+' : ''}${gemNetPL.toFixed(0)}c *(excluded from map profit)*`
+    ...(p.gemInfo && p.gemInfo.count > 0 ? [
+      `${E.gem.uni} **Gem leveling:** ${p.gemInfo.count} gems | buy ${p.gemInfo.buy.toFixed(0)}c | sell ${p.gemInfo.sell.toFixed(0)}c | net ${p.gemInfo.net >= 0 ? '+' : ''}${p.gemInfo.net.toFixed(0)}c *(excluded from map profit)*`
     ] : []),
     ...(regexBlock ? [regexBlock] : []),
-    ...(lootSummary ? [lootSummaryWireLine(lootSummary)] : []),
+    ...(p.lootSummary ? [lootSummaryWireLine(p.lootSummary)] : []),
   ].join('\n');
 }

@@ -1,24 +1,16 @@
 import { randomBytes, randomUUID, createHash } from 'node:crypto'
 import { readFile, writeFile, rename, mkdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { closedAuthorObject, parseAuthorOutcome, type AuthorStatus, type PublicationOperation } from '../shared/authorHandoff'
-import { shareDraft, shareView, validDurableShare, type DurableShareRecord } from './durableShareRecord'
-import { parseDurableShareResult, type DurableShareView } from '../shared/durableShare'
+import { closedAuthorObject, type PublicationOperation } from '../shared/authorHandoff'
+import { shareDraft, shareView, validDurableShare, completedShare, completedView, validCompletedShare,
+  type DurableShareRecord, type CompletedShareRecord } from './durableShareRecord'
+import { parseDurableShareResult, type DurableShareView, type ActiveDurableShareView,
+  type CompletedShareView, type ShareDisplaySnapshot } from '../shared/durableShare'
 import type { AuthorSubmissionMetadata } from '../shared/authorSubmission'
 import { canonicalAuthorJson } from '../shared/authorSubmission'
 
-export interface OperationBinding {
-  sessionIdentity: string
-  payloadSha256: string
-  operation: PublicationOperation
-  targetGeneration: string | null
-}
 export interface NameShareBinding { shareId: string; draftRevision: number }
 interface ResumableName extends NameShareBinding { expiresAt: string | null }
-interface ResumableOperation extends OperationBinding {
-  expiresAt: string | null
-  receipt: AuthorStatus | null
-}
 
 interface Protection {
   isEncryptionAvailable(): boolean
@@ -33,7 +25,6 @@ interface PendingAuthorRequest {
   createdAt: number
   requestId: string | null
   consumptionId: string
-  operation?: ResumableOperation
   nameShare?: ResumableName
 }
 interface VaultRecord {
@@ -41,6 +32,23 @@ interface VaultRecord {
   installationId: string
   pending: PendingAuthorRequest[]
   shares?: DurableShareRecord[]
+  completed?: CompletedShareRecord[]
+}
+const fullRecordBudget = 8 * 1024 * 1024
+function compactCompleted(data: VaultRecord): DurableShareRecord[] {
+  const eligible = data.shares?.filter(s => s.result?.state === 'complete' && s.noticed && !s.proposed &&
+    !data.pending.some(p => p.nameShare?.shareId === s.id)) ?? []
+  if (!eligible.length) return []
+  data.completed = [...data.completed ?? [], ...eligible.map(completedShare)]
+  const ids = new Set(eligible.map(s => s.id))
+  data.shares = data.shares!.filter(s => !ids.has(s.id))
+  return eligible
+}
+function fullRecordsFit(data: VaultRecord): boolean {
+  // Completed replay markers contain only closed, bounded identity/result
+  // fields. They do not consume the quota for unresolved payloads/capabilities.
+  const { completed: _completed, ...full } = data
+  return (data.shares?.length ?? 0) <= 512 && Buffer.byteLength(JSON.stringify(full)) <= fullRecordBudget
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 function validNameShare(value: unknown): value is ResumableName {
@@ -48,28 +56,6 @@ function validNameShare(value: unknown): value is ResumableName {
     typeof value.shareId === 'string' && uuid.test(value.shareId) &&
     Number.isSafeInteger(value.draftRevision) && (value.draftRevision as number) > 0 &&
     (value.expiresAt === null || typeof value.expiresAt === 'string' && value.expiresAt.length <= 40 && Number.isFinite(Date.parse(value.expiresAt)))
-}
-function validOperation(value: unknown): value is ResumableOperation {
-  if (!closedAuthorObject(value, ['sessionIdentity', 'payloadSha256', 'operation', 'targetGeneration', 'expiresAt', 'receipt']) ||
-    typeof value.sessionIdentity !== 'string' || !value.sessionIdentity || value.sessionIdentity.length > 128 ||
-    typeof value.payloadSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.payloadSha256) ||
-    (value.targetGeneration !== null && (typeof value.targetGeneration !== 'string' || !uuid.test(value.targetGeneration))) ||
-    (value.expiresAt !== null && (typeof value.expiresAt !== 'string' || value.expiresAt.length > 40 || !Number.isFinite(Date.parse(value.expiresAt)))) ||
-    !closedAuthorObject(value.operation, ['kind', 'strategy_id', 'revision'])) return false
-  const operation = value.operation
-  if (operation.kind === 'publication') {
-    if (operation.strategy_id !== null || operation.revision !== null || value.targetGeneration !== null) return false
-  } else if (!['replace', 'evidence'].includes(operation.kind as string) || typeof operation.strategy_id !== 'string' ||
-    !uuid.test(operation.strategy_id) || !Number.isInteger(operation.revision) || (operation.revision as number) < 1 ||
-    (operation.revision as number) > 2147483647 || value.targetGeneration === null) return false
-  if (value.receipt !== null) {
-    if (!closedAuthorObject(value.receipt, ['request_id', 'epoch', 'status', 'expires_at', 'outcome']) ||
-      typeof value.receipt.request_id !== 'string' || !uuid.test(value.receipt.request_id) ||
-      typeof value.receipt.epoch !== 'string' || !uuid.test(value.receipt.epoch) || value.receipt.status !== 'consumed' ||
-      typeof value.receipt.expires_at !== 'string' || !Number.isFinite(Date.parse(value.receipt.expires_at))) return false
-    try { if (parseAuthorOutcome(value.receipt.outcome).status !== 'published') return false } catch { return false }
-  }
-  return true
 }
 const domainHash = (name: string, value: Buffer) =>
   createHash('sha256')
@@ -85,11 +71,39 @@ export class ProtectedShareStorageError extends Error {
  * The directory must be within the active file repository's private data root. */
 export class AuthorHandoffVault {
   private serial: Promise<unknown> = Promise.resolve()
+  // Display-only LRU: eviction never changes stored outcomes, identities or
+  // unfinished work. Closing a window keeps exact values while the app runs.
+  private completedDisplays = new Map<string, { binding: string; snapshot: ShareDisplaySnapshot; bytes: number }>()
+  private completedDisplayBytes = 0
   constructor(
     private directory: string,
     private protection: Protection,
     private now = Date.now
   ) {}
+  private rememberCompleted(records: DurableShareRecord[]): void {
+    for (const record of records) {
+      const snapshot = { core: record.draft!.core, author: { ...record.draft!.metadata.author } }
+      const binding = canonicalAuthorJson(completedShare(record))
+      const bytes = Buffer.byteLength(binding) + Buffer.byteLength(JSON.stringify(snapshot))
+      const previous = this.completedDisplays.get(record.id)
+      if (previous) this.completedDisplayBytes -= previous.bytes
+      this.completedDisplays.delete(record.id)
+      this.completedDisplays.set(record.id, { binding, snapshot, bytes })
+      this.completedDisplayBytes += bytes
+      while (this.completedDisplays.size > 512 || this.completedDisplayBytes > fullRecordBudget) {
+        const oldest = this.completedDisplays.keys().next().value!
+        this.completedDisplayBytes -= this.completedDisplays.get(oldest)!.bytes
+        this.completedDisplays.delete(oldest)
+      }
+    }
+  }
+  private completedDisplayView(record: CompletedShareRecord): CompletedShareView {
+    const view = completedView(record), display = this.completedDisplays.get(record.id)
+    if (!display || display.binding !== canonicalAuthorJson(record)) return view
+    this.completedDisplays.delete(record.id)
+    this.completedDisplays.set(record.id, display)
+    return { ...view, displaySnapshot: { core: display.snapshot.core, author: { ...display.snapshot.author } } }
+  }
   private async load(): Promise<VaultRecord> {
     if (!this.protection.isEncryptionAvailable())
       throw new ProtectedShareStorageError()
@@ -101,13 +115,13 @@ export class AuthorHandoffVault {
         return { version: 1, installationId: randomUUID(), pending: [] }
       throw error
     }
-    if (bytes.length > 8 * 1024 * 1024) throw new Error('Protected sharing storage is too large.')
     const data = JSON.parse(this.protection.decryptString(bytes)) as VaultRecord
     if (
       data.version !== 1 ||
       !uuid.test(data.installationId) ||
-      (data.shares !== undefined && (!Array.isArray(data.shares) || data.shares.length > 512 ||
+      (data.shares !== undefined && (!Array.isArray(data.shares) ||
         data.shares.some(s => !validDurableShare(s)) || new Set(data.shares.map(s => s.id)).size !== data.shares.length)) ||
+      (data.completed !== undefined && (!Array.isArray(data.completed) || data.completed.some(s => !validCompletedShare(s)))) ||
       !Array.isArray(data.pending) ||
       data.pending.length > 2 ||
       data.pending.some(
@@ -121,15 +135,22 @@ export class AuthorHandoffVault {
           !/^[A-Za-z0-9_-]{43}$/.test(p.readerSecret) ||
           !Number.isFinite(p.createdAt) ||
           (p.requestId !== null && !uuid.test(p.requestId)) ||
-          (p.nameShare !== undefined && (!validNameShare(p.nameShare) || p.operation !== undefined)) ||
-          (p.operation !== undefined && (!validOperation(p.operation) ||
-            (p.operation.receipt !== null && p.operation.receipt.request_id !== p.requestId)))
+          (p.nameShare !== undefined && (!validNameShare(p.nameShare) || Object.hasOwn(p, 'operation')))
       )
     )
       throw new Error('Author confirmation storage is invalid.')
-    data.pending = data.pending.filter(
-      (p) => p.createdAt <= this.now() && (!!p.operation?.receipt || this.now() - p.createdAt < 15 * 60_000)
-    )
+    const records = [...data.shares ?? [], ...data.completed ?? []]
+    if (new Set(records.map(s => s.id)).size !== records.length ||
+      new Set(records.map(s => JSON.stringify([s.sessionIdentity, s.targetGeneration]))).size !== records.length)
+      throw new Error('Protected share identities conflict.')
+    // Development-only operation acknowledgements never establish a durable
+    // share result or a name. Discard their readers without consuming or
+    // cancelling anything remotely; current name readers remain unchanged.
+    data.pending = data.pending.filter((p) => !Object.hasOwn(p, 'operation') &&
+      p.createdAt <= this.now() && this.now() - p.createdAt < 15 * 60_000)
+    const compacted = compactCompleted(data)
+    if (!fullRecordsFit(data)) throw new Error('Protected unfinished sharing storage is too large.')
+    if (compacted.length) { await this.save(data); this.rememberCompleted(compacted) }
     return data
   }
   durableShares(): Promise<DurableShareView[]> {
@@ -137,8 +158,10 @@ export class AuthorHandoffVault {
   }
   durableForSession(sessionIdentity: string, targetGeneration: string | null): Promise<DurableShareView | null> {
     return this.run(async () => {
-      const s = (await this.load()).shares?.find(s => s.sessionIdentity === sessionIdentity && s.targetGeneration === targetGeneration)
-      return s ? shareView(s) : null
+      const data = await this.load()
+      const s = data.shares?.find(s => s.sessionIdentity === sessionIdentity && s.targetGeneration === targetGeneration)
+      const done = data.completed?.find(s => s.sessionIdentity === sessionIdentity && s.targetGeneration === targetGeneration)
+      return s ? shareView(s) : done ? this.completedDisplayView(done) : null
     })
   }
   /** A pre-capability local draft needs no encrypted store. Once that store
@@ -151,20 +174,24 @@ export class AuthorHandoffVault {
         throw new ProtectedShareStorageError()
       }
       try {
-        const s = (await this.load()).shares?.find(s => s.sessionIdentity === sessionIdentity && s.targetGeneration === null)
-        return s ? shareView(s) : null
+        const data = await this.load()
+        const s = data.shares?.find(s => s.sessionIdentity === sessionIdentity && s.targetGeneration === null)
+        const done = data.completed?.find(s => s.sessionIdentity === sessionIdentity && s.targetGeneration === null)
+        return s ? shareView(s) : done ? this.completedDisplayView(done) : null
       } catch { throw new ProtectedShareStorageError() }
     })
   }
   prepareDurable(input: { sessionIdentity: string; sessionId: string; targetGeneration: string | null;
     operation: PublicationOperation; epoch: string; core: string; metadata: AuthorSubmissionMetadata },
-    exchange: (body: unknown, authorization: string) => Promise<unknown>): Promise<{ view: DurableShareView; metadata: AuthorSubmissionMetadata }> {
+    exchange: (body: unknown, authorization: string) => Promise<unknown>): Promise<{ view: ActiveDurableShareView; metadata: AuthorSubmissionMetadata }> {
     return this.run(async () => {
       const data = await this.load()
+      if (data.completed?.some(s => s.sessionIdentity === input.sessionIdentity && s.targetGeneration === input.targetGeneration))
+        throw new Error('This share is already processing or shared. Open it in the Strategy Browser and choose Continue to change it.')
       data.shares ??= []
       let s = data.shares.find(s => s.sessionIdentity === input.sessionIdentity && s.targetGeneration === input.targetGeneration)
       if (!s) {
-        if (data.shares.length >= 512) throw new Error('Protected share history is full. Keep this profile for review.')
+        if (data.shares.length >= 512) throw new Error('Protected unfinished share storage is full. Keep this profile for review.')
         s = { id: randomUUID(), readerSecret: randomBytes(32).toString('base64url'), sessionIdentity: input.sessionIdentity,
           sessionId: input.sessionId, epoch: input.epoch, operation: input.operation, targetGeneration: input.targetGeneration,
           draft: null, proposed: null, result: null, noticed: false }
@@ -204,7 +231,10 @@ export class AuthorHandoffVault {
   observeDurable(id: string, exchange: (authorization: string) => Promise<unknown>): Promise<DurableShareView | null> {
     return this.run(async () => {
       const data = await this.load(), s = data.shares?.find(s => s.id === id)
-      if (!s) return null
+      if (!s) {
+        const done = data.completed?.find(s => s.id === id)
+        return done ? this.completedDisplayView(done) : null
+      }
       if (s.result?.state === 'complete' || s.result?.state === 'restore_review') return shareView(s)
       const raw = await exchange('Handoff ' + s.readerSecret)
       const revision = (raw as { draft_revision?: unknown })?.draft_revision
@@ -224,7 +254,10 @@ export class AuthorHandoffVault {
   markDurableUnavailable(id: string): Promise<DurableShareView | null> {
     return this.run(async () => {
       const data = await this.load(), s = data.shares?.find(s => s.id === id)
-      if (!s || !s.draft) return null
+      if (!s || !s.draft) {
+        const done = data.completed?.find(s => s.id === id)
+        return done ? this.completedDisplayView(done) : null
+      }
       if (s.result?.state !== 'complete') s.result = { id: s.id, epoch: s.epoch,
         draft_revision: s.draft.revision, kind: s.operation.kind, state: 'restore_review', outcome: null }
       await this.save(data)
@@ -248,56 +281,12 @@ export class AuthorHandoffVault {
       return shareView(s)
     })
   }
-  hasOperation(sessionIdentity: string): Promise<boolean> {
-    return this.run(async () => (await this.load()).pending.some(p => p.operation?.sessionIdentity === sessionIdentity))
-  }
-  /** Main-process observation is independent of a renderer's current modal.
-   * Only already-bound operation readers are returned; secrets remain in here. */
-  operationReaders() {
-    return this.run(async () => (await this.load()).pending.flatMap(p =>
-      p.operation && p.requestId && p.operation.expiresAt ? [{
-        requestId: p.requestId, expiresAt: p.operation.expiresAt,
-        binding: { sessionIdentity: p.operation.sessionIdentity, payloadSha256: p.operation.payloadSha256,
-          operation: p.operation.operation, targetGeneration: p.operation.targetGeneration },
-        receipt: p.operation.receipt
-      }] : []))
-  }
-  /** Serializes background reads, acknowledgement and cancellation. A response
-   * cannot recreate a reader that an explicit cancellation already removed. */
-  observeOperation(requestId: string, exchange: (authorization: string, consumptionId: string,
-    binding: OperationBinding, expiresAt: string) => Promise<AuthorStatus>): Promise<AuthorStatus | null> {
-    return this.run(async () => {
-      const data = await this.load()
-      const p = data.pending.find(p => p.requestId === requestId && p.operation)
-      if (!p?.operation?.expiresAt) return null
-      if (p.operation.receipt) return p.operation.receipt
-      if (this.now() >= Date.parse(p.operation.expiresAt)) return null
-      const result = await exchange('Handoff ' + p.readerSecret, p.consumptionId,
-        p.operation, p.operation.expiresAt)
-      if (result.status === 'consumed') {
-        if (result.request_id !== requestId || !validOperation({ ...p.operation, receipt: result }))
-          throw new Error('Invalid publication receipt')
-        p.operation.receipt = result
-        await this.save(data)
-      }
-      return result
-    })
-  }
-  discardUnboundOperation(binding: OperationBinding): Promise<boolean> {
-    return this.run(async () => {
-      const data = await this.load()
-      const p = data.pending.find(p => p.operation?.sessionIdentity === binding.sessionIdentity)
-      if (!p) return true
-      if (p.requestId !== null || p.operation!.payloadSha256 !== binding.payloadSha256) return false
-      data.pending = data.pending.filter(item => item !== p)
-      await this.save(data)
-      return true
-    })
-  }
   private async save(data: VaultRecord): Promise<void> {
-    const bytes = this.protection.encryptString(JSON.stringify(data))
-    if (bytes.length > 8 * 1024 * 1024 || data.shares?.some(s => !validDurableShare(s)))
+    if (data.shares?.some(s => !validDurableShare(s)) || data.completed?.some(s => !validCompletedShare(s)))
       throw new Error('Protected share history could not be saved safely.')
+    const compacted = compactCompleted(data)
+    if (!fullRecordsFit(data)) throw new Error('Protected unfinished share storage could not be saved safely.')
+    const bytes = this.protection.encryptString(JSON.stringify(data))
     await mkdir(this.directory, { recursive: true })
     const temp = join(this.directory, 'author-handoffs.' + randomUUID() + '.pending')
     await writeFile(temp, bytes, {
@@ -305,13 +294,14 @@ export class AuthorHandoffVault {
       mode: 0o600
     })
     await rename(temp, join(this.directory, 'author-handoffs.enc'))
+    this.rememberCompleted(compacted)
   }
   private run<T>(fn: () => Promise<T>): Promise<T> {
     const work = this.serial.then(fn)
     this.serial = work.catch(() => undefined)
     return work
   }
-  prepare(sessionId: string, operationGeneration: string, operation?: OperationBinding, nameShare?: NameShareBinding) {
+  prepare(sessionId: string, operationGeneration: string, nameShare?: NameShareBinding) {
     return this.run(async () => {
       if (
         !sessionId ||
@@ -321,23 +311,12 @@ export class AuthorHandoffVault {
       )
         throw new Error('Invalid author request context')
       const data = await this.load()
-      if (operation && !validOperation({ ...operation, expiresAt: null, receipt: null }))
-        throw new Error('Invalid publication tracking')
-      if (nameShare && (operation || !validNameShare({ ...nameShare, expiresAt: null })))
+      if (nameShare && !validNameShare({ ...nameShare, expiresAt: null }))
         throw new Error('Invalid name verification binding')
-      let pending = data.pending.find((p) => operation
-        ? p.operation?.sessionIdentity === operation.sessionIdentity
-        : nameShare ? p.nameShare?.shareId === nameShare.shareId && p.nameShare.draftRevision === nameShare.draftRevision
-        : !p.operation && p.sessionId === sessionId && p.operationGeneration === operationGeneration)
+      let pending = data.pending.find((p) => nameShare
+        ? p.nameShare?.shareId === nameShare.shareId && p.nameShare.draftRevision === nameShare.draftRevision
+        : !p.nameShare && p.sessionId === sessionId && p.operationGeneration === operationGeneration)
       if (pending && nameShare) { pending.sessionId = sessionId; pending.operationGeneration = operationGeneration }
-      if (pending && operation) {
-        if (pending.operation!.payloadSha256 !== operation.payloadSha256 ||
-          JSON.stringify(pending.operation!.operation) !== JSON.stringify(operation.operation) ||
-          pending.operation!.targetGeneration !== operation.targetGeneration)
-          throw new Error('Finish or cancel the pending share result before preparing changed content.')
-        pending.sessionId = sessionId
-        pending.operationGeneration = operationGeneration
-      }
       if (!pending) {
         if (data.pending.length >= 2)
           throw new Error('Finish or cancel an existing author confirmation first.')
@@ -349,7 +328,6 @@ export class AuthorHandoffVault {
           createdAt: this.now(),
           requestId: null,
           consumptionId: randomUUID(),
-          ...(operation ? { operation: { ...operation, expiresAt: null, receipt: null } } : {}),
           ...(nameShare ? { nameShare: { ...nameShare, expiresAt: null } } : {})
         }
         data.pending.push(pending)
@@ -365,19 +343,19 @@ export class AuthorHandoffVault {
       }
     })
   }
-  /** Legacy name readers remain generation-bound. Operation readers instead
-   * survive restart and are reattached through their durable session identity. */
+  /** Management readers remain generation-bound. Bound name verification
+   * survives restart and reattaches through the durable share identity. */
   discardInterrupted(cancel: (requestId: string, authorization: string) => Promise<unknown>): Promise<void> {
     return this.run(async () => {
       const data = await this.load()
-      const interrupted = data.pending.filter(p => !p.operation && !p.nameShare)
+      const interrupted = data.pending.filter(p => !p.nameShare)
       // Startup observation must not create a private directory before a fresh
       // session repository has completed its guarded migration.
       if (!interrupted.length) return
       for (const p of interrupted) {
         if (p.requestId) await cancel(p.requestId, 'Handoff ' + p.readerSecret).catch(() => undefined)
       }
-      data.pending = data.pending.filter(p => p.operation || p.nameShare)
+      data.pending = data.pending.filter(p => p.nameShare)
       await this.save(data)
     })
   }
@@ -389,10 +367,6 @@ export class AuthorHandoffVault {
       if (!pending || (pending.requestId !== null && pending.requestId !== requestId))
         throw new Error('Confirmation request changed')
       pending.requestId = requestId
-      if (pending.operation) {
-        if (!expiresAt || !Number.isFinite(Date.parse(expiresAt))) throw new Error('Invalid publication expiry')
-        pending.operation.expiresAt = expiresAt
-      }
       if (pending.nameShare) {
         if (!expiresAt || !Number.isFinite(Date.parse(expiresAt))) throw new Error('Invalid name verification expiry')
         pending.nameShare.expiresAt = expiresAt
@@ -412,41 +386,6 @@ export class AuthorHandoffVault {
       return { request_id: p.requestId, client_request_id: p.clientRequestId, expires_at: p.nameShare.expiresAt }
     })
   }
-  /** Reattach only the encrypted reader for the selected durable session. No
-   * secret or old renderer generation is returned to the renderer. */
-  resumeOperation(sessionIdentity: string, sessionId: string, generation: string, stillCurrent: () => boolean) {
-    return this.run(async () => {
-      const data = await this.load()
-      const p = data.pending.find(p => p.operation?.sessionIdentity === sessionIdentity)
-      if (!p || !p.requestId || !p.operation?.expiresAt) return null
-      if (!stillCurrent()) throw new Error('The active operation changed while resuming.')
-      p.sessionId = sessionId
-      p.operationGeneration = generation
-      await this.save(data)
-      if (!stillCurrent()) throw new Error('The active operation changed while resuming.')
-      return {
-        request: { request_id: p.requestId, client_request_id: p.clientRequestId, expires_at: p.operation.expiresAt },
-        binding: { sessionIdentity, payloadSha256: p.operation.payloadSha256, operation: p.operation.operation,
-          targetGeneration: p.operation.targetGeneration },
-        status: p.operation.receipt
-      }
-    })
-  }
-  cancelOperation(sessionIdentity: string, cancel: (requestId: string, authorization: string) => Promise<void>,
-    stillCurrent: () => boolean, onStopped: () => void): Promise<void> {
-    return this.run(async () => {
-      const data = await this.load()
-      const p = data.pending.find(p => p.operation?.sessionIdentity === sessionIdentity)
-      if (!stillCurrent()) throw new Error('The selected session changed.')
-      if (!p) { onStopped(); return }
-      // Explicitly stop local tracking even if creation/cancellation had an
-      // uncertain network result. This never undoes or repeats a publication.
-      data.pending = data.pending.filter(item => item !== p)
-      await this.save(data)
-      onStopped()
-      if (p.requestId && !p.operation!.receipt) await cancel(p.requestId, 'Handoff ' + p.readerSecret)
-    })
-  }
   /** Callback executes in main. Its return must be reduced to a closed receipt
    * before any IPC reply; secrets and clipboard contents never leave main. */
   consume<T>(
@@ -454,8 +393,7 @@ export class AuthorHandoffVault {
     sessionId: string,
     operationGeneration: string,
     exchange: (authorization: string, consumptionId: string) => Promise<T>,
-    stillCurrent: () => boolean,
-    operationReceipt?: (result: T) => AuthorStatus
+    stillCurrent: () => boolean
   ): Promise<T> {
     return this.run(async () => {
       const data = await this.load(),
@@ -468,15 +406,6 @@ export class AuthorHandoffVault {
       )
         throw new Error('This confirmation belongs to another operation.')
       const result = await exchange('Handoff ' + p.readerSecret, p.consumptionId)
-      // Save a validated private receipt before fencing a late UI response. The
-      // operation may already be committed even when its dialog was closed.
-      if (operationReceipt) {
-        const receipt = operationReceipt(result)
-        if (!p.operation || receipt.request_id !== requestId || receipt.status !== 'consumed' ||
-          !validOperation({ ...p.operation, receipt })) throw new Error('Invalid publication receipt')
-        p.operation.receipt = receipt
-        await this.save(data)
-      }
       if (!stillCurrent()) throw new Error('The active operation changed while confirming.')
       return result
     })

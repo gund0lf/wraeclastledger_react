@@ -1,4 +1,4 @@
-import { ActionIcon, Alert, Badge, Button, Card, Group, Loader, Modal, MultiSelect, Paper, SegmentedControl, Select, Stack, Text, TextInput } from '@mantine/core'
+import { ActionIcon, Alert, Badge, Button, Card, Divider, Group, Loader, Modal, MultiSelect, Paper, Radio, SegmentedControl, Select, Stack, Text, TextInput } from '@mantine/core'
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { IconBrandDiscord, IconRefresh, IconShare2 } from '@tabler/icons-react'
 import { SAFE_SORTS, safeSortOrder, safeIdentityKey, type SafeDetail, type SafeSnapshot, type SafeSort } from '../../../shared/safeStrategy'
@@ -194,13 +194,35 @@ export function SafeStrategyBrowser({ onShare, onImport, applySetup, runAction, 
         </Stack>)}
       </div>}
     <ManagePublicNames opened={!!naming} selectedStrategy={naming ? { id: naming.id, scope: naming.scope, snapshotKey: naming.snapshot_key } : undefined} onClose={() => setNaming(null)} />
-    <Modal opened={!!candidate} onClose={() => setCandidate(null)} title={`Continue ${candidate?.title ?? 'strategy'}`}>
-      <Stack><Text size="sm">What should the next share do?</Text><SegmentedControl value={operation} onChange={v => setOperation(v as 'replace' | 'evidence')}
-        data={[{ value: 'evidence', label: 'Add another run' }, { value: 'replace', label: 'Replace strategy' }]} />
-        <Text size="xs">{operation === 'evidence' ? 'Adds a compatible run with its own recorded prices.' : 'Replaces this strategy’s runs with this session. Votes are kept.'}</Text>
-        <SegmentedControl value={source} onChange={setSource} data={[{ value: 'current', label: 'Use current session' }, { value: 'fresh', label: 'Start fresh session' }]} />
-        <Text size="xs">{source === 'current' ? 'Keeps maps, loot and authored prices. Sharing checks compatibility again.' : 'Loads reusable settings into a fresh session with empty prices.'}</Text>
-        <Button onClick={continueRun}>Save choice and continue strategy</Button></Stack>
+    <Modal opened={!!candidate} onClose={() => setCandidate(null)} title={`Continue ${candidate?.title ?? 'strategy'}`} size="md" centered>
+      <Stack gap="md">
+        <Stack gap={6}>
+          <SectionLabel style={{ color: COLOR.textFaint }}>Your next share</SectionLabel>
+          <Radio.Group value={operation} onChange={v => setOperation(v as 'replace' | 'evidence')} aria-label="Your next share">
+            <Group grow wrap="nowrap" align="stretch">
+              {([
+                { value: 'evidence', label: 'Add a run', description: 'This session joins the existing runs. Results are pooled.' },
+                { value: 'replace', label: 'Replace runs', description: 'This session replaces the current runs. Votes are kept.' },
+              ] as const).map(option => <Radio.Card key={option.value} value={option.value} aria-label={option.label} p="sm" radius="md"
+                style={{ minWidth: 0, borderColor: operation === option.value ? COLOR.info : COLOR.borderSoft,
+                  background: operation === option.value ? COLOR.surfaceInfoBg : COLOR.bgInset }}>
+                <Stack gap={6}><Text size="sm" fw={600}>{option.label}</Text><Text size="sm" c="dimmed">{option.description}</Text></Stack>
+              </Radio.Card>)}
+            </Group>
+          </Radio.Group>
+        </Stack>
+        <Stack gap={6}>
+          <SectionLabel style={{ color: COLOR.textFaint }}>Using</SectionLabel>
+          <SegmentedControl value={source} onChange={setSource} aria-label="Session to use" styles={{ root: { background: COLOR.bgInset } }}
+            data={[{ value: 'current', label: 'This session' }, { value: 'fresh', label: 'A fresh session' }]} />
+          <Text size="xs" c="dimmed">{source === 'current' ? 'Keeps your maps, loot and prices.' : 'Loads reusable settings into a fresh session with empty prices.'}</Text>
+        </Stack>
+        <Divider />
+        <Stack gap={6}>
+          <Button variant="filled" onClick={continueRun}>Continue</Button>
+          <Button variant="subtle" color="gray" c={COLOR.textDim} onClick={() => setCandidate(null)}>Cancel</Button>
+        </Stack>
+      </Stack>
     </Modal>
   </Card>
 }

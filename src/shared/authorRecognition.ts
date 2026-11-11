@@ -158,6 +158,19 @@ export function applyAuthorRecovery(
     throw new Error('Forget unused local names before recovering more.')
   return { schemaVersion: 1, registrations, defaultRegistrationId: choice.defaultRegistrationId }
 }
+
+/** A reviewed first-name receipt saves names, not a new default preference.
+ * Keep recovery's identity invalidation; an existing default may therefore need
+ * verification, but it is never silently replaced or cleared by this action. */
+export function applyReviewedNameVerification(current: AuthorPreferences, receipt: AuthorReceipt): AuthorPreferences {
+  const preview = previewAuthorRecovery(current, receipt)
+  const saved = applyAuthorRecovery(current, receipt, {
+    defaultRegistrationId: preview.defaultStillConfirmed ? current.defaultRegistrationId : null,
+    forgetObsoleteIds: []
+  })
+  return { ...saved, defaultRegistrationId: current.defaultRegistrationId }
+}
+
 export function forgetAuthor(
   current: AuthorPreferences,
   id: string,

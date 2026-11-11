@@ -1,9 +1,9 @@
 import {
-  Modal, Stack, Text, Alert, TextInput, NumberInput, MultiSelect,
+  Modal, Stack, Text, Alert, TextInput, NumberInput, Combobox, Pill, useCombobox,
   Textarea, Group, SegmentedControl, Divider, Button, CopyButton,
 } from '@mantine/core';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { IconBrandDiscord, IconCheck } from '@tabler/icons-react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { IconBrandDiscord, IconCheck, IconPlus, IconPlaylistAdd, IconRefresh, IconLock } from '@tabler/icons-react';
 import { useSessionKeys, useSessionStore } from '../store/useSessionStore';
 import { restoreShareDraft } from '../utils/shareDraft';
 import { buildDiscordExport } from '../utils/discordExport';
@@ -36,6 +36,9 @@ import {
 import './ShareModal.css';
 import { AuthorShareControls } from './AuthorShareControls';
 import { ManagePublicNames } from './ManagePublicNames';
+import { migrateStrategyTarget } from '../../../shared/strategyTarget';
+import { postedSharePresentation } from '../utils/postedSharePresentation';
+import type { ShareWindowPresentation } from '../utils/shareWindowPresentation';
 
 const SETUP_FIELD_LABELS: Record<string, string> = {
   leagueKey: 'League',
@@ -49,6 +52,40 @@ const SETUP_FIELD_LABELS: Record<string, string> = {
   multiplyingModifiers: 'Multiplying Modifiers setup',
 };
 
+function ShareTagsField({ value, onChange, disabled }: {
+  value: string[]; onChange: (tags: string[]) => void; disabled: boolean;
+}) {
+  const [search, setSearch] = useState('');
+  const dropdown = useCombobox({ onDropdownClose: () => { setSearch(''); dropdown.resetSelectedOption(); } });
+  const label = (tag: string) => tag.split('-').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  const options = ALL_TYPE_TAGS.filter((tag) => !value.includes(tag) && label(tag).toLowerCase().includes(search.toLowerCase()));
+  return <Stack gap={4}>
+    <Text size="xs" fw={500}>Tags</Text>
+    <Combobox store={dropdown} withinPortal={false} onOptionSubmit={(tag) => {
+      onChange([...value, tag]); dropdown.closeDropdown();
+    }}>
+      <Combobox.DropdownTarget><Group gap={5} aria-label="Tags" w="100%">
+        {value.map((tag) => <Pill key={tag} size="sm" withRemoveButton={!disabled}
+          onRemove={() => onChange(value.filter((entry) => entry !== tag))}
+          styles={{ root: { background: COLOR.bgHover, color: COLOR.textSoft } }}>{label(tag)}</Pill>)}
+        {!value.length && disabled && <Text size="xs" c={COLOR.textDim}>No tags</Text>}
+        {!disabled && <Combobox.EventsTarget targetType="button" withExpandedAttribute>
+          <Button size="compact-xs" variant="subtle" onClick={() => dropdown.toggleDropdown()}>+ Add tag</Button>
+        </Combobox.EventsTarget>}
+      </Group></Combobox.DropdownTarget>
+      {!disabled && <Combobox.Dropdown style={{ background: COLOR.bgInset }}>
+        <Combobox.Search aria-label="Find a tag" placeholder="Search tags" value={search}
+          styles={{ input: { background: COLOR.bgDeep, border: `1px solid ${COLOR.borderSoft}`, borderRadius: 4, width: '100%', margin: 0, marginBottom: 6 } }}
+          onChange={(event) => { setSearch(event.currentTarget.value); dropdown.updateSelectedOptionIndex(); }} />
+        <Combobox.Options style={{ maxHeight: 200, overflowY: 'auto' }}>
+          {options.map((tag) => <Combobox.Option key={tag} value={tag} className="share-name-option" style={{ whiteSpace: 'nowrap' }}>{label(tag)}</Combobox.Option>)}
+          {!options.length && <Combobox.Empty>No matching tags</Combobox.Empty>}
+        </Combobox.Options>
+      </Combobox.Dropdown>}
+    </Combobox>
+  </Stack>;
+}
+
 interface Props {
   opened: boolean;
   onClose: () => void;
@@ -60,8 +97,9 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   const [authorReview, setAuthorReview] = useState<boolean | null>(null);
   const [authorReviewError, setAuthorReviewError] = useState<string | null>(null);
   const [manageNames, setManageNames] = useState(false);
+  const [manageNamesAction, setManageNamesAction] = useState<'recover' | undefined>();
   const [authorFieldContainer, setAuthorFieldContainer] = useState<HTMLDivElement | null>(null);
-  const [confirmationContainer, setConfirmationContainer] = useState<HTMLDivElement | null>(null);
+  const [shareCompleted, setShareCompleted] = useState(false);
   useEffect(() => {
     if (!opened) return;
     let stopped = false;
@@ -115,6 +153,21 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   const [stratName,  setStratName]  = useState('');
   const [stratNotes, setStratNotes] = useState('');
   const [shareTracking, setShareTracking] = useState(false);
+  const [sharePosted, setSharePosted] = useState(false);
+  const [shareArchived, setShareArchived] = useState(false);
+  const [sharePresentation, setSharePresentation] = useState<ShareWindowPresentation | null>(null);
+  const currentShareTarget = useMemo(() => migrateStrategyTarget(settings as unknown as Record<string, unknown>), [settings]);
+  const postedScope = JSON.stringify([currentSessionIdentity,
+    currentShareTarget && currentShareTarget.state !== 'legacy_review' ? currentShareTarget.generation : null]);
+  const postedDisplay = useMemo(() => {
+    try {
+      return { details: postedSharePresentation(sharePresentation?.scope === postedScope ? sharePresentation.snapshot : null), error: null };
+    } catch (error) {
+      return { details: null, error: error instanceof Error ? error.message : 'The saved posted details could not be read.' };
+    }
+  }, [sharePresentation, postedScope]);
+  const postedDetails = sharePosted ? postedDisplay.details : null;
+  const missingPostedDetails = sharePosted && !postedDetails;
   const [isGroupPlay, setIsGroupPlay] = useState(false);
   const [groupSize,  setGroupSize]  = useState(2);
   const [timeText,   setTimeText]   = useState('');
@@ -242,12 +295,15 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   // Canonical wire value (minutes) derived from the flexible input; null when
   // empty or unparseable.
   const sessionMinutes = parseTimeInput(timeText);
+  const capturedTime = computeTimeEstimate(maps);
   const manualTimerMs = manualRunTimerElapsed(manualRunTimer);
   const activeManifest = getManifest();
   const timeCaption = timeText.trim() === ''
     ? 'Empty — time will not be shared'
     : sessionMinutes != null
-      ? `Shared as ${sessionMinutes} min`
+      ? capturedTime && sessionMinutes === Math.round(capturedTime.activeMs / 60_000)
+        ? 'from your capture'
+        : /[a-z]/i.test(timeText) ? `Shared as ${sessionMinutes} min` : ''
       : 'Not recognized — use minutes (245) or hours (4h / 4.5h)';
 
   // All math lives in utils/profit.ts via buildDiscordExport (WP1) — the export
@@ -435,7 +491,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     || budget.decorationMode !== 'full'
     || budgetNearLimit,
   );
-  const postedCardPreview = compactPostedCardPreview(
+  const postedCardPreview = postedDetails?.preview ?? compactPostedCardPreview(
     discordExport,
     parsedDiscordExport?.lootSummary ?? null,
   );
@@ -493,22 +549,58 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     return `${Math.round(v)}c`; // chaos
   };
 
+  const targetOperation = currentShareTarget && currentShareTarget.state !== 'legacy_review'
+    ? currentShareTarget.operation : null;
+  const targetTitle = currentShareTarget && currentShareTarget.state !== 'legacy_review'
+    ? currentShareTarget.title || 'your strategy' : 'your strategy';
+  const intentTitle = targetOperation === 'evidence' ? (shareCompleted ? 'Run added' : 'Add a run')
+    : targetOperation === 'replace' ? (shareCompleted ? 'Runs replaced' : 'Replace runs')
+    : shareCompleted ? 'Strategy shared' : 'New strategy';
+  const intentDescription = targetOperation === 'evidence'
+    ? `${shareCompleted ? 'Added to' : 'Adds this session to'} ${targetTitle}`
+    : targetOperation === 'replace'
+      ? `${shareCompleted ? 'Replaced the runs of' : 'Replaces the runs of'} ${targetTitle}. Votes are kept.`
+      : shareCompleted ? 'Your strategy and its Discord card are published' : 'Creates a strategy and its Discord card';
+  const IntentIcon = targetOperation === 'replace' ? IconRefresh : targetOperation === 'evidence' ? IconPlaylistAdd : IconPlus;
+  const contentSizedDialog = manageNames || shareArchived || missingPostedDetails;
+
   return (
-    <Modal opened={opened} onClose={onClose} title="Share My Session" size="md" yOffset={16}
+    <Modal opened={opened} onClose={manageNames ? () => setManageNames(false) : onClose}
+      title={manageNames ? 'Public names' : 'Share My Session'} size={440} yOffset={16}
+      classNames={{ content: 'share-dialog' }}
       styles={{
-        content: { display: 'flex', flexDirection: 'column', height: 'min(820px, calc(100dvh - 32px))',
-          maxHeight: 'calc(100dvh - 32px)', overflow: 'hidden' },
+        content: { display: 'flex', flexDirection: 'column', height: contentSizedDialog ? 'auto' : 'min(820px, calc(100dvh - 32px))',
+          maxHeight: 'calc(100dvh - 32px)', overflow: 'hidden',
+          '--share-input-bg': COLOR.bgInset, '--share-input-text': COLOR.textSoft,
+          '--share-input-border': COLOR.borderSoft, '--share-option-hover': COLOR.bgHover } as CSSProperties,
         header: { flexShrink: 0 },
-        body: { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, padding: 0 },
+        body: { display: 'flex', flexDirection: 'column', flex: contentSizedDialog ? '0 1 auto' : 1, minHeight: 0, padding: 0 },
       }}>
       {draftLoading && <Text size="xs" role="status">Restoring saved sharing details…</Text>}
       {draftError && restoreOrdinaryDraft && <Alert color="red" role="alert">{draftError}</Alert>}
-      <div className="share-scroll-body">
-      <fieldset className="share-form" disabled={draftLoading || shareTracking}>
-      <Stack gap="sm">
-        <Text size="xs" c="dimmed">
-          Copy the compact submission into your strategy Discord channel. The preview below is the readable card the bot will post.
+      {authorReview && !manageNames && <Group gap="sm" mx={16} mb="sm" p="sm" wrap="nowrap"
+        style={{ background: COLOR.surfaceSectionBg, borderLeft: `3px solid ${COLOR.info}`, borderRadius: 6 }}>
+        <IntentIcon size={18} color={COLOR.accent} style={{ flexShrink: 0 }} />
+        <Stack gap={2}>
+          <Text size="sm" fw={600}>{currentShareTarget?.state === 'legacy_review'
+            ? 'Review the saved target in the Strategy Browser' : intentTitle}</Text>
+          <Text size="xs" c={COLOR.textDim}>{currentShareTarget?.state === 'legacy_review'
+            ? 'Choose how to continue before sharing.' : intentDescription}</Text>
+        </Stack>
+      </Group>}
+      <div className="share-scroll-body" style={manageNames || shareArchived || missingPostedDetails ? { display: 'none' } : undefined}>
+      {sharePosted && !shareArchived && <Group gap="xs" wrap="nowrap" align="flex-start" mb="sm" p="xs"
+        style={{ background: COLOR.surfaceInfoBg, border: `1px solid ${COLOR.surfaceInfoBorder}`, borderRadius: 6 }}>
+        <IconLock size={15} color={COLOR.accent} style={{ flexShrink: 0, marginTop: 2 }} />
+        <Text size="xs" c={COLOR.textSoft}>
+          This share is posted. To change it later, use Continue in the Strategy Browser.
         </Text>
+      </Group>}
+      {authorReview && <div ref={setAuthorFieldContainer} style={{ marginBottom: 12, ...(shareArchived ? { display: 'none' } : {}) }} />}
+      <fieldset className="share-form" disabled={draftLoading || shareTracking || sharePosted} data-readonly={sharePosted || undefined}
+        style={shareArchived ? { display: 'none' } : undefined}>
+      <Stack gap="sm">
+        {!sharePosted && <>
         {evidenceTargetId && !evidenceFetchError && !evidencePreflightError && !evidenceProof && (
           <Group className="share-target-status" gap="xs" wrap="nowrap">
             <Text size="xs" c="dimmed" style={{ flex: 1 }}>
@@ -630,7 +722,6 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
           This session retains a continuation target that requires the updated sharing feature. Copy is blocked until that feature is available, or you explicitly choose a separate publication.
           <Button size="compact-xs" variant="subtle" onClick={() => updateSetting('strategyTarget', null)}>Clear target and share separately</Button>
         </Alert>}
-        {authorReview && <div ref={setAuthorFieldContainer} />}
         {authorReview === false && <TextInput
           size="xs"
           label="Your Discord tag"
@@ -691,7 +782,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
                 w={90}
                 min={0}
                 value={settings.advAstrolabeCount}
-                disabled={shareTracking}
+                disabled={shareTracking || sharePosted}
                 onChange={(v) => updateAdvSetting('advAstrolabeCount', Number(v))}
                 aria-label="Astrolabe count used"
               />
@@ -699,89 +790,89 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
             </Group>
           </Alert>
         )}
-        <TextInput size="xs" label="Strategy name (optional)"
-          description="A short label others see in the Strategy Browser — not your private session name"
-          placeholder="e.g. Shrine strat with Memory Tears"
+        </>}
+        <Text fw={600} c="dimmed" mt={4} style={{ fontSize: FONT.small, letterSpacing: '.08em' }}>STRATEGY</Text>
+        <TextInput size="xs" label={<>Title <Text span inherit c={COLOR.textDim}>optional</Text></>}
+          placeholder={sharePosted ? undefined : 'e.g. Shrine strat with Memory Tears'}
           maxLength={STRAT_NAME_MAX}
-          disabled={evidenceTargetId !== null || shareTracking}
-          value={stratName} onChange={(e) => setStratName(e.currentTarget.value)} />
-        <MultiSelect size="xs" label="Strategy type tags"
-          description="Select tags that describe this strategy"
-          data={ALL_TYPE_TAGS.map((t) => ({ value: t, label: t.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') }))}
-          value={shareTags} onChange={setShareTags} maxDropdownHeight={200} searchable clearable
-          disabled={evidenceTargetId !== null || shareTracking} />
+          disabled={evidenceTargetId !== null || shareTracking || sharePosted}
+          value={postedDetails?.title ?? stratName} onChange={(e) => setStratName(e.currentTarget.value)} />
+        <ShareTagsField value={postedDetails?.tags ?? shareTags} onChange={setShareTags}
+          disabled={evidenceTargetId !== null || shareTracking || sharePosted || draftLoading} />
         <Stack gap={2}>
-          <Textarea size="xs" label="Session notes (optional)"
-            placeholder="Only what the setup can't show — e.g. prices assume early-week scarab costs"
-            value={stratNotes} onChange={(e) => setStratNotes(e.currentTarget.value)}
-            disabled={evidenceTargetId !== null || shareTracking}
+          <Textarea size="xs" label={<>Notes <Text span inherit c={COLOR.textDim}>optional · shown on the card</Text></>}
+            placeholder={sharePosted ? undefined : "What the setup can't show"}
+            value={postedDetails?.notes ?? stratNotes} onChange={(e) => setStratNotes(e.currentTarget.value)}
+            disabled={evidenceTargetId !== null || shareTracking || sharePosted}
             // Never hard-cut text the user already typed: if the budget shrinks
             // (e.g. more scarabs added), the red counter + disabled copy handle it.
             maxLength={Math.max(budget.notesMax, stratNotes.length)}
             autosize minRows={2} maxRows={4} />
-          <Text size="xs" c={budget.notesRemaining < 0 || !budget.fitsWire ? 'red' : 'dimmed'} style={{ fontSize: FONT.small }}>
+          {!sharePosted && <Text size="xs" c={budget.notesRemaining < 0 || !budget.fitsWire ? 'red' : 'dimmed'} style={{ fontSize: FONT.small }}>
             {!budget.fitsWire
               ? `Compact Discord submission exceeds the limit by ${budget.wireLength - DISCORD_MSG_LIMIT} characters — shorten the notes.`
               : budget.notesRemaining < 0
               ? `Notes exceed the Discord card budget by ${-budget.notesRemaining} characters — trim them to share.`
               : `${budget.notesRemaining} characters left for notes in the posted card.`}
-          </Text>
+          </Text>}
         </Stack>
+        <Text fw={600} c="dimmed" mt={4} style={{ fontSize: FONT.small, letterSpacing: '.08em' }}>SESSION</Text>
+        <div className="share-session-fields">
         <Stack gap={4}>
-          <Group gap={8} align="center" wrap="nowrap">
             <Text size="xs" fw={500} style={{ flexShrink: 0 }}>Play style</Text>
             <SegmentedControl
               size="xs"
-              value={isGroupPlay ? 'group' : 'solo'}
+              value={(postedDetails?.group ?? isGroupPlay) ? 'group' : 'solo'}
               onChange={(v) => setIsGroupPlay(v === 'group')}
-              disabled={evidenceTargetId !== null || shareTracking}
+              disabled={evidenceTargetId !== null || shareTracking || sharePosted}
               data={[
                 { value: 'solo', label: 'Solo' },
-                { value: 'group', label: 'Group / Party' },
+                { value: 'group', label: 'Group' },
               ]}
             />
-          </Group>
-          <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>
-            If others mapped with you, choose Group / Party — it flags that the loot numbers assume more than one player.
-          </Text>
-          {isGroupPlay && (
+          {(postedDetails?.group ?? isGroupPlay) && (
             <Group gap={6} align="center" wrap="nowrap" mt={2}>
               <NumberInput
                 size="xs" w={70} min={2} max={6}
-                value={groupSize}
+                value={postedDetails ? postedDetails.groupSize ?? '' : groupSize}
                 onChange={(v) => setGroupSize(Math.min(6, Math.max(2, Number(v) || 2)))}
-                aria-label="Party size including you"
-                disabled={evidenceTargetId !== null || shareTracking}
+                aria-label="Group size including you"
+                disabled={evidenceTargetId !== null || shareTracking || sharePosted}
               />
               <Text size="xs" c="dimmed">players (including you)</Text>
             </Group>
           )}
         </Stack>
         <Stack gap={2}>
-          <TextInput size="xs" label="Session time (optional)"
-            description="Prefilled from clipboard-derived active time when available. Adjust it, clear it, or explicitly use the manual timer."
-            placeholder="e.g. 245 or 4h"
-            disabled={shareTracking}
-            value={timeText} onChange={(e) => setTimeText(e.currentTarget.value)} />
-          {manualTimerMs > 0 && (
+          <Group gap="xs" align="flex-end">
+            <TextInput size="xs" w={90} style={{ flexShrink: 0 }} label={postedDetails ? 'Session time' : capturedTime?.activeMs ? 'Session time' : 'Session time optional'}
+              placeholder={sharePosted ? undefined : 'e.g. 245 or 4h'}
+              disabled={shareTracking || sharePosted}
+              rightSection={/[a-z]/i.test(postedDetails?.time ?? timeText) ? undefined : <Text size="xs" c={COLOR.textDim}>min</Text>}
+              rightSectionPointerEvents="none"
+              value={postedDetails?.time ?? timeText} onChange={(e) => setTimeText(e.currentTarget.value)} />
+            {(postedDetails ? !postedDetails.time : timeCaption) && <Text size="xs" pb={6}
+              c={timeText.trim() !== '' && sessionMinutes == null ? 'orange' : 'dimmed'} style={{ fontSize: FONT.small, flex: '1 1 100px' }}>
+              {postedDetails ? 'No time was shared' : timeCaption}
+            </Text>}
+          </Group>
+          {!sharePosted && manualTimerMs > 0 && (
             <Group justify="space-between" gap="xs" wrap="wrap">
               <Text size="xs" c="dimmed">Manual timer: {formatActiveTime(manualTimerMs)}</Text>
               <Button
                 size="compact-xs"
                 variant="subtle"
-                disabled={shareTracking}
+                disabled={shareTracking || sharePosted}
                 onClick={() => setTimeText(String(Math.max(1, Math.round(manualTimerMs / 60_000))))}
               >
                 Use manual timer
               </Button>
             </Group>
           )}
-          <Text size="xs" c={timeText.trim() !== '' && sessionMinutes == null ? 'orange' : 'dimmed'} style={{ fontSize: FONT.small }}>
-            {timeCaption}
-          </Text>
         </Stack>
+        </div>
         <Divider label="Posted card preview" labelPosition="left" />
-        {(discordWireResult.pending || showBudgetDetails || discordWireError || !budget.fitsWire || !budget.fitsPlain) && <Text size="xs" c={discordWireError || !budget.fitsWire || !budget.fitsPlain ? 'red' : showBudgetDetails ? 'orange' : 'dimmed'} style={{ fontSize: FONT.small }}>
+        {!sharePosted && (discordWireResult.pending || showBudgetDetails || discordWireError || !budget.fitsWire || !budget.fitsPlain) && <Text size="xs" c={discordWireError || !budget.fitsWire || !budget.fitsPlain ? 'red' : showBudgetDetails ? 'orange' : 'dimmed'} style={{ fontSize: FONT.small }}>
           {discordWireResult.pending
             ? 'Preparing compact submission...'
             : showBudgetDetails
@@ -801,12 +892,12 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
                   : ''
                 : 'fits directly; only the emotes needed to stay under Discord\'s limit fall back.')}
         </Text>}
-        {discordWireError && !previewWithheld && (
+        {!sharePosted && discordWireError && !previewWithheld && (
           <Alert color="red" variant="light" p="xs">
             <Text size="xs">{discordWireError}</Text>
           </Alert>
         )}
-        {previewWithheld ? (
+        {!sharePosted && previewWithheld ? (
           <Alert color="red" variant="light" p="xs">
             <Text size="xs">
               {evidenceBlocked
@@ -831,19 +922,21 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
         )}
       </Stack>
       </fieldset>
-      {authorReview && <div ref={setConfirmationContainer} />}
       </div>
       <div className="share-footer" role="region" aria-label="Sharing status and actions"
-        style={{ background: COLOR.bgRaised, borderTop: `1px solid ${COLOR.borderSoft}` }}>
+        style={{ background: COLOR.bgRaised, borderTop: `1px solid ${COLOR.borderSoft}`, ...(manageNames ? { display: 'none' } : {}) }}>
+        {sharePosted && postedDisplay.error && <Alert color="orange" role="alert">{postedDisplay.error}</Alert>}
         {authorReview && opened && <AuthorShareControls enabled={!manageNames}
           onTrackingChange={setShareTracking}
+          onPostedChange={setSharePosted}
+          onArchivedChange={setShareArchived}
+          onCompletedChange={setShareCompleted}
+          onPresentationChange={setSharePresentation}
           onClose={onClose}
           core={authorCore}
           raw={discordExport} blocked={draftLoading || !!draftError || previewWithheld || !budget.fitsPlain}
           fieldContainer={authorFieldContainer}
-          confirmationContainer={confirmationContainer}
-          onManage={() => setManageNames(true)} />}
-        {authorReview && <ManagePublicNames opened={opened && manageNames} onClose={() => setManageNames(false)} />}
+          onManage={(initialAction) => { setManageNamesAction(initialAction); setManageNames(true); }} />}
         {authorReview === false && <CopyButton value={discordWire} timeout={2000}>
           {({ copied, copy }) => (
             <Button leftSection={copied ? <IconCheck size={14} /> : <IconBrandDiscord size={14} />} onClick={copy}
@@ -858,6 +951,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
           )}
         </CopyButton>}
       </div>
+      {authorReview && manageNames && <ManagePublicNames embedded opened={opened} initialAction={manageNamesAction} onClose={() => setManageNames(false)} />}
     </Modal>
   );
 };

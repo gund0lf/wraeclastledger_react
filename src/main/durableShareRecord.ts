@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { buildAuthorSubmission, canonicalAuthorJson, type AuthorSubmissionMetadata } from '../shared/authorSubmission'
 import { AUTHOR_UUID, closedAuthorObject, type PublicationOperation } from '../shared/authorHandoff'
-import { parseDurableShareResult, type DurableShareResult, type DurableShareView } from '../shared/durableShare'
+import { parseDurableShareResult, parseCompletedShareOutcome, type DurableShareResult, type ActiveDurableShareView, type CompletedShareView } from '../shared/durableShare'
 
 export interface ShareDraft {
   revision: number
@@ -22,6 +22,41 @@ export interface DurableShareRecord {
   result: DurableShareResult | null
   noticed: boolean
   copiedRevision?: number | null
+}
+export interface CompletedShareRecord {
+  id: string
+  sessionIdentity: string
+  targetGeneration: string | null
+  draftRevision: number
+  operation: PublicationOperation
+  outcome: NonNullable<DurableShareResult['outcome']>
+}
+export function validCompletedShare(value: unknown): value is CompletedShareRecord {
+  if (!closedAuthorObject(value, ['id', 'sessionIdentity', 'targetGeneration', 'draftRevision', 'operation', 'outcome']) ||
+    typeof value.id !== 'string' || !AUTHOR_UUID.test(value.id) ||
+    typeof value.sessionIdentity !== 'string' || !value.sessionIdentity || value.sessionIdentity.length > 128 ||
+    !Number.isInteger(value.draftRevision) || (value.draftRevision as number) < 1 || (value.draftRevision as number) > 2147483647 ||
+    !closedAuthorObject(value.operation, ['kind', 'strategy_id', 'revision'])) return false
+  const o = value.operation
+  if (o.kind === 'publication' ? o.strategy_id !== null || o.revision !== null || value.targetGeneration !== null :
+    !['replace', 'evidence'].includes(o.kind as string) || typeof o.strategy_id !== 'string' || !AUTHOR_UUID.test(o.strategy_id) ||
+    !Number.isInteger(o.revision) || (o.revision as number) < 1 || (o.revision as number) > 2147483647 ||
+    typeof value.targetGeneration !== 'string' || !AUTHOR_UUID.test(value.targetGeneration)) return false
+  try {
+    parseCompletedShareOutcome(value.outcome, o as unknown as PublicationOperation)
+  } catch { return false }
+  return true
+}
+export function completedShare(s: DurableShareRecord): CompletedShareRecord {
+  if (s.result?.state !== 'complete' || !s.result.outcome || !s.noticed || !s.draft || s.proposed)
+    throw new Error('Only completed and noticed shares can be compacted.')
+  return { id: s.id, sessionIdentity: s.sessionIdentity, targetGeneration: s.targetGeneration,
+    draftRevision: s.draft.revision, operation: s.operation, outcome: s.result.outcome }
+}
+export function completedView(s: CompletedShareRecord): CompletedShareView {
+  return { archived: true, id: s.id, draftRevision: s.draftRevision, copiedRevision: null, core: null, author: null,
+    operation: s.operation, targetGeneration: s.targetGeneration, status: 'complete', accepted: true,
+    outcome: s.outcome, noticed: true }
 }
 export function shareDraft(id: string, revision: number, core: string, metadata: AuthorSubmissionMetadata): ShareDraft {
   const meta = { ...metadata, confirmation_request_id: null, share_intent_id: id, draft_revision: revision }
@@ -68,7 +103,7 @@ export function validDurableShare(value: unknown): value is DurableShareRecord {
   } catch { return false }
   return true
 }
-export function shareView(s: DurableShareRecord, checking = false): DurableShareView {
+export function shareView(s: DurableShareRecord, checking = false): ActiveDurableShareView {
   const draft = s.draft ?? s.proposed!
   const accepted = !!s.result && ['accepted', 'committed', 'complete'].includes(s.result.state)
   return { id: s.id, draftRevision: draft.revision, copiedRevision: s.copiedRevision ?? null, core: draft.core, author: draft.metadata.author,

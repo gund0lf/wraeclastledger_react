@@ -217,7 +217,6 @@ let watchWindow: BrowserWindow | null = null;
 let mainWindowRef: BrowserWindow | null = null;
 const authorHandoffs = new AuthorHandoffService({
   readShareCore: (sessionId, sessionIdentity) => sessionRepository.readShareCore(sessionId, sessionIdentity),
-  shareIntent: (sessionId, core, metadata, startNew, sessionIdentity) => sessionRepository.prepareShareIntent(sessionId, core, metadata, startNew, sessionIdentity),
   origin: authorServiceOrigin({ packaged: app.isPackaged, development: is.dev, reviewOrigin: process.env.WL_AUTHOR_REVIEW_ORIGIN }),
   vault: new AuthorHandoffVault(join(deriveRepositoryPaths(app.getPath('userData')).root, 'private'), {
     isEncryptionAvailable: () => safeStorage.isEncryptionAvailable() &&

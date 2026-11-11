@@ -1,22 +1,21 @@
 import { Alert, Button, CopyButton, Group, Select, Stack, Text } from '@mantine/core'
+import { IconClipboard } from '@tabler/icons-react'
 import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import type { AuthorConfirmation, AuthorContext, AuthorStatus, PreparedAuthorRequest } from '../../../shared/authorHandoff'
-import { acceptExactNameVerification, applyAuthorRecovery, authorConfirmationNeedsReview, invalidateAuthorEpoch, previewAuthorRecovery } from '../../../shared/authorRecognition'
+import { acceptExactNameVerification, applyAuthorRecovery, applyReviewedNameVerification, authorConfirmationNeedsReview, invalidateAuthorEpoch, previewAuthorRecovery } from '../../../shared/authorRecognition'
 import { useSessionStore } from '../store/useSessionStore'
 import { flushRepositoryNow } from '../repository/sessionRepositoryRuntime'
 import { startAuthorPolling } from '../utils/authorPolling'
 import { PUBLIC_NAME_RETIRE_NOTICE } from '../../../shared/authorNames'
+import { COLOR, FONT } from '../utils/uiTokens'
 
 /** Private code plus revalidation verifies a name; public status never does. */
-export function AuthorConfirmationPanel({ context, request, action, onCancel, onAccepted, firstNameVerification = false, expectedName, detailsContainer }: {
+export function AuthorConfirmationPanel({ context, request, action, onCancel, onAccepted, firstNameVerification = false, expectedName }: {
   context: AuthorContext; request: PreparedAuthorRequest
   action: 'recover' | 'preview' | 'confirmation'; onCancel: () => void
   onAccepted?: (receipt: AuthorConfirmation) => void
   firstNameVerification?: boolean
   expectedName?: string
-  /** Share keeps the action in its footer and the longer review in its scroll area. */
-  detailsContainer?: HTMLElement | null
 }) {
   const [status, setStatus] = useState<AuthorStatus | null>(null)
   const [receipt, setReceipt] = useState<AuthorConfirmation | null>(null)
@@ -31,10 +30,6 @@ export function AuthorConfirmationPanel({ context, request, action, onCancel, on
   active.current = { context, request }
   const current = () => live.current && active.current.context === context && active.current.request === request
   const polling = useRef<ReturnType<typeof startAuthorPolling> | null>(null)
-  const reviewElement = useRef<HTMLDivElement | null>(null)
-  useEffect(() => {
-    if (receipt && detailsContainer) reviewElement.current?.scrollIntoView({ block: 'start' })
-  }, [receipt, detailsContainer])
   useEffect(() => {
     live.current = true
     let stop = false
@@ -109,12 +104,15 @@ export function AuthorConfirmationPanel({ context, request, action, onCancel, on
       if (!refreshed.ok) { setError(refreshed.error); return }
       if (authorConfirmationNeedsReview(receipt, refreshed.value)) {
         setReceipt(refreshed.value); setDefaultId(null)
-        setError('The confirmed names changed. Review this updated list and choose the default again.')
+        setError(firstNameVerification ? 'The confirmed name changed. Review it before saving.'
+          : 'The confirmed names changed. Review this updated list and choose the default again.')
         return
       }
       const store = useSessionStore.getState()
-      store.setAuthorPreferences(applyAuthorRecovery(store.authorPreferences, refreshed.value,
-        { defaultRegistrationId: defaultId, forgetObsoleteIds: [] }))
+      store.setAuthorPreferences(firstNameVerification
+        ? applyReviewedNameVerification(store.authorPreferences, refreshed.value)
+        : applyAuthorRecovery(store.authorPreferences, refreshed.value,
+          { defaultRegistrationId: defaultId, forgetObsoleteIds: [] }))
       await flushRepositoryNow()
       if (!current()) return
       setAccepted(true); setReceipt(null)
@@ -122,9 +120,9 @@ export function AuthorConfirmationPanel({ context, request, action, onCancel, on
     } catch { if (current()) setError('Saved names changed. Paste the confirmation again to review them.') }
     finally { if (current()) setBusy(false) }
   }
-  const pasteAction = status?.outcome?.status !== 'retired' && !accepted && (!detailsContainer || !preview) &&
-    <Button size="xs" variant="light" loading={busy} onClick={() => void paste()}>
-      {firstNameVerification ? 'Paste name verification code' : 'Paste private confirmation from clipboard'}
+  const pasteAction = status?.outcome?.status !== 'retired' && !accepted && !preview &&
+    <Button size="xs" variant="filled" leftSection={<IconClipboard size={15} />} loading={busy} onClick={() => void paste()}>
+      {firstNameVerification ? 'Paste code' : 'Paste private confirmation from clipboard'}
     </Button>
   const saveAction = preview && <Button size="xs" loading={busy} onClick={() => void apply()}>Save name</Button>
   const feedback = <>
@@ -134,39 +132,56 @@ export function AuthorConfirmationPanel({ context, request, action, onCancel, on
     {error && <Alert color="red" p="xs">{error}</Alert>}
     {receipt && !preview && <Alert color="red">The confirmation conflicts with a saved registration. Review saved names before continuing.</Alert>}
   </>
-  const details = <Stack gap="xs">
-    {firstNameVerification && !accepted && <Text size="xs">After posting, copy the bot’s private code from Discord and paste it here to verify your name once. Later shares and updates need no code.</Text>}
-    {firstNameVerification ? <details><summary>Didn’t receive a code?</summary>
-      <Text size="xs">In the sharing channel, use /wledger-author with action confirmation and this request. The reply is private.</Text>
-      <CopyButton value={request.request_id}>{({ copied, copy }) => <Button size="compact-xs" variant="default" onClick={copy}>{copied ? 'Request copied' : 'Copy request ID'}</Button>}</CopyButton>
-    </details> : <>
-      <Text size="xs">In the sharing channel, use /wledger-author with action {action} and this request. Its response is private.</Text>
-      <CopyButton value={request.request_id}>{({ copied, copy }) =>
-        <Button size="xs" variant="default" onClick={copy}>{copied ? 'Request copied' : 'Copy request ID'}</Button>
-      }</CopyButton>
-    </>}
-    {!accepted && <Text size="xs" c="dimmed">Verify by {new Date(request.expires_at).toLocaleTimeString()}.</Text>}
-    {status?.outcome?.status === 'retired' ? <Alert color="orange">
-      The name was unregistered for {status.outcome.count} strategies. Its saved entry is now unconfirmed; if it was the default, the default is now Choose each time.
-      {' '}{PUBLIC_NAME_RETIRE_NOTICE}
-    </Alert> : !detailsContainer && pasteAction}
-    {!detailsContainer && feedback}
-    {accepted && <Text size="xs" c="teal">Name verified.</Text>}
-    {preview && <Stack ref={reviewElement} gap="xs">
+  const review = preview && <Stack gap="xs">
       <Text size="sm" fw={600}>Review confirmed public names</Text>
-      {preview.confirmed.length === 0 && <Text size="xs">No active names were confirmed.</Text>}
+      {preview.confirmed.length === 0 && <Text size="xs">No active names are registered to this Discord account.</Text>}
       {preview.confirmed.map((v) => <Text size="xs" key={v.registrationId}>{v.name} — {v.state.replaceAll('_', ' ')}</Text>)}
       {preview.notConfirmed.length > 0 && <Text size="xs" c="dimmed">Not confirmed: {preview.notConfirmed.map((v) => v.name).join(', ')}. These entries remain saved but cannot be used as confirmed names.</Text>}
       <Select size="xs" label="Default for new shares" value={defaultId ?? ''} onChange={(v) => setDefaultId(v || null)}
         allowDeselect={false} data={[{ value: '', label: 'Choose each time' }, ...preview.confirmed.map((v) => ({ value: v.registrationId, label: v.name }))]} />
-      {!detailsContainer && saveAction}
-    </Stack>}
-    {!detailsContainer && <Group justify="flex-end"><Button size="compact-xs" variant="subtle" onClick={onCancel}>Close confirmation</Button></Group>}
-  </Stack>
-  return detailsContainer ? <>
-    {createPortal(details, detailsContainer)}
+      {saveAction}
+    </Stack>
+  if (firstNameVerification) return <Stack gap={6}>
     {feedback}
-    {pasteAction}
-    {saveAction}
-  </> : details
+    {accepted ? <Text size="xs" c="teal">Confirmed names saved on this PC.</Text> : preview ? <Stack gap={8}
+      p="xs" style={{ background: COLOR.bgDeep, border: `1px solid ${COLOR.borderSoft}`, borderRadius: 6 }}>
+      <Text size="xs">{preview.confirmed.length === 1
+        ? preview.confirmed[0].name !== expectedName
+          ? `Discord confirmed “${preview.confirmed[0].name}”, not “${expectedName}”. Save “${preview.confirmed[0].name}” on this PC?`
+          : `Discord confirmed “${preview.confirmed[0].name}” with changed registration details. Save this name on this PC?`
+        : preview.confirmed.length ? `Discord confirmed these names: ${preview.confirmed.map(v => `“${v.name}”`).join(', ')}. Save them on this PC?`
+          : 'Discord confirmed no active names. Review your saved names before continuing.'}</Text>
+      {preview.confirmed.length > 0 && saveAction}
+    </Stack> : <Stack gap={8} p="xs" style={{ background: COLOR.bgDeep, border: `1px solid ${COLOR.borderSoft}`, borderRadius: 6 }}>
+      <Text size="xs" fw={600}>Last step: verify your name</Text>
+      <Text size="xs" c="dimmed">Use the private code from Discord.</Text>
+      {pasteAction}
+      <details>
+        <summary style={{ color: COLOR.accent, cursor: 'pointer', fontSize: FONT.body }}>No code arrived?</summary>
+        <Stack gap="xs" mt={6}>
+          <Text size="xs">In the sharing channel, type /wledger-author, choose action: confirmation and paste the request ID. The reply is private.</Text>
+          <CopyButton value={request.request_id}>{({ copied, copy }) => <Button size="compact-xs" variant="default" onClick={copy}>{copied ? 'Request copied' : 'Copy request ID'}</Button>}</CopyButton>
+        </Stack>
+      </details>
+      <Text size="xs" c="dimmed">You can do this later under the gear button.</Text>
+    </Stack>}
+  </Stack>
+  const confirmed = status?.status === 'confirmed' || status?.status === 'consumed'
+  return <Stack gap="xs">
+    {feedback}
+    {status?.outcome?.status === 'retired' ? <Alert color="orange">
+      The name was retired for {status.outcome.count} strategies. Its saved entry now needs verification; if it was the default, the default is now Choose each time.
+      {' '}{PUBLIC_NAME_RETIRE_NOTICE}
+    </Alert> : accepted ? <Text size="xs" c="teal">Confirmed names saved on this PC.</Text> : preview ? review : confirmed ? <>
+      <Text size="xs">Copy the private confirmation from Discord, then paste it here.</Text>
+      {pasteAction}
+    </> : <>
+      <CopyButton value={request.request_id}>{({ copied, copy }) =>
+        <Button size="xs" variant="filled" onClick={copy}>{copied ? 'Request copied' : 'Copy request ID'}</Button>
+      }</CopyButton>
+      <Text size="xs">In the sharing channel, type /wledger-author, choose action: {action} and paste the request ID. The reply is private.</Text>
+      <Text size="xs" c="dimmed">Use it by {new Date(request.expires_at).toLocaleTimeString()}.</Text>
+    </>}
+    <Group justify="flex-end"><Button size="compact-xs" variant="subtle" c={COLOR.textDim} onClick={onCancel}>Close confirmation</Button></Group>
+  </Stack>
 }

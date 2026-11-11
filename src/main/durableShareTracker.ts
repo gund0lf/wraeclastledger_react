@@ -13,9 +13,16 @@ export class DurableShareTracker {
   async start(): Promise<void> { this.enabled = true; await this.wake() }
   stop(): void { this.enabled = false; clearTimeout(this.timer) }
   async wake(id?: string): Promise<void> {
-    for (const view of await this.vault.durableShares()) {
+    const active = await this.vault.durableShares()
+    const ids = new Set(active.map(view => view.id))
+    // A noticed completion is compacted by the vault. Drop its cached payload
+    // and notification; reopening its session reads the completed marker.
+    for (const [key, entry] of this.entries) {
+      if (!ids.has(key) && entry.view.status === 'complete') this.entries.delete(key)
+    }
+    for (const view of active) {
       const old = this.entries.get(view.id)
-      if (!old || old.view.draftRevision !== view.draftRevision || view.status === 'complete')
+      if (!old || old.view.archived || old.view.draftRevision !== view.draftRevision || view.status === 'complete')
         this.entries.set(view.id, { view, due: 0, attempts: 0 })
       else {
         old.view = { ...old.view, copiedRevision: view.copiedRevision }
@@ -50,8 +57,9 @@ export class DurableShareTracker {
         // initial PUT response is still an uncertain preparation, not a restore.
         if (code === 'share_result_unavailable') {
           const missing = await this.vault.markDurableUnavailable(entry.view.id)
-          entry.view = missing ?? { ...entry.view, status: 'checking' }
-        } else entry.view = { ...entry.view, status: 'checking' }
+          if (missing) entry.view = missing
+          else if (!entry.view.archived) entry.view = { ...entry.view, status: 'checking' }
+        } else if (!entry.view.archived) entry.view = { ...entry.view, status: 'checking' }
       }
       entry.due = this.now() + [2000,4000,8000,15000,30000,60000,300000][Math.min(entry.attempts++, 6)]
     })().catch(() => {

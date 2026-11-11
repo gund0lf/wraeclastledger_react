@@ -25,9 +25,7 @@ export type AuthorRequest =
   | { action: 'share-draft'; sessionId: string; sessionIdentity: string }
   | { action: 'activate'; context: AuthorContext | null }
   | { action: 'prepare'; context: AuthorContext; operation: AuthorManagement }
-  | { action: 'publication'; context: AuthorContext; core: string; metadata: AuthorSubmissionMetadata; confirmation: boolean; newIntent?: boolean; sessionIdentity?: string; targetGeneration?: string | null }
-  | { action: 'resume-publication' | 'cancel-publication'; context: AuthorContext; sessionIdentity: string }
-  | { action: 'acknowledge-operation' | 'finish-operation'; context: AuthorContext; requestId: string }
+  | { action: 'publication'; context: AuthorContext; core: string; metadata: AuthorSubmissionMetadata; confirmation: boolean; newIntent: false; sessionIdentity: string; targetGeneration?: string | null }
   | { action: 'status' | 'paste' | 'accept' | 'cancel'; context: AuthorContext; requestId: string }
 export interface AuthorServiceState { schema_version: 1; epoch: string; author_actions_available: boolean }
 export type AuthorOutcome =
@@ -45,13 +43,6 @@ export interface PublicationOperation {
   strategy_id: string | null
   revision: number | null
 }
-export interface ResumedPublication {
-  request: PreparedAuthorRequest
-  mode: 'operation'
-  operation: PublicationOperation
-  targetGeneration: string | null
-  status: AuthorStatus | null
-}
 export interface AuthorConfirmation extends AuthorReceipt { outcome: AuthorOutcome }
 export interface AuthorResults {
   available: boolean
@@ -66,11 +57,7 @@ export interface AuthorResults {
   'share-draft': { core: string; author?: AuthorSubmissionMetadata['author'] } | null
   activate: null
   prepare: PreparedAuthorRequest
-  publication: { token: string; request: PreparedAuthorRequest | null; acknowledgement: 'name' | 'operation' | 'untracked'; reason?: string; share?: DurableShareView }
-  'resume-publication': ResumedPublication | null
-  'cancel-publication': { stopped: true; remoteCancellation: 'confirmed' | 'unknown' | 'not_needed' }
-  'acknowledge-operation': AuthorStatus
-  'finish-operation': null
+  publication: { token: string; request: PreparedAuthorRequest | null; acknowledgement: 'name' | 'operation'; share: DurableShareView }
   status: AuthorStatus
   paste: AuthorConfirmation
   accept: AuthorConfirmation

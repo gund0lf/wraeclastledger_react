@@ -10,7 +10,13 @@ export interface DurableShareResult {
   state: 'ready' | 'accepted' | 'committed' | 'complete' | 'restore_review'
   outcome: { strategy_id: string; revision: number } | null
 }
-export interface DurableShareView {
+/** Exact copied values for read-only display, never a capability or replay authority. */
+export interface ShareDisplaySnapshot {
+  core: string
+  author: AuthorSubmissionMetadata['author']
+}
+export interface ActiveDurableShareView {
+  archived?: false
   id: string
   draftRevision: number
   copiedRevision: number | null
@@ -23,8 +29,27 @@ export interface DurableShareView {
   outcome: DurableShareResult['outcome']
   noticed: boolean
 }
+/** A completed replay marker has no retained share payload or reader secret. */
+export interface CompletedShareView {
+  archived: true
+  id: string
+  draftRevision: number
+  copiedRevision: null
+  core: null
+  author: null
+  operation: PublicationOperation
+  targetGeneration: string | null
+  status: 'complete'
+  accepted: true
+  outcome: NonNullable<DurableShareResult['outcome']>
+  noticed: true
+  /** Process-local only. Compacted storage never contains this payload. */
+  displaySnapshot?: ShareDisplaySnapshot
+}
+export type DurableShareView = ActiveDurableShareView | CompletedShareView
 /** Presentation only. Preparation and replay protection still compare the full bound payload. */
 function matchesShareForm(share: DurableShareView, core: string, target: StrategyTarget | null): boolean {
+  if (share.archived) return false
   if (share.operation.kind === 'publication') return target === null && share.targetGeneration === null && share.core === core
   if (!target || target.state === 'legacy_review' || target.operation !== share.operation.kind ||
     target.id !== share.operation.strategy_id || target.revision !== share.operation.revision ||
@@ -42,10 +67,19 @@ function matchesShareForm(share: DurableShareView, core: string, target: Strateg
   } catch { return false }
 }
 export function shareCopyPresentation(share: DurableShareView | null, core: string, name: string, target: StrategyTarget | null = null) {
+  if (share?.archived) return { label: 'Close', pasteHint: false }
   const copied = share?.copiedRevision != null
   const changed = copied && (!matchesShareForm(share, core, target) || share.author.name !== name || share.copiedRevision !== share.draftRevision)
   return { label: changed ? 'Copy updated share' : copied ? 'Copy again' : 'Copy to Discord',
     pasteHint: copied && !changed && !share.accepted }
+}
+export function parseCompletedShareOutcome(value: unknown, operation: PublicationOperation): NonNullable<DurableShareResult['outcome']> {
+  if (!closedAuthorObject(value, ['strategy_id', 'revision']) || typeof value.strategy_id !== 'string' ||
+    !AUTHOR_UUID.test(value.strategy_id) || !Number.isInteger(value.revision) || (value.revision as number) < 1 ||
+    (value.revision as number) > 2147483647 || (operation.kind !== 'publication' &&
+      (value.strategy_id !== operation.strategy_id || value.revision !== operation.revision! + (operation.kind === 'replace' ? 1 : 0))))
+    throw new Error('Share result belongs to another operation')
+  return { strategy_id: value.strategy_id, revision: value.revision as number }
 }
 export function parseDurableShareResult(value: unknown, id: string, revision: number,
   operation: PublicationOperation): DurableShareResult {
@@ -55,12 +89,7 @@ export function parseDurableShareResult(value: unknown, id: string, revision: nu
     !['ready','accepted','committed','complete','restore_review'].includes(value.state as string))
     throw new Error('Invalid share result')
   if (value.state === 'complete') {
-    const o = value.outcome
-    if (!closedAuthorObject(o, ['strategy_id','revision']) || typeof o.strategy_id !== 'string' ||
-      !AUTHOR_UUID.test(o.strategy_id) || !Number.isInteger(o.revision) || (o.revision as number) < 1 ||
-      (o.revision as number) > 2147483647 || (operation.kind !== 'publication' &&
-        (o.strategy_id !== operation.strategy_id || o.revision !== operation.revision! + (operation.kind === 'replace' ? 1 : 0))))
-      throw new Error('Share result belongs to another operation')
+    parseCompletedShareOutcome(value.outcome, operation)
   } else if (value.outcome !== null) throw new Error('Unfinished share contains a result')
   return value as unknown as DurableShareResult
 }

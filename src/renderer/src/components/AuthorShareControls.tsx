@@ -1,10 +1,12 @@
-import { Alert, Button, Group, Select, Stack, Text, TextInput } from '@mantine/core'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { ActionIcon, Alert, Badge, Box, Button, Combobox, Divider, Group, InputBase, Loader, Stack, Text, useCombobox } from '@mantine/core'
+import { IconAlertTriangle, IconCheck, IconCopy, IconSettings } from '@tabler/icons-react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { AuthorContext, AuthorResults } from '../../../shared/authorHandoff'
-import { shareCopyPresentation, type DurableShareView } from '../../../shared/durableShare'
+import { shareCopyPresentation, shareStatusText, type DurableShareView } from '../../../shared/durableShare'
 import { invalidateAuthorEpoch } from '../../../shared/authorRecognition'
-import { normalizePublicAuthorName, PUBLIC_NAME_RETENTION_NOTICE } from '../../../shared/authorNames'
+import { normalizePublicAuthorName, PUBLIC_NAME_RETENTION_NOTICE, SHARE_STATUS_RETENTION_NOTICE } from '../../../shared/authorNames'
+import { COLOR, FONT } from '../utils/uiTokens'
 import { useSessionStore } from '../store/useSessionStore'
 import { AuthorConfirmationPanel } from './AuthorConfirmationPanel'
 import { migrateStrategyTarget } from '../../../shared/strategyTarget'
@@ -12,11 +14,22 @@ import { safeStrategyReader } from '../utils/safeStrategyReader'
 import { prepareSafeContinuation, refreshSafeAuthorState } from '../utils/safeStrategyTarget'
 import { defaultShareConfirmation } from '../../../shared/shareIntent'
 import { AuthorOperationPanel } from './AuthorOperationPanel'
+import { observeShareWindowPresentation, type ShareWindowPresentation } from '../utils/shareWindowPresentation'
 
-export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fieldContainer, confirmationContainer, enabled, onTrackingChange }: {
-  core: string; raw: string; blocked: boolean; onManage: () => void; fieldContainer: HTMLElement | null; enabled: boolean
-  confirmationContainer: HTMLElement | null
+function ShareStatusHeading({ children, icon, color }: { children: ReactNode; icon: ReactNode; color?: string }) {
+  return <Box style={{ position: 'relative', maxWidth: '100%' }}>
+    <Box aria-hidden style={{ position: 'absolute', right: 'calc(100% + 7px)', top: '50%', transform: 'translateY(-50%)', display: 'flex' }}>{icon}</Box>
+    <Text data-share-status-title fw={600} c={color} ta="center">{children}</Text>
+  </Box>
+}
+
+export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fieldContainer, enabled, onTrackingChange, onPostedChange, onArchivedChange, onCompletedChange, onPresentationChange }: {
+  core: string; raw: string; blocked: boolean; onManage: (initialAction?: 'recover') => void; fieldContainer: HTMLElement | null; enabled: boolean
   onTrackingChange: (pending: boolean) => void; onClose: () => void
+  onPostedChange: (posted: boolean) => void
+  onArchivedChange: (archived: boolean) => void
+  onCompletedChange: (completed: boolean) => void
+  onPresentationChange: (presentation: ShareWindowPresentation | null) => void
 }) {
   const preferences = useSessionStore(s => s.authorPreferences)
   const settings = useSessionStore(s => s.settings)
@@ -26,15 +39,22 @@ export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fie
   const sessionId = useSessionStore(s => `${s.activeSessionId ?? 'working'}:${s.sessionNonce}`)
   const sessionIdentity = useSessionStore(s => s.currentSessionIdentity)
   const [selection, setSelection] = useState<string | null>(preferences.defaultRegistrationId)
+  const [newName, setNewName] = useState(!preferences.registrations.some(r => r.confirmed))
   const [name, setName] = useState('')
+  const names = useCombobox({ onDropdownClose: () => names.resetSelectedOption() })
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const errorElement = useRef<HTMLDivElement | null>(null)
   const [wire, setWire] = useState<({ context: AuthorContext } & AuthorResults['publication']) | null>(null)
-  const [share, setShare] = useState<DurableShareView | null>(null)
+  const [observedShare, setShare] = useState<DurableShareView | null>(null)
   const [nameRequest, setNameRequest] = useState<AuthorResults['resume-name']>(null)
+  const [verifiedHere, setVerifiedHere] = useState<string | null>(null)
   const restoredNameFor = useRef<string | null>(null)
+  const shownShareScope = useRef<{ sessionIdentity: string | null; targetGeneration: string | null } | null>(null)
+  const share = shownShareScope.current?.sessionIdentity === sessionIdentity
+    && shownShareScope.current?.targetGeneration === targetGeneration ? observedShare : null
+  const windowPresentation = useRef<ShareWindowPresentation | null>(null)
   const selected = preferences.registrations.find(r => r.registrationId ===
     (target && target.state !== 'legacy_review' ? target.registrationId : selection))
   const confirmation = defaultShareConfirmation(!!target, !!selected?.confirmed)
@@ -46,13 +66,27 @@ export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fie
   active.current = context
   const currentTarget = useRef(target)
   currentTarget.current = target
+  const shareScope = JSON.stringify([sessionIdentity, targetGeneration])
+  windowPresentation.current = observeShareWindowPresentation(windowPresentation.current, shareScope, share)
+  const presentation = windowPresentation.current
   useEffect(() => { if (error) errorElement.current?.scrollIntoView({ block: 'nearest' }) }, [error])
   useEffect(() => { onTrackingChange(busy || share?.accepted === true); return () => onTrackingChange(false) }, [busy, share?.accepted, onTrackingChange])
+  useEffect(() => { onPostedChange(share?.accepted === true); return () => onPostedChange(false) }, [share?.accepted, onPostedChange])
+  useEffect(() => { onArchivedChange(presentation.compact); return () => onArchivedChange(false) }, [presentation.compact, onArchivedChange])
+  useEffect(() => { onPresentationChange(presentation) }, [presentation, onPresentationChange])
+  useEffect(() => () => onPresentationChange(null), [onPresentationChange])
+  useEffect(() => { onCompletedChange(share?.status === 'complete'); return () => onCompletedChange(false) }, [share?.status, onCompletedChange])
+  useEffect(() => { setVerifiedHere(null) }, [sessionIdentity])
   useEffect(() => {
     if (!enabled) return
     let stopped = false
     const current = () => !stopped && active.current === context
-    setReady(false); setWire(null); setShare(null); setNameRequest(null); setError(null); setBusy(false)
+    const previousScope = shownShareScope.current
+    if (!previousScope || previousScope.sessionIdentity !== sessionIdentity || previousScope.targetGeneration !== targetGeneration) {
+      setShare(null); windowPresentation.current = null
+    }
+    shownShareScope.current = { sessionIdentity, targetGeneration }
+    setReady(false); setWire(null); setNameRequest(null); setError(null); setBusy(false)
     void (async () => {
       const activated = await window.api.authorHandoff({ action: 'activate', context })
       if (!current()) return
@@ -62,17 +96,18 @@ export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fie
         if (!current()) return
         if (!result.ok) { setError(result.error); return }
         setShare(result.value)
-        if (result.value && !currentTarget.current) {
+        if (result.value && !result.value.archived && !currentTarget.current) {
           const resumed = await window.api.authorHandoff({ action: 'resume-name', context, sessionIdentity })
           if (!current()) return
           if (!resumed.ok) { setError(resumed.error); return }
           setNameRequest(resumed.value)
         }
-        if (result.value && restoredNameFor.current !== sessionIdentity && !currentTarget.current) {
+        if (result.value && !result.value.archived && restoredNameFor.current !== sessionIdentity && !currentTarget.current) {
           restoredNameFor.current = sessionIdentity
-          const registration = preferences.registrations.find(r => r.confirmed && r.name === result.value!.author.name)
-          if (registration) setSelection(registration.registrationId)
-          else { setSelection(null); setName(result.value.author.name) }
+          const restoredName = result.value.author.name
+          const registration = preferences.registrations.find(r => r.confirmed && r.name === restoredName)
+          if (registration) { setSelection(registration.registrationId); setNewName(false) }
+          else { setSelection(null); setNewName(true); setName(result.value.author.name) }
         }
       }
       await window.api.authorHandoff({ action: 'share-refresh' })
@@ -138,46 +173,110 @@ export function AuthorShareControls({ core, raw, blocked, onManage, onClose, fie
   if (!enabled) return null
   const complete = share?.status === 'complete'
   const accepted = share?.accepted === true
+  const displayedName = accepted ? presentation.snapshot?.author.name ?? '' : selected?.name ?? (newName ? name : '')
+  const displayedVerified = selected?.confirmed && (!accepted || displayedName === selected.name)
   const currentWire = wire?.context === context ? wire : null
   const canChoose = !target || target.state === 'ready'
   const copy = shareCopyPresentation(share, core, selected?.confirmed ? selected.name : name, target)
-  const fields = <Stack gap="xs">
-    <Group justify="space-between"><Text size="sm" fw={600}>Public name</Text>
-      <Button size="compact-xs" variant="subtle" disabled={busy} onClick={onManage}>Manage public names</Button></Group>
-    <Select size="xs" label="Use a saved name" value={target && target.state !== 'legacy_review' ? target.registrationId : selection ?? ''}
-      disabled={!!target || busy || accepted} allowDeselect={false} onChange={v => setSelection(v || null)}
-      data={[{ value: '', label: 'Enter a public name' }, ...preferences.registrations.map(r => ({ value: r.registrationId,
-        label: r.name + (r.confirmed ? '' : ' (needs verification)'), disabled: !r.confirmed }))]} />
-    {!target && !selection && <TextInput size="xs" label="Public name" value={name} maxLength={256}
-      disabled={busy || accepted} onChange={e => setName(e.currentTarget.value)} />}
-    {!target && !selected?.confirmed && !complete && <>
-      <Text size="xs" c="dimmed">Verify this name once using the private code sent in Discord.</Text>
-      <Text size="xs" c="dimmed">{PUBLIC_NAME_RETENTION_NOTICE}</Text>
-      <Text size="xs" c="dimmed">People in the Discord channel can see who pastes a share before the bot removes it.</Text>
-    </>}
-    {selected?.confirmed && <Text size="xs" c="dimmed">Name verified.</Text>}
+  const changed = copy.label === 'Copy updated share'
+  const checking = share?.status === 'checking'
+  const needsReview = share?.status === 'restore_review'
+  const verifyName = complete && !!nameRequest && !selected?.confirmed
+  const showCopy = !accepted && !checking && !needsReview
+  const resultDescription = share?.operation.kind === 'evidence' ? 'Your run is on the strategy’s Discord card.'
+    : share?.operation.kind === 'replace' ? 'Your strategy and its Discord card are updated.' : 'Your card is in Discord.'
+  const fields = <Stack gap={6}>
+    <Text fw={600} c="dimmed" style={{ fontSize: FONT.small, letterSpacing: '.08em' }}>POSTING AS</Text>
+    <Group gap="xs" wrap="nowrap" align="center">
+      <Combobox store={names} withinPortal={false} onOptionSubmit={value => {
+        if (accepted || target || busy) return
+        setSelection(value === '__new__' ? null : value); setNewName(value === '__new__'); names.closeDropdown()
+      }}>
+        <Combobox.Target withKeyboardNavigation={!accepted && !target && !busy}>
+          <InputBase size="sm" aria-label="Posting as" style={{ flex: 1 }}
+            styles={{ input: { background: COLOR.bgInset, color: COLOR.text } }}
+            rightSectionPointerEvents="all"
+            rightSectionWidth={displayedVerified ? 112 : 32}
+            value={displayedName} maxLength={256} placeholder={newName ? 'Your public name' : 'Choose a saved name'}
+            readOnly={!!selected || !newName || !!target || accepted} disabled={busy && !accepted}
+            onChange={e => setName(e.currentTarget.value)}
+            onClick={() => { if (!accepted && !target && !busy && (selected || !newName)) names.toggleDropdown() }}
+            rightSection={<Group gap={5} wrap="nowrap">
+              {displayedVerified && <Badge size="sm" color="green" variant="light" tt="none">Verified</Badge>}
+              <ActionIcon size="sm" variant="subtle" aria-label="Choose a public name"
+                disabled={!!target || busy || accepted} onClick={e => { e.stopPropagation(); names.toggleDropdown() }}>
+                <Combobox.Chevron />
+              </ActionIcon>
+            </Group>} />
+        </Combobox.Target>
+        <Combobox.Dropdown styles={{ dropdown: { background: COLOR.bgInset } }}><Combobox.Options>
+          {preferences.registrations.filter(r => r.confirmed).map(r => <Combobox.Option key={r.registrationId} value={r.registrationId}
+            active={selection === r.registrationId} className="share-name-option">
+            <Group gap={6} wrap="wrap"><Text size="xs" style={{ flex: 1 }}>{r.name}</Text>
+              {preferences.defaultRegistrationId === r.registrationId && <Badge size="sm" color="gray" variant="light" tt="none">Default</Badge>}
+              <Badge size="sm" color="green" variant="light" tt="none">Verified</Badge>
+            </Group>
+          </Combobox.Option>)}
+          {preferences.registrations.some(r => r.confirmed) && <Divider my={4} color={COLOR.border} />}
+          <Combobox.Option value="__new__" className="share-name-option" style={{ color: COLOR.accent }}>+ Use a new name</Combobox.Option>
+        </Combobox.Options></Combobox.Dropdown>
+      </Combobox>
+      <ActionIcon size="lg" variant="default" aria-label="Public names" disabled={busy} onClick={() => onManage()}>
+        <IconSettings size={16} />
+      </ActionIcon>
+    </Group>
+    {!target && newName && !selected && !complete && <Stack gap={4} p="xs"
+      style={{ background: COLOR.bgDeep, border: `1px solid ${COLOR.borderSoft}`, borderRadius: 6 }}>
+      <Text size="xs" fw={600}>New names are verified once</Text>
+      <Text size="xs" c="dimmed">After your first post, the bot sends a private code. Paste it here to save this name on this PC.</Text>
+      <details><summary style={{ color: COLOR.accent, cursor: 'pointer', fontSize: FONT.small }}>What is stored</summary>
+        <Text size="xs" c="dimmed" mt={6}>{PUBLIC_NAME_RETENTION_NOTICE}</Text>
+        <Text size="xs" c="dimmed" mt={6}>{SHARE_STATUS_RETENTION_NOTICE}</Text>
+        <Text size="xs" c="dimmed" mt={6}>People in the Discord channel can see who pastes a share before the bot removes it.</Text>
+      </details>
+    </Stack>}
+    {selected && !selected.confirmed && <Group gap={4}>
+      <Text size="xs" c="orange">This saved name needs verification.</Text>
+      <Button size="compact-xs" variant="subtle" onClick={() => onManage('recover')}>Recover your name</Button>
+    </Group>}
   </Stack>
   return <Stack gap="xs">
     {fieldContainer && createPortal(fields, fieldContainer)}
-    {!complete && <Text size="sm">{target && target.state !== 'legacy_review'
-      ? `${target.operation === 'evidence' ? 'Adding to' : 'Replacing'}: ${target.title || 'Saved strategy'}`
-      : target ? 'Choose Continue in the Strategy Browser to review this older saved target.' : 'Creates a new strategy and Discord card.'}</Text>}
     {error && <Alert ref={errorElement} color="orange" p="xs" role="alert" title="Sharing needs attention">{error}</Alert>}
-    {share && sessionIdentity && <AuthorOperationPanel context={context} share={share} sessionIdentity={sessionIdentity} onChange={setShare} />}
-    {!accepted && share?.status !== 'restore_review' && <Button size="xs" variant="light" disabled={!ready || blocked || !canChoose || !core}
+    {share && sessionIdentity && <AuthorOperationPanel context={context} share={share} sessionIdentity={sessionIdentity} onChange={setShare} observeOnly />}
+    {complete ? <Stack gap={5} p="sm" role="status" align="center" style={{ background: COLOR.tintGreenBg, borderRadius: 6, textAlign: 'center' }}>
+      <ShareStatusHeading icon={<IconCheck size={19} color={COLOR.profit} />} color={COLOR.profit}>{shareStatusText(share)}</ShareStatusHeading>
+      <Text size="xs" c="dimmed" maw={300}>{verifiedHere ? `${verifiedHere} is verified on this PC.` : resultDescription}</Text>
+    </Stack> : checking ? <Stack gap={5} p="sm" role="status" align="center" style={{ background: COLOR.tintGoldBg, borderRadius: 6, textAlign: 'center' }}>
+      <ShareStatusHeading icon={<Loader size={19} color={COLOR.orange} />} color={COLOR.orange}>Checking share status…</ShareStatusHeading>
+      <Text size="xs" c="dimmed" maw={300}>Can&apos;t reach the server right now. Retrying…</Text>
+    </Stack> : needsReview ? <Alert color="orange" p="sm" role="status">{shareStatusText(share!)}</Alert>
+      : accepted ? <Stack gap={5} p="sm" role="status" align="center" style={{ background: COLOR.bgHover, borderRadius: 6, textAlign: 'center' }}>
+      <ShareStatusHeading icon={<Loader size={19} color={COLOR.accent} />}>Posted, updating Discord…</ShareStatusHeading>
+      <Text size="xs" c="dimmed" maw={300}>This usually takes a few seconds.<br />You can close this window.</Text>
+    </Stack> : changed ? <Stack gap={5} p="sm" role="status" align="center" style={{ background: COLOR.tintGoldBg, borderRadius: 6, textAlign: 'center' }}>
+        <ShareStatusHeading icon={<IconAlertTriangle size={19} color={COLOR.orange} />} color={COLOR.orange}>Changed after copying</ShareStatusHeading>
+        <Text size="xs" c="dimmed" maw={300}>Copy and post this version.<br />Already posted the old one? Use Continue to change it.</Text>
+      </Stack> : copy.pasteHint ? <Stack gap={5} p="sm" role="status" align="center" style={{ background: COLOR.bgHover, borderRadius: 6, textAlign: 'center' }}>
+        <ShareStatusHeading icon={<IconCopy size={19} />}>Copied</ShareStatusHeading>
+        <Text size="xs" c="dimmed" maw={300}>Paste it in the sharing channel.<br />You can close this window; the app keeps checking.</Text>
+      </Stack> : null}
+    {showCopy && <Button size="sm" variant={changed ? 'filled' : copy.pasteHint ? 'default' : 'filled'}
+      styles={copy.pasteHint && !changed ? { root: { background: COLOR.bgInset } } : undefined}
+      leftSection={copy.pasteHint ? undefined : <IconCopy size={17} />}
+      disabled={!ready || blocked || !canChoose || !core || (selected != null && !selected.confirmed) || (!target && !selected && !newName)}
       loading={busy} onClick={() => void prepareAndCopy()}>
       {copy.label === 'Copy to Discord' && currentWire && currentWire.token.length > 2000 ? 'Copy for /wledger-share' : copy.label}
     </Button>}
-    {copy.pasteHint && <Text size="xs" c="dimmed">Paste it in the sharing channel. You can close this window; the app keeps checking.</Text>}
-    {nameRequest && !selected?.confirmed &&
+    {verifyName && nameRequest &&
       <AuthorConfirmationPanel key={nameRequest.request_id} context={context} firstNameVerification
-        expectedName={share?.author.name ?? name}
-        onAccepted={receipt => { const registration = receipt.registrations.find(r => r.name === (share?.author.name ?? name));
-          if (registration) setSelection(registration.registration_id) }}
-        request={nameRequest} action="confirmation" onCancel={onClose} detailsContainer={confirmationContainer} />}
-    {complete && !target && !selected?.confirmed && !nameRequest && <Text size="xs" c="dimmed">
-      Your share is published. To verify its name on this device, open Manage public names and choose Recover.
+        expectedName={share?.author?.name ?? name}
+        onAccepted={receipt => { const registration = receipt.registrations.find(r => r.name === (share?.author?.name ?? name));
+          if (registration) { setVerifiedHere(registration.name); setSelection(registration.registration_id); setNewName(false) } }}
+        request={nameRequest} action="confirmation" onCancel={onClose} />}
+    {complete && !share?.archived && !target && !selected?.confirmed && !nameRequest && <Text size="xs" c="dimmed">
+      Your share is published. <Button size="compact-xs" variant="subtle" onClick={() => onManage('recover')}>Recover your name</Button> to verify it on this PC.
     </Text>}
-    <Button size="xs" variant={complete ? 'filled' : 'subtle'} onClick={onClose}>Close</Button>
+    <Button size="sm" variant={complete && !verifyName ? 'filled' : 'subtle'} c={complete && !verifyName ? undefined : COLOR.textDim} onClick={onClose}>Close</Button>
   </Stack>
 }

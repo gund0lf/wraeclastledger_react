@@ -27,3 +27,43 @@
   margin: 0;
   min-width: 0;
 }
+
+.share-session-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.share-session-fields > :first-child {
+  flex: 2 1 120px;
+}
+
+.share-session-fields > :last-child {
+  flex: 3 1 200px;
+}
+
+.share-dialog .mantine-Input-input {
+  background: var(--share-input-bg);
+}
+
+.share-dialog .mantine-Input-input:disabled,
+.share-dialog .mantine-Input-input[data-disabled] {
+  opacity: 1;
+  color: var(--share-input-text);
+  -webkit-text-fill-color: var(--share-input-text);
+  background: var(--share-input-bg);
+  border-color: var(--share-input-border);
+  cursor: not-allowed;
+}
+
+.share-dialog .mantine-SegmentedControl-label[data-disabled] {
+  opacity: 1;
+  color: var(--share-input-text);
+}
+
+.share-name-option:hover,
+.share-name-option[data-combobox-selected],
+.share-name-option[data-combobox-active] {
+  background: var(--share-option-hover, var(--mantine-color-dark-5));
+}
