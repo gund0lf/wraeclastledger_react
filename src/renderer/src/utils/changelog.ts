@@ -13,7 +13,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.98',
     date: '',
     changes: [
-      'Choose a public name for your strategies, Discord cards and loot images. Verify a new name once through a private Discord code; later shares, added runs and replacements need no extra code. Registration explains what is stored, and saved names can be recovered on another PC.',
+      'Choose a public name for your strategies, Discord cards and loot images. Verify a new name once through a private Discord code; later shares, added runs and replacements need no extra code. Name verification can be resumed after closing Share or an interrupted save. Registration explains what is stored, and saved names can be recovered on another PC.',
       'Share now puts the sharing action and public name first, with a Public names panel for defaults and retirement. The card preview stays available, and the result and main button remain visible while you scroll.',
       'Prepared shares and their results survive closing Share and restarting the app. Shared, Run added or Replaced appears after the Discord card is updated; connection problems keep checking without guessing that a share failed.',
       'Sharing preserves unfinished saves and explains storage or encryption problems. If local sharing history cannot be read, you can start a new sharing history while keeping the old files. Posted strategies stay unchanged, and sessions from before the reset ask before sharing as new. Older unposted shares check less often in the background; reopening Share checks their status again.',

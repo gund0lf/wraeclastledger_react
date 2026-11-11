@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto'
-import { AuthorHandoffVault, ProtectedShareStorageError, ShareRecoveryConfirmationError, type NameShareBinding } from './authorHandoffVault'
+import { AuthorHandoffVault, ProtectedShareStorageError, ShareRecoveryConfirmationError, PendingNameRequestError, type NameShareBinding } from './authorHandoffVault'
 import { DurableShareTracker } from './durableShareTracker'
 import { encodeDiscordShareBrotli } from './discordShareCompression'
 import { buildAuthorSubmission, canonicalAuthorJson } from '../shared/authorSubmission'
 import { ShareIntentError } from '../shared/shareIntent'
-import { emptyAuthorPreferences, previewAuthorRecovery } from '../shared/authorRecognition'
+import { emptyAuthorPreferences, previewAuthorRecovery, type AuthorPreferences } from '../shared/authorRecognition'
 import {
   AUTHOR_UUID, closedAuthorObject as exact, parseAuthorOutcome, validAuthorContext,
   validateAuthorManagement, type AuthorContext, type AuthorConfirmation, type AuthorStatus,
@@ -102,6 +102,7 @@ export class AuthorHandoffService {
   private fingerprint: string | null = null
   private pending = new Map<string, { context: AuthorContext; clientId: string; completionToken?: string; nameShare?: NameShareBinding }>()
   private prepared = new Map<string, { context: AuthorContext; clientId: string; resumable: boolean }>()
+  private acceptedNames = new Map<string, { context: AuthorContext; receipt: AuthorConfirmation; saved: boolean }>()
   private initialization: Promise<void> | null = null
   private trackingRequested = false
   private recovering = false
@@ -111,6 +112,7 @@ export class AuthorHandoffService {
     exchange?: (url: string, init: RequestInit) => Promise<unknown>
     readShareCore?: (sessionId: string, sessionIdentity: string) => Promise<AuthorResults['share-draft']>
     readSessionCreatedAt?: (sessionId: string, sessionIdentity: string) => Promise<number | null>
+    readAuthorPreferences?: () => Promise<AuthorPreferences>
   }) { this.durable = new DurableShareTracker(options.vault, (id, authorization) => this.call('/shares/' + id, 'GET', undefined, authorization)) }
   /** Enabled by the app lifecycle, not by opening Share. Existing encrypted
    * requests are the only authority to check; this never prepares a new share. */
@@ -165,9 +167,9 @@ export class AuthorHandoffService {
     if (this.fingerprint !== null && this.fingerprint !== fingerprint) throw new Error('Author operation changed')
     this.fingerprint = fingerprint
     let local: Awaited<ReturnType<AuthorHandoffVault['prepare']>>
-    try { local = await this.options.vault.prepare(c.sessionId, c.generation, nameShare) }
+    try { local = await this.options.vault.prepare(c.sessionId, c.generation, nameShare, nameShare ? payload! : undefined) }
     catch (error) {
-      if (error instanceof ProtectedShareStorageError) throw error
+      if (error instanceof ProtectedShareStorageError || error instanceof PendingNameRequestError) throw error
       throw new AuthorExchangeError('A name request could not be prepared. Reopen Share to finish any pending name verification, or retry when protected storage is available.')
     }
     this.prepared.set(local.client_request_id, { context: c, clientId: local.client_request_id, resumable: !!nameShare })
@@ -208,7 +210,7 @@ export class AuthorHandoffService {
   async handle(input: unknown): Promise<{ ok: true; value: unknown } | { ok: false; error: string; terminal?: boolean;
     storageCode?: ShareStorageCode; recoveryConfirmationRequired?: true }> {
     try { return { ok: true, value: await this.dispatch(input) } }
-    catch (e) { return { ok: false, error: e instanceof AuthorExchangeError || e instanceof ShareIntentError || e instanceof ProtectedShareStorageError || e instanceof ShareRecoveryConfirmationError ? e.message :
+    catch (e) { return { ok: false, error: e instanceof AuthorExchangeError || e instanceof ShareIntentError || e instanceof ProtectedShareStorageError || e instanceof ShareRecoveryConfirmationError || e instanceof PendingNameRequestError ? e.message :
       'Author confirmation could not be completed. Check the selected operation and try again.',
       ...(e instanceof ProtectedShareStorageError ? { storageCode: e.code } : {}),
       ...(e instanceof ShareRecoveryConfirmationError ? { recoveryConfirmationRequired: true as const } : {}),
@@ -220,6 +222,28 @@ export class AuthorHandoffService {
     // Closing/switching Share must still invalidate the confirmation context.
     if (this.recovering && !(exact(input, ['action', 'context']) && input.action === 'activate'))
       throw new AuthorExchangeError('Sharing recovery is in progress. Wait for it to finish.')
+    if (exact(input, ['action', 'context', 'requestId']) && input.action === 'name-saved') {
+      if (!validAuthorContext(input.context) || !id(input.requestId)) throw new Error('Invalid saved name request')
+      const accepted = this.acceptedNames.get(input.requestId)
+      if (!accepted || contextKey(accepted.context) !== contextKey(input.context) || !this.options.readAuthorPreferences)
+        throw new Error('Unbound saved name request')
+      if (accepted.saved) return null
+      // Renderer completion is not proof: read the repository after its durable
+      // save queue. Session switching after that save does not invalidate proof.
+      const saved = await this.options.readAuthorPreferences()
+      const receipt = accepted.receipt
+      const confirmed = saved.registrations.filter(r => r.confirmed)
+      if (receipt.registrations.some(r => !confirmed.some(s => s.registrationId === r.registration_id &&
+        s.name === r.name && s.epoch === receipt.epoch)) ||
+        (receipt.outcome.status !== 'published' && confirmed.length !== receipt.registrations.length))
+        throw new AuthorExchangeError('The verified names have not finished saving on this PC. Retry saving the name; its confirmation has been kept.')
+      await this.options.vault.forget(input.requestId)
+      accepted.saved = true
+      this.pending.delete(input.requestId)
+      this.prepared.delete(receipt.client_request_id)
+      if (this.current(input.context)) this.fingerprint = null
+      return null
+    }
     if (exact(input, ['action', 'context']) && input.action === 'storage-recovery-preview') {
       const c = this.requireContext(input.context)
       this.recoveryPreview = null
@@ -418,6 +442,32 @@ export class AuthorHandoffService {
         throw new AuthorExchangeError(error instanceof Error && /already processing|recovery review/.test(error.message)
           ? error.message : 'Could not prepare this share yet. Your saved draft is kept; try preparing it again when the service is available.')
       }
+      if (prepared.view.status !== 'complete') {
+        try {
+          const retired = await this.options.vault.retireSupersededNames(
+            { shareId: prepared.view.id, draftRevision: prepared.view.draftRevision },
+            async body => {
+              const result = await this.call('', 'POST', body)
+              if (!exact(result, ['request_id', 'expires_at']) || !id(result.request_id) || !validDate(result.expires_at))
+                throw new Error('Invalid author request response')
+              return { request_id: result.request_id, expires_at: result.expires_at }
+            }, async (requestId, authorization) => {
+              try {
+                const result = await this.call('/' + requestId, 'DELETE', undefined, authorization)
+                if (!exact(result, ['request_id', 'status']) || result.request_id !== requestId || result.status !== 'cancelled')
+                  throw new Error('Invalid cancellation')
+              } catch (error) {
+                if (!(error instanceof AuthorExchangeError && error.status === 410 && error.code === 'handoff_expired')) throw error
+              }
+            })
+          for (const { requestId, clientId } of retired) {
+            this.pending.delete(requestId); this.acceptedNames.delete(requestId); this.prepared.delete(clientId)
+          }
+        } catch (error) {
+          if (error instanceof ProtectedShareStorageError) throw error
+          throw new AuthorExchangeError('The earlier name request could not be closed yet. Retry Copy; the same updated share and its verification have been kept.')
+        }
+      }
       await this.durable.wake(prepared.view.id)
       await this.selectedSession(c, sessionIdentity)
       this.requireContext(c)
@@ -485,6 +535,14 @@ export class AuthorHandoffService {
       // Bounded by the pending-request map; main-only and never written to disk.
       // Apply rechecks the receipt without reading the clipboard a second time.
       pending.completionToken = token!
+      if (input.action === 'accept') {
+        const existing = this.acceptedNames.get(requestId)
+        if (existing) { existing.context = c; existing.receipt = receipt; existing.saved = false }
+        else {
+          this.acceptedNames.set(requestId, { context: c, receipt, saved: false })
+          setTimeout(() => this.acceptedNames.delete(requestId), 15 * 60_000).unref()
+        }
+      }
       return receipt
     }
     throw new Error('Invalid author request')

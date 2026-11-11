@@ -81,7 +81,9 @@ export function AuthorConfirmationPanel({ context, request, action, onCancel, on
         if (exact) {
           store.setAuthorPreferences(exact)
           await flushRepositoryNow()
+          const saved = await window.api.authorHandoff({ action: 'name-saved', context, requestId: request.request_id })
           if (!current()) return
+          if (!saved.ok) { setError(saved.error); return }
           setAccepted(true); setReceipt(null); onAccepted?.(refreshed.value)
           return
         }
@@ -114,7 +116,9 @@ export function AuthorConfirmationPanel({ context, request, action, onCancel, on
         : applyAuthorRecovery(store.authorPreferences, refreshed.value,
           { defaultRegistrationId: defaultId, forgetObsoleteIds: [] }))
       await flushRepositoryNow()
+      const saved = await window.api.authorHandoff({ action: 'name-saved', context, requestId: request.request_id })
       if (!current()) return
+      if (!saved.ok) { setError(saved.error); return }
       setAccepted(true); setReceipt(null)
       onAccepted?.(refreshed.value)
     } catch { if (current()) setError('Saved names changed. Paste the confirmation again to review them.') }

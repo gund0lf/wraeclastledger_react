@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { parseShareIntent, selectShareIntent, ShareIntentError, type ShareIntentSnapshot } from '../shared/shareIntent';
 import type { AuthorSubmissionMetadata } from '../shared/authorSubmission';
+import { parseAuthorPreferences, type AuthorPreferences } from '../shared/authorRecognition';
 import {
   cp,
   lstat,
@@ -977,6 +978,13 @@ export class FileSessionRepository implements SessionRepositoryPort {
       const { snapshot } = await this.readShareIntent(target, session);
       return snapshot ? { core: snapshot.core, author: { ...snapshot.metadata.author } } : null;
     });
+  }
+
+  /** Main-only proof that a verified name has reached durable preferences. */
+  async readAuthorPreferences(): Promise<AuthorPreferences> {
+    await this.requireReady();
+    return this.queue.enqueue('repository', async () =>
+      parseAuthorPreferences((await this.readGeneric(this.paths.preferences, 'preferences')).authorPreferences));
   }
 
   /** Recovery age comes from the selected durable session, never renderer input. */

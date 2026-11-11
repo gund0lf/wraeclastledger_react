@@ -26,6 +26,7 @@ interface PendingAuthorRequest {
   requestId: string | null
   consumptionId: string
   nameShare?: ResumableName
+  creationPayloadSha256?: string
 }
 interface VaultRecord {
   version: 1
@@ -76,6 +77,7 @@ function boundedReaderField(key: string, value: unknown): boolean {
     case 'readerSecret': return typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value)
     case 'createdAt': return typeof value === 'number' && Number.isFinite(value)
     case 'nameShare': return validNameShare(value)
+    case 'creationPayloadSha256': return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
     default: return false
   }
 }
@@ -103,6 +105,12 @@ export class ShareRecoveryConfirmationError extends Error {
   constructor() {
     super('This session is from before the recovery. If you already shared it, use Continue in the Strategy Browser. Share as new anyway?')
     this.name = 'ShareRecoveryConfirmationError'
+  }
+}
+export class PendingNameRequestError extends Error {
+  constructor() {
+    super('Two name requests are still open. Reopen their Share windows to finish verification, or wait for those requests to expire before preparing another name action.')
+    this.name = 'PendingNameRequestError'
   }
 }
 interface RecoveryFile {
@@ -208,6 +216,7 @@ export class AuthorHandoffVault {
           !/^[A-Za-z0-9_-]{43}$/.test(p.readerSecret) ||
           !Number.isFinite(p.createdAt) ||
           (p.requestId !== null && !uuid.test(p.requestId)) ||
+          (p.creationPayloadSha256 !== undefined && (!p.nameShare || !/^[a-f0-9]{64}$/.test(p.creationPayloadSha256))) ||
           (p.nameShare !== undefined && (!validNameShare(p.nameShare) || Object.hasOwn(p, 'operation')))
       )
     )
@@ -493,7 +502,7 @@ export class AuthorHandoffVault {
     this.serial = work.catch(() => undefined)
     return work
   }
-  prepare(sessionId: string, operationGeneration: string, nameShare?: NameShareBinding) {
+  prepare(sessionId: string, operationGeneration: string, nameShare?: NameShareBinding, creationPayloadSha256?: string) {
     return this.run(async () => {
       if (
         !sessionId ||
@@ -505,13 +514,18 @@ export class AuthorHandoffVault {
       const data = await this.load()
       if (nameShare && !validNameShare({ ...nameShare, expiresAt: null }))
         throw new Error('Invalid name verification binding')
+      if (creationPayloadSha256 !== undefined && (!nameShare || !/^[a-f0-9]{64}$/.test(creationPayloadSha256)))
+        throw new Error('Invalid name verification payload')
       let pending = data.pending.find((p) => nameShare
         ? p.nameShare?.shareId === nameShare.shareId && p.nameShare.draftRevision === nameShare.draftRevision
         : !p.nameShare && p.sessionId === sessionId && p.operationGeneration === operationGeneration)
       if (pending && nameShare) { pending.sessionId = sessionId; pending.operationGeneration = operationGeneration }
+      if (pending?.creationPayloadSha256 && pending.creationPayloadSha256 !== creationPayloadSha256)
+        throw new Error('Name verification payload changed')
+      if (pending && creationPayloadSha256) pending.creationPayloadSha256 = creationPayloadSha256
       if (!pending) {
         if (data.pending.length >= 2)
-          throw new Error('Finish or cancel an existing author confirmation first.')
+          throw new PendingNameRequestError()
         pending = {
           sessionId,
           operationGeneration,
@@ -520,7 +534,8 @@ export class AuthorHandoffVault {
           createdAt: this.now(),
           requestId: null,
           consumptionId: randomUUID(),
-          ...(nameShare ? { nameShare: { ...nameShare, expiresAt: null } } : {})
+          ...(nameShare ? { nameShare: { ...nameShare, expiresAt: null } } : {}),
+          ...(creationPayloadSha256 ? { creationPayloadSha256 } : {})
         }
         data.pending.push(pending)
       }
@@ -533,6 +548,36 @@ export class AuthorHandoffVault {
           Buffer.from(pending.readerSecret, 'base64url')
         )
       }
+    })
+  }
+  /** Only a successful durable supersession authorizes retiring older readers.
+   * Resolve a lost creation response with the original idempotency bytes first;
+   * ambiguous cancellation keeps the reader and the server slot retryable. */
+  retireSupersededNames(binding: NameShareBinding,
+    create: (body: { schema_version: 1; installation_id: string; client_request_id: string; reader_secret_hash: string;
+      kind: 'publication'; payload_sha256: string; intent: null }) => Promise<{ request_id: string; expires_at: string }>,
+    cancel: (requestId: string, authorization: string) => Promise<void>): Promise<{ requestId: string; clientId: string }[]> {
+    return this.run(async () => {
+      const data = await this.load()
+      const share = data.shares?.find(s => s.id === binding.shareId)
+      if (!share || share.draft?.revision !== binding.draftRevision) throw new Error('Prepared share changed')
+      const retired: { requestId: string; clientId: string }[] = []
+      for (const p of data.pending.filter(p => p.nameShare?.shareId === binding.shareId && p.nameShare.draftRevision < binding.draftRevision)) {
+        if (!p.requestId) {
+          if (!p.creationPayloadSha256) throw new Error('Earlier name request must be resolved before editing again')
+          const result = await create({ schema_version: 1, installation_id: data.installationId,
+            client_request_id: p.clientRequestId, reader_secret_hash: domainHash('WL-AUTHOR-READER/1', Buffer.from(p.readerSecret, 'base64url')),
+            kind: 'publication', payload_sha256: p.creationPayloadSha256, intent: null })
+          p.requestId = result.request_id
+          p.nameShare!.expiresAt = result.expires_at
+          await this.save(data)
+        }
+        await cancel(p.requestId, 'Handoff ' + p.readerSecret)
+        retired.push({ requestId: p.requestId, clientId: p.clientRequestId })
+        data.pending = data.pending.filter(candidate => candidate !== p)
+        await this.save(data)
+      }
+      return retired
     })
   }
   /** Management readers remain generation-bound. Bound name verification

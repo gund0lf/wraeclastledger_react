@@ -23,6 +23,7 @@ export type AuthorRequest =
   | { action: 'share-copied'; context: AuthorContext; sessionIdentity: string; shareId: string; draftRevision: number }
   | { action: 'share-result'; context: AuthorContext; sessionIdentity: string; targetGeneration: string | null }
   | { action: 'resume-name'; context: AuthorContext; sessionIdentity: string }
+  | { action: 'name-saved'; context: AuthorContext; requestId: string }
   | { action: 'share-draft'; sessionId: string; sessionIdentity: string }
   | { action: 'activate'; context: AuthorContext | null }
   | { action: 'storage-recovery-preview'; context: AuthorContext }
@@ -57,6 +58,7 @@ export interface AuthorResults {
   'share-copied': DurableShareView
   'share-result': DurableShareView | null
   'resume-name': PreparedAuthorRequest | null
+  'name-saved': null
   'share-draft': { core: string; author?: AuthorSubmissionMetadata['author'] } | null
   activate: null
   'storage-recovery-preview': { recoveryId: string }
