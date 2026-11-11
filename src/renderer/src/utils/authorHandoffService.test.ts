@@ -3,11 +3,9 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
-import { brotliDecompressSync } from 'node:zlib'
 import { AuthorHandoffVault } from '../../../main/authorHandoffVault'
 import { AuthorHandoffService, AuthorExchangeError, authorJsonFetch } from '../../../main/authorHandoffService'
 import { authorServiceOrigin, PRODUCTION_STRATEGY_API_ORIGIN } from '../../../shared/strategyApi'
-import { canonicalAuthorJson } from '../../../shared/authorSubmission'
 import { parseAuthorPreferences, emptyAuthorPreferences } from '../../../shared/authorRecognition'
 import { validateAuthorManagement } from '../../../shared/authorHandoff'
 import authorRoutes from './__fixtures__/author-handoff-routes.json'
@@ -270,6 +268,23 @@ it('waits for an asynchronous private clipboard read before consuming the exact 
   expect((await pending).ok).toBe(true)
   expect(JSON.parse(f.requests[1].init.body as string).completion_token).toBe(token)
 })
+it.each(['', 'ordinary copied notes', 'a'.repeat(42), 'a'.repeat(44), '!'.repeat(43), 'A'.repeat(42) + 'B'])(
+  'rejects clipboard text with invalid code format locally, without consuming or sending it (%s)', async text => {
+    const f = await setup(), c = context()
+    await f.service.handle({ action: 'activate', context: c })
+    await f.service.handle({ action: 'prepare', context: c, operation: { kind: 'recovery', intent: null } })
+    const before = f.requests.length
+    const consume = vi.spyOn(f.vault, 'consume')
+    f.clipboard.mockReturnValueOnce(text)
+    expect(await f.service.handle({ action: 'paste', context: c, requestId: f.requestId })).toEqual({ ok: false,
+      error: "Your clipboard doesn't hold a code. Copy it from Discord first." })
+    expect(f.requests).toHaveLength(before)
+    expect(consume).not.toHaveBeenCalled()
+    expect(f.clipboard).toHaveBeenCalledTimes(1)
+    expect((await f.service.handle({ action: 'paste', context: c, requestId: f.requestId })).ok).toBe(true)
+    expect(f.requests).toHaveLength(before + 1)
+  }
+)
 it('masks a rejected clipboard read and keeps the same pending request retryable', async () => {
   const f = await setup(), c = context()
   f.clipboard.mockRejectedValueOnce(new Error('OS error with private clipboard detail'))
@@ -344,24 +359,17 @@ it('retries an ambiguous create with the same correlation, and frees unbound loc
   }
   expect(f.requests).toHaveLength(6)
 })
-it('emits an offline v5 share without a callback, and hashes the exact online envelope', async () => {
+it.each([false, true])('refuses the obsolete publication IPC without selected-session binding (confirmation %s)', async confirmation => {
   const f = await setup(), c = context()
-  const core = JSON.stringify([4, 0, null, null, null, null, null, null, null, null, null, null])
-  const metadata = { author: { name: 'Example', registration_id: null }, expected_revision: null, confirmation_request_id: null }
   await f.service.handle({ action: 'activate', context: c })
-  const offline = await f.service.handle({ action: 'publication', context: c, core, metadata, confirmation: false })
-  expect(offline.ok).toBe(true)
+  const input = { action: 'publication', context: c, confirmation,
+    core: JSON.stringify([4, 0, null, null, null, null, null, null, null, null, null, null]),
+    metadata: { author: { name: 'Example', registration_id: null }, expected_revision: null, confirmation_request_id: null } }
+  const result = await f.service.handle(input)
+  expect(result.ok).toBe(false)
+  expect(result).not.toHaveProperty('value.token')
   expect(f.requests).toHaveLength(0)
-  if (!offline.ok) throw new Error('No token')
-  const value = offline.value as { token: string; request: null }
-  expect(value.request).toBeNull()
-  const decoded = JSON.parse(brotliDecompressSync(Buffer.from(value.token.slice(4), 'base64url')).toString())
-  expect(decoded).toEqual([5, JSON.parse(core), metadata])
-  await f.service.handle({ action: 'publication', context: c, core, metadata, confirmation: true })
-  expect(JSON.parse(f.requests[0].init.body as string).payload_sha256).toBe(createHash('sha256').update('WL-AUTHOR-HANDOFF/1\0').update(canonicalAuthorJson(decoded)).digest('hex'))
-  const changed = await f.service.handle({ action: 'publication', context: c, core,
-    metadata: { ...metadata, author: { name: 'Different', registration_id: null } }, confirmation: true })
-  expect(changed.ok).toBe(false)
+  expect(f.clipboard).not.toHaveBeenCalled()
 })
 it('bounds streaming responses and rejects redirects without leaking upstream errors', async () => {
   const f = vi.fn(async (_url, init) => {
@@ -526,7 +534,7 @@ it('startup discards two unbound interrupted requests and tolerates unavailable 
   expect(calls).toEqual(['DELETE', 'POST'])
 })
 
-it.each(['unavailable', 'corrupt'])('allows shares without confirmation with %s protected storage', async (failure) => {
+it.each(['unavailable', 'corrupt'])('cannot bypass %s protected storage through obsolete publication IPC', async (failure) => {
   const directory = await mkdtemp(join(tmpdir(), 'wl-author-storage-'))
   directories.push(directory)
   const file = join(directory, 'author-handoffs.enc')
@@ -542,20 +550,14 @@ it.each(['unavailable', 'corrupt'])('allows shares without confirmation with %s 
     core: JSON.stringify([4, 0, null, null, null, null, null, null, null, null, null, null]),
     metadata: { author: { name: 'Example', registration_id: null }, expected_revision: null, confirmation_request_id: null } })
   expect((await service.handle({ action: 'activate', context: c })).ok).toBe(true)
-  const offline = await publication(false)
-  expect(offline.ok).toBe(true)
-  if (!offline.ok) throw new Error('No share')
-  const value = offline.value as { token: string; request: null }
-  expect(value.request).toBeNull()
-  const decoded = JSON.parse(brotliDecompressSync(Buffer.from(value.token.slice(4), 'base64url')).toString())
-  expect(decoded[2].confirmation_request_id).toBeNull()
+  expect((await publication(false)).ok).toBe(false)
   expect(protection.isEncryptionAvailable).not.toHaveBeenCalled()
   expect((await publication(true)).ok).toBe(false)
   expect((await service.handle({ action: 'prepare', context: c, operation: { kind: 'recovery', intent: null } })).ok).toBe(false)
   const old = c
   c = context()
   expect((await service.handle({ action: 'activate', context: c })).ok).toBe(true)
-  expect((await publication(false)).ok).toBe(true)
+  expect((await publication(false)).ok).toBe(false)
   expect((await service.handle({ action: 'prepare', context: old, operation: { kind: 'recovery', intent: null } })).ok).toBe(false)
   expect((await service.handle({ action: 'activate', context: null })).ok).toBe(true)
   expect((await publication(false)).ok).toBe(false)
@@ -564,7 +566,7 @@ it.each(['unavailable', 'corrupt'])('allows shares without confirmation with %s 
   if (failure === 'corrupt') expect(await readFile(file)).toEqual(corrupt)
 })
 
-it('does not block offline sharing or revive an old operation while startup cleanup is pending', async () => {
+it('does not block session activation or revive an old operation while startup cleanup is pending', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'wl-author-delayed-storage-'))
   directories.push(directory)
   const protection = { isEncryptionAvailable: () => true,
@@ -586,7 +588,7 @@ it('does not block offline sharing or revive an old operation while startup clea
   expect((await service.handle({ action: 'activate', context: next })).ok).toBe(true)
   expect((await service.handle({ action: 'publication', context: next, confirmation: false,
     core: JSON.stringify([4, 0, null, null, null, null, null, null, null, null, null, null]),
-    metadata: { author: { name: 'Example', registration_id: null }, expected_revision: null, confirmation_request_id: null } })).ok).toBe(true)
+    metadata: { author: { name: 'Example', registration_id: null }, expected_revision: null, confirmation_request_id: null } })).ok).toBe(false)
   release({ request_id: requestId, status: 'cancelled' })
   expect((await pending).ok).toBe(false)
   expect(exchange).toHaveBeenCalledTimes(1)

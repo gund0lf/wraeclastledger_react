@@ -127,7 +127,7 @@ it.each(['evidence','replace'] as const)('%s: unchanged repeated preparation and
 it('initial name verification reattaches after close and restart without another request or code', async () => {
   const f = await setup(), first = await f.vault.prepareDurable(f.input, f.exchange)
   const binding = { shareId: first.view.id, draftRevision: first.view.draftRevision }
-  const prepared = await f.vault.prepare(f.input.sessionId, randomUUID(), undefined, binding)
+  const prepared = await f.vault.prepare(f.input.sessionId, randomUUID(), binding)
   const requestId = randomUUID(), expiresAt = new Date(Date.now() + 600_000).toISOString()
   await f.vault.bind(prepared.client_request_id, requestId, expiresAt)
   const remote = vi.fn(async () => { throw new Error('No request is needed to resume') })

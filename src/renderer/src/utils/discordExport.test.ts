@@ -12,9 +12,13 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { SessionSettings, LootItem } from '../types';
-import { buildDiscordExport, ExportMapStats } from './discordExport';
+import { buildDiscordExport, formatDiscordExport, ExportMapStats, type DiscordExportInput } from './discordExport';
 import { parseDiscordExport } from './parseDiscordExport';
 import { EXPORT_EMOJI } from './discordEmoji';
+import { buildDiscordSharePayload } from './discordShareWire';
+import { shareCopyPresentation, type ActiveDurableShareView } from '../../../shared/durableShare';
+import type { StrategyTarget } from '../../../shared/strategyTarget';
+import { postedSharePresentation } from './postedSharePresentation';
 
 /* ------------------------------------------------------------------ */
 /* Fixture (mirrors profit.test.ts — the hand-verified Sad session)    */
@@ -67,6 +71,133 @@ const build = () => buildDiscordExport({
   investmentNeutralization: 0,
   shareTags: ['originator', 'breach', 'cartography', 'astrolabe-grasping'],
   isGroupPlay: false,
+});
+
+// Reuse the established export inputs, but freeze the complete output from the
+// formatter before its extraction. Parser round-trips alone can miss a matching
+// encoder/parser change; these expected UTF-8 bytes have no formatter dependency.
+const wireRegressionBase: DiscordExportInput = {
+  maps, settings: settings(), lootItems, baselineTotal, investmentNeutralization: 0,
+};
+const wireRegressionCases: { name: string; input: DiscordExportInput }[] = [
+  { name: 'preservation', input: { ...wireRegressionBase,
+    shareTags: ['originator', 'breach', 'cartography', 'astrolabe-grasping'], isGroupPlay: false } },
+  { name: 'optional-metadata', input: { ...wireRegressionBase,
+    settings: settings({ atlasPoints: 112, atlasPointsMax: 138 }),
+    stratName: '  Frozen strategy\n title  ', stratNotes: 'First point\nSecond point\r\nThird point',
+    shareTags: ['regular', 'bestiary'], isGroupPlay: true, groupSize: 3, sessionMinutes: 245.5,
+    gameDataRevision: 2, gameDataPatchVersion: ' 3.29 ', investmentNeutralization: 6448.1 } },
+  { name: 'empty-run-no-optional-lines', input: { ...wireRegressionBase,
+    maps: [], lootItems: [], baselineTotal: 0,
+    settings: settings({ chiselType: '', scarabs: [], advDeliOrbType: '', advDeliOrbQtyPerMap: 0,
+      advAstrolabeType: '', advGemCount: 0, atlasTreeUrl: '', leagueName: '',
+      multiplyingModifiersAllocated: false, fragmentCountOverride: null, atlasPoints: 112, atlasPointsMax: null }),
+    sessionMinutes: 0, gameDataRevision: 0, gameDataPatchVersion: '3.29' } },
+  { name: 'configured-none-chisel', input: { ...wireRegressionBase,
+    settings: settings({ chiselType: 'None', chiselPrice: 0 }) } },
+  { name: 'legacy-party-without-size', input: { ...wireRegressionBase,
+    isGroupPlay: true, groupSize: null } },
+  { name: 'update', input: { ...wireRegressionBase,
+    stratName: 'Testy strategy', stratNotes: 'some notes',
+    updateStrategyId: 'be00f19f-b74c-4c4f-9a1c-ee54d2ffaabc' } },
+  { name: 'evidence', input: { ...wireRegressionBase,
+    evidence: { targetStrategyId: 'be00f19f-b74c-4c4f-9a1c-ee54d2ffaabc', expectedRevision: 7,
+      runKey: `sha256-v1:${'a'.repeat(64)}`, runStartedAt: '2026-07-29T18:00:00.000Z',
+      runEndedAt: '2026-07-29T18:30:00.000Z', setupFingerprint: `sha256-v1:${'b'.repeat(64)}` } } },
+  { name: 'observed-modifiers', input: { ...wireRegressionBase,
+    maps: [3, 4, 5, 6].map(explicitModCount => ({ quantity: 80, rarity: 50, packSize: 40,
+      moreCurrency: 100, moreScarabs: 0, explicitModCount })),
+    settings: settings({ multiplyingModifiersAllocated: false, fragmentCountOverride: null,
+      smallNodesAllocated: 0, mountingModifiers: true, scarabs: [] }),
+    lootItems: [], baselineTotal: 0 } },
+  { name: 'observed-delirium', input: { ...wireRegressionBase,
+    maps: Array.from({ length: 3 }, () => ({ quantity: 83, rarity: 63, packSize: 45,
+      moreCurrency: 117, moreScarabs: 5, deliriousPct: 100,
+      deliriumRewardTypes: ['Jewellery', 'Jewellery', 'Armour'] })),
+    settings: settings({ baseMapCost: 250, advDeliOrbType: '', advDeliOrbQtyPerMap: 0, advDeliOrbPriceEach: 0 }) } },
+  { name: 'structured-loot-and-manual-addition', input: {
+    maps: [{ quantity: 80, rarity: 60, packSize: 40, moreCurrency: 100, moreScarabs: 0 }],
+    settings: settings({ advGemCount: 0, advGemBuyPrice: 0, advGemSellPrice: 0, advGemName: '',
+      baseMapCost: 0, scarabs: [], advChaos: 0, advExalt: 0, advScour: 0, advAlch: 0,
+      advDeliOrbType: '', advDeliOrbQtyPerMap: 0, advAstrolabeType: '' }),
+    baselineItems: [{ id: 'base-div', name: 'Divine Orb', tab: 'curr', quantity: '1', price: '100', total: 100, excluded: false }],
+    lootItems: [{ id: 'return-div', name: 'Divine Orb', tab: 'curr', quantity: '3', price: '100', total: 300, excluded: false }],
+    baselineTotal: 100, investmentNeutralization: 0,
+    manualLootItems: [{ id: 'manual-blueprint', name: 'Unpriced Blueprint', quantity: 1,
+      total: 75, category: 'League', note: 'Missing from WealthyExile' }],
+  } },
+];
+
+describe('buildDiscordExport pre-refactor byte compatibility', () => {
+  const golden = JSON.parse(readFileSync(fileURLToPath(new URL(
+    './__fixtures__/discord-export-pre-refactor.json', import.meta.url)), 'utf8')) as {
+      cases: { name: string; output: string }[];
+    };
+
+  it('has exactly one immutable expected output for every representative input', () => {
+    expect(golden.cases.map(item => item.name)).toEqual(wireRegressionCases.map(item => item.name));
+    expect(new Set(golden.cases.map(item => item.name)).size).toBe(wireRegressionCases.length);
+  });
+
+  it.each(wireRegressionCases)('$name keeps every emitted UTF-8 byte', ({ name, input }) => {
+    const expected = golden.cases.find(item => item.name === name);
+    expect(expected).toBeDefined();
+    expect(Buffer.from(buildDiscordExport(input), 'utf8')).toEqual(Buffer.from(expected!.output, 'utf8'));
+  });
+});
+
+describe('exact posted presentation and current-session edits', () => {
+  it('uses the existing byte formatting for every field in the export fixture', () => {
+    const raw = build();
+    expect(formatDiscordExport(parseDiscordExport(raw)!)).toBe(raw);
+    const configuredNone = buildDiscordExport({ maps, settings: settings({ chiselType: 'None', chiselPrice: 0 }),
+      lootItems, baselineTotal, investmentNeutralization: 0 });
+    expect(configuredNone).toContain('**Chisel:** None (0c)');
+  });
+
+  it.each(['publication', 'evidence', 'replace'] as const)('%s: current map, loot, price and text edits change the copied draft, never its accepted preview', kind => {
+    const id = '00000000-0000-4000-8000-000000000001';
+    const registration = '00000000-0000-4000-8000-000000000002';
+    const generation = '00000000-0000-4000-8000-000000000003';
+    const input = { maps, settings: settings(), lootItems, baselineTotal, investmentNeutralization: 0,
+      stratName: 'Original posted title', stratNotes: 'Original notes', shareTags: ['regular'], sessionMinutes: 22 };
+    const parsed = parseDiscordExport(buildDiscordExport(input))!;
+    const ordinaryCore = buildDiscordSharePayload(parsed);
+    const operation = kind === 'publication' ? { kind, strategy_id: null, revision: null } : { kind, strategy_id: id, revision: 1 };
+    const target: StrategyTarget | null = kind === 'publication' ? null : {
+      version: 1, state: 'ready', operation: kind, id, title: 'Target', revision: 1,
+      registrationId: registration, scope: 'current', generation, seed: null,
+    };
+    if (kind === 'replace') Object.assign(parsed, { operation: 'update', updateStrategyId: id });
+    if (kind === 'evidence') Object.assign(parsed, { operation: 'evidence', evidenceTargetStrategyId: id,
+      evidenceExpectedRevision: 1, evidenceRunKey: `sha256-v1:${'b'.repeat(64)}`,
+      evidenceRunStartedAt: '2026-11-01T10:00:00.000Z', evidenceRunEndedAt: '2026-11-01T10:22:00.000Z',
+      setupFingerprint: `sha256-v1:${'a'.repeat(64)}` });
+    const core = buildDiscordSharePayload(parsed);
+    const author = { name: 'Recorded author', registration_id: registration };
+    const share: ActiveDurableShareView = { id, draftRevision: 1, copiedRevision: 1, core, author, operation,
+      targetGeneration: target ? generation : null, status: 'ready', accepted: false, outcome: null, noticed: false };
+    expect(shareCopyPresentation(share, ordinaryCore, author.name, target)).toEqual({ label: 'Copy again', pasteHint: true });
+    const posted = postedSharePresentation({ core, author });
+    for (const changed of [
+      { ...input, maps: [...maps, { ...maps[0], quantity: 150 }] },
+      { ...input, lootItems: lootItems.map(item => ({ ...item, total: item.total * 2 })) },
+      { ...input, settings: settings({ divinePrice: 700, baseMapCost: 1600 }) },
+      { ...input, stratName: 'Edited title', stratNotes: 'Edited notes' },
+    ]) {
+      const changedRaw = buildDiscordExport(changed);
+      const changedCore = buildDiscordSharePayload(parseDiscordExport(changedRaw)!);
+      expect(changedCore).not.toBe(ordinaryCore);
+      expect(shareCopyPresentation(share, changedCore, author.name, target)).toEqual({ label: 'Copy updated share', pasteHint: false });
+      // If the old clipboard is accepted while local edits exist, the locked
+      // presentation keeps the old accepted fields and numbers together.
+      expect(postedSharePresentation({ core, author })).toEqual(posted);
+      expect(posted?.title).toBe('Original posted title');
+      expect(posted?.preview).toContain('**Maps:** 38');
+      expect(posted?.preview).toContain('**Divine Price:** 500c');
+      expect(posted?.preview).not.toContain('Edited title');
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ */

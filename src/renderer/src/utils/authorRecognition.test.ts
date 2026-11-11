@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyAuthorRecovery,
+  applyReviewedNameVerification,
   acceptExactNameVerification,
   authorConfirmationNeedsReview,
   canPrepareAuthorAction,
@@ -22,6 +23,22 @@ const receipt: AuthorReceipt = {
   registrations: [{ registration_id: id, name: 'Example', status: 'active' }]
 }
 describe('public author recognition', () => {
+  it('explicit first-name review preserves the current default without inheriting confirmation or choosing a new one', () => {
+    const current = { ...emptyAuthorPreferences(), defaultRegistrationId: second,
+      registrations: [{ registrationId: second, name: 'Second', epoch, confirmed: true }] }
+    const saved = applyReviewedNameVerification(current, receipt)
+    expect(saved.defaultRegistrationId).toBe(second)
+    expect(saved.registrations).toEqual([
+      { ...current.registrations[0], confirmed: false },
+      { registrationId: id, name: 'Example', epoch, confirmed: true }
+    ])
+    expect(canPrepareAuthorAction(saved, second, epoch)).toBe(false)
+    expect(canPrepareAuthorAction(saved, id, epoch)).toBe(true)
+    expect(current.registrations[0].confirmed).toBe(true)
+    expect(applyReviewedNameVerification(emptyAuthorPreferences(), receipt).defaultRegistrationId).toBeNull()
+    expect(() => applyReviewedNameVerification(current, { ...receipt,
+      registrations: [{ registration_id: second, name: 'Changed identity', status: 'active' }] })).toThrow('Registration identity changed')
+  })
   it('saves only the exactly typed, privately revalidated name without changing the default or other names', () => {
     const current = { ...emptyAuthorPreferences(), defaultRegistrationId: second,
       registrations: [{ registrationId: second, name: 'Second', epoch, confirmed: true }] }

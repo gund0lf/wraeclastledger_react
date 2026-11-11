@@ -8,6 +8,7 @@ import { AuthorHandoffService, AuthorExchangeError } from '../../../main/authorH
 import { AuthorHandoffVault } from '../../../main/authorHandoffVault'
 import type { AuthorContext, AuthorRequest, AuthorResults } from '../../../shared/authorHandoff'
 import { shareStatusText, type DurableShareResult } from '../../../shared/durableShare'
+import { canonicalAuthorJson } from '../../../shared/authorSubmission'
 
 const directories: string[] = [], services: AuthorHandoffService[] = []
 afterEach(async () => {
@@ -82,7 +83,7 @@ async function fixture(kind: 'publication' | 'replace' | 'evidence' = 'publicati
       readShareCore: async (_sessionId, supplied) => {
         if (supplied !== selectedIdentity) throw new Error('Selected session changed')
         return null
-      }, shareIntent: async () => { throw new Error('No legacy intent fallback') } })
+      } })
     services.push(service); return service
   }
   const publication = (c: AuthorContext): Extract<AuthorRequest, { action: 'publication' }> => ({ action: 'publication', context: c,
@@ -234,7 +235,7 @@ it.each(['replace','evidence'] as const)('%s never falls back without its privat
   expect(f.calls).toHaveLength(0)
 })
 
-it('lost preparation response retries the exact persisted proposal, including after legacy cancellation', async () => {
+it('lost preparation response retries the exact persisted proposal after close and restart', async () => {
   const f = await fixture('evidence'), service = f.create(), c = context()
   await value(service, { action: 'activate', context: c })
   const normal = f.exchange.getMockImplementation()!, proposals: unknown[] = []
@@ -251,7 +252,7 @@ it('lost preparation response retries the exact persisted proposal, including af
     return normal(url, init)
   })
   expect((await service.handle(f.publication(c))).ok).toBe(false)
-  await value(service, { action: 'cancel-publication', context: c, sessionIdentity: identity })
+  await value(service, { action: 'activate', context: null })
   const restarted = f.create(), next = context()
   await value(restarted, { action: 'activate', context: next })
   const retry = await value(restarted, f.publication(next))
@@ -281,7 +282,12 @@ it('initial name verification alone retains a code request; it cannot be consume
   expect(prepared).toMatchObject({ acknowledgement: 'name', request: { request_id: f.requestId } })
   expect(decode(prepared.token)[2].confirmation_request_id).toBe(f.requestId)
   const creation = f.calls.find(call => call.init.method === 'POST')!
-  expect(JSON.parse(creation.init.body as string).intent).toBeNull()
+  const requestBody = JSON.parse(creation.init.body as string)
+  expect(requestBody.intent).toBeNull()
+  const envelope = decode(prepared.token)
+  envelope[2].confirmation_request_id = null
+  expect(requestBody.payload_sha256).toBe(createHash('sha256').update('WL-AUTHOR-HANDOFF/1\0')
+    .update(canonicalAuthorJson(envelope)).digest('hex'))
   const count = f.calls.length
   expect((await service.handle({ action: 'acknowledge-operation', context: c, requestId: f.requestId })).ok).toBe(false)
   expect(f.calls).toHaveLength(count)
@@ -347,9 +353,9 @@ it('legacy cancellation cannot detach or discard an in-flight durable result', a
   f.exchange.mockImplementationOnce(() => new Promise(resolve => { release = resolve }))
   await f.service.startOperationTracking()
   await vi.waitFor(() => expect(release).toBeTypeOf('function'))
-  const cancellation = value(f.service, { action: 'cancel-publication', context: f.c, sessionIdentity: identity })
+  const cancellation = f.service.handle({ action: 'cancel-publication', context: f.c, sessionIdentity: identity })
   f.complete(); release(structuredClone(f.receipt()))
-  await cancellation
+  expect((await cancellation).ok).toBe(false)
   await vi.waitFor(async () => expect((await value(f.service, f.result(f.c)))?.status).toBe('complete'))
   expect(f.calls.some(call => call.init.method === 'DELETE')).toBe(false)
   expect((await f.vault().durableForSession(identity, null))?.outcome).toEqual(f.outcome)
@@ -397,3 +403,17 @@ it('a late preparation response is saved for its original session but cannot ret
   expect(await f.vault().durableForSession(identity, null)).toMatchObject({ id: f.receipt().id, status: 'ready' })
   expect(f.calls.filter(call => call.init.method === 'PUT')).toHaveLength(1)
 })
+
+it.each(['resume-publication', 'cancel-publication', 'acknowledge-operation', 'finish-operation'])(
+  'refuses the removed %s IPC action without changing a durable share or reading the clipboard', async action => {
+    const f = await prepared('evidence')
+    const before = await readFile(join(f.directory, 'author-handoffs.enc')), count = f.calls.length
+    const request = ['resume-publication', 'cancel-publication'].includes(action)
+      ? { action, context: f.c, sessionIdentity: identity }
+      : { action, context: f.c, requestId: f.receipt().id }
+    expect((await f.service.handle(request)).ok).toBe(false)
+    expect(f.calls).toHaveLength(count)
+    expect(f.clipboard).not.toHaveBeenCalled()
+    expect(await readFile(join(f.directory, 'author-handoffs.enc'))).toEqual(before)
+    expect(await f.vault().durableForSession(identity, f.targetGeneration)).toEqual(f.first.share)
+  })

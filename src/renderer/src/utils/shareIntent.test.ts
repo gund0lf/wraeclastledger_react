@@ -160,7 +160,6 @@ it('explains why copying is blocked without encryption and preserves an older lo
   const service = new AuthorHandoffService({ origin: 'http://127.0.0.1:43181',
     vault: new AuthorHandoffVault(directory, { isEncryptionAvailable: () => false, encryptString,
       decryptString: () => { throw Error('No encrypted store') } }), exchange, readClipboard,
-    shareIntent: (...args) => f.repository.prepareShareIntent(...args),
     readShareCore: (...args) => f.repository.readShareCore(...args) })
   await service.handle({ action: 'activate', context: f.context })
   expect(await service.handle({ action: 'publication', context: f.context, core, metadata,
@@ -204,7 +203,6 @@ it('production handoff persists before Copy; re-preparation and name confirmatio
     vault: new AuthorHandoffVault(join(f.root, 'vault'), { isEncryptionAvailable: () => true,
       encryptString: v => Buffer.from(v), decryptString: v => v.toString() }),
     readClipboard: () => { throw Error('No implicit clipboard') }, exchange,
-    shareIntent: (...args) => f.repository.prepareShareIntent(...args),
     readShareCore: (...args) => f.repository.readShareCore(...args) })
   const prepare = async (confirmation: boolean, context = f.context) => {
     await service.handle({ action: 'activate', context })
@@ -225,7 +223,7 @@ it('production handoff persists before Copy; re-preparation and name confirmatio
   const first = await prepare(false)
   expect(first[0]).toBe(7)
   expect(await prepare(false)).toEqual(first)
-  expect((await service.handle({ action: 'cancel-publication', context: f.context, sessionIdentity: f.sessionIdentity })).ok).toBe(true)
+  expect((await service.handle({ action: 'cancel-publication', context: f.context, sessionIdentity: f.sessionIdentity })).ok).toBe(false)
   const confirmed = await prepare(true)
   expect(confirmed[2].share_intent_id).toBe(first[2].share_intent_id)
   expect(confirmed[2].confirmation_request_id).not.toBeNull()
@@ -257,7 +255,6 @@ it('an uncertain durable preparation keeps its persisted identity for a retry th
     vault: new AuthorHandoffVault(join(f.root, 'vault'), { isEncryptionAvailable: () => true,
       encryptString: v => Buffer.from(v), decryptString: v => v.toString() }),
     readClipboard: () => { throw Error('No clipboard') }, exchange,
-    shareIntent: (...args) => f.repository.prepareShareIntent(...args),
     readShareCore: (...args) => f.repository.readShareCore(...args) })
   await service.handle({ action: 'activate', context: f.context })
   const request = { action: 'publication', context: f.context, core, metadata, confirmation: false,
