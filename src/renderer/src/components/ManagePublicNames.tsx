@@ -5,7 +5,7 @@ import { forgetAuthor, invalidateAuthorEpoch } from '../../../shared/authorRecog
 import { normalizePublicAuthorName, PUBLIC_NAME_RETENTION_NOTICE, PUBLIC_NAME_RETIRE_NOTICE } from '../../../shared/authorNames'
 import { useSessionStore } from '../store/useSessionStore'
 import { AuthorConfirmationPanel } from './AuthorConfirmationPanel'
-import { COLOR } from '../utils/uiTokens'
+import { COLOR, FONT } from '../utils/uiTokens'
 
 const inputStyles = { input: { background: COLOR.bgInset } }
 
@@ -102,11 +102,11 @@ export function ManagePublicNames({ opened, onClose, selectedStrategy, embedded 
           </Group>
         </Stack>
         <Stack gap={4} align="flex-end">
-          {embedded && r.confirmed && preferences.defaultRegistrationId !== r.registrationId && <Button size="compact-xs" variant="subtle" color="gray" c={COLOR.textSoft}
+          {embedded && r.confirmed && preferences.defaultRegistrationId !== r.registrationId && <Button size="compact-xs" variant="subtle" color="gray" c={COLOR.accent}
             onClick={() => { const latest = useSessionStore.getState(); latest.setAuthorPreferences({ ...latest.authorPreferences, defaultRegistrationId: r.registrationId }) }}>Make default</Button>}
           {!r.confirmed && <Button size="compact-xs" variant="subtle" color="gray" c={COLOR.textSoft} disabled={!!request}
             onClick={() => { setKind('recovery'); setRegistration(r.registrationId); setActionOpen(true) }}>Recover</Button>}
-          <Button size="compact-xs" variant="subtle" color="gray" c={COLOR.textSoft} onClick={() => { setForgetId(r.registrationId); setReplacement(null) }}>
+          <Button size="compact-xs" variant="subtle" color="gray" c={COLOR.accent} onClick={() => { setForgetId(r.registrationId); setReplacement(null) }}>
             {embedded ? 'Forget on this PC' : 'Forget locally'}</Button>
           {embedded && r.confirmed && <Button size="compact-xs" variant="subtle" color="gray" c={COLOR.loss} disabled={!!request}
             onClick={() => { setKind('unregister'); setRegistration(r.registrationId); setActionOpen(true) }}>Retire name…</Button>}
@@ -117,7 +117,7 @@ export function ManagePublicNames({ opened, onClose, selectedStrategy, embedded 
         {preferences.defaultRegistrationId === forgetId && <Select size="xs" label="Replacement default" styles={inputStyles} value={replacement ?? ''}
           allowDeselect={false} onChange={(v) => setReplacement(v || null)} data={[{ value: '', label: 'Choose each time' },
             ...preferences.registrations.filter((r) => r.confirmed && r.registrationId !== forgetId).map((r) => ({ value: r.registrationId, label: r.name }))]} />}
-        <Group><Button size="xs" variant="subtle" color="gray" c={COLOR.textDim} onClick={() => setForgetId(null)}>Keep</Button>
+        <Group justify="center"><Button size="xs" variant="subtle" color="gray" c={COLOR.textDim} onClick={() => setForgetId(null)}>Keep</Button>
           <Button size="xs" variant="filled" onClick={() => {
             useSessionStore.getState().setAuthorPreferences(forgetAuthor(preferences, forgetId,
               { replacementDefault: preferences.defaultRegistrationId === forgetId ? replacement : preferences.defaultRegistrationId }))
@@ -125,7 +125,7 @@ export function ManagePublicNames({ opened, onClose, selectedStrategy, embedded 
           }}>{embedded ? 'Forget on this PC' : 'Forget locally'}</Button></Group>
       </Stack>}
       {embedded && <Stack gap={6}>
-        <Text size="xs" c="dimmed">Lost a name after reinstalling? Recover it with a private Discord code.</Text>
+        <Text size="xs" c="dimmed" ta="center">Lost a name after reinstalling? Recover it with a private Discord code.</Text>
         <Button size="xs" variant="subtle" disabled={!!request} onClick={() => { setKind('recovery'); setActionOpen(true) }}>Recover your name</Button>
       </Stack>}
       {(!embedded || actionOpen) && <>
@@ -137,12 +137,12 @@ export function ManagePublicNames({ opened, onClose, selectedStrategy, embedded 
           { value: 'reassignment', label: 'Reassign my eligible strategies' },
           { value: 'unregister', label: 'Retire a public name' },
         ]} />}
-      {embedded && <Text size="sm" fw={600} ta={kind === 'unregister' ? 'center' : undefined}>{kind === 'unregister' ? 'Retire this name' : 'Recover your name'}</Text>}
+      {embedded && <Text size="sm" fw={600} ta="center">{kind === 'unregister' ? 'Retire this name' : 'Recover your name'}</Text>}
       {kind === 'initial_assignment' && <TextInput size="xs" label="Public author name" styles={inputStyles} value={name} maxLength={256}
         disabled={!!request} onChange={(e) => setName(e.currentTarget.value)} />}
       {kind === 'initial_assignment' && <Text size="xs" c="dimmed">{PUBLIC_NAME_RETENTION_NOTICE}</Text>}
       {embedded && kind === 'unregister'
-        ? <Text size="sm" fw={600} ta="center" mt={-6} aria-label="Name to retire">{preferences.registrations.find((r) => r.registrationId === registration)?.name ?? 'Name no longer saved on this PC'}</Text>
+        ? <Text fw={700} ta="center" mt={-6} style={{ fontSize: FONT.lg }} aria-label="Name to retire">{preferences.registrations.find((r) => r.registrationId === registration)?.name ?? 'Name no longer saved on this PC'}</Text>
         : (kind === 'reassignment' || kind === 'unregister') && <Select size="xs" label="Confirmed public name" styles={inputStyles} value={registration}
           disabled={!!request} onChange={setRegistration} data={preferences.registrations.filter((r) => r.confirmed).map((r) => ({ value: r.registrationId, label: r.name }))} />}
       {kind === 'unregister' ? !request && <Alert color="orange" p="xs"><Stack gap={5}>
@@ -167,7 +167,7 @@ export function ManagePublicNames({ opened, onClose, selectedStrategy, embedded 
     </Stack>
     </div>
     {embedded && <div className="share-footer" style={{ borderTop: `1px solid ${COLOR.borderSoft}` }}>
-      <Button size="xs" variant="subtle" color="gray" c={COLOR.textDim} fullWidth onClick={onClose}>Done</Button>
+      <Button size="sm" variant="default" styles={{ root: { background: COLOR.bgInset } }} fullWidth onClick={onClose}>Done</Button>
     </div>}
   </>
   return embedded ? <section role="region" aria-label="Public names" style={{ display: 'flex', flexDirection: 'column', flex: '0 1 auto', minHeight: 0 }}>{content}</section>

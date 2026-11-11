@@ -62,7 +62,7 @@ function ShareTagsField({ value, onChange, disabled }: {
   return <Stack gap={4}>
     <Text size="xs" fw={500}>Tags</Text>
     <Combobox store={dropdown} withinPortal={false} onOptionSubmit={(tag) => {
-      onChange([...value, tag]); dropdown.closeDropdown();
+      onChange([...value, tag]); setSearch(''); dropdown.resetSelectedOption(); dropdown.focusSearchInput();
     }}>
       <Combobox.DropdownTarget><Group gap={5} aria-label="Tags" w="100%">
         {value.map((tag) => <Pill key={tag} size="sm" withRemoveButton={!disabled}
@@ -843,9 +843,10 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
             </Group>
           )}
         </Stack>
-        <Stack gap={2}>
+        <Stack gap={4}>
+          <Text size="xs" fw={500} component="label" htmlFor="share-session-time">{postedDetails || capturedTime?.activeMs ? 'Session time' : 'Session time optional'}</Text>
           <Group gap="xs" align="flex-end">
-            <TextInput size="xs" w={90} style={{ flexShrink: 0 }} label={postedDetails ? 'Session time' : capturedTime?.activeMs ? 'Session time' : 'Session time optional'}
+            <TextInput size="xs" id="share-session-time" w={90} style={{ flexShrink: 0 }}
               placeholder={sharePosted ? undefined : 'e.g. 245 or 4h'}
               disabled={shareTracking || sharePosted}
               rightSection={/[a-z]/i.test(postedDetails?.time ?? timeText) ? undefined : <Text size="xs" c={COLOR.textDim}>min</Text>}
