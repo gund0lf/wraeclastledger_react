@@ -68,6 +68,54 @@ function preparedInput() {
     core: JSON.stringify([4, 0, ...Array(10).fill(null)]), metadata: {
       author: { name: 'Synthetic Author', registration_id: null }, expected_revision: null, confirmation_request_id: null } }
 }
+it.each(['missing', 'empty'])('%s sharing directory does not open the keyring or create files during startup observation', async state => {
+  const f = await fixture(), directory = state === 'missing' ? join(f.directory, 'private') : f.directory
+  const secure = { isEncryptionAvailable: vi.fn(() => { throw new Error('Keyring must stay closed') }),
+    encryptString: vi.fn(f.secure.encryptString), decryptString: vi.fn(f.secure.decryptString) }
+  const vault = new AuthorHandoffVault(directory, secure), cancel = vi.fn(async () => undefined)
+  await vault.discardInterrupted(cancel)
+  expect(await vault.durableTrackingShares()).toEqual([])
+  expect(await vault.readableDurableDraft('session')).toBeNull()
+  expect(cancel).not.toHaveBeenCalled()
+  expect(secure.isEncryptionAvailable).not.toHaveBeenCalled()
+  expect(secure.encryptString).not.toHaveBeenCalled()
+  expect(secure.decryptString).not.toHaveBeenCalled()
+  expect(fault.events).toEqual([])
+  expect(await readdir(f.directory)).toEqual([])
+  if (state === 'missing') await expect(readdir(directory)).rejects.toMatchObject({ code: 'ENOENT' })
+})
+it('a file-read error stays an I/O refusal without opening the keyring', async () => {
+  const f = await fixture()
+  await f.vault.prepare('session', 'generation')
+  const bytes = await readFile(f.file)
+  const secure = { isEncryptionAvailable: vi.fn(() => { throw new Error('Keyring must stay closed') }),
+    encryptString: vi.fn(f.secure.encryptString), decryptString: vi.fn(f.secure.decryptString) }
+  const vault = new AuthorHandoffVault(f.directory, secure)
+  fault.phase = 'read'
+  await expect(vault.discardInterrupted(vi.fn())).rejects.toEqual(new ProtectedShareStorageError('io'))
+  expect(secure.isEncryptionAvailable).not.toHaveBeenCalled()
+  expect(secure.decryptString).not.toHaveBeenCalled()
+  expect(secure.encryptString).not.toHaveBeenCalled()
+  fault.phase = ''
+  expect(await readFile(f.file)).toEqual(bytes)
+})
+it.each(['unavailable', 'OS-error', 'encrypt-error'])('first save with %s protection creates no plaintext or remote preparation', async failure => {
+  const f = await fixture()
+  const secure = { isEncryptionAvailable: vi.fn(() => {
+    if (failure === 'OS-error') throw new Error('Synthetic operating system error')
+    return failure !== 'unavailable'
+  }), encryptString: vi.fn(() => { throw new Error('Synthetic encryption error') }),
+  decryptString: vi.fn(f.secure.decryptString) }
+  const vault = new AuthorHandoffVault(f.directory, secure), exchange = vi.fn(async () => undefined)
+  await expect(vault.prepareDurable(preparedInput(), exchange))
+    .rejects.toEqual(new ProtectedShareStorageError('encryption_unavailable'))
+  expect(exchange).not.toHaveBeenCalled()
+  expect(secure.isEncryptionAvailable).toHaveBeenCalledTimes(1)
+  expect(secure.encryptString).toHaveBeenCalledTimes(failure === 'encrypt-error' ? 1 : 0)
+  expect(secure.decryptString).not.toHaveBeenCalled()
+  expect(fault.events).toEqual([])
+  expect(await readdir(f.directory)).toEqual([])
+})
 it('flushes and closes the exclusive encrypted candidate before replacing the current store', async () => {
   const f = await fixture()
   const prepared = await f.vault.prepare('session', 'generation')
@@ -126,8 +174,16 @@ it('holds a missing current store with an interrupted candidate without inspecti
   const f = await fixture(), pending = join(f.directory, `author-handoffs.${randomUUID()}.pending`)
   const bytes = f.secure.encryptString(JSON.stringify({ version: 1, installationId: randomUUID(), pending: [] }))
   await writeFile(pending, bytes)
-  for (const read of [() => f.vault.durableShares(), () => f.vault.readableDurableDraft('session'), () => f.vault.prepare('session', 'next')])
+  const secure = { isEncryptionAvailable: vi.fn(() => { throw new Error('Keyring must stay closed') }),
+    encryptString: vi.fn(f.secure.encryptString), decryptString: vi.fn(f.secure.decryptString) }
+  const vault = new AuthorHandoffVault(f.directory, secure), cancel = vi.fn(async () => undefined)
+  for (const read of [() => vault.discardInterrupted(cancel), () => vault.durableShares(),
+    () => vault.readableDurableDraft('session'), () => vault.prepare('session', 'next')])
     await expect(read()).rejects.toEqual(new ProtectedShareStorageError('recovery_required'))
+  expect(cancel).not.toHaveBeenCalled()
+  expect(secure.isEncryptionAvailable).not.toHaveBeenCalled()
+  expect(secure.encryptString).not.toHaveBeenCalled()
+  expect(secure.decryptString).not.toHaveBeenCalled()
   expect(await readFile(pending)).toEqual(bytes)
   expect(await readdir(f.directory)).toEqual([pending.split(/[\\/]/).at(-1)])
 })
@@ -142,10 +198,17 @@ it.each(['unavailable', 'OS-error'])('%s encryption never falls back to plaintex
   const f = await fixture()
   await f.vault.prepare('session', 'generation')
   const bytes = await readFile(f.file)
-  const vault = new AuthorHandoffVault(f.directory, { ...f.secure, isEncryptionAvailable: () => {
+  const secure = { isEncryptionAvailable: vi.fn(() => {
     if (failure === 'OS-error') throw new Error('Private operating system error')
     return false
-  } })
-  await expect(vault.prepare('session', 'next')).rejects.toEqual(new ProtectedShareStorageError('encryption_unavailable'))
+  }), encryptString: vi.fn(f.secure.encryptString), decryptString: vi.fn(f.secure.decryptString) }
+  const vault = new AuthorHandoffVault(f.directory, secure), cancel = vi.fn(async () => undefined)
+  for (const read of [() => vault.discardInterrupted(cancel), () => vault.durableTrackingShares(),
+    () => vault.prepare('session', 'next')])
+    await expect(read()).rejects.toEqual(new ProtectedShareStorageError('encryption_unavailable'))
+  expect(secure.isEncryptionAvailable).toHaveBeenCalledTimes(3)
+  expect(cancel).not.toHaveBeenCalled()
+  expect(secure.decryptString).not.toHaveBeenCalled()
+  expect(secure.encryptString).not.toHaveBeenCalled()
   expect(await readFile(f.file)).toEqual(bytes)
 })

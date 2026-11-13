@@ -144,6 +144,13 @@ export class AuthorHandoffVault {
     private protection: Protection,
     private now = Date.now
   ) {}
+  /** Deliberate sharing checks protection before contacting the service.
+   * Empty-history startup observation does not need to open the key store. */
+  requireEncryptionAvailable(): void {
+    try {
+      if (!this.protection.isEncryptionAvailable()) throw new Error('Encryption unavailable')
+    } catch { throw new ProtectedShareStorageError('encryption_unavailable') }
+  }
   private rememberCompleted(records: DurableShareRecord[]): void {
     for (const record of records) {
       const snapshot = { core: record.draft!.core, author: { ...record.draft!.metadata.author } }
@@ -180,9 +187,6 @@ export class AuthorHandoffVault {
     }
   }
   private async load(persistCompaction = true): Promise<VaultRecord> {
-    try {
-      if (!this.protection.isEncryptionAvailable()) throw new Error('Encryption unavailable')
-    } catch { throw new ProtectedShareStorageError('encryption_unavailable') }
     let bytes: Buffer
     try {
       bytes = await readFile(join(this.directory, 'author-handoffs.enc'))
@@ -193,6 +197,9 @@ export class AuthorHandoffVault {
       }
       throw new ProtectedShareStorageError('io')
     }
+    // Observing a fresh profile must not open the system keyring. Existing
+    // history still requires protection, and every save checks it independently.
+    this.requireEncryptionAvailable()
     let data: VaultRecord
     try { data = JSON.parse(this.protection.decryptString(bytes)) as VaultRecord }
     catch { throw new ProtectedShareStorageError('damaged') }
@@ -296,7 +303,7 @@ export class AuthorHandoffVault {
       const fresh: VaultRecord = { version: 1, installationId: randomUUID(), recoveredAt, pending: [] }
       let bytes: Buffer
       try {
-        if (!this.protection.isEncryptionAvailable()) throw new Error('Encryption unavailable')
+        this.requireEncryptionAvailable()
         bytes = this.protection.encryptString(JSON.stringify(fresh))
       } catch { throw new ProtectedShareStorageError('encryption_unavailable') }
       // A candidate exists before any old file is moved. If interrupted, normal
@@ -480,7 +487,7 @@ export class AuthorHandoffVault {
     if (!fullRecordsFit(data, true)) throw new ProtectedShareStorageError('full')
     let bytes: Buffer
     try {
-      if (!this.protection.isEncryptionAvailable()) throw new Error('Encryption unavailable')
+      this.requireEncryptionAvailable()
       bytes = this.protection.encryptString(JSON.stringify(data))
     } catch { throw new ProtectedShareStorageError('encryption_unavailable') }
     try {

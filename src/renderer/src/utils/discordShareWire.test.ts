@@ -256,17 +256,24 @@ describe('compact Discord share wire', () => {
     expect(decodeDiscordShareWire(encodeDiscordShareWire(source))?.lootSummary).toEqual(loot);
   });
 
-  it.each([5, 6])('imports v%s without treating metadata as recognition or load authority', (version) => {
-    const core = buildDiscordSharePayload(parsed());
+  it.each([5, 6, 7])('imports v%s unchanged without treating metadata as recognition or load authority', (version) => {
+    const source = parsed(), core = buildDiscordSharePayload(source);
     const meta = { author: { name: 'Example', registration_id: '11111111-1111-4111-8111-111111111111' },
       expected_revision: null, confirmation_request_id: '22222222-2222-4222-8222-222222222222',
-      ...(version === 6 ? { share_intent_id: '33333333-3333-4333-8333-333333333333' } : {}) };
+      ...(version >= 6 ? { share_intent_id: '33333333-3333-4333-8333-333333333333' } : {}),
+      ...(version === 7 ? { draft_revision: 2 } : {}) };
     const payload = buildAuthorSubmission(core, meta);
+    expect(JSON.parse(payload)[0]).toBe(version);
     expect(() => encodeDiscordShareBrotli(payload)).toThrow();
     const decoded = decodeDiscordSharePayload(decodeDiscordShareBrotli(encodeDiscordShareBrotli(payload, true)));
+    // Import's Brotli branch must preserve the same data as its legacy parser.
+    const importedCore = parseDiscordExport(encodeDiscordShareWire(source));
+    expect(importedCore).toEqual({ ...source, slamRegex: '' });
+    expect(decoded).toEqual(importedCore);
     expect(decoded).toEqual(decodeDiscordSharePayload(core));
     expect(decoded).not.toHaveProperty('author');
     expect(decoded).not.toHaveProperty('share_intent_id');
+    expect(decoded).not.toHaveProperty('draft_revision');
     expect(decodeDiscordSharePayload(JSON.stringify([version, JSON.parse(core), { ...meta, reader_secret: 'forbidden' }]))).toBeNull();
     expect(decodeDiscordSharePayload(JSON.stringify([version, [version, JSON.parse(core), meta], meta]))).toBeNull();
   });

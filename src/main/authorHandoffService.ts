@@ -427,6 +427,7 @@ export class AuthorHandoffService {
         await this.options.vault.recoveryRequiredForSession(sessionCreatedAt) &&
         !await this.options.vault.durableForSession(sessionIdentity, null))
         throw new ShareRecoveryConfirmationError()
+      this.options.vault.requireEncryptionAvailable()
       const state = await this.dispatch({ action: 'state' }) as AuthorServiceState
       await this.selectedSession(c, sessionIdentity)
       this.requireContext(c)

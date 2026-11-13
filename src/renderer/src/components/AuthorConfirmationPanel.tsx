@@ -6,6 +6,7 @@ import { acceptExactNameVerification, applyAuthorRecovery, applyReviewedNameVeri
 import { useSessionStore } from '../store/useSessionStore'
 import { flushRepositoryNow } from '../repository/sessionRepositoryRuntime'
 import { startAuthorPolling } from '../utils/authorPolling'
+import { authorCommandHelp } from '../utils/authorCommandHelp'
 import { PUBLIC_NAME_RETIRE_NOTICE } from '../../../shared/authorNames'
 import { COLOR, FONT } from '../utils/uiTokens'
 
@@ -163,7 +164,7 @@ export function AuthorConfirmationPanel({ context, request, action, onCancel, on
       <details>
         <summary style={{ color: COLOR.accent, cursor: 'pointer', fontSize: FONT.body }}>No code arrived?</summary>
         <Stack gap="xs" mt={6}>
-          <Text size="xs">In the sharing channel, type /wledger-author, choose action: confirmation and paste the request ID. The reply is private.</Text>
+          <Text size="xs">{authorCommandHelp('confirmation')}</Text>
           <CopyButton value={request.request_id}>{({ copied, copy }) => <Button size="compact-xs" variant="default" onClick={copy}>{copied ? 'Request copied' : 'Copy request ID'}</Button>}</CopyButton>
         </Stack>
       </details>
@@ -183,7 +184,7 @@ export function AuthorConfirmationPanel({ context, request, action, onCancel, on
       <CopyButton value={request.request_id}>{({ copied, copy }) =>
         <Button size="xs" variant="filled" onClick={copy}>{copied ? 'Request copied' : 'Copy request ID'}</Button>
       }</CopyButton>
-      <Text size="xs">In the sharing channel, type /wledger-author, choose action: {action} and paste the request ID. The reply is private.</Text>
+      <Text size="xs">{authorCommandHelp(action)}</Text>
       <Text size="xs" c="dimmed">Use it by {new Date(request.expires_at).toLocaleTimeString()}.</Text>
     </>}
     <Group justify="flex-end"><Button size="compact-xs" variant="subtle" c={COLOR.textDim} onClick={onCancel}>Close confirmation</Button></Group>

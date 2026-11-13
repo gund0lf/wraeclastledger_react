@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID, createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
@@ -105,6 +105,51 @@ async function tracked(service: AuthorHandoffService, status: string) {
   await vi.waitFor(async () => expect((await value(service, { action: 'share-results' }))[0]?.status).toBe(status))
   service.stopOperationTracking()
 }
+
+it('starts empty without opening the keyring and tracks the first later share without restarting the service', async () => {
+  const f = await fixture()
+  const secure = { isEncryptionAvailable: vi.fn((): boolean => { throw new Error('Keyring must stay closed') }),
+    encryptString: vi.fn(protection.encryptString), decryptString: vi.fn(protection.decryptString) }
+  const service = f.create(secure), c = context()
+  await service.startOperationTracking()
+  expect(await value(service, { action: 'share-results' })).toEqual([])
+  expect(f.exchange).not.toHaveBeenCalled()
+  expect(secure.isEncryptionAvailable).not.toHaveBeenCalled()
+  expect(secure.encryptString).not.toHaveBeenCalled()
+  expect(secure.decryptString).not.toHaveBeenCalled()
+  expect(await readdir(f.directory)).toEqual([])
+
+  secure.isEncryptionAvailable.mockImplementation(() => true)
+  await value(service, { action: 'activate', context: c })
+  const prepared = await value(service, f.publication(c))
+  f.complete()
+  await vi.waitFor(async () => expect((await value(service, { action: 'share-results' }))[0])
+    .toMatchObject({ id: prepared.share.id, status: 'complete', outcome: f.outcome }))
+  expect(secure.encryptString).toHaveBeenCalled()
+  expect(secure.decryptString).toHaveBeenCalled()
+  expect(f.calls.filter(call => call.init.method === 'PUT')).toHaveLength(1)
+  const bytes = await readFile(join(f.directory, 'author-handoffs.enc'))
+  expect(bytes.includes(Buffer.from(prepared.share.id))).toBe(false)
+  expect(bytes.includes(Buffer.from(identity))).toBe(false)
+  expect((await f.vault().durableForSession(identity, null))?.id).toBe(prepared.share.id)
+})
+
+it.each(['publication', 'replace', 'evidence'] as const)('%s checks secure storage before any service request after empty startup', async kind => {
+  const f = await fixture(kind)
+  const secure = { isEncryptionAvailable: vi.fn(() => false),
+    encryptString: vi.fn(protection.encryptString), decryptString: vi.fn(protection.decryptString) }
+  const service = f.create(secure), c = context()
+  await service.startOperationTracking()
+  expect(secure.isEncryptionAvailable).not.toHaveBeenCalled()
+  await value(service, { action: 'activate', context: c })
+  expect(await service.handle(f.publication(c))).toMatchObject({ ok: false, storageCode: 'encryption_unavailable' })
+  expect(secure.isEncryptionAvailable).toHaveBeenCalledTimes(1)
+  expect(secure.encryptString).not.toHaveBeenCalled()
+  expect(secure.decryptString).not.toHaveBeenCalled()
+  expect(f.exchange).not.toHaveBeenCalled()
+  expect(f.clipboard).not.toHaveBeenCalled()
+  expect(await readdir(f.directory)).toEqual([])
+})
 
 it.each(['publication','replace','evidence'] as const)('%s uses a private durable result, never a code or consume request', async kind => {
   const f = await prepared(kind)

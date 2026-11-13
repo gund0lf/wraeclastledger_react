@@ -17,6 +17,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Share now puts the sharing action and public name first, with a Public names panel for defaults and retirement. The card preview stays available, and the result and main button remain visible while you scroll.',
       'Prepared shares and their results survive closing Share and restarting the app. Shared, Run added or Replaced appears after the Discord card is updated; connection problems keep checking without guessing that a share failed.',
       'Sharing preserves unfinished saves and explains storage or encryption problems. If local sharing history cannot be read, you can start a new sharing history while keeping the old files. Posted strategies stay unchanged, and sessions from before the reset ask before sharing as new. Older unposted shares check less often in the background; reopening Share checks their status again.',
+      'Linux startup no longer opens the keyring when no sharing history exists. Secure storage is still required to share. On Linux, if you have shared before and your keyring is locked when the app starts (for example with auto-login), the system asks to unlock it, and the app may not respond until you answer.',
       'Posting the same prepared share twice keeps one strategy. Editing before posting updates that share, so an older copy cannot create an accidental duplicate. Use Continue in the Strategy Browser to add a run or replace published results.',
       'Sharing refusals arrive privately and repeated pastes are removed. If DMs are unavailable, a notice without a name or mention stays until the next successful share. Sharing limits explain how long to wait.',
       'Retiring a public name shows Anonymous in the Strategy Browser and website; existing Discord cards keep their name until removed. Slow name actions and moderation removals report pending work honestly, including any Discord card cleanup still needed.',
@@ -24,6 +25,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Automatic map Capture keeps running when Atlas Tree opens or a page changes within the same document. Full app reloads still invalidate pending reads, and cancelling a quit no longer stops Linux capture.',
       'Updated the desktop engine to Electron 44 with security and compatibility updates, including delayed clipboard reads and Linux overlay opacity.',
       'Online holds and update-required responses explain what is unavailable while local tracking remains usable. Retrospectives preserve recorded results, and loading a strategy still starts a fresh run without historical prices.',
+      'After the sharing-service update is activated, new publications copied by older apps ask you to update and copy again. Already published strategies and local imports are unchanged.',
     ],
   },
   {
