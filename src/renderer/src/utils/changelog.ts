@@ -24,6 +24,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Strategy Browser uses public names and preserves the expandable loot and setup views. Titles, tags and run counts are easier to scan, recorded historical Divine totals remain available, and missing historical values stay labelled as unrecorded.',
       'Automatic map Capture keeps running when Atlas Tree opens or a page changes within the same document. Full app reloads still invalidate pending reads, and cancelling a quit no longer stops Linux capture.',
       'Updated the desktop engine to Electron 44 with security and compatibility updates, including delayed clipboard reads and Linux overlay opacity.',
+      'Set overlay timer and counter shortcuts by pressing the keys you want to use. Single-key shortcuts can take over a key in the game and other apps while WraeclastLedger is running. Change or clear a shortcut in Run Statistics.',
       'Online holds and update-required responses explain what is unavailable while local tracking remains usable. Retrospectives preserve recorded results, and loading a strategy still starts a fresh run without historical prices.',
       'After the sharing-service update is activated, new publications copied by older apps ask you to update and copy again. Already published strategies and local imports are unchanged.',
     ],

@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, clipboard, dialog, globalShortcut, 
 import { AuthorHandoffVault } from './authorHandoffVault'
 import { AuthorHandoffService } from './authorHandoffService'
 import { ClipboardWatcher } from './clipboardWatcher'
+import { assertOverlayRecorderOwner, OverlayShortcuts } from './overlayShortcuts'
 import { isClipboardWatchToken, isMainClipboardSender, observeClipboardDocumentReplacement } from '../shared/clipboardCapture'
 import { authorServiceOrigin } from '../shared/strategyApi'
 import { AUTHOR_HANDOFF_CHANNEL } from '../shared/authorHandoff'
@@ -206,6 +207,9 @@ async function continueQuit(reason: RepositoryQuitReason, mainWindow: BrowserWin
     })
   } catch (error) {
     console.error('[Session repository] Close protocol failed:', error)
+    if (reason === 'app-quit' && !quitBypass && !rendererFlushUnavailable && !mainWindow.isDestroyed()) {
+      overlayShortcuts.sync(lastOverlayPreferences)
+    }
   } finally {
     quitInProgress = false
   }
@@ -247,7 +251,7 @@ let overlayBoundsInteraction: {
   screenY: number;
   bounds: OverlayBounds;
 } | null = null;
-const overlayShortcutRegistrations = new Set<string>();
+const overlayShortcuts = new OverlayShortcuts(globalShortcut, sendOverlayAction);
 let clipboardBridgeProcess: ChildProcessWithoutNullStreams | null = null;
 let clipboardBridgeGeneration = 0;
 let clipboardBridgeStatus: ClipboardBridgeStatus = { state: 'idle' };
@@ -255,49 +259,6 @@ let clipboardBridgeStatus: ClipboardBridgeStatus = { state: 'idle' };
 function sendOverlayAction(action: OverlayAction): void {
   const win = mainWindowRef;
   if (win && !win.isDestroyed()) win.webContents.send('overlay:action', action);
-}
-
-function unregisterOverlayShortcuts(): void {
-  for (const accelerator of overlayShortcutRegistrations) {
-    globalShortcut.unregister(accelerator);
-  }
-  overlayShortcutRegistrations.clear();
-}
-
-function registerOverlayShortcuts(preferences: OverlayPreferences): OverlayShortcutStatus {
-  unregisterOverlayShortcuts();
-  const register = (
-    accelerator: string,
-    action: OverlayAction,
-  ): { accelerator: string; registered: boolean; error: string | null } | null => {
-    if (!accelerator) return null;
-    try {
-      const registered = globalShortcut.register(accelerator, () => sendOverlayAction(action));
-      if (registered) overlayShortcutRegistrations.add(accelerator);
-      return {
-        accelerator,
-        registered,
-        error: registered ? null : 'Unavailable or already registered by another application',
-      };
-    } catch (error) {
-      return {
-        accelerator,
-        registered: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  };
-  const counters: OverlayShortcutStatus['counters'] = {};
-  for (const counterId of preferences.counterIds) {
-    const result = register(preferences.counterShortcuts[counterId] ?? '', {
-      type: 'counter-delta', counterId, delta: 1,
-    });
-    if (result) counters[counterId] = result;
-  }
-  return {
-    timer: register(preferences.timerShortcut, { type: 'timer-toggle' }),
-    counters,
-  };
 }
 
 function visibleOverlayBounds(preferences: OverlayPreferences): OverlayBounds {
@@ -394,7 +355,7 @@ function syncOverlayWindow(rawPreferences: unknown): OverlayShortcutStatus {
   if (preferences.locked || preferences.clickThrough || !preferences.visible) {
     overlayBoundsInteraction = null;
   }
-  const shortcutStatus = registerOverlayShortcuts(preferences);
+  const shortcutStatus = overlayShortcuts.sync(preferences);
   if (!preferences.visible) {
     if (overlayWindow && !overlayWindow.isDestroyed()) overlayWindow.destroy();
     overlayWindow = null;
@@ -414,8 +375,12 @@ function syncOverlayWindow(rawPreferences: unknown): OverlayShortcutStatus {
   return shortcutStatus;
 }
 
-ipcMain.handle('overlay:sync-preferences', (_event, preferences: unknown) =>
-  syncOverlayWindow(preferences));
+ipcMain.handle('overlay:sync-preferences', (event, preferences: unknown, token?: unknown, recording?: unknown) => {
+  if (token === undefined && recording === undefined) return syncOverlayWindow(preferences);
+  assertOverlayRecorderOwner(mainWindowRef, event.sender, event.senderFrame, recording);
+  if (preferences !== null) throw new Error('Invalid shortcut recording request.');
+  return overlayShortcuts.setRecording(token, recording, lastOverlayPreferences);
+});
 ipcMain.on('overlay:snapshot', (_event, snapshot: OverlaySnapshot) => {
   lastOverlaySnapshot = snapshot;
   if (overlayWindow && !overlayWindow.isDestroyed()) {
@@ -1241,8 +1206,10 @@ function createWindow(): void {
   mainWindowRef = mainWindow;
 
   mainWindow.on('ready-to-show', () => mainWindow.show());
+  mainWindow.on('blur', () => overlayShortcuts.finishRecording(lastOverlayPreferences));
   mainWindow.on('page-title-updated', (e) => e.preventDefault());
   mainWindow.on('close', (event) => {
+    overlayShortcuts.finishRecording(lastOverlayPreferences)
     if (quitBypass) return
     event.preventDefault()
     void continueQuit('window-close', mainWindow)
@@ -1254,8 +1221,10 @@ function createWindow(): void {
     // frames keep this document alive. A committed replacement invalidates old
     // reads; its new renderer hydrates paused and owns a fresh activation token.
     if (watchWindow === mainWindow) setClipboardWatch(false);
+    overlayShortcuts.stop();
   });
   mainWindow.webContents.on('render-process-gone', () => {
+    overlayShortcuts.stop()
     setClipboardWatch(false)
     rendererFlushUnavailable = true
     for (const [requestId, resolve] of rendererFlushWaiters) {
@@ -1281,6 +1250,7 @@ function createWindow(): void {
   watchWindow = mainWindow;
 
   mainWindow.on('closed', () => {
+    overlayShortcuts.stop();
     setClipboardWatch(false);
     watchWindow = null;
     mainWindowRef = null;
@@ -1322,7 +1292,7 @@ if (!hasSingleInstanceLock) {
   app.on('will-quit', () => { setClipboardWatch(false); authorHandoffs.stopOperationTracking(); });
   app.on('before-quit', (event) => {
     // Capture stops at will-quit/closed, not while a final save may cancel quit.
-    unregisterOverlayShortcuts()
+    overlayShortcuts.stop()
     if (quitBypass) return
     const mainWindow = watchWindow
     if (!mainWindow || mainWindow.isDestroyed()) return

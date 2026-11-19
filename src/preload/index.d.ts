@@ -38,6 +38,7 @@ declare global {
       onSessionRepositoryFlushRequest: (callback: (request: RepositoryFlushRequest) => void) => () => void
       completeSessionRepositoryFlush: (result: RepositoryFlushResult) => void
       syncOverlayPreferences: (preferences: OverlayPreferences) => Promise<OverlayShortcutStatus>
+      setOverlayShortcutRecording: (token: string, recording: boolean) => Promise<OverlayShortcutStatus>
       publishOverlaySnapshot: (snapshot: OverlaySnapshot) => void
       onOverlaySnapshot: (callback: (snapshot: OverlaySnapshot) => void) => () => void
       sendOverlayAction: (action: OverlayAction) => void

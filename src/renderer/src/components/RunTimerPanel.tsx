@@ -12,15 +12,16 @@ import {
   Stack,
   Switch,
   Text,
-  TextInput,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconAdjustments, IconClock, IconPlayerPause, IconPlayerPlay, IconSquare, IconTrash } from '@tabler/icons-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { useSessionKeys } from '../store/useSessionStore';
 import { automaticPaceStatus, computeTimeEstimate } from '../utils/timeEstimate';
 import { formatStopwatch, manualRunTimerElapsed } from '../utils/manualRunTimer';
 import { OVERLAY_COUNTER_OPTIONS, overlayCounterSnapshot } from '../utils/overlayCounters';
+import { sameOverlayShortcut } from '../utils/overlayShortcutRecorder';
+import { OverlayShortcutRecorder } from './OverlayShortcutRecorder';
 import { FONT } from '../utils/uiTokens';
 
 export function RunTimerPanel() {
@@ -32,6 +33,7 @@ export function RunTimerPanel() {
     sessionLifecycle,
     overlayPreferences,
     overlayShortcutStatus,
+    setOverlayShortcutStatus,
     startManualTimer,
     pauseManualTimer,
     finishManualTimer,
@@ -47,6 +49,7 @@ export function RunTimerPanel() {
     'sessionLifecycle',
     'overlayPreferences',
     'overlayShortcutStatus',
+    'setOverlayShortcutStatus',
     'startManualTimer',
     'pauseManualTimer',
     'finishManualTimer',
@@ -56,6 +59,7 @@ export function RunTimerPanel() {
     'setOverlayPreferences',
   );
   const [, setTick] = useState(0);
+  const shortcutHelpId = useId();
   const [settingsOpen, settingsDisclosure] = useDisclosure(false);
   const [resetOpen, resetDisclosure] = useDisclosure(false);
   const [adjustOpen, adjustDisclosure] = useDisclosure(false);
@@ -79,7 +83,14 @@ export function RunTimerPanel() {
   const selectedCounters = overlayPreferences.counterIds
     .map((id) => overlayCounterSnapshot(id, manualStatistics))
     .filter((entry) => entry !== null);
-  const timerShortcut = overlayShortcutStatus?.timer;
+  const shortcuts = [
+    { id: 'timer', label: 'Start / Pause', value: overlayPreferences.timerShortcut },
+    ...selectedCounters.map(counter => ({
+      id: counter.id, label: counter.label, value: overlayPreferences.counterShortcuts[counter.id] ?? '',
+    })),
+  ];
+  const findConflict = (id: string, value: string, isMac: boolean) =>
+    shortcuts.find(other => other.id !== id && sameOverlayShortcut(other.value, value, isMac))?.label;
 
   return (
     <>
@@ -304,41 +315,42 @@ export function RunTimerPanel() {
             onChange={(event) => setOverlayPreferences({ minimal: event.currentTarget.checked })}
           />
 
-          <TextInput
+          <Text id={shortcutHelpId} size="sm" c="dimmed">
+            Shortcuts are global. Binding a single key like 1 can prevent you from using it for a flask
+            in Path of Exile or typing it in other apps while WraeclastLedger is running.
+          </Text>
+          <Text size="sm" c="dimmed">
+            Choose Record, then press and release a keyboard shortcut. Escape cancels.
+            To use a mouse side button, map it to a keyboard shortcut in your mouse software.
+          </Text>
+          <OverlayShortcutRecorder
             label="Start / Pause shortcut"
-            description="Optional Electron accelerator, for example CommandOrControl+Shift+T"
+            helpId={shortcutHelpId}
+            open={settingsOpen}
             value={overlayPreferences.timerShortcut}
-            onChange={(event) => setOverlayPreferences({ timerShortcut: event.currentTarget.value })}
-            error={timerShortcut && !timerShortcut.registered ? timerShortcut.error : undefined}
+            status={overlayShortcutStatus?.timer}
+            conflict={(value, isMac) => findConflict('timer', value, isMac)}
+            onChange={value => setOverlayPreferences({ timerShortcut: value })}
+            onStatus={setOverlayShortcutStatus}
           />
 
           {selectedCounters.length > 0 && (
             <Stack gap="xs">
               <Text size="sm" fw={600}>Optional +1 shortcuts</Text>
-              {selectedCounters.map((counter) => {
-                const status = overlayShortcutStatus?.counters[counter.id];
-                return (
-                  <TextInput
-                    key={counter.id}
-                    size="xs"
-                    label={counter.label}
-                    placeholder="e.g. CommandOrControl+Shift+1"
-                    value={overlayPreferences.counterShortcuts[counter.id] ?? ''}
-                    onChange={(event) => setOverlayPreferences({
-                      counterShortcuts: {
-                        ...overlayPreferences.counterShortcuts,
-                        [counter.id]: event.currentTarget.value,
-                      },
-                    })}
-                    error={status && !status.registered ? status.error : undefined}
-                  />
-                );
-              })}
+              {selectedCounters.map(counter => (
+                <OverlayShortcutRecorder
+                  key={counter.id} label={counter.label} open={settingsOpen} helpId={shortcutHelpId}
+                  value={overlayPreferences.counterShortcuts[counter.id] ?? ''}
+                  status={overlayShortcutStatus?.counters[counter.id]}
+                  conflict={(value, isMac) => findConflict(counter.id, value, isMac)}
+                  onChange={value => setOverlayPreferences({
+                    counterShortcuts: { ...overlayPreferences.counterShortcuts, [counter.id]: value },
+                  })}
+                  onStatus={setOverlayShortcutStatus}
+                />
+              ))}
             </Stack>
           )}
-          <Text c="dimmed" style={{ fontSize: FONT.small }}>
-            Shortcuts are optional and fail visibly when the desktop environment or another application owns them. There is deliberately no Reset shortcut.
-          </Text>
         </Stack>
       </Modal>
     </>

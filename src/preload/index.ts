@@ -44,6 +44,8 @@ const api = {
   },
   syncOverlayPreferences: (preferences: OverlayPreferences): Promise<OverlayShortcutStatus> =>
     ipcRenderer.invoke('overlay:sync-preferences', preferences),
+  setOverlayShortcutRecording: (token: string, recording: boolean): Promise<OverlayShortcutStatus> =>
+    ipcRenderer.invoke('overlay:sync-preferences', null, token, recording),
   publishOverlaySnapshot: (snapshot: OverlaySnapshot): void => {
     ipcRenderer.send('overlay:snapshot', snapshot)
   },
