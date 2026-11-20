@@ -30,9 +30,10 @@
 // (below) auto-selects whichever KNOWN_LEAGUES entry has live data first, so adding
 // a new event/league does NOT require changing CURRENT_LEAGUE — it only requires
 // adding the entry to KNOWN_LEAGUES (newest-first).
-export const CURRENT_LEAGUE = 'Allflame';
+export const CURRENT_LEAGUE = 'Covens';
 
 export const KNOWN_LEAGUES: string[] = [
+  'Covens',
   // Curse of the Allflame (3.29). Exact poe.ninja string verified against
   // live exchange data on launch day; endsAt intentionally remains unknown.
   'Allflame',
@@ -56,6 +57,11 @@ export const LEAGUE_ENDS_AT: Record<string, string> = {
   Ancestors: '2026-07-17T00:00:00Z',
   Mirage: '2026-07-20T22:00:00Z',
 };
+
+export function supportsEmpoweredMirage(league: string): boolean {
+  const name = league.trim().toLowerCase();
+  return name === 'mirage' || name === 'ancestors';
+}
 
 /** Has this league's known end date passed? Unknown end = never ended. */
 export function isLeagueEnded(name: string, now: number = Date.now()): boolean {

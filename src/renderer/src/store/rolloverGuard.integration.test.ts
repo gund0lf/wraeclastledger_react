@@ -15,12 +15,9 @@ afterEach(() => {
 describe('rollover cache expiry and mutation guard integration', () => {
   it('expiry detects the next league while preserving prior-league live provenance and price', async () => {
     vi.useFakeTimers({ now: new Date('2026-07-16T12:00:00Z') });
+    const julyPrices: Record<string, number> = { Ancestors: 180, Mirage: 310 };
     const probe = vi.fn(async (league: string) => ({
-      lines: league === 'Allflame'
-        ? []
-        : league === 'Ancestors'
-          ? lines(8, 180)
-          : lines(8, 310),
+      lines: julyPrices[league] ? lines(8, julyPrices[league]) : [],
       error: null,
     }));
     vi.stubGlobal('window', {

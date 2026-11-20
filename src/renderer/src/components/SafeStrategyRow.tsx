@@ -18,6 +18,13 @@ const gridStyle = (maximized: boolean, activity: boolean) => ({ display: 'grid',
   gridTemplateColumns: safeRowGrid(maximized, activity), columnGap: BROWSER_ROW_GAP,
   alignItems: 'center', padding: `8px ${BROWSER_ROW_PAD_X}px` })
 
+export function SafeStrategyListEmpty({ scope }: { scope: SafeRow['scope'] }) {
+  return <Stack m="sm" gap={4}>
+    <Text size="sm" fw={600}>No matching strategies</Text>
+    {scope === 'current' && <Text size="sm" c="dimmed">Try another league or clear your filters.</Text>}
+  </Stack>
+}
+
 export function SafeStrategyHeaders({ maximized, activity, sort, order, onSort }: {
   maximized: boolean; activity: boolean; sort?: SafeSort; order?: 'asc' | 'desc'; onSort?: (s: SafeSort) => void
 }) {

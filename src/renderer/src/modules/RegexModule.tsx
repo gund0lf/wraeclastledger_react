@@ -19,7 +19,7 @@ import {
   buildExclusionRegexPattern,
   buildInclusionRegexBlock,
 } from '../utils/priceUtils';
-import { CURRENT_LEAGUE, currentLeagueSync } from '../utils/league';
+import { CURRENT_LEAGUE, currentLeagueSync, supportsEmpoweredMirage } from '../utils/league';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { RegexLine } from '../components/ui/RegexLine'
 import {
@@ -264,6 +264,7 @@ export const FromSessionTab = () => {
 
   const [tradeMapType,      setTradeMapType]      = useState<MapType>('any');
   const tradeLeague = currentLeagueSync() ?? CURRENT_LEAGUE;
+  const empoweredAvailable = supportsEmpoweredMirage(tradeLeague);
   const [tradeEmpowered,    setTradeEmpowered]    = useState(false);
   const [tradeMinDelirious, setTradeMinDelirious] = useState(-1);
   const [tradeDeliRewards,  setTradeDeliRewards]  = useState<string[]>([]);
@@ -462,7 +463,7 @@ export const FromSessionTab = () => {
         league, minIIQ: tradeMinIIQ, minIIR: tradeMinIIR, minPack: tradeMinPack,
         minCurrency: tradeMinCurrency, minScarabs: tradeMinScarabs, minMaps: tradeMinMaps,
         minTier: tradeMinTier, corruptedFilter: tradeCorrupted,
-        mapType: tradeMapType, empowered: tradeLeague.toLowerCase() === 'allflame' ? false : tradeEmpowered,
+        mapType: tradeMapType, empowered: empoweredAvailable && tradeEmpowered,
         minDelirious: tradeMinDelirious, deliRewardTypes: tradeDeliRewards,
         brickExclusions: tradeBrickExcl,
         brickInclusions: tradeBrickIncl,
@@ -529,7 +530,7 @@ export const FromSessionTab = () => {
             </Group>
           </Stack>
 
-          {tradeLeague.toLowerCase() !== 'allflame' && (
+          {empoweredAvailable && (
             <Group justify="space-between" align="center">
               <Stack gap={0}>
                 <Text size="xs" fw={600}>Empowered Mirage enchant</Text>

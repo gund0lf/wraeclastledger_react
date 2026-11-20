@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { MantineProvider } from '@mantine/core';
+import { SafeStrategyListEmpty } from '../components/SafeStrategyRow';
 import {
   BROWSER_COLS,
   BROWSER_GRID_TEMPLATE,
@@ -11,6 +15,14 @@ import {
 } from './strategyConstants';
 
 describe('Strategy Browser panel layouts', () => {
+  it.each(['current', 'frozen'] as const)('explains an empty %s list using only its available controls', scope => {
+    const markup = renderToStaticMarkup(createElement(MantineProvider, null, createElement(SafeStrategyListEmpty, { scope })));
+    const paragraphs = [...markup.matchAll(/<p\b[^>]*>([^<]*)<\/p>/g)].map(match => match[1]);
+    expect(paragraphs).toEqual(scope === 'current'
+      ? ['No matching strategies', 'Try another league or clear your filters.']
+      : ['No matching strategies']);
+  });
+
   it('preserves the established docked column minima and metric widths', () => {
     expect(BROWSER_COLS).toEqual({
       chevron: 22,

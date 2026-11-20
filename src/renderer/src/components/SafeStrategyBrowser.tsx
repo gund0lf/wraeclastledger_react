@@ -17,7 +17,7 @@ import { isStrategyBackIntent } from '../utils/strategyBackNavigation'
 import { safeSetupUnavailableMessage, safeDate } from '../utils/safeStrategyPresentation'
 import { COLOR, FONT } from '../utils/uiTokens'
 import { usePanelMaximized, useSetupSidebarCollapsed } from '../layout/panelLayoutContext'
-import { SafeStrategyHeaders, SafeStrategyRow } from './SafeStrategyRow'
+import { SafeStrategyHeaders, SafeStrategyListEmpty, SafeStrategyRow } from './SafeStrategyRow'
 import { SectionLabel } from './ui/SectionLabel'
 import './SafeStrategyBrowser.css'
 import { SafeStrategyActions, type SafeStrategyAction } from '../utils/safeStrategyActions'
@@ -73,7 +73,7 @@ function SafeBoard({ path, title, onLoad, onContinue, onName, sort, order, onSor
         </div>
       })}</Stack>
       {current?.loading && <Loader m="sm" size="sm" />}
-      {!expanded && current?.page?.total === 0 && <Text m="sm" size="sm" c="dimmed">No strategies match these filters.</Text>}
+      {!expanded && current?.page?.total === 0 && <SafeStrategyListEmpty scope={current.page.scope} />}
       {!expanded && current?.page?.scope === 'current' && current.page.next_cursor && <Button mt="xs" size="xs" variant="subtle" onClick={() => void requests.more()}>Load more</Button>}
     </div>
     <Text ta="center" c="dimmed" size="xs">Vote with the thumbs reactions in Discord · Share submits your session · Load Build starts a fresh session</Text>

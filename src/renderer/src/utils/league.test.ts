@@ -8,11 +8,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   filterLeagueIndex, KNOWN_LEAGUES, CURRENT_LEAGUE,
-  LEAGUE_ENDS_AT, isLeagueEnded, activeKnownLeagues,
+  LEAGUE_ENDS_AT, isLeagueEnded, activeKnownLeagues, supportsEmpoweredMirage,
 } from './league';
 
 // D5(b): lifecycle tests cross the retired 3.28 leagues' endsAt values while
-// the undated Allflame entry remains the current detection target.
+// the undated leagues remain available to detection.
 const BEFORE_EVENT_END = new Date('2026-07-01T12:00:00Z');
 
 type LeagueModule = typeof import('./league');
@@ -41,6 +41,18 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe('Empowered Mirage in Trade searches', () => {
+  it.each([
+    { league: 'Mirage', available: true },
+    { league: 'Ancestors', available: true },
+    { league: 'Covens', available: false },
+    { league: 'Allflame', available: false },
+    { league: 'Future League', available: false },
+  ])('$league availability is $available', ({ league, available }) => {
+    expect(supportsEmpoweredMirage(league)).toBe(available);
+  });
+});
+
 describe('D5(b) — ended-league handling', () => {
   const ANCESTORS = 'Ancestors';
   const AFTER_END = Date.parse(LEAGUE_ENDS_AT[ANCESTORS]) + 60_000;
@@ -57,7 +69,7 @@ describe('D5(b) — ended-league handling', () => {
     expect(activeKnownLeagues(BEFORE_END)).toEqual([...KNOWN_LEAGUES]);
     const after = activeKnownLeagues(AFTER_END);
     expect(after).not.toContain(ANCESTORS);
-    expect(after[0]).toBe('Allflame');
+    expect(after.slice(0, 2)).toEqual(['Covens', 'Allflame']);
   });
 
   it('activeKnownLeagues FAILS OPEN to the full list if everything is ended', () => {
@@ -83,7 +95,7 @@ describe('D5(b) — ended-league handling', () => {
     const league = await freshLeague();
     stubProbe({}); // every probe fails
     expect(await league.getActiveContext()).toEqual({
-      leagueName: 'Allflame',
+      leagueName: 'Covens',
       source: 'fallback',
     });
   });
@@ -109,15 +121,14 @@ describe('D5(b) — ended-league handling', () => {
     expect(ctx).toEqual({ leagueName: ANCESTORS, source: 'override' });
   });
 
-  it('uses the undated successor after both 3.28 leagues have ended', async () => {
+  it('detects Allflame when the Covens probe is empty and skips the ended 3.28 leagues', async () => {
     vi.setSystemTime(new Date(Date.parse(LEAGUE_ENDS_AT.Mirage) + 60_000));
     const league = await freshLeague();
-    const spy = stubProbe({ Allflame: 10, Ancestors: 10, Mirage: 10 });
+    const spy = stubProbe({ Covens: 0, Allflame: 10, Ancestors: 10, Mirage: 10 });
     const ctx = await league.getActiveContext();
     expect(ctx).toEqual({ leagueName: 'Allflame', source: 'detected' });
     expect(league.confirmedLeagueSync()).toBe('Allflame');
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy).toHaveBeenCalledWith('Allflame');
+    expect(spy.mock.calls).toEqual([['Covens'], ['Allflame']]);
   });
 
   it('cached context expires and re-detects the next live league', async () => {
@@ -131,6 +142,24 @@ describe('D5(b) — ended-league handling', () => {
 });
 
 describe('getActiveContext — detection', () => {
+  it('prefers Covens when both Covens and Allflame have live economy data', async () => {
+    const league = await freshLeague();
+    const spy = stubProbe({ Covens: 10, Allflame: 10 });
+    expect(await league.getActiveContext()).toEqual({ leagueName: 'Covens', source: 'detected' });
+    expect(league.confirmedLeagueSync()).toBe('Covens');
+    expect(spy.mock.calls).toEqual([['Covens']]);
+  });
+
+  it('uses Covens as an unconfirmed offline fallback if both requests fail', async () => {
+    vi.setSystemTime(new Date('2026-11-20T12:00:00Z'));
+    const league = await freshLeague();
+    const probe = vi.fn().mockRejectedValue(new Error('offline'));
+    vi.stubGlobal('window', { api: { fetchCurrencyOverview: probe } });
+    expect(await league.getActiveContext()).toEqual({ leagueName: 'Covens', source: 'fallback' });
+    expect(league.confirmedLeagueSync()).toBeNull();
+    expect(probe.mock.calls).toEqual([['Covens'], ['Allflame']]);
+  });
+
   it('detects the first KNOWN_LEAGUES entry with live data (>5 lines)', async () => {
     const league = await freshLeague();
     const spy = stubProbe({ [KNOWN_LEAGUES[0]]: 10 });
