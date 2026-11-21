@@ -1,5 +1,5 @@
 import { useState, useEffect, useSyncExternalStore } from 'react';
-import { Button, Group, Text, Stack, List, Badge, Collapse, ActionIcon } from '@mantine/core';
+import { Button, Group, Text, Stack, List, Badge, Collapse, ActionIcon, getDefaultZIndex } from '@mantine/core';
 import { IconChevronDown, IconChevronRight, IconX } from '@tabler/icons-react';
 import { CHANGELOG } from './utils/changelog';
 import { useUIStore } from './store/useUIStore';
@@ -92,7 +92,7 @@ export const UpdateBanner = () => {
       {showChangelog && (
         <div style={{
           position: 'fixed', bottom: 12, left: '50%', transform: 'translateX(-50%)',
-          zIndex: 9998, width: 480,
+          zIndex: getDefaultZIndex('modal') - 1, width: 480,
           background: '#1e1f22', border: '1px solid #4dabf7',
           borderRadius: 8, padding: 12, boxShadow: '0 4px 24px rgba(0,0,0,0.7)',
         }}>

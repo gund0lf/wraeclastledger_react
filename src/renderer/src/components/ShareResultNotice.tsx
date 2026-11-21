@@ -1,4 +1,4 @@
-import { Alert, Button, Stack, Text } from '@mantine/core'
+import { Alert, Button, Stack, Text, getDefaultZIndex } from '@mantine/core'
 import { useEffect, useState } from 'react'
 import { shareStatusText } from '../../../shared/durableShare'
 import { useUIStore } from '../store/useUIStore'
@@ -30,7 +30,7 @@ export function ShareResultNotice() {
   }, [])
   return notice ? <Alert color="teal" title={notice.title} role="status" withCloseButton closeButtonLabel="Dismiss share result"
     onClose={() => setNotice(null)} styles={{ title: { color: COLOR.text } }}
-    style={{ position: 'fixed', right: 16, bottom: 16, zIndex: 400, width: 360, maxWidth: 'calc(100vw - 32px)',
+    style={{ position: 'fixed', right: 16, bottom: 16, zIndex: getDefaultZIndex('modal') - 1, width: 360, maxWidth: 'calc(100vw - 32px)',
       backgroundColor: COLOR.bgRaised, border: `1px solid ${COLOR.borderSoft}`, borderLeft: `4px solid ${COLOR.profit}` }}>
     <Stack gap={8}>
       <Text size="sm" c="dimmed" style={{ overflowWrap: 'anywhere' }}>{notice.strategy ? `${notice.strategy} · Your card is in Discord.` : 'Your card is in Discord.'}</Text>

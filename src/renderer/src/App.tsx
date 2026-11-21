@@ -11,7 +11,7 @@ import type {
 } from 'flexlayout-react';
 import { getModuleComponent } from './layout/Registry';
 import { defaultLayout } from './layout/defaultLayout';
-import { Box, Button, Menu, Text, ActionIcon, Tooltip, Badge, Alert } from '@mantine/core';
+import { Box, Button, Menu, Text, ActionIcon, Tooltip, Badge, Alert, getDefaultZIndex } from '@mantine/core';
 import { useSessionStore } from './store/useSessionStore';
 import { useUIStore } from './store/useUIStore';
 import { parseMapClipboard } from './utils/mapParser';
@@ -378,7 +378,7 @@ function App({ initialLayoutRawValue }: { initialLayoutRawValue: string | null }
 
       {(layoutError || repositorySaveError) && (
         <Alert color="orange" variant="light"
-          style={{ position: 'absolute', bottom: 32, right: 16, zIndex: 9999, maxWidth: 380 }}>
+          style={{ position: 'absolute', bottom: 32, right: 16, zIndex: getDefaultZIndex('modal') - 1, maxWidth: 380 }}>
           <Text size="xs" fw={600}>Save failed</Text>
           <Text size="xs" c="dimmed">
             {layoutError ?? repositorySaveError}
