@@ -11,10 +11,10 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '1.0.98',
-    date: '',
+    date: '2026-11-22',
     changes: [
       'Covens is now the default league. Allflame strategies remain available in the league selector.',
-      'Trade offers the Empowered Mirage enchant filter only in Mirage and Ancestors. An empty Strategy Browser search now suggests trying another league or clearing your filters.',
+      "Trade no longer shows the Empowered Mirage enchant filter, which isn't available in Covens. An empty Strategy Browser search now suggests trying another league or clearing your filters.",
       'Choose a public name for your strategies, Discord cards and loot images. Verify a new name once through a private Discord code; later shares, added runs and replacements need no extra code. Name verification can be resumed after closing Share or an interrupted save. Registration explains what is stored, and saved names can be recovered on another PC.',
       'Share now puts the sharing action and public name first, with a Public names panel for defaults and retirement. The card preview stays available, and the result and main button remain visible while you scroll.',
       "What’s New no longer covers open windows such as Share.",
