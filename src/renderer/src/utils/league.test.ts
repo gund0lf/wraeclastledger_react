@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-  filterLeagueIndex, KNOWN_LEAGUES, CURRENT_LEAGUE,
+  orderedLeagueOptions, filterLeagueIndex, KNOWN_LEAGUES, CURRENT_LEAGUE,
   LEAGUE_ENDS_AT, isLeagueEnded, activeKnownLeagues, supportsEmpoweredMirage,
 } from './league';
 
@@ -51,6 +51,17 @@ describe('Empowered Mirage in Trade searches', () => {
   ])('$league availability is $available', ({ league, available }) => {
     expect(supportsEmpoweredMirage(league)).toBe(available);
   });
+});
+
+it('defaults empty live panels while preserving recorded and historical league context', async () => {
+  const league = await freshLeague();
+  expect(league.mapDisplayLeague('', 'live', 0)).toBe(CURRENT_LEAGUE);
+  league.setLeagueOverrideValue('Allflame');
+  expect(league.mapDisplayLeague('', 'live', 0)).toBe('Allflame');
+  expect(league.mapDisplayLeague('Covens', 'live', 0)).toBe('Covens');
+  expect(league.mapDisplayLeague('Allflame', 'historical', 3)).toBe('Allflame');
+  expect(league.mapDisplayLeague('', 'historical', 0)).toBe('');
+  expect(league.mapDisplayLeague('', 'live', 3)).toBe('');
 });
 
 describe('D5(b) — ended-league handling', () => {
@@ -306,4 +317,9 @@ describe('fetchSelectableLeagues', () => {
     expect(out).toEqual([...KNOWN_LEAGUES]);
     warn.mockRestore();
   });
+});
+
+it('orders extra saved and provider leagues after the curated leagues in both menus', () => {
+  expect(orderedLeagueOptions(['Zeta', 'Covens', ' Standard ', null, 'Alpha', ' Zeta ']))
+    .toEqual([...KNOWN_LEAGUES, 'Alpha', 'Zeta']);
 });

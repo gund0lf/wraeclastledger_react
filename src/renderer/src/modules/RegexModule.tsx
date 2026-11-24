@@ -1,3 +1,5 @@
+import { isEightModCandidate } from '../utils/mapTypeDetection';
+import { getManifest } from '../utils/gameData';
 import {
   Text, Button, Group, Stack, Badge, ActionIcon,
   TextInput, Select, MultiSelect, Modal, CopyButton, Code, Divider, ScrollArea, Tooltip,
@@ -12,6 +14,8 @@ import {
   generateRunRegex,
   generateSlamRegex,
   generateTradeRegex,
+  mapDropAverages,
+  tradeDropFloor,
   resolveTradeRegexExclusions,
   trimmedMean,
   sanitizeExclusionTerms,
@@ -207,7 +211,7 @@ const FullscreenBrickModList = ({
                     <Group gap={5} wrap="nowrap" justify="space-between">
                       <Group gap={5} wrap="nowrap" style={{ minWidth: 0 }}>
                         {option.shared && (
-                          <Badge size="xs" color="gray" variant="outline">Shared</Badge>
+                          <Badge size="xs" color="gray" variant="outline">{option.familyId ? 'Shared' : 'Both pools'}</Badge>
                         )}
                         {option.label !== option.tradeLabel && (
                           <Text size="xs" c="dimmed">{option.label}</Text>
@@ -264,6 +268,7 @@ export const FromSessionTab = () => {
 
   const [tradeMapType,      setTradeMapType]      = useState<MapType>('any');
   const tradeLeague = currentLeagueSync() ?? CURRENT_LEAGUE;
+  const atlasDrops = getManifest().leagueRules?.[tradeLeague]?.atlasDrops;
   const empoweredAvailable = supportsEmpoweredMirage(tradeLeague);
   const [tradeEmpowered,    setTradeEmpowered]    = useState(false);
   const [tradeMinDelirious, setTradeMinDelirious] = useState(-1);
@@ -349,17 +354,20 @@ export const FromSessionTab = () => {
 
   const generatedRegex = useMemo(() => {
     if (maps.length === 0) return null;
+    const drops = mapDropAverages(maps);
     const avg = {
-      avgQuant:   trimmedMean(maps.map((m) => m.quantity)),
+      avgQuant:   drops.atlasCount ? drops.atlas : drops.quantity,
       avgPack:    trimmedMean(maps.map((m) => m.packSize)),
       avgCurr:    trimmedMean(maps.map((m) => m.moreCurrency)),
       avgRarity:  trimmedMean(maps.map((m) => m.rarity)),
+      atlasDrops: drops.atlasCount > 0,
+      avgThreads: drops.threads,
       avgScarabs: trimmedMean(maps.map((m) => m.moreScarabs)),
     };
     return {
       run:  generateRunRegex(avg, exclusions, inclusions),
       slam: slamUnavailable ? null : generateSlamRegex(avg, exclusions, inclusions),
-      avg, n: maps.length,
+      avg, drops, n: maps.length,
     };
   }, [maps, exclusions, inclusions, slamUnavailable]);
 
@@ -412,7 +420,7 @@ export const FromSessionTab = () => {
       }
     } : null);
     if (src) {
-      setTradeMinIIQ(Math.floor(src.avg.avgQuant / 10) * 10);
+      setTradeMinIIQ(tradeDropFloor(!!atlasDrops, generatedRegex?.drops, src.avg.avgQuant));
       setTradeMinIIR(Math.floor(src.avg.avgRarity / 10) * 10);
       setTradeMinPack(Math.floor(src.avg.avgPack  / 10) * 10);
       const avgCurr = src.avg.avgCurr;
@@ -431,7 +439,7 @@ export const FromSessionTab = () => {
       const hasOrig  = maps.some((m) => m.isOriginator);
       const hasEmp   = maps.some((m) => m.isEmpoweredMirage);
       const hasNight = maps.some((m) => m.isNightmare);
-      const hasCorr  = maps.some((m) => m.isCorrupted && m.modCount > 6);
+      const hasCorr  = maps.some(isEightModCandidate);
       if (hasOrig)        { setTradeMapType('originator'); setTradeEmpowered(hasEmp); }
       else if (hasNight)  { setTradeMapType('nightmare');  setTradeEmpowered(false); }
       else if (hasCorr)   { setTradeMapType('8mod');       setTradeEmpowered(hasEmp); }
@@ -448,7 +456,7 @@ export const FromSessionTab = () => {
     setTradeCorrupted('any');
     setTradeMinTier(16);
     setTradeError(null);
-  }, [generatedRegex, loadedStrategyInfo, maps]);
+  }, [atlasDrops, generatedRegex, loadedStrategyInfo, maps]);
 
   const handleOpenTradeModal = () => {
     setTradeError(null);
@@ -484,11 +492,12 @@ export const FromSessionTab = () => {
     tradeMinIIR,
     tradeMinDelirious,
     tradeDeliRewards.flatMap((key) => {
-      const term = DELI_REWARD_STASH_TERMS.get(key);
+      const term = atlasDrops && key === 'deli_scarabs' ? 'thread' : DELI_REWARD_STASH_TERMS.get(key);
       return term ? [term] : [];
     }),
     tradeMinScarabs,
     tradeMinMaps,
+    atlasDrops,
   );
   return (
     <div className="regex-tab-workspace regex-from-session">
@@ -510,12 +519,12 @@ export const FromSessionTab = () => {
               onChange={(v) => {
                 const t = (v ?? 'any') as MapType;
                 setTradeMapType(t);
-                if (t === 'regular' || t === '8mod') {
+                if (!atlasDrops && (t === 'regular' || t === '8mod')) {
                   setTradeMinCurrency(0); setTradeMinScarabs(0); setTradeMinMaps(0);
                 }
               }} />
             {selectedMapTypeInfo && (
-              <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>{selectedMapTypeInfo.description}</Text>
+              <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>{atlasDrops && tradeMapType === '8mod' ? 'At least eight affixes. Corruption can be filtered separately.' : atlasDrops && tradeMapType === 'regular' ? 'Regular map pool. Corruption can be filtered separately.' : selectedMapTypeInfo.description}</Text>
             )}
             <Group gap="xs" grow>
               <NumberInput size="xs" label="Min Tier" min={0} max={16} step={1}
@@ -545,7 +554,8 @@ export const FromSessionTab = () => {
             <Divider label="Delirium" labelPosition="left" />
             <Group gap="md" grow>
               <Select size="xs" label="Delirium state"
-                data={[
+                searchable data={atlasDrops ? [{ value: '-1', label: 'Any (no filter)' }, { value: '0', label: 'None' },
+                  ...Array.from({ length: 100 }, (_, i) => ({ value: String(i + 1), label: 'Exactly ' + (i + 1) + '%' }))] : [
                   { value: '-1',  label: 'Any (no filter)' },
                   { value: '0',   label: 'None (exclude Delirious maps)' },
                   { value: '20',  label: 'Exactly 20% (1 orb)' },
@@ -563,7 +573,7 @@ export const FromSessionTab = () => {
               <MultiSelect size="xs" label="Reward types (match any)" placeholder="Any reward"
                 clearable searchable
                 disabled={tradeMinDelirious === 0}
-                data={DELI_REWARD_OPTIONS}
+                data={atlasDrops ? DELI_REWARD_OPTIONS.filter(option => option.value !== 'deli_fragments').map(option => option.value === 'deli_scarabs' ? { ...option, label: 'Threads' } : option) : DELI_REWARD_OPTIONS}
                 value={tradeDeliRewards} onChange={setTradeDeliRewards} maxDropdownHeight={200}
                 styles={{
                   section: { alignItems: 'flex-start', paddingTop: 5 },
@@ -573,7 +583,7 @@ export const FromSessionTab = () => {
 
           <Divider label="Map filters" labelPosition="left" />
           <Group gap="xs" grow>
-            <NumberInput size="xs" label="Min IIQ" min={0} max={300} step={10}
+            <NumberInput size="xs" label={atlasDrops ? "Min Atlas Drops" : "Min IIQ"} min={0} max={300} step={10}
               value={tradeMinIIQ} onChange={(v) => setTradeMinIIQ(Number(v) || 0)} suffix="%" />
             <NumberInput size="xs" label="Min IIR" min={0} max={300} step={10}
               value={tradeMinIIR} onChange={(v) => setTradeMinIIR(Number(v) || 0)} suffix="%" />
@@ -583,7 +593,7 @@ export const FromSessionTab = () => {
 
           <Divider label="Pseudo stat filters" labelPosition="left" />
           <Text size="xs" c="dimmed" style={{ fontSize: FONT.small }}>
-            {tradeMapType === 'regular' || tradeMapType === '8mod'
+            {!atlasDrops && (tradeMapType === 'regular' || tradeMapType === '8mod')
               ? 'Regular and 8-mod maps have no uber pseudo stats — keep these at 0.'
               : tradeMapType === 'nightmare'
                 ? 'Optional for Nightmare maps: these combine chisel quality + explicit mods.'
@@ -591,13 +601,13 @@ export const FromSessionTab = () => {
           </Text>
           <Group gap="xs" grow>
             <NumberInput size="xs" label="Min Currency" min={0} step={10}
-              disabled={tradeMapType === 'regular' || tradeMapType === '8mod'}
+              disabled={!atlasDrops && (tradeMapType === 'regular' || tradeMapType === '8mod')}
               value={tradeMinCurrency} onChange={(v) => setTradeMinCurrency(Number(v) || 0)} suffix="%" />
-            <NumberInput size="xs" label="Min Scarabs" min={0} step={10}
-              disabled={tradeMapType === 'regular' || tradeMapType === '8mod'}
+            <NumberInput size="xs" label={atlasDrops ? "Min More Threads" : "Min Scarabs"} min={0} step={10}
+              disabled={!atlasDrops && (tradeMapType === 'regular' || tradeMapType === '8mod')}
               value={tradeMinScarabs} onChange={(v) => setTradeMinScarabs(Number(v) || 0)} suffix="%" />
             <NumberInput size="xs" label="Min Maps" min={0} step={10}
-              disabled={tradeMapType === 'regular' || tradeMapType === '8mod'}
+              disabled={!atlasDrops && (tradeMapType === 'regular' || tradeMapType === '8mod')}
               value={tradeMinMaps} onChange={(v) => setTradeMinMaps(Number(v) || 0)} suffix="%" />
           </Group>
 
@@ -881,7 +891,7 @@ export const FromSessionTab = () => {
                       <div>
                         <Text size="sm" fw={700}>Exclude or include map modifiers</Text>
                         <Text size="xs" c="dimmed">
-                          Left-click excludes a modifier. On the three curated farming targets,
+                          Left-click excludes a modifier. On eligible farming targets,
                           right-click includes it instead. Included rows are teal.
                           Summary pills keep exclusions on the left and inclusions anchored on the
                           right, where additional inclusions grow inward and wrap.
@@ -1078,7 +1088,7 @@ export const FromSessionTab = () => {
                   />
                   <Text size="xs" c="dimmed">
                     Left-click excludes. Right-click includes an eligible farming target.
-                    Each row stays independent; Shared rows only pin related variants for comparison.
+                    Both pools means one selection applies in either column. Related variants can be selected separately.
                   </Text>
                 </Stack>
                 <SimpleGrid className="regex-exclusion-catalogues" cols={2} spacing="md">

@@ -89,8 +89,6 @@ describe('manifest JSON generator CLI', () => {
 
     const skipped = clone(BUNDLED_MANIFEST);
     skipped.revision = BUNDLED_MANIFEST.revision + 1;
-    skipped.schemaVersion = 1;
-    skipped.contextKey = 'poe1-challenge';
     const skippedSource = join(outDir, 'skipped.ts');
     writeFileSync(skippedSource, `export const BUNDLED_MANIFEST = ${JSON.stringify(skipped)};`);
     seedPriorRevisions(outDir);
@@ -99,12 +97,21 @@ describe('manifest JSON generator CLI', () => {
     );
   });
 
+  it('refuses to generate Covens data in a format that older clients accept', () => {
+    const outDir = makeTempDir();
+    const source = join(outDir, 'incompatible.ts');
+    const mislabeled = { ...BUNDLED_MANIFEST, schemaVersion: 1 };
+    writeFileSync(source, `export const BUNDLED_MANIFEST = ${JSON.stringify(mislabeled)};`);
+    expect(() => run(['--source', source, '--out-dir', outDir])).toThrow(/schemaVersion must be 2/);
+  });
+
   it('requires supported schema and context metadata after legacy revision 1', () => {
     const outDir = makeTempDir();
     const revision2 = clone(BUNDLED_MANIFEST) as typeof BUNDLED_MANIFEST & {
       schemaVersion?: number;
       contextKey?: string;
     };
+    revision2.revision = 2;
     revision2.schemaVersion = undefined;
     revision2.contextKey = undefined;
     seedPriorRevisions(outDir);

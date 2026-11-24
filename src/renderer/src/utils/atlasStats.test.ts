@@ -7,6 +7,15 @@ import {
 } from '../../../shared/atlasStats';
 
 describe('deriveAtlasCalcSettings', () => {
+  it('distinguishes Shaping the Mountains map drops from Mounting Modifiers effect', () => {
+    const drops = '5% increased Maps found in your Maps for each Explicit Modifier';
+    const effect = '2% increased effect of Explicit Modifiers on your Maps per Explicit Modifier';
+    const snapshot = (stats: string[]) => deriveAtlasCalcSettingsSnapshot([{ title: 'Maps', stats }]);
+    expect(snapshot([drops]).mountingModifiers).toBe(false);
+    expect(snapshot([drops.replace('for each', 'per')]).mountingModifiers).toBe(false);
+    expect(snapshot([drops, effect]).mountingModifiers).toBe(true);
+  });
+
   it('maps Path of Pathing stats to the three Atlas Calc inputs', () => {
     expect(deriveAtlasCalcSettings([{
       title: 'Map Modifiers',

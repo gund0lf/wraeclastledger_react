@@ -7,6 +7,7 @@
  * workspace shape (the store keeps `regexBuilderGroups: ModGroupState[]`).
  */
 
+import { NIGHTMARE_BUILDER_REWARDS, type NightmareMapRewards } from '../../../shared/gameData/nightmareBuilderRewards';
 import { MOD_TOKENS } from './modTokens';
 import { OPEN_PREFIX_PATTERN, OPEN_SUFFIX_PATTERN } from './regexBuilder';
 
@@ -277,6 +278,35 @@ export const PRESET_GROUPS = [
   { id: 'maps',     label: 'Maps Mods',       mods: MAPS_MODS    },
   { id: 'open-affixes', label: 'Open Affixes', mods: OPEN_AFFIX_MODS },
 ];
+
+const atlasGroupLabels: Record<string, string> = { quantity: 'Atlas Drops Mods', scarabs: 'Thread Mods' };
+const groupStat: Record<string, keyof NightmareMapRewards> = {
+  quantity: 'atlasDrops', scarabs: 'threads', packsize: 'pack', currency: 'currency', maps: 'maps',
+};
+const statLabels: Record<keyof NightmareMapRewards, string> = {
+  atlasDrops: 'Atlas Drops', rarity: 'Rarity', pack: 'Pack', currency: 'Currency', threads: 'Threads', maps: 'Maps',
+};
+
+export const ATLAS_PRESET_GROUPS = PRESET_GROUPS.map(group => ({
+  ...group,
+  label: atlasGroupLabels[group.id] ?? group.label,
+  mods: group.mods.map(mod => {
+    const roll = NIGHTMARE_BUILDER_REWARDS[mod.id];
+    if (!roll) return mod;
+    const stat = groupStat[group.id];
+    const name = mod.label.replace(/\s+\([^()]*\)$/, '').replace('Labyrinthine —', "Labyrinth's —");
+    const mechanic = mod.detail.match(/^"([^"]+)"/)?.[1] ?? mod.detail.split(' · ')[0];
+    const rewards = (Object.keys(roll) as (keyof NightmareMapRewards)[])
+      .map(key => `${roll[key]}% ${statLabels[key]}`).join(' · ');
+    const tokenNote = mod.detail.match(/ · ((?:Token|⚠|The "|“|"[^"]+" (?:targets|from)).*)$/)?.[1]
+      ?.replace('scarab reward', 'Thread reward');
+    return {
+      ...mod,
+      label: `${name} (+${roll[stat]}% ${statLabels[stat]})`,
+      detail: [mechanic, rewards, tokenNote].filter(Boolean).join(' · '),
+    };
+  }),
+}));
 
 /** The builder's persisted workspace: one editable K-of-N mod group. */
 export interface ModGroupState {

@@ -1,3 +1,4 @@
+import { getManifest } from './gameData';
 import { isAllowedPathOfPathingUrl, isSafeStrategyAtlasUrl } from '../../../shared/atlasReaderSafety';
 
 export { isSafeStrategyAtlasUrl };
@@ -42,4 +43,33 @@ export function shouldAutoApplyExternalAtlasView(
  * hidden Atlas tab will restore the originally loaded allocation. */
 export function atlasRemountSource(sourceUrl: string, capturedUrl: string): string {
   return isPathofpathingUrl(capturedUrl) ? capturedUrl : sourceUrl;
+}
+
+interface AtlasCounter {
+  url: string;
+  allocated: number;
+  max: number;
+}
+
+/** Read the guest after navigation. Its initial HTML contains 0/121 before
+ * the selected tree supplies the actual counters. Leave saved points alone
+ * if navigation is superseded or initialization never completes. */
+export async function readInitializedAtlasPoints(
+  read: () => Promise<AtlasCounter | null>,
+  isCurrent: () => boolean,
+  trees = getManifest().atlasTrees,
+): Promise<AtlasCounter | null> {
+  const deadline = Date.now() + 5000;
+  while (isCurrent() && Date.now() < deadline) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 250));
+    if (!isCurrent()) return null;
+    const counter = await read();
+    if (!isCurrent()) return null;
+    if (!counter || !isPathofpathingUrl(counter.url)) continue;
+    const { allocated, max } = counter;
+    const version = new URL(counter.url).searchParams.get('v') || '';
+    if (Number.isInteger(allocated) && allocated >= 0 && Number.isInteger(max)
+      && max > 0 && allocated <= max && trees?.[version]?.maxPoints === max) return counter;
+  }
+  return null;
 }

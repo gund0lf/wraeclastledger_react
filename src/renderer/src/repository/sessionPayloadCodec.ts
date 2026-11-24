@@ -93,6 +93,18 @@ export function decodeSessionPayload(
   const settings = typeof payload.settings === 'object' && payload.settings !== null &&
     !Array.isArray(payload.settings)
     ? payload.settings as unknown as Partial<SessionSettings> : {};
+  const deviceSettings: Partial<SessionSettings> = {};
+  if ('threadSlots' in settings) {
+    deviceSettings.threadSlots = Array.isArray(settings.threadSlots) ? settings.threadSlots.slice(0, 16).map(slot =>
+      slot && typeof slot.name === 'string' && Number.isInteger(slot.count) && slot.count >= 1 && slot.count <= 100
+        ? { name: slot.name, count: slot.count, price: Number.isFinite(slot.price) && slot.price >= 0 ? slot.price : 0 }
+        : { name: '', count: 1, price: 0 }) : [];
+  }
+  if ('ember' in settings) {
+    const ember = settings.ember;
+    deviceSettings.ember = ember && typeof ember.name === 'string'
+      ? { name: ember.name, price: Number.isFinite(ember.price) && ember.price >= 0 ? ember.price : 0 } : undefined;
+  }
   const target = migrateStrategyTarget(settings as Record<string, unknown>);
   return {
     maps: Array.isArray(payload.maps)
@@ -106,7 +118,7 @@ export function decodeSessionPayload(
       ? payload.manualLootItems as unknown as SessionState['manualLootItems'] : [],
     manualStatistics: normalizeLocalManualStatistics(payload.manualStatistics),
     manualRunTimer: normalizeManualRunTimer(payload.manualRunTimer),
-    settings: { ...defaultSettings, ...settings, ...(target ? { strategyTarget: target } : {}) },
+    settings: { ...defaultSettings, ...settings, ...deviceSettings, ...(target ? { strategyTarget: target } : {}) },
     sessionNotes: typeof payload.sessionNotes === 'string' ? payload.sessionNotes : '',
     investmentNeutralization: typeof payload.investmentNeutralization === 'number'
       ? payload.investmentNeutralization : 0,

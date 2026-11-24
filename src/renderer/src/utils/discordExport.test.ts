@@ -15,7 +15,7 @@ import { SessionSettings, LootItem } from '../types';
 import { buildDiscordExport, formatDiscordExport, ExportMapStats, type DiscordExportInput } from './discordExport';
 import { parseDiscordExport } from './parseDiscordExport';
 import { EXPORT_EMOJI } from './discordEmoji';
-import { buildDiscordSharePayload } from './discordShareWire';
+import { buildDiscordSharePayload, decodeDiscordSharePayload } from './discordShareWire';
 import { shareCopyPresentation, type ActiveDurableShareView } from '../../../shared/durableShare';
 import type { StrategyTarget } from '../../../shared/strategyTarget';
 import { postedSharePresentation } from './postedSharePresentation';
@@ -127,6 +127,50 @@ const wireRegressionCases: { name: string; input: DiscordExportInput }[] = [
       total: 75, category: 'League', note: 'Missing from WealthyExile' }],
   } },
 ];
+
+describe.each(['preservation', 'evidence', 'update'])('Divine price on the %s share path', (name) => {
+  const input = wireRegressionCases.find(entry => entry.name === name)!.input;
+  it('produces no export or parseable card for an unset price', () => {
+    const raw = buildDiscordExport({ ...input, settings: settings({ divinePrice: 0 }) });
+    expect(raw).toBe('');
+    expect(parseDiscordExport(raw)).toBeNull();
+  });
+  it('serializes the exact 200c session price', () => {
+    const parsed = parseDiscordExport(buildDiscordExport({ ...input, settings: settings({ divinePrice: 200 }) }));
+    expect(parsed?.divPrice).toBe(200);
+    expect(decodeDiscordSharePayload(buildDiscordSharePayload(parsed!))?.divPrice).toBe(200);
+  });
+});
+
+describe('Covens Delirium share compatibility', () => {
+  it.each([6, 7, 11, 12, 101])('round-trips %i distinct levels through readable and compact exports', count => {
+    const observations = Array.from({ length: count }, (_, i) => ({
+      ...maps[0], deliriousPct: i, deliriumRewardTypes: ['Jewellery'],
+    }));
+    const parsed = parseDiscordExport(buildDiscordExport({
+      maps: observations, settings: settings(), lootItems: [], baselineTotal: 0,
+      investmentNeutralization: 0, stratNotes: 'Original note',
+    }))!;
+    const decoded = decodeDiscordSharePayload(buildDiscordSharePayload(parsed))!;
+    expect(decoded.observedDelirium).toEqual(parsed.observedDelirium);
+    expect(decoded.strategyNotes).toBe(parsed.strategyNotes);
+    if (count <= 11) {
+      expect(decoded.observedDelirium?.levelCounts).toHaveLength(count);
+      expect(decoded.strategyNotes).toBe('Original note');
+    } else {
+      expect(decoded.observedDelirium).toBeNull();
+      expect(decoded.strategyNotes).toContain('Original note | Delirium distribution (' + count + '/' + count + ' maps)');
+      for (const updateStrategyId of [undefined, '123']) {
+        const repeated = parseDiscordExport(buildDiscordExport({ maps: observations, settings: settings(),
+          lootItems: [], baselineTotal: 0, investmentNeutralization: 0, stratNotes: decoded.strategyNotes, updateStrategyId }));
+        expect(repeated?.strategyNotes).toBe(decoded.strategyNotes);
+      }
+      expect(decoded.strategyNotes).toContain('0-9% x10');
+      expect(decoded.strategyNotes).toContain('Jewellery x' + count);
+      expect(decoded.strategyNotes).toContain(count === 12 ? '10-19% x2' : '100% x1');
+    }
+  });
+});
 
 describe('buildDiscordExport pre-refactor byte compatibility', () => {
   const golden = JSON.parse(readFileSync(fileURLToPath(new URL(
@@ -697,4 +741,24 @@ describe('loot evidence wire', () => {
     expect(parsed?.lootSummary).toBeNull();
     expect(parsed?.lootSummaryInvalid).toBe(true);
   });
+});
+
+it('keeps device quantities and prices readable across a share update without writing a fragment claim', () => {
+  const input = { maps, settings: settings({ leagueName: 'Covens', threadSlots: [{ name: 'Breach Thread', count: 8, price: 2 }],
+    ember: { name: 'Allflame Ember of Toads', price: 3 } }), lootItems: [], baselineTotal: 0, investmentNeutralization: 0 };
+  const first = parseDiscordExport(buildDiscordExport(input))!;
+  expect(first.multiplyingModifiersAllocated).toBeNull();
+  expect(first.strategyNotes).toBe('Map device per map: 8 x Breach Thread @ 2c, Allflame Ember of Toads @ 3c');
+  const updated = parseDiscordExport(buildDiscordExport({ ...input, stratNotes: 'Keep this | ' + first.strategyNotes,
+    settings: { ...input.settings, ember: undefined } }))!;
+  expect(updated.strategyNotes).toBe('Keep this | Map device per map: 8 x Breach Thread @ 2c');
+});
+
+it('shares Atlas Drops and Thread observations with their own sample sizes in a mixed session', () => {
+  const input = { maps: [{ ...maps[0], quantity: 0, atlasDrops: 88, moreThreads: 35 }, { ...maps[0], quantity: 24 }],
+    settings: settings(), lootItems: [], baselineTotal: 0, investmentNeutralization: 0 };
+  const first = parseDiscordExport(buildDiscordExport(input))!;
+  expect(first.avgQuant).toBe(24);
+  expect(first.strategyNotes).toBe('Map observations: Atlas Drops 88% (1/2 maps), More Threads 35% (1/2 maps)');
+  expect(parseDiscordExport(buildDiscordExport({ ...input, stratNotes: first.strategyNotes }))?.strategyNotes).toBe(first.strategyNotes);
 });

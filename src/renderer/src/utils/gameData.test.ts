@@ -7,7 +7,7 @@
  * derived shapes that must remain compatible.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
+import { ALLFLAME_MANIFEST, BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
 import { slugifyEntityId, GameEntity } from '../../../shared/gameData/types';
 import {
   getGameDataStatus, getManifest, initGameData, isApplicableManifest, isValidManifest, __resetGameDataForTests,
@@ -40,17 +40,17 @@ describe('bundled manifest invariants', () => {
   });
 
   it('carries the revision-4 entity counts (129 scarabs / 17 deli / 11 astrolabes / 6 chisels)', () => {
-    expect(BUNDLED_MANIFEST.scarabs).toHaveLength(129);
-    expect(BUNDLED_MANIFEST.deliriumOrbs).toHaveLength(17);
-    expect(BUNDLED_MANIFEST.astrolabes).toHaveLength(11);
-    expect(BUNDLED_MANIFEST.chisels).toHaveLength(6);
+    expect(ALLFLAME_MANIFEST.scarabs).toHaveLength(129);
+    expect(ALLFLAME_MANIFEST.deliriumOrbs).toHaveLength(17);
+    expect(ALLFLAME_MANIFEST.astrolabes).toHaveLength(11);
+    expect(ALLFLAME_MANIFEST.chisels).toHaveLength(6);
   });
 
   it('classifies the confirmed 3.29 entity changes without deleting history', () => {
-    const scarab = (name: string) => BUNDLED_MANIFEST.scarabs.find((e) => e.name === name);
-    const deli = (name: string) => BUNDLED_MANIFEST.deliriumOrbs.find((e) => e.name === name);
-    const astro = (name: string) => BUNDLED_MANIFEST.astrolabes.find((e) => e.name === name);
-    const chisel = (name: string) => BUNDLED_MANIFEST.chisels.find((e) => e.name === name);
+    const scarab = (name: string) => ALLFLAME_MANIFEST.scarabs.find((e) => e.name === name);
+    const deli = (name: string) => ALLFLAME_MANIFEST.deliriumOrbs.find((e) => e.name === name);
+    const astro = (name: string) => ALLFLAME_MANIFEST.astrolabes.find((e) => e.name === name);
+    const chisel = (name: string) => ALLFLAME_MANIFEST.chisels.find((e) => e.name === name);
 
     expect(scarab('Abyss Scarab of Edifice')).toMatchObject({
       status: 'renamed', aliasOf: 'abyss-scarab-of-crystals',
@@ -88,25 +88,17 @@ describe('bundled manifest invariants', () => {
     expect(chisel('Cartographer')).toMatchObject({ status: 'removed' });
   });
 
-  it('offers only current/reworked revision-4 products in new-input pickers', () => {
+  it('offers only current/reworked revision-5 products in new-input pickers', () => {
     const scarabs = selectableScarabOptions();
-    expect(scarabs).toContainEqual({
-      value: 'Abyss Scarab of Crystals', label: 'Abyss Scarab of Crystals',
-    });
-    expect(scarabs).toContainEqual({
-      value: 'Abyss Scarab of the Consort', label: 'Abyss Scarab of the Consort',
-    });
-    expect(scarabs.some((e) => e.value === 'Trarthan Scarab')).toBe(true);
-    expect(scarabs.some((e) => e.value === 'Abyss Scarab of Edifice')).toBe(false);
-    expect(scarabs.some((e) => e.value === 'Heist Scarab')).toBe(false);
-    expect(scarabs.some((e) => e.value === 'Harbinger Scarab')).toBe(false);
-
+    expect(scarabs).toEqual([]);
+    expect(BUNDLED_MANIFEST.threads).toHaveLength(10);
+    expect(BUNDLED_MANIFEST.embers).toHaveLength(11);
     const deli = selectableDeliriumOrbList();
     expect(deli.some((e) => e.value === 'Fossilised')).toBe(false);
     expect(deli.some((e) => e.value === 'Obscured')).toBe(false);
 
     const astrolabes = selectableAstrolabeList();
-    expect(astrolabes.some((e) => e.value === 'Deceptive Astrolabe')).toBe(true);
+    expect(astrolabes.some((e) => e.value === 'Cryptic Astrolabe')).toBe(true);
     expect(astrolabes.some((e) => e.value === 'Enshrouded Astrolabe')).toBe(false);
 
     const chisels = selectableChiselList();
@@ -175,7 +167,12 @@ describe('bundled manifest invariants', () => {
   });
 
   it('accepts immutable legacy revision 1 but requires declared compatibility after it', () => {
+    expect(ALLFLAME_MANIFEST.schemaVersion).toBe(1);
+    expect(isApplicableManifest(ALLFLAME_MANIFEST)).toBe(true);
+    expect(BUNDLED_MANIFEST.schemaVersion).toBe(2);
     expect(isApplicableManifest(BUNDLED_MANIFEST)).toBe(true);
+    expect(isApplicableManifest({ ...BUNDLED_MANIFEST, schemaVersion: 1 })).toBe(false);
+    expect(isApplicableManifest({ ...BUNDLED_MANIFEST, schemaVersion: 3 })).toBe(false);
     const legacy = {
       ...BUNDLED_MANIFEST, revision: 1, schemaVersion: undefined, contextKey: undefined,
     };
@@ -190,18 +187,18 @@ describe('bundled manifest invariants', () => {
 describe('legacy constants are 1:1 derived views (migration lock)', () => {
   it('SCARAB_LIST matches the active manifest scarab names, order preserved', () => {
     expect(SCARAB_LIST).toEqual(BUNDLED_MANIFEST.scarabs.filter((e) => e.status === 'active').map((e) => e.name));
-    expect(SCARAB_LIST).toContain('Horned Scarab of Preservation'); // profit math special-cases it
+    expect(SCARAB_LIST).not.toContain('Horned Scarab of Preservation'); // profit math special-cases it
   });
 
   it('DELIRIUM_ORB_LIST / ASTROLABE_LIST keep the legacy select shapes', () => {
     expect(DELIRIUM_ORB_LIST).not.toContainEqual({ value: 'Abyssal', label: 'Abyssal (Abyss)' });
     expect(ASTROLABE_LIST[0]).toEqual({ value: '', label: '— None —' }); // None row preserved
-    expect(ASTROLABE_LIST).toHaveLength(11); // 10 entities + None
+    expect(ASTROLABE_LIST).toHaveLength(12); // 11 current astrolabes and None
   });
 
   it('CHISEL_TYPES keeps stored keys + math fields; CHISEL_SELECT_DATA keeps the None row', () => {
     expect(Object.keys(CHISEL_TYPES)).toEqual(
-      ['Avarice', 'Procurement', 'Proliferation', 'Scarabs', 'Divination']);
+      ['Avarice', 'Procurement', 'Proliferation', 'Divination', 'Threads']);
     expect(CHISEL_TYPES['Avarice']).toEqual({ label: 'Avarice — +50% more Currency', statKey: 'moreCurrency', bonusAt20: 50 });
     expect(CHISEL_SELECT_DATA[0]).toEqual({ value: '', label: '— None —' });
   });
@@ -218,7 +215,7 @@ describe('loader (initGameData)', () => {
   });
 
   it('adopts a cached manifest with a HIGHER revision', async () => {
-    const newer = { ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge', revision: BUNDLED_MANIFEST.revision + 1 };
+    const newer = { ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 1 };
     vi.stubGlobal('window', {
       api: { readGameDataCache: vi.fn(async () => ({ manifest: newer, error: null })) },
     });
@@ -270,7 +267,7 @@ describe('loader (initGameData)', () => {
   });
 
   it('adopts a NEWER server manifest and persists it to the cache', async () => {
-    const newer = { ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge', revision: BUNDLED_MANIFEST.revision + 5 };
+    const newer = { ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 5 };
     const write = vi.fn(async () => ({ ok: true, error: null }));
     vi.stubGlobal('window', { api: apiWith({
       writeGameDataCache: write,
@@ -284,7 +281,7 @@ describe('loader (initGameData)', () => {
 
   it('rejects an incompatible newer server manifest and exposes the warning', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const incompatible = { ...BUNDLED_MANIFEST, revision: 8, schemaVersion: 2, contextKey: 'poe1-challenge' };
+    const incompatible = { ...BUNDLED_MANIFEST, revision: 8, schemaVersion: 1, contextKey: 'poe1-challenge' };
     vi.stubGlobal('window', { api: apiWith({
       fetchGameDataLatest: vi.fn(async () => ({ payload: { revision: 8, manifest: incompatible }, error: null })),
     }) });
@@ -307,7 +304,7 @@ describe('loader (initGameData)', () => {
 
   it('rejects a server payload whose top-level revision disagrees with the manifest field', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const lying = { ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge', revision: BUNDLED_MANIFEST.revision + 2 };
+    const lying = { ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 2 };
     vi.stubGlobal('window', { api: apiWith({
       fetchGameDataLatest: vi.fn(async () => ({ payload: { revision: lying.revision + 9, manifest: lying }, error: null })),
     }) });
@@ -338,8 +335,8 @@ describe('loader (initGameData)', () => {
   });
 
   it('server beats cache only by revision: cache r+1 adopted, server r+2 wins over it', async () => {
-    const cached = { ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge', revision: BUNDLED_MANIFEST.revision + 1 };
-    const served = { ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge', revision: BUNDLED_MANIFEST.revision + 2 };
+    const cached = { ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 1 };
+    const served = { ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 2 };
     vi.stubGlobal('window', { api: apiWith({
       readGameDataCache: vi.fn(async () => ({ manifest: cached, error: null })),
       fetchGameDataLatest: vi.fn(async () => ({ payload: { revision: served.revision, manifest: served }, error: null })),
@@ -359,16 +356,16 @@ describe('derived view helpers (call-time, revision-aware)', () => {
 
   it('exclude non-active entities (removed/renamed stay resolvable but unpickable)', async () => {
     const modified = {
-      ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge',
+      ...BUNDLED_MANIFEST,
       revision: BUNDLED_MANIFEST.revision + 1,
-      scarabs: BUNDLED_MANIFEST.scarabs.map((s, i) =>
+      scarabs: ALLFLAME_MANIFEST.scarabs.map((s, i) =>
         i === 0 ? { ...s, status: 'removed' as const } : s),
     };
     vi.stubGlobal('window', {
       api: { readGameDataCache: vi.fn(async () => ({ manifest: modified, error: null })) },
     });
     await initGameData();
-    expect(activeScarabNames()).toHaveLength(SCARAB_LIST.length - 1);
+    expect(activeScarabNames()).toHaveLength(ALLFLAME_MANIFEST.scarabs.filter(item => item.status === 'active').length - 1);
     expect(activeScarabNames()).not.toContain(BUNDLED_MANIFEST.scarabs[0].name);
     // The entity is still IN the manifest for read-time resolution:
     expect(getManifest().scarabs.find((s) => s.id === BUNDLED_MANIFEST.scarabs[0].id)?.status).toBe('removed');
@@ -378,9 +375,9 @@ describe('derived view helpers (call-time, revision-aware)', () => {
     const first = BUNDLED_MANIFEST.scarabs[0];
     const second = BUNDLED_MANIFEST.scarabs[1];
     const modified = {
-      ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge',
+      ...BUNDLED_MANIFEST,
       revision: BUNDLED_MANIFEST.revision + 1,
-      scarabs: BUNDLED_MANIFEST.scarabs.map((s, i) =>
+      scarabs: ALLFLAME_MANIFEST.scarabs.map((s, i) =>
         i === 0 ? { ...s, status: 'reworked' as const, note: 'Changed effect' }
           : i === 1 ? { ...s, status: 'removed' as const }
             : s),
@@ -402,8 +399,8 @@ describe('derived view helpers (call-time, revision-aware)', () => {
 });
 
 describe('mechanic flags (step 5, §5.3)', () => {
-  it('bundled revision 4 keeps live mechanics active and explicitly removes split input', () => {
-    expect(mechanicStatus('scarabs')).toBe('active');
+  it('bundled revision 5 keeps live mechanics active and explicitly removes split input', () => {
+    expect(mechanicStatus('scarabs')).toBe('removed');
     expect(mechanicStatus('delirium')).toBe('active');
     expect(mechanicStatus('astrolabe')).toBe('active');
     expect(mechanicStatus('split')).toBe('removed');
@@ -414,7 +411,7 @@ describe('mechanic flags (step 5, §5.3)', () => {
   });
 
   it('an OMITTED mechanic defaults to active (fail-open, no silent hide)', async () => {
-    const noMech = { ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge', revision: BUNDLED_MANIFEST.revision + 1, mechanics: {} };
+    const noMech = { ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 1, mechanics: {} };
     vi.stubGlobal('window', {
       api: { readGameDataCache: vi.fn(async () => ({ manifest: noMech, error: null })) },
     });
@@ -425,7 +422,7 @@ describe('mechanic flags (step 5, §5.3)', () => {
 
   it('a removed mechanic reports removed + inactive (3.29-style)', async () => {
     const removed = {
-      ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge', revision: BUNDLED_MANIFEST.revision + 1,
+      ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 1,
       mechanics: { ...BUNDLED_MANIFEST.mechanics, astrolabe: 'removed' as const },
     };
     vi.stubGlobal('window', {
@@ -438,7 +435,7 @@ describe('mechanic flags (step 5, §5.3)', () => {
 
   it('a reworked mechanic stays active/visible but reports reworked', async () => {
     const reworked = {
-      ...BUNDLED_MANIFEST, schemaVersion: 1, contextKey: 'poe1-challenge', revision: BUNDLED_MANIFEST.revision + 1,
+      ...BUNDLED_MANIFEST, revision: BUNDLED_MANIFEST.revision + 1,
       mechanics: { ...BUNDLED_MANIFEST.mechanics, astrolabe: 'reworked' as const },
     };
     vi.stubGlobal('window', {

@@ -89,6 +89,7 @@ function thresholdPat(floor: number): string {
 interface MapAverages {
   avgQuant: number; avgPack: number; avgCurr: number;
   avgRarity: number; avgScarabs: number;
+  atlasDrops?: boolean; avgThreads?: number;
 }
 
 export const generateRunRegex = (
@@ -123,11 +124,16 @@ export const generateRunRegex = (
     // `m q` targets Item Quantity. Keep it distinct from the `ack` Pack Size
     // anchor: the previous `iz` anchor also matched Pack Size and therefore
     // turned the quantity gate into a second, stricter pack-size gate.
-    parts.push(`"m q.*(${thresholdPat(quantFloor)})%"`);
+    const quantityTerm = avg.atlasDrops ? 'atlas drops' : 'm q';
+    parts.push(`"${quantityTerm}.*(${thresholdPat(quantFloor)})%"`);
   }
   if (avg.avgRarity > 40) {
     const rarFloor = Math.max(Math.floor(avg.avgRarity * 0.6 / 10) * 10, 30);
     parts.push(`"m rar.*(${thresholdPat(rarFloor)})%"`);
+  }
+  if (avg.avgThreads && avg.avgThreads > 0) {
+    const threadFloor = Math.max(Math.floor(avg.avgThreads * 0.6 / 10) * 10, 20);
+    parts.push(`"threads.*(${thresholdPat(threadFloor)})%"`);
   }
   if (avg.avgScarabs > 0) {
     const scarabFloor = Math.max(Math.floor(avg.avgScarabs * 0.6 / 10) * 10, 20);
@@ -164,6 +170,26 @@ export function resolveTradeRegexExclusions(
 }
 
 /** Generate the modal's approximate stash regex from its live controls. */
+/** The two clipboard formats measure different things. For a mixed session
+ * retain each observation's denominator, even when a captured value is zero. */
+export function mapDropAverages(maps: readonly { quantity: number; atlasDrops?: number; moreThreads?: number }[]) {
+  const atlas = maps.flatMap(map => map.atlasDrops === undefined ? [] : [map.atlasDrops]);
+  const threads = maps.flatMap(map => map.moreThreads === undefined ? [] : [map.moreThreads]);
+  const quantity = maps.flatMap(map => map.atlasDrops === undefined ? [map.quantity] : []);
+  return { atlas: trimmedMean(atlas), threads: trimmedMean(threads), quantity: trimmedMean(quantity),
+    atlasCount: atlas.length, threadCount: threads.length, quantityCount: quantity.length };
+}
+
+/** Shared strategies before the Covens wire update carry only item quantity. */
+export function tradeDropFloor(
+  useAtlasDrops: boolean,
+  observations: ReturnType<typeof mapDropAverages> | undefined,
+  sharedQuantity?: number,
+): number {
+  const value = useAtlasDrops ? observations?.atlas : observations?.quantity ?? sharedQuantity;
+  return Math.floor((value ?? 0) / 10) * 10;
+}
+
 export function generateTradeRegex(
   exclusions: string[],
   inclusions: string[],
@@ -175,6 +201,7 @@ export function generateTradeRegex(
   deliriumRewardTerms: readonly string[] = [],
   minScarabs = 0,
   minMaps = 0,
+  atlasDrops = false,
 ): string {
   const numericParts: string[] = [];
   const exclusionBlock = buildExclusionRegexBlock(exclusions);
@@ -187,9 +214,9 @@ export function generateTradeRegex(
   // factor and a default Pack gate), which changes the user's Trade inputs.
   if (minCurr > 0) numericParts.push(`"urr.*(${exactIntegerThresholdPattern(minCurr)})%"`);
   if (minPack > 0) numericParts.push(`"ack.*(${exactIntegerThresholdPattern(minPack)})%"`);
-  if (minIIQ > 0) numericParts.push(`"m q.*(${exactIntegerThresholdPattern(minIIQ)})%"`);
+  if (minIIQ > 0) numericParts.push(`"${atlasDrops ? 'atlas drops' : 'm q'}.*(${exactIntegerThresholdPattern(minIIQ)})%"`);
   if (minIIR > 0) numericParts.push(`"m rar.*(${exactIntegerThresholdPattern(minIIR)})%"`);
-  if (minScarabs > 0) numericParts.push(`"scarabs.*(${exactIntegerThresholdPattern(minScarabs)})%"`);
+  if (minScarabs > 0) numericParts.push(`"${atlasDrops ? 'more threads:' : 'scarabs'}.*(${exactIntegerThresholdPattern(minScarabs)})%"`);
   if (minMaps > 0) numericParts.push(`"maps.*(${exactIntegerThresholdPattern(minMaps)})%"`);
   const numericRegex = numericParts.join(' ');
   const deliriumRegex = deliriousPercent === 0
@@ -236,7 +263,7 @@ export const generateSlamRegex = (
 // session can therefore reuse a quote fetched moments ago instead of being
 // stranded at 0c, while a failed attempt still remains a real failure.
 
-const DIVINE_PRICE_COOLDOWN_MS = 60_000;
+export const DIVINE_PRICE_COOLDOWN_MS = 60_000;
 export interface DivinePriceRequest {
   readonly league: string;
   readonly result: Promise<number | null>;

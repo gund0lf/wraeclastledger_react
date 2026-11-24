@@ -1,9 +1,11 @@
+import { deviceInvestment } from './profit';
+import { currentChoiceEffects } from './atlasChoices';
 import type { MapData, SessionSettings } from '../types';
 
 type ShareTagSettings = Pick<
   SessionSettings,
-  'scarabs' | 'atlasDetectedTags' | 'advAstrolabeType'
->;
+  'scarabs' | 'threadSlots' | 'atlasDetectedTags' | 'advAstrolabeType' | 'atlasChoiceAnswers' | 'atlasStatsRead'
+> & Partial<Pick<SessionSettings, 'atlasTreeUrl' | 'leagueName'>>;
 
 type ShareTagMap = Pick<
   MapData,
@@ -68,14 +70,21 @@ export function deriveShareTags(
   settings: ShareTagSettings,
   maps: readonly ShareTagMap[],
 ): string[] {
-  const scarabNames = settings.scarabs
+  const scarabNames = [...settings.scarabs, ...deviceInvestment(settings).activeSlots.filter(slot => slot?.count > 0)]
     .filter((scarab) => scarab.name)
     .map((scarab) => scarab.name.toLowerCase())
     .join(' ');
   const scarabTags = SCARAB_TAG_KEYWORDS
     .filter(([keyword]) => scarabNames.includes(keyword))
     .flatMap(([, tags]) => tags);
-  const tags = Array.from(new Set([...scarabTags, ...(settings.atlasDetectedTags ?? [])]));
+  const choiceTags = currentChoiceEffects(settings).flatMap(text => {
+    if (/chance to contain Ore Deposits$/i.test(text)) return ['kalguur'];
+    if (/chance to contain a Strongbox$/i.test(text)) return ['ambush'];
+    if (/chance to be inhabited by a Mercenary$/i.test(text)) return ['trarthus'];
+    if (/chance to contain a Rogue Exile$/i.test(text)) return ['anarchy'];
+    return [];
+  });
+  const tags = Array.from(new Set([...choiceTags, ...scarabTags, ...(settings.atlasDetectedTags ?? [])]));
 
   const subtype = mapSubtypeTag(maps);
   if (subtype && !tags.includes(subtype)) tags.unshift(subtype);

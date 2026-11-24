@@ -1,3 +1,4 @@
+import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
 /**
  * Item icon resolver - poe.ninja public API (PoE1 endpoints).
  *
@@ -57,6 +58,7 @@ const EXCHANGE_TYPES = [
   'DjinnCoin',
   'Ducat',
   'EnshroudingCrystal',
+  'Thread',
   'AllflameEmber',
   'Runegraft',
   'Resonator',
@@ -89,6 +91,7 @@ const STASH_TYPES = [
   'UniqueTincture',
   'IncursionTemple',
   'Wombgift',
+  'Viscera',
 ];
 
 // Exact source-family -> public loot taxonomy. This is the same catalog pass
@@ -109,6 +112,7 @@ const ECONOMY_TYPE_CATEGORY: Readonly<Partial<Record<string, LootCategory>>> = {
   DjinnCoin: 'League',
   Ducat: 'League',
   EnshroudingCrystal: 'League',
+  Thread: 'Fragments',
   AllflameEmber: 'League',
   Runegraft: 'League',
   Resonator: 'League',
@@ -134,6 +138,7 @@ const ECONOMY_TYPE_CATEGORY: Readonly<Partial<Record<string, LootCategory>>> = {
   UniqueTincture: 'League',
   IncursionTemple: 'League',
   Wombgift: 'League',
+  Viscera: 'League',
 };
 
 // Preferred category artwork is deliberately separate from item resolution.
@@ -330,22 +335,31 @@ function pickGeneric(name: string): string | undefined {
 }
 
 // ─── Fetch (via main process; family-specific parse done in main) ─────────────
-async function fetchCategory(
-  family: 'exchange' | 'stash',
-  type: string,
-  league: string
-): Promise<{ pairs: [string, string][]; slugs: string[]; names: string[] }> {
+async function fetchCategory(family: 'exchange' | 'stash', type: string, league: string) {
   try {
-    if (typeof window === 'undefined' || !window.api?.fetchEconomyIcons) return { pairs: [], slugs: [], names: [] };
-    const res = await window.api.fetchEconomyIcons(family, league, type);
-    const pairs = (res?.icons ?? []).map((i) => [i.name, i.icon] as [string, string]);
-    return { pairs, slugs: res?.slugs ?? [], names: res?.names ?? [] };
+    return await window.api.fetchEconomyIcons(family, league, type);
   } catch {
-    return { pairs: [], slugs: [], names: [] };
+    return null;
   }
 }
 
 // ─── Cache ────────────────────────────────────────────────────────────────────
+const deviceMarketPrices = new Map<string, Map<string, number>>();
+export async function getDeviceMarketPrice(league: string, name: string, retryType?: 'Thread' | 'AllflameEmber'): Promise<number | undefined> {
+  if (retryType) {
+    const response = await fetchCategory('exchange', retryType, league);
+    const price = response?.prices?.find(row => row.name === name)?.chaos;
+    if (price !== undefined) {
+      let cache = deviceMarketPrices.get(league);
+      if (!cache) deviceMarketPrices.set(league, cache = new Map());
+      cache.set(name, price);
+    }
+    return price;
+  }
+  await getItemIcons();
+  return deviceMarketPrices.get(league)?.get(name);
+}
+
 let exactMap:  Map<string, string> | null = null;
 let normMap:   Map<string, string> | null = null;
 let identityMap: Map<string, ItemIdentity> | null = null;
@@ -398,7 +412,7 @@ async function buildCache(challenge: string): Promise<void> {
   const normalized = new Map<string, string>();
   const identities = new Map<string, ItemIdentity>();
   const gemIcons = new Map<string, string>();
-  const categoryEntries = new Map<LootCategory, Array<[string, string]>>();
+  const categoryEntries = new Map<LootCategory, Map<string, string>>();
   const identityConflicts = new Set<string>();
   divCardSet.clear();
 
@@ -428,11 +442,44 @@ async function buildCache(challenge: string): Promise<void> {
     }
     if (!existing) identities.set(key, { name, category });
   };
-  const addCategoryEntry = (name: string, url: string, category: LootCategory | undefined) => {
-    if (!category || category === 'League' || category === 'Other') return;
-    const entries = categoryEntries.get(category) ?? [];
-    if (!entries.some(([known]) => norm(known) === norm(name))) entries.push([name, url]);
-    categoryEntries.set(category, entries);
+  // Return control to Chromium between batches, including when all the IPC
+  // results are already available. A microtask would still block input/paint.
+  let processed = 0;
+  const yieldBatch = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const indexCategory = async (family: 'exchange' | 'stash', types: string[], league: string) => {
+    const results = await Promise.all(types.map((type) => fetchCategory(family, type, league)));
+    for (const [index, result] of results.entries()) {
+      const type = types[index];
+      const category = ECONOMY_TYPE_CATEGORY[type];
+      if (league === challenge && result?.prices) {
+        let market = deviceMarketPrices.get(league);
+        if (!market) deviceMarketPrices.set(league, market = new Map());
+        for (const { name, chaos } of result.prices) market.set(name, chaos);
+      }
+      for (const { name, icon } of result?.icons ?? []) {
+        add(name, icon);
+        addIdentity(name, category);
+        const key = norm(name);
+        if (category && category !== 'League' && category !== 'Other') {
+          let entries = categoryEntries.get(category);
+          if (!entries) categoryEntries.set(category, entries = new Map());
+          if (!entries.has(key)) entries.set(key, icon);
+        }
+        if (category === 'Gems' && !gemIcons.has(key)) gemIcons.set(key, icon);
+        if (++processed % 256 === 0) await yieldBatch();
+      }
+      for (const name of result?.names ?? []) {
+        addIdentity(name, category);
+        if (type === 'DivinationCard') divCardSet.add(norm(name));
+        if (++processed % 256 === 0) await yieldBatch();
+      }
+      if (type === 'DivinationCard') {
+        for (const slug of result?.slugs ?? []) {
+          divCardSet.add(slug.replace(/-/g, ' '));
+          if (++processed % 256 === 0) await yieldBatch();
+        }
+      }
+    }
   };
 
   // Detect current challenge league, then also pull every KNOWN_LEAGUES entry
@@ -449,46 +496,9 @@ async function buildCache(challenge: string): Promise<void> {
   for (let li = 0; li < leagues.length; li++) {
     const league = leagues[li];
     leagueIdx = li;
-    // exchange-family categories (parallel per league)
-    const exchRes = await Promise.allSettled(
-      EXCHANGE_TYPES.map((t) => fetchCategory('exchange', t, league))
-    );
-    exchRes.forEach((r, i) => {
-      if (r.status !== 'fulfilled') return;
-      const type = EXCHANGE_TYPES[i];
-      const category = ECONOMY_TYPE_CATEGORY[type];
-      r.value.pairs.forEach(([k, v]) => {
-        add(k, v);
-        addIdentity(k, category);
-        addCategoryEntry(k, v, category);
-      });
-      for (const name of r.value.names) addIdentity(name, category);
-      // Actual items[] display names are authoritative. Slug reconstruction is
-      // only a fallback: live example `the-reflection-of-the-heart` has display
-      // name `Reflection of the Heart` (the extra article must not be invented).
-      if (type === 'DivinationCard') {
-        for (const name of r.value.names) divCardSet.add(norm(name));
-        for (const slug of r.value.slugs) divCardSet.add(slug.replace(/-/g, ' '));
-      }
-    });
-
-    // stash-family categories (parallel per league)
-    const stashRes = await Promise.allSettled(
-      STASH_TYPES.map((t) => fetchCategory('stash', t, league))
-    );
-    stashRes.forEach((r, i) => {
-      if (r.status === 'fulfilled') r.value.pairs.forEach(([k, v]) => {
-        add(k, v);
-        const category = ECONOMY_TYPE_CATEGORY[STASH_TYPES[i]];
-        addIdentity(k, category);
-        addCategoryEntry(k, v, category);
-        // Preview candidates are gems only, with the same current-first league
-        // priority. Duplicate level/quality rows do not create new identities.
-        if (ECONOMY_TYPE_CATEGORY[STASH_TYPES[i]] === 'Gems' && !gemIcons.has(norm(k))) {
-          gemIcons.set(norm(k), v);
-        }
-      });
-    });
+    const exchangeTypes = BUNDLED_MANIFEST.leagueRules?.[league]?.threadSlots ? EXCHANGE_TYPES : EXCHANGE_TYPES.filter(type => type !== 'Thread');
+    await indexCategory('exchange', exchangeTypes, league);
+    await indexCategory('stash', STASH_TYPES, league);
   }
 
   for (const chart of BUNDLED_CHART_NAMES) {
@@ -531,8 +541,8 @@ async function buildCache(challenge: string): Promise<void> {
 
   const seedBy = (key: string, match: (n: string) => boolean) => {
     if (GENERIC[key]) return;
-    for (const [name, url] of exact) {
-      if (match(norm(name))) { GENERIC[key] = url; return; }
+    for (const [keyName, url] of normalized) {
+      if (match(keyName)) { GENERIC[key] = url; return; }
     }
   };
 
@@ -585,11 +595,11 @@ async function buildCache(challenge: string): Promise<void> {
   const categoryIcons = new Map<LootCategory, string>();
   for (const [category, candidates] of Object.entries(CATEGORY_ART_CANDIDATES) as
     Array<[LootCategory, readonly string[]]>) {
-    const entries = categoryEntries.get(category) ?? [];
+    const entries = categoryEntries.get(category);
     const preferred = candidates
-      .map((candidate) => entries.find(([name]) => norm(name) === norm(candidate))?.[1])
+      .map((candidate) => entries?.get(norm(candidate)))
       .find((url): url is string => !!url);
-    const fallback = entries[0]?.[1];
+    const fallback = entries?.values().next().value;
     const url = preferred ?? fallback;
     if (url) categoryIcons.set(category, url);
   }
@@ -791,6 +801,7 @@ export async function getItemIcons(): Promise<{
 }
 
 export function clearIconCache(): void {
+  deviceMarketPrices.clear();
   exactMap  = null;
   normMap   = null;
   identityMap = null;

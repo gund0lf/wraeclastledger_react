@@ -1,3 +1,4 @@
+import { deviceInvestment } from './profit';
 import type { SessionSettings } from '../types';
 
 export type InvestmentSectionStatus = 'empty' | 'incomplete' | 'filled';
@@ -96,6 +97,10 @@ export function investmentCompleteness(settings: SessionSettings): InvestmentCom
   });
 
   const incompleteCostLabels: string[] = [];
+  for (const slot of deviceInvestment(settings).activeSlots) {
+    if (slot?.name && (!positive(slot.price) || !positive(slot.count))) incompleteCostLabels.push(slot.name);
+  }
+  if (settings.ember?.name && !positive(settings.ember.price)) incompleteCostLabels.push(settings.ember.name);
   if (chisel === 'incomplete') incompleteCostLabels.push('Chisel');
   if (rolling === 'incomplete') incompleteCostLabels.push('Rolling costs');
   if (delirium === 'incomplete') incompleteCostLabels.push('Delirium Orbs');

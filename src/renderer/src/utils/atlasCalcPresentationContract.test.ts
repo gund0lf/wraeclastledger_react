@@ -31,7 +31,7 @@ describe('Atlas Calc source-derived presentation contract', () => {
     expect(source).toContain('meta={inputsMeta}');
     expect(source).toContain('title="Calculation"');
     expect(source).toContain('meta={breakdownMeta}');
-    expect(source).toContain("'+25% IIQ' : 'Bonus off'");
+    expect(source).toContain("bonusLabel : 'Bonus off'");
   });
 
   it('keeps collapsed summaries inside their available width', () => {

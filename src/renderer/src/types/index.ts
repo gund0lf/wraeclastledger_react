@@ -76,7 +76,8 @@ export type RunStatisticsSetupCaptureSource = 'manual-entry' | 'loot-snapshots';
  * a claimed per-map boundary. */
 export interface RunStatisticsSetupContext {
   schemaVersion: 1;
-  modelRevision: 'allflame-v1';
+  modelRevision: 'allflame-v1' | 'observations-v1';
+  deviceItems?: string[];
   captureSource: RunStatisticsSetupCaptureSource;
   leagueName: string;
   atlasSource: 'path-of-pathing' | 'unavailable';
@@ -135,13 +136,19 @@ export interface MapData {
   id: string; tier: number; name: string;
   quantity: number; rarity: number; packSize: number;
   quality: number; qualityType: string;
+  atlasDrops?: number; moreThreads?: number;
   moreCurrency: number; moreMaps: number; moreScarabs: number;
   moreDivCards: number; // "More Divination Cards: +N%" — its own drop pool, NOT currency (added post-1.0.62; old persisted maps lack it, consumers must ?? 0)
   modCount: number;
   /** Exact explicit affix count from advanced tooltip headers, or zero for an
    * identified Normal map. Undefined for unidentified, headerless Magic/Rare
    * legacy copies, and old maps; never infer it from text-line count. */
+  itemRarity?: string;
   explicitModCount?: number;
+  corruptionModifiers?: {
+    explicitMagnitude?: number; atlasPassiveEffect?: number; rarity?: number; packSize?: number; randomNotables?: number;
+  };
+  rolledAffixes?: { side: 'Prefix' | 'Suffix'; line: string; base: number }[];
   /** Epoch ms when the map was parsed from the clipboard (WP9 Tier 0, added post-1.0.62).
    *  Additive — old persisted maps lack it; consumers must treat it as optional. */
   parsedAt?: number;
@@ -169,7 +176,15 @@ export interface RegexSet {
   isDefault?: boolean; // pinned to top of saved sets, applied when loading strategies
 }
 
+export interface ThreadSlot {
+  name: string;
+  count: number;
+  price: number;
+}
+
 export interface SessionSettings {
+  threadSlots?: ThreadSlot[];
+  ember?: { name: string; price: number };
   strategyTarget?: import('../../../shared/strategyTarget').StrategyTarget | null;
   strategySourceParty?: { group: boolean | null; size: number | null } | null;
   divinePrice: number;
@@ -246,11 +261,13 @@ export interface SessionSettings {
    * visible when the tree later changes, but are explicitly stale until the
    * new URL is read successfully. Absence marks never-read or legacy/imported
    * setup values whose source cannot be proven. */
+  atlasChoiceAnswers?: { sourceUrl: string; leagueName: string; effects: Record<string, string> };
   atlasStatsRead?: {
     schemaVersion: 1;
     sourceUrl: string;
     leagueName: string;
     readAt: string;
+    choiceNodeIds?: number[];
     calc: AtlasCalcSettingsSnapshot;
   };
   /** Local Run Statistics inputs captured from a successful Atlas stats read.

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  tradeMapNumericFilters,
+  tradeMapDropFilters,
   buildDeliriumRewardTradeStatFilter,
   buildDeliriumTradeStatFilter,
   ORDINARY_MAP_EXCLUDED_SPECIAL_STATS,
@@ -204,4 +206,18 @@ describe('Delirium Trade filtering', () => {
       filters: [{ id: 'enchant.reward-currency' }],
     });
   });
+});
+
+it('selects Atlas Drops and preserves high-rarity eight-affix maps in the new pool', () => {
+  const params = { minIIQ: 75, minIIR: 60, minPack: 30, minTier: 16, mapType: '8mod' };
+  expect(tradeMapNumericFilters(params, true)).toEqual({
+    map_bonus: { min: 75 }, map_iir: { min: 60 }, map_packsize: { min: 30 }, map_tier: { min: 16 },
+  });
+  expect(tradeMapNumericFilters(params, false)).toMatchObject({ map_iiq: { min: 75, max: 145 }, map_iir: { min: 60, max: 85 } });
+});
+
+it('sends the More Threads floor using the legacy Trade pseudo-stat that matches it', () => {
+  expect(tradeMapDropFilters({ minCurrency: 0, minScarabs: 35, minMaps: 0 })).toEqual([
+    { id: 'pseudo.pseudo_map_more_scarab_drops', value: { min: 35 } },
+  ]);
 });

@@ -10,6 +10,25 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.99',
+    date: '2026-11-24',
+    changes: [
+      'Map Capture reads Atlas Drops, More Threads and rare-only modifiers on Covens maps. Reopening an older session can recover those stats on maps whose copied text was saved.',
+      'Fixed a sharing bug that could show “Divine Price: 1c” when Auto couldn’t confirm the league. New strategies, added runs and replacement runs now require a Divine price. A new live session retries detection once after the one-minute cooldown. You can also choose your league manually in Investment. Saved sessions keep their recorded price.',
+      'Opening a session with a large loot table stays responsive while Ledger prepares item icons in batches.',
+      'Shared strategies with 7–11 distinct Delirium levels now open in the Strategy Browser. When you share a session with 12 or more distinct Delirious percentages, Ledger includes grouped counts and reward totals in the strategy notes.',
+      'An empty Covens session shows Atlas Drops in Map Log and Thread types in Atlas Calc as soon as it opens.',
+      'Investment shows three Thread slots, an Allflame Ember, market prices and the cost per map. Unwavering Vision preserves the two paused slots and distinguishes paid Threads from the two it grants. You can retry an unavailable market price.',
+      'Older sessions keep their Atlas layout and scarab setup. Covens pickers include the current astrolabes, Delirium Orbs and chisels.',
+      'Loot recognises Viscera as League items and shows their artwork when the item name identifies a single icon.',
+      'Atlas Calc records choices on allocated nodes, including nodes reached by pathing. It shows prefix and suffix effects separately, displays the Atlas completion bonus of +25% item quantity separately from Atlas Drops, and flags random notables and map rerolls. The Dashboard includes flat area rarity and pack size in Covens estimates.',
+      'Regex Builder uses Atlas Drops, More Threads and updated Nightmare rewards. Regex and Trade support nine new encounter modifiers and distinguish regular and Nightmare Profane. The Nightmare picker also includes Enthralled, Fleet, of Toughness and of Impotence. Trade uses the matching map stat when filling in minimums.',
+      'Mechanic tags include selected Threads and additional Atlas mechanics. Covens Run Statistics shows recorded encounters, including Mercenary counts across tracked maps.',
+      'Covens sharing is live. In 1.0.99, shared strategy notes carry Atlas Drops, More Threads, and Thread and Ember costs. A shared Covens run can still display “Avg Quant: 0%”. Atlas choices stay local. Structured Covens fields and support for combining those figures across shared runs are planned for 1.0.100.',
+      'Ledger shows the tree’s increased Threads found and a map’s More Threads separately while their interaction remains unverified. Rounding for the Atlas passive-effect corruption also remains unverified. With Shaping the Valleys and Mounting Modifiers, the estimate counts the modifiers on the map item. One in-game test supports that rule.',
+    ],
+  },
+  {
     version: '1.0.98',
     date: '2026-11-22',
     changes: [

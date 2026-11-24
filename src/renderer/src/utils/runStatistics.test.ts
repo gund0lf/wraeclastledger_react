@@ -10,7 +10,7 @@ import {
   deriveValuableBeastGains,
   estimateBestiaryEncounter,
   observedRatePercent,
-  remainingUntrackedMaps,
+  formatMercenaryObservations,
   totalValuableBeastGains,
   valuableBeastName,
 } from './runStatistics';
@@ -66,11 +66,9 @@ describe('derived run statistics', () => {
     )).toEqual([]);
   });
 
-  it('calculates observed map rates and the explicit Other remainder', () => {
+  it('calculates observed map rates', () => {
     expect(observedRatePercent(3, 9)).toBeCloseTo(33.333);
     expect(observedRatePercent(1, 0)).toBeNull();
-    expect(remainingUntrackedMaps(2, 9)).toBe(7);
-    expect(remainingUntrackedMaps(12, 9)).toBe(0);
   });
 
   it('aggregates explicit observations with per-metric denominators', () => {
@@ -137,7 +135,6 @@ describe('derived run statistics', () => {
     expect(aggregate.anomalySessionCount).toBe(2);
     expect(aggregate.mercenaryTotal).toBe(5);
     expect(aggregate.mercenaryMapCount).toBe(30);
-    expect(aggregate.untrackedMercenaryMaps).toBe(25);
     expect(aggregate.mercenaries).toEqual([
       { archetype: 'Kineticist', count: 3, mapCount: 30, sessionCount: 2 },
       { archetype: 'Sniper', count: 2, mapCount: 20, sessionCount: 1 },
@@ -250,4 +247,10 @@ describe('derived run statistics', () => {
       '75% less Intelligence',
     ]);
   });
+});
+
+it('reports encounters even when multiple occur per map', () => {
+  expect(formatMercenaryObservations(3, 10)).toBe('3 encounters across 10 maps');
+  expect(formatMercenaryObservations(3, 1)).toBe('3 encounters across 1 map');
+  expect(formatMercenaryObservations(1, 1)).toBe('1 encounter across 1 map');
 });

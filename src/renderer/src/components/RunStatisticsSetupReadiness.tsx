@@ -62,7 +62,7 @@ export function RunStatisticsSetupReadiness() {
       const patch = buildAtlasStatsSyncPatch(
         result.groups,
         sourceUrl,
-        current.settings.leagueName,
+        current.settings.leagueName, undefined, result.allocatedNodeIds,
       );
       applyAtlasStatsSyncPatch(current.updateSetting, patch, 'automatic');
     } catch (error) {

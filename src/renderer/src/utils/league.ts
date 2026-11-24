@@ -113,6 +113,12 @@ export function setLeagueOverrideValue(v: string | null): void {
 
 // ─── Detection ───────────────────────────────────────────────────────────────
 let cachedContext: ActiveContext | null = null;
+let fallbackSince: number | null = null;
+
+/** Completion time of the currently cached failed probe. */
+export function leagueFallbackSince(): number | null {
+  return fallbackSince;
+}
 let cachedFetchPromise: Promise<ActiveContext> | null = null;
 
 async function detect(): Promise<ActiveContext> {
@@ -126,6 +132,7 @@ async function detect(): Promise<ActiveContext> {
   // candidate list during the gap between leagues. Probing ended leagues would
   // turn frozen poe.ninja data into a false confirmation.
   const detectable = KNOWN_LEAGUES.filter((name) => !isLeagueEnded(name));
+  const failures: string[] = [];
   for (const name of detectable) {
     try {
       const res = await window.api?.fetchCurrencyOverview(name);
@@ -133,34 +140,46 @@ async function detect(): Promise<ActiveContext> {
         console.log('[League] Detected via probe:', name);
         return { leagueName: name, source: 'detected' };
       }
-    } catch { /* network error: fall through to the next league */ }
+      // IPC errors can include local paths or URLs. Only log fixed categories.
+      const status = /^poe\.ninja ([1-5]\d{2})$/.exec(res?.error ?? '');
+      const reason = !res ? 'bridge unavailable' : status ? 'HTTP ' + status[1]
+        : res.error ? 'request failed' : 'insufficient currency rows';
+      failures.push(name + ' ' + reason);
+    } catch {
+      failures.push(name + ' request failed');
+    }
   }
   // Fallback also respects endsAt: first non-ended entry, else CURRENT_LEAGUE.
   const fallback = detectable[0] ?? CURRENT_LEAGUE;
-  console.warn('[League] Could not detect, falling back to:', fallback);
+  console.warn('[League] Auto detection failed:', failures.join(', ') || 'no active candidates');
   return { leagueName: fallback, source: 'fallback' };
 }
 
-export async function getActiveContext(): Promise<ActiveContext> {
+export async function getActiveContext(retryFallback = false): Promise<ActiveContext> {
   // Override wins outright — no probe, no cache involvement.
   if (leagueOverride) return { leagueName: leagueOverride, source: 'override' };
   // A process may stay open across an event boundary. Do not let a context
   // detected before `endsAt` live forever in memory; the next consumer after
   // the boundary must re-probe and flow the new league into price/icon caches.
-  if (cachedContext && isLeagueEnded(cachedContext.leagueName)) clearLeagueCache();
+  if (cachedContext && (isLeagueEnded(cachedContext.leagueName) ||
+    (retryFallback && cachedContext.source === 'fallback'))) clearLeagueCache();
   if (cachedContext) return cachedContext;
   if (cachedFetchPromise) return cachedFetchPromise;
-  cachedFetchPromise = detect().then((ctx) => {
-    cachedContext = ctx;
-    cachedFetchPromise = null;
+  const pending = detect().then((ctx) => {
+    if (cachedFetchPromise === pending) {
+      cachedContext = ctx;
+      fallbackSince = ctx.source === 'fallback' ? Date.now() : null;
+      cachedFetchPromise = null;
+    }
     return ctx;
   });
-  return cachedFetchPromise;
+  cachedFetchPromise = pending;
+  return pending;
 }
 
 /** Back-compat wrapper — every existing consumer keeps working unchanged. */
-export async function getCurrentLeague(): Promise<string> {
-  return (await getActiveContext()).leagueName;
+export async function getCurrentLeague(retryFallback = false): Promise<string> {
+  return (await getActiveContext(retryFallback)).leagueName;
 }
 
 /**
@@ -172,6 +191,13 @@ export async function getCurrentLeague(): Promise<string> {
  */
 export function currentLeagueSync(): string | null {
   return leagueOverride ?? cachedContext?.leagueName ?? null;
+}
+
+/** An empty live session can show the active league's controls before detection
+ * seeds the session. The display fallback must never assign a league to history. */
+export function mapDisplayLeague(savedLeague: string, lifecycle: 'live' | 'historical', mapCount: number): string {
+  if (!savedLeague && lifecycle === 'live' && mapCount === 0) return currentLeagueSync() ?? CURRENT_LEAGUE;
+  return savedLeague;
 }
 
 /**
@@ -190,11 +216,22 @@ export function confirmedLeagueSync(): string | null {
 }
 
 export function clearLeagueCache(): void {
+  fallbackSince = null;
   cachedContext = null;
   cachedFetchPromise = null;
 }
 
 // ─── Override dropdown data ──────────────────────────────────────────────────
+
+/** Keep the release order stable when the provider or a saved session adds a league. */
+export function orderedLeagueOptions(names: readonly (string | null)[]): string[] {
+  const extra = new Set<string>();
+  for (const name of names) {
+    const league = normalizeLeagueOverride(name);
+    if (league && !KNOWN_LEAGUES.includes(league)) extra.add(league);
+  }
+  return [...KNOWN_LEAGUES, ...[...extra].sort((a, b) => a.localeCompare(b))];
+}
 
 /**
  * Pure filter over the poe.ninja index-state league list (exported for tests).

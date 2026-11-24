@@ -22,12 +22,19 @@ describe('deriveAtlasDetectedTags', () => {
     ])).toEqual(['heist']);
   });
 
+  it('uses the stock Atlas headings for Ambush and Divination', () => {
+    expect(deriveAtlasDetectedTags([{ title: 'Strongboxes', stats: ['Strongboxes in your Maps are Corrupted'] },
+      { title: 'Divination Cards', stats: ['Divination Cards found in your Maps are from two random other Maps'] }]))
+      .toEqual(['ambush', 'divination']);
+  });
+
   it('deduplicates recognized positive headings and ignores unknown groups', () => {
     expect(deriveAtlasDetectedTags([
       { title: 'The Searing Exarch', stats: ['Maps have increased influence'] },
       { title: 'searing exarch', stats: ['Maps have another positive stat'] },
       { title: 'Atlas Memories', stats: ['Maps have Memory Influence'] },
-    ])).toEqual(['exarch']);
+      { title: 'The Eater of Worlds', stats: ['Eldritch Altars Influenced by The Eater of Worlds have an additional Downside'] },
+    ])).toEqual(['exarch', 'eater']);
   });
 
   it('returns an empty array so callers can clear stale tree tags', () => {
@@ -108,4 +115,10 @@ describe('deriveAtlasDetectedTags', () => {
       },
     ])).toEqual(['harvest', 'heist']);
   });
+});
+
+it('ignores Thread weighting alone and recognizes substantive mechanic investment beside it', () => {
+  const weight = '200% increased chance for [Thread|Threads] in your Maps to be of type';
+  expect(deriveAtlasDetectedTags([{ title: 'Expedition', stats: [weight] }])).toEqual([]);
+  expect(deriveAtlasDetectedTags([{ title: 'Expedition', stats: [weight, 'Expedition Monsters in your Maps grant increased Experience'] }])).toEqual(['expedition']);
 });

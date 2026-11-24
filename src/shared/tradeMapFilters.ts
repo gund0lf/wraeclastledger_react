@@ -136,3 +136,37 @@ export function buildDeliriumRewardTradeStatFilter(
 export function tradeItemTypeForMapType(mapType: string): string | undefined {
   return mapType === 'nightmare' ? 'Nightmare Map' : undefined;
 }
+
+export function tradeMapNumericFilters(params: {
+  minIIQ: number; minIIR: number; minPack: number; minTier: number; mapType: string;
+}, atlasDrops: boolean) {
+  const { minIIQ, minIIR, minPack, minTier, mapType } = params;
+  const mapFilters: Record<string, { min?: number; max?: number }> = {};
+  if (minIIQ  > 0)  mapFilters[atlasDrops ? 'map_bonus' : 'map_iiq'] = { min: minIIQ };
+  if (minPack > 0)  mapFilters['map_packsize'] = { min: minPack };
+  if (minIIR  > 0)  mapFilters['map_iir']      = { min: minIIR };
+  if (minTier > 0)  mapFilters['map_tier']     = { min: minTier };
+
+  // 8-mod maps: add max IIQ/IIR/Pack to exclude nightmare maps.
+  // Verified regular top-tier mods cap out at IIQ:143, IIR:82, Pack:53 (best 4P+4S).
+  // Any map rolling higher must have uber-tier mods — almost certainly a nightmare map.
+  // Buffer of +2/+3 added to avoid false positives from rounding.
+  if (!atlasDrops && mapType === '8mod') {
+    mapFilters['map_iiq']     = { ...(mapFilters['map_iiq']     ?? {}), max: 145 };
+    mapFilters['map_iir']     = { ...(mapFilters['map_iir']     ?? {}), max: 85  };
+    mapFilters['map_packsize']= { ...(mapFilters['map_packsize']?? {}), max: 55  };
+  }
+
+  return mapFilters;
+}
+
+/** GGG's scarab pseudo-stat also matches the More Threads map property.
+ * The property's display name changes with the league; the Trade id is shared. */
+export function tradeMapDropFilters(params: { minCurrency: number; minScarabs: number; minMaps: number }) {
+  const floors: [string, number][] = [
+    ['pseudo.pseudo_map_more_currency_drops', params.minCurrency],
+    ['pseudo.pseudo_map_more_scarab_drops', params.minScarabs],
+    ['pseudo.pseudo_map_more_map_drops', params.minMaps],
+  ];
+  return floors.filter(([, min]) => min > 0).map(([id, min]) => ({ id, value: { min } }));
+}

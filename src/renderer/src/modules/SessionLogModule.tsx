@@ -1,3 +1,6 @@
+import { describeMapEffects } from '../utils/profit';
+import { getManifest } from '../utils/gameData';
+import { mapDisplayLeague } from '../utils/league';
 import {
   Alert, Card, ScrollArea, Table, Text, ActionIcon, Group, Button, Switch,
   Tooltip, TextInput, Modal, Stack, Badge, Popover, Divider, ThemeIcon,
@@ -6,13 +9,13 @@ import {
 import { useDisclosure, useElementSize } from '@mantine/hooks';
 import { useEffect, useState, useMemo } from 'react';
 import type { ClipboardBridgeStatus } from '../../../shared/protonClipboardBridge';
-import { useSessionKeys } from '../store/useSessionStore';
+import { useSessionKeys, useSessionStore } from '../store/useSessionStore';
 import {
   IconTrash, IconClipboard, IconArrowBackUp, IconSearch, IconX,
   IconPlayerPlayFilled, IconPlayerPauseFilled, IconClock, IconInfoCircle,
   IconArrowRight,
 } from '@tabler/icons-react';
-import { parseMapClipboard } from '../utils/mapParser';
+import { mapLogStatColumns, parseMapClipboard } from '../utils/mapParser';
 import { markPossibleDuplicates } from '../utils/mapDuplicates';
 import { usePanelMaximized } from '../layout/panelLayoutContext';
 import { formatDeliriumRewards, useDedicatedDeliriumColumn } from '../utils/deliriumMetadata';
@@ -141,6 +144,9 @@ export const SessionLogModule = () => {
     'isWatching', 'toggleWatch', 'sessionLifecycle',
   );
 
+  const settings = useSessionStore((s) => s.settings);
+  const leagueName = mapDisplayLeague(settings.leagueName, sessionLifecycle, maps.length);
+  const columns = useMemo(() => mapLogStatColumns(leagueName, maps, getManifest().leagueRules), [leagueName, maps]);
   const [search, setSearch] = useState('');
   const [clearOpen, { open: openClear, close: closeClear }] = useDisclosure(false);
   const [clipboardBridgeStatus, setClipboardBridgeStatus] = useState<ClipboardBridgeStatus>({ state: 'idle' });
@@ -189,6 +195,10 @@ export const SessionLogModule = () => {
               {map.name || '-'}
             </Text>
           </Group>
+          {(map.corruptionModifiers || map.rolledAffixes?.length) ? <Tooltip multiline w={290}
+            label={describeMapEffects(settings, map).map(line => <div key={line}>{line}</div>)}>
+            <Text size="xs" c="dimmed">Map effects</Text>
+          </Tooltip> : null}
           {!showDeliriumColumn && <DeliriumMetadata map={map} />}
         </Stack>
       </Table.Td>
@@ -201,12 +211,14 @@ export const SessionLogModule = () => {
         </Table.Td>
       )}
       <Table.Td className="session-log-number"><MetricValue value={map.explicitModCount?.toString() ?? null} /></Table.Td>
-      <Table.Td className="session-log-number"><MetricValue value={`${map.quantity}%`} /></Table.Td>
+      {columns.covens && <Table.Td className="session-log-number"><MetricValue value={map.atlasDrops === undefined ? null : `${map.atlasDrops}%`} /></Table.Td>}
+      {columns.legacy && <Table.Td className="session-log-number"><MetricValue value={columns.covens && !map.quantity ? null : `${map.quantity}%`} /></Table.Td>}
       <Table.Td className="session-log-number"><MetricValue value={map.rarity > 0 ? `${map.rarity}%` : null} /></Table.Td>
       <Table.Td className="session-log-number"><MetricValue value={`${map.packSize}%`} /></Table.Td>
       <Table.Td className="session-log-number"><MetricValue value={(map.moreCurrency ?? 0) > 0 ? `${map.moreCurrency}%` : null} /></Table.Td>
       <Table.Td className="session-log-number"><MetricValue value={(map.moreMaps ?? 0) > 0 ? `+${map.moreMaps}%` : null} /></Table.Td>
-      <Table.Td className="session-log-number"><MetricValue value={(map.moreScarabs ?? 0) > 0 ? `+${map.moreScarabs}%` : null} /></Table.Td>
+      {columns.covens && <Table.Td className="session-log-number"><MetricValue value={map.moreThreads === undefined ? null : `+${map.moreThreads}%`} /></Table.Td>}
+      {columns.legacy && <Table.Td className="session-log-number"><MetricValue value={map.moreScarabs > 0 ? `+${map.moreScarabs}%` : null} /></Table.Td>}
       <Table.Td className="session-log-number"><MetricValue value={(map.moreDivCards ?? 0) > 0 ? `+${map.moreDivCards}%` : null} /></Table.Td>
       <Table.Td className="session-log-row-action">
         <ActionIcon className="session-log-delete" size="md" variant="default" aria-label="Remove map"
@@ -315,12 +327,14 @@ export const SessionLogModule = () => {
                   <span style={{ cursor: 'help' }}>Mods</span>
                 </Tooltip>
               </Table.Th>
-              <Table.Th className="session-log-number">Quant</Table.Th>
+              {columns.covens && <Table.Th className="session-log-number">Atlas Drops</Table.Th>}
+              {columns.legacy && <Table.Th className="session-log-number">Quant</Table.Th>}
               <Table.Th className="session-log-number">Rarity</Table.Th>
               <Table.Th className="session-log-number">Pack</Table.Th>
               <Table.Th className="session-log-number">Curr</Table.Th>
               <Table.Th className="session-log-number">Maps</Table.Th>
-              <Table.Th className="session-log-number">Scarabs</Table.Th>
+              {columns.covens && <Table.Th className="session-log-number">Threads</Table.Th>}
+              {columns.legacy && <Table.Th className="session-log-number">Scarabs</Table.Th>}
               <Table.Th className="session-log-number">Div</Table.Th>
               <Table.Th className="session-log-row-action"></Table.Th>
             </Table.Tr>

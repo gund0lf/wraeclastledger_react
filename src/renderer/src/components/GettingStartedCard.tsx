@@ -6,10 +6,12 @@ import { COLOR, FONT } from '../utils/uiTokens'
 // top of the Dashboard while the session is completely empty (no maps, no loot)
 // and the user hasn't dismissed it. Dismissal is persisted top-level in the
 // store so it never reappears once closed.
-const STEPS: string[] = [
+const steps = (usesThreads: boolean): string[] => [
   'Turn on Capture in the Map Log panel.',
   'Copy a map before running it; after finishing, copy the next map. Each capture logs automatically.',
-  'Set your costs in the Investment panel (scarabs, chisels, orbs).',
+  usesThreads
+    ? 'Enter your Thread, Ember and map preparation costs in Investment.'
+    : 'Enter your scarab, chisel and orb costs in Investment.',
   'Import a WealthyExile stash CSV as your baseline before mapping.',
   'Run your maps.',
   'Import the return CSV afterwards to see your profit.'
@@ -24,7 +26,7 @@ const GOOD_TO_KNOW: string[] = [
   'Completed all 100 Atlas objectives? Toggle Atlas Bonus in the Multiplier panel - it starts off each new league.'
 ]
 
-export const GettingStartedCard = ({ onDismiss }: { onDismiss: () => void }) => (
+export const GettingStartedCard = ({ usesThreads, onDismiss }: { usesThreads: boolean; onDismiss: () => void }) => (
   <Stack
     gap={6}
     mb={6}
@@ -51,7 +53,7 @@ export const GettingStartedCard = ({ onDismiss }: { onDismiss: () => void }) => 
       Track a mapping session&apos;s profit in six steps:
     </Text>
     <Stack gap={3}>
-      {STEPS.map((step, i) => (
+      {steps(usesThreads).map((step, i) => (
         <Group key={i} gap={6} wrap="nowrap" align="flex-start">
           <Text
             size="xs"

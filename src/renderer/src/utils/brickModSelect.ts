@@ -32,32 +32,44 @@ export interface BrickModSelectOption {
   inclusionEligible: boolean;
 }
 
+// These map pools share one selectable effect and one saved marker.
+const sharedNightmareAffix: Readonly<Record<string, string | undefined>> = {
+  unique_bosses_possessed: 'Enthralled',
+  monster_speed_move_attack_cast: 'Fleet',
+  reduced_crit_damage_taken: 'of Toughness',
+  players_less_area_of_effect: 'of Impotence',
+};
+
+const inCatalogue = (mod: BrickModSelectSource, context: BrickModCatalogueContext) =>
+  mod.category === context || (context === 'nightmare' && !!sharedNightmareAffix[mod.id]);
+
 const toOption = (mod: BrickModSelectSource): BrickModSelectOption => {
+  const affix = sharedNightmareAffix[mod.id];
+  const label = affix ? `${affix} — ${mod.label}` : mod.label;
   const affixLines = mod.affixLines?.length
     ? mod.affixLines
     : (mod.tradeTexts.length > 0 ? mod.tradeTexts : [mod.label]);
   const tradeLabel = affixLines.join(' · ');
   return {
     value: mod.id,
-    label: mod.label,
+    label,
     tradeLabel,
     affixLines,
-    searchText: `${mod.label} ${tradeLabel}`,
-    shared: !!mod.familyId,
+    searchText: `${label} ${mod.summaryLabel ?? ''} ${tradeLabel}`,
+    shared: !!mod.familyId || !!affix,
     familyId: mod.familyId,
     inclusionEligible: mod.inclusionEligible === true,
   };
 };
 
-/** Paired visible catalogues. Every semantic leaf appears only in its native
- * context; familyId supplies the cross-context relationship. */
+/** Shared effects keep a single selection in both catalogues. */
 export function buildBrickModCatalogues(mods: BrickModSelectSource[]): Record<
   BrickModCatalogueContext,
   BrickModSelectOption[]
 > {
   return {
     regular: mods.filter((mod) => mod.category === 'regular').map(toOption),
-    nightmare: mods.filter((mod) => mod.category === 'nightmare').map(toOption),
+    nightmare: mods.filter((mod) => inCatalogue(mod, 'nightmare')).map(toOption),
   };
 }
 
@@ -72,7 +84,7 @@ export function selectedBrickIdsForContext(
 ): string[] {
   const selected = new Set(selectedBrickIds(exclusions));
   return mods
-    .filter((mod) => mod.category === context && selected.has(mod.id))
+    .filter((mod) => inCatalogue(mod, context) && selected.has(mod.id))
     .map((mod) => mod.id);
 }
 

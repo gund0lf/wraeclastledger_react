@@ -28,6 +28,12 @@ const STR_KEYS = ['name', 'qualityType'] as const;
 
 /** True when two maps parse to the same thing (id/parsedAt/rawText ignored). */
 export function isParseIdentical(a: MapData, b: MapData): boolean {
+  if (a.atlasDrops !== b.atlasDrops || a.moreThreads !== b.moreThreads) return false;
+  for (const key of ['explicitMagnitude', 'atlasPassiveEffect', 'rarity', 'packSize', 'randomNotables'] as const)
+    if (a.corruptionModifiers?.[key] !== b.corruptionModifiers?.[key]) return false;
+  const rolls = a.rolledAffixes ?? [];
+  const other = b.rolledAffixes ?? [];
+  if (rolls.length !== other.length || rolls.some((r, i) => r.side !== other[i].side || r.base !== other[i].base || r.line !== other[i].line)) return false;
   for (const k of NUM_KEYS)  if (((a[k] as number | undefined) ?? 0) !== ((b[k] as number | undefined) ?? 0)) return false;
   for (const k of BOOL_KEYS) if (((a[k] as boolean | undefined) ?? false) !== ((b[k] as boolean | undefined) ?? false)) return false;
   for (const k of STR_KEYS)  if (((a[k] as string | undefined) ?? '') !== ((b[k] as string | undefined) ?? '')) return false;

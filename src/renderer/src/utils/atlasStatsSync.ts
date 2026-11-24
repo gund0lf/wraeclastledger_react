@@ -5,6 +5,7 @@ import {
   type AtlasStatGroup,
 } from '../../../shared/atlasStats';
 import type { SessionSettings } from '../types';
+import { allocatedChoiceNodes } from './atlasChoices';
 import { deriveAtlasDetectedTags } from './atlasTags';
 import { isPathofpathingTreeUrl } from './atlasUrl';
 import type { SessionMutationOrigin } from './sessionMutationOrigin';
@@ -49,6 +50,7 @@ export function buildAtlasStatsSyncPatch(
   sourceUrl: string,
   leagueName: string,
   readAt = new Date().toISOString(),
+  allocatedNodeIds?: number[],
 ): AtlasStatsSyncPatch {
   if (!isPathofpathingTreeUrl(sourceUrl)) {
     throw new Error('A complete Path of Pathing tree URL is required for setup sync');
@@ -64,6 +66,7 @@ export function buildAtlasStatsSyncPatch(
       sourceUrl,
       leagueName,
       readAt,
+      ...(allocatedNodeIds && { choiceNodeIds: allocatedChoiceNodes(sourceUrl, allocatedNodeIds).map(node => Number(node.id)) }),
       calc,
     },
   };

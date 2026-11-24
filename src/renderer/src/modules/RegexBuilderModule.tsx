@@ -25,7 +25,7 @@ import {
   IconX,
 } from '@tabler/icons-react';
 import { useSessionKeys } from '../store/useSessionStore';
-import { PRESET_GROUPS, type ModGroupState } from '../utils/regexBuilderPresets';
+import { ATLAS_PRESET_GROUPS, PRESET_GROUPS, type ModGroupState } from '../utils/regexBuilderPresets';
 import {
   type MagicMapNumericStat,
   type MagicMapPredicate,
@@ -36,7 +36,9 @@ import {
   MAGIC_MAP_STAT_LABELS,
   REGEX_CHAR_LIMIT,
 } from '../utils/regexBuilder';
-import { activeChiselTypes } from '../utils/gameData';
+import { ALLFLAME_MANIFEST } from '../../../shared/gameData/manifest';
+import { CURRENT_LEAGUE, currentLeagueSync } from '../utils/league';
+import { activeChiselTypes, getManifest } from '../utils/gameData';
 import { COLOR, FONT } from '../utils/uiTokens';
 
 // ─── POS Algorithm ────────────────────────────────────────────────────────────
@@ -49,9 +51,9 @@ const TIER_COLORS: Record<string, string> = { S: 'yellow', A: 'orange', B: 'blue
 
 const displayGroupName = (label: string) => label.replace(/\s+Mods$/i, '');
 
-const canonicalGroupLabel = (group: ModGroupState) => {
-  const presetId = findPresetIdForGroup(group, PRESET_GROUPS);
-  return PRESET_GROUPS.find((preset) => preset.id === presetId)?.label ?? group.label;
+const canonicalGroupLabel = (group: ModGroupState, presets: typeof PRESET_GROUPS) => {
+  const presetId = findPresetIdForGroup(group, presets);
+  return presets.find((preset) => preset.id === presetId)?.label ?? group.label;
 };
 
 const displayModLabel = (label: string, isCustom: boolean) => {
@@ -64,12 +66,14 @@ const ModGroupEditor = ({
   group,
   isPreset,
   displayLabel,
+  presetMods,
   onChange,
   onRemove,
 }: {
   group: ModGroupState;
   isPreset: boolean;
   displayLabel: string;
+  presetMods: typeof PRESET_GROUPS[number]['mods'];
   onChange: (group: ModGroupState) => void;
   onRemove: () => void;
 }) => {
@@ -206,7 +210,8 @@ const ModGroupEditor = ({
         align="flex-start"
         style={{ padding: 2 }}
       >
-        {group.mods.map((mod) => {
+        {group.mods.map((stored) => {
+          const mod = presetMods.find(row => row.id === stored.id && row.token === stored.token) ?? stored;
           const active = group.selected.includes(mod.id);
           const isCustom = mod.id.startsWith('custom_');
           const tierColor = mod.tier ? (TIER_COLORS[mod.tier] ?? 'gray') : 'gray';
@@ -330,29 +335,14 @@ const ModGroupEditor = ({
 
 type EditableMagicMapPredicate = MagicMapPredicate & { id: string };
 
-const MAGIC_MAP_STAT_OPTIONS = Object.entries(MAGIC_MAP_STAT_LABELS)
-  .map(([value, label]) => ({ value: `stat:${value}`, label: `${label} threshold` }));
-const MAGIC_MAP_CONDITION_OPTIONS = [
-  ...MAGIC_MAP_STAT_OPTIONS,
+const magicMapConditionOptions = (atlasDrops: boolean) => [
+  ...Object.entries(MAGIC_MAP_STAT_LABELS)
+  .filter(([stat]) => !(atlasDrops ? ['quantity', 'moreScarabs'] : ['atlasDrops', 'moreThreads']).includes(stat))
+  .map(([value, label]) => ({ value: `stat:${value}`, label: `${label} threshold` })),
   { value: 'token', label: 'Text / regex token' },
   { value: 'open:either', label: 'Either open affix' },
   { value: 'open:prefix', label: 'Open prefix' },
   { value: 'open:suffix', label: 'Open suffix' },
-];
-
-const chiselTypes = activeChiselTypes();
-const MAGIC_MAP_CHISELS = Object.entries(chiselTypes).flatMap(([name, chisel]) =>
-  chisel.statKey in MAGIC_MAP_STAT_LABELS
-    ? [{
-        value: name,
-        label: chisel.label,
-        stat: chisel.statKey as MagicMapNumericStat,
-        bonus: chisel.bonusAt20,
-      }]
-    : []);
-const MAGIC_MAP_CHISEL_OPTIONS = [
-  { value: '', label: 'No chisel adjustment' },
-  ...MAGIC_MAP_CHISELS.map(({ value, label }) => ({ value, label })),
 ];
 
 const conditionTypeValue = (condition: EditableMagicMapPredicate): string => {
@@ -400,10 +390,12 @@ const conditionDescription = (condition: EditableMagicMapPredicate): string => {
 };
 
 const MagicMapConditionEditor = ({
+  options,
   condition,
   onChange,
   onRemove,
 }: {
+  options: ReturnType<typeof magicMapConditionOptions>;
   condition: EditableMagicMapPredicate;
   onChange: (condition: EditableMagicMapPredicate) => void;
   onRemove: () => void;
@@ -412,7 +404,7 @@ const MagicMapConditionEditor = ({
     <Select
       size="xs"
       label="Condition"
-      data={MAGIC_MAP_CONDITION_OPTIONS}
+      data={options}
       value={conditionTypeValue(condition)}
       allowDeselect={false}
       style={{ flex: 1.15, minWidth: 150 }}
@@ -469,7 +461,7 @@ const MagicMapConditionEditor = ({
   </Group>
 );
 
-const MagicMapWorkflowSection = ({ onCharCountChange }: { onCharCountChange: (count: number) => void }) => {
+const MagicMapWorkflowSection = ({ atlasDrops, onCharCountChange }: { atlasDrops: boolean; onCharCountChange: (count: number) => void }) => {
   const [required, setRequired] = useState<EditableMagicMapPredicate[]>([
     { id: 'required-pack-20', kind: 'stat', stat: 'packSize', minimum: 20 },
   ]);
@@ -482,7 +474,23 @@ const MagicMapWorkflowSection = ({ onCharCountChange }: { onCharCountChange: (co
   const [chiselApplied, setChiselApplied] = useState(true);
   const nextConditionId = useRef(0);
 
-  const selectedChisel = MAGIC_MAP_CHISELS.find((chisel) => chisel.value === chiselName);
+  const options = magicMapConditionOptions(atlasDrops);
+  const chiselTypes = activeChiselTypes(atlasDrops ? getManifest() : ALLFLAME_MANIFEST);
+  const chisels = Object.entries(chiselTypes).flatMap(([name, chisel]) =>
+    chisel.statKey in MAGIC_MAP_STAT_LABELS
+      ? [{
+          value: name,
+          label: chisel.label,
+          stat: chisel.statKey as MagicMapNumericStat,
+          bonus: chisel.bonusAt20,
+        }]
+      : []);
+  const chiselOptions = [
+    { value: '', label: 'No chisel adjustment' },
+    ...chisels.map(({ value, label }) => ({ value, label })),
+  ];
+
+  const selectedChisel = chisels.find((chisel) => chisel.value === chiselName);
   const generated = generateMagicMapRegex({
     required: required.map(predicateWithoutId),
     alternatives: alternatives.map(predicateWithoutId),
@@ -540,6 +548,7 @@ const MagicMapWorkflowSection = ({ onCharCountChange }: { onCharCountChange: (co
         </Group>
         {required.map((condition) => (
           <MagicMapConditionEditor
+            options={options}
             key={condition.id}
             condition={condition}
             onChange={(updated) => updateCondition(required, setRequired, condition.id, updated)}
@@ -564,6 +573,7 @@ const MagicMapWorkflowSection = ({ onCharCountChange }: { onCharCountChange: (co
         </Group>
         {alternatives.map((condition) => (
           <MagicMapConditionEditor
+            options={options}
             key={condition.id}
             condition={condition}
             onChange={(updated) => updateCondition(alternatives, setAlternatives, condition.id, updated)}
@@ -580,7 +590,7 @@ const MagicMapWorkflowSection = ({ onCharCountChange }: { onCharCountChange: (co
           <Select
             size="xs"
             label="Optional chisel adjustment"
-            data={MAGIC_MAP_CHISEL_OPTIONS}
+            data={chiselOptions}
             value={chiselName}
             allowDeselect={false}
             style={{ flex: 1, minWidth: 220 }}
@@ -711,6 +721,10 @@ const SectionBar = ({
 export const BuilderTab = () => {
   const { regexBuilderGroups, setRegexBuilderGroups, saveExclusionPreset } =
     useSessionKeys('regexBuilderGroups', 'setRegexBuilderGroups', 'saveExclusionPreset');
+  const { settings } = useSessionKeys('settings');
+  const league = settings.leagueName || currentLeagueSync() || CURRENT_LEAGUE;
+  const atlasDrops = !!getManifest().leagueRules?.[league]?.atlasDrops;
+  const presets = atlasDrops ? ATLAS_PRESET_GROUPS : PRESET_GROUPS;
   const groups = regexBuilderGroups;
   const rootRef = useRef<HTMLDivElement>(null);
   const [craftingOpen, setCraftingOpen] = useState(true);
@@ -742,10 +756,10 @@ export const BuilderTab = () => {
   }, [activeGroupId, groups]);
 
   const availablePresetIds = useMemo(
-    () => getAvailablePresetIds(groups, PRESET_GROUPS),
-    [groups],
+    () => getAvailablePresetIds(groups, presets),
+    [groups, presets],
   );
-  const availablePresets = PRESET_GROUPS.filter((preset) =>
+  const availablePresets = presets.filter((preset) =>
     availablePresetIds.includes(preset.id));
 
   const updateGroup = (idx: number, g: ModGroupState) =>
@@ -759,7 +773,7 @@ export const BuilderTab = () => {
   };
   const addGroup = (presetId?: string) => {
     if (presetId && !availablePresetIds.includes(presetId)) return;
-    const preset = PRESET_GROUPS.find((p) => p.id === presetId);
+    const preset = presets.find((p) => p.id === presetId);
     const newGroup: ModGroupState = {
       id: `g_${Date.now()}`,
       label: preset?.label ?? 'New Group',
@@ -779,12 +793,12 @@ export const BuilderTab = () => {
   const activeGroupIndex = groups.findIndex((group) => group.id === activeGroupId);
   const activeGroup = activeGroupIndex >= 0 ? groups[activeGroupIndex] : undefined;
   const activeGroupIsPreset = activeGroup
-    ? findPresetIdForGroup(activeGroup, PRESET_GROUPS) !== undefined
+    ? findPresetIdForGroup(activeGroup, presets) !== undefined
     : false;
   const groupSummary = generated.groups
     .map((generatedGroup) => {
       const source = groups.find((group) => group.id === generatedGroup.id);
-      const label = source ? canonicalGroupLabel(source) : generatedGroup.label;
+      const label = source ? canonicalGroupLabel(source, presets) : generatedGroup.label;
       return `${displayGroupName(label)} ≥${generatedGroup.minimum} of ${generatedGroup.selectedCount}`;
     })
     .join(' · ');
@@ -836,7 +850,7 @@ export const BuilderTab = () => {
               <div
                 className="regex-builder-section-content"
               >
-                <MagicMapWorkflowSection onCharCountChange={setMagicMapCharCount} />
+                <MagicMapWorkflowSection key={String(atlasDrops)} atlasDrops={atlasDrops} onCharCountChange={setMagicMapCharCount} />
               </div>
             </Collapse>
           </Stack>
@@ -885,7 +899,7 @@ export const BuilderTab = () => {
                         color={active ? 'teal' : 'gray'}
                         onClick={() => setActiveGroupId(group.id)}
                       >
-                        {displayGroupName(canonicalGroupLabel(group))}
+                        {displayGroupName(canonicalGroupLabel(group, presets))}
                         {configured ? ` · ≥${group.k} of ${group.selected.length}` : ''}
                       </Button>
                     );
@@ -937,8 +951,9 @@ export const BuilderTab = () => {
                     {activeGroup ? (
                       <ModGroupEditor
                         group={activeGroup}
+                        presetMods={presets.flatMap(preset => preset.mods)}
                         isPreset={activeGroupIsPreset}
-                        displayLabel={canonicalGroupLabel(activeGroup)}
+                        displayLabel={canonicalGroupLabel(activeGroup, presets)}
                         onChange={(updated) => updateGroup(activeGroupIndex, updated)}
                         onRemove={() => removeGroup(activeGroupIndex)}
                       />

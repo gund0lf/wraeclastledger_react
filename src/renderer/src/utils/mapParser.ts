@@ -1,3 +1,4 @@
+import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
 import { MapData } from '../types';
 
 /**
@@ -50,6 +51,8 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
     return m ? parseInt(m[1]) : 0;
   };
 
+  const atlasDropsLine = clean.match(/^Atlas Drops: \+(\d+)%/m);
+  const threadLine = clean.match(/^More Threads: \+(\d+)%/m);
   const quantity     = extractPct(/Item Quantity: \+(\d+)%/);
   const rarity       = extractPct(/Item Rarity: \+(\d+)%/);
   const packSize     = extractPct(/Monster Pack Size: \+(\d+)%/);
@@ -88,7 +91,7 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
     ? parsedDeliriousPct
     : undefined;
   const deliriumRewardTypes = lines.flatMap((line) => {
-    const match = line.match(/^Delirium Reward Type:\s*(.+?)(?:\s+\(enchant\))?$/);
+    const match = line.match(/^Delirium Reward Type:\s*(.+?)(?:\s+\(enchant\)|\s+— Unscalable Value)?$/);
     return match ? [match[1].trim()] : [];
   });
 
@@ -96,7 +99,37 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
   // one header per real affix, even when that affix has several description
   // lines. An identified Normal map has an equally exact count of zero without
   // needing headers. Unidentified and headerless Magic/Rare copies stay unknown.
-  const explicitHeaders = lines.filter((line) => /^\{ (?:Prefix|Suffix) Modifier\b/.test(line));
+  const explicitHeaders = lines.filter((line) => /^\{ (?:(?:Prefix|Suffix) Modifier\b|Rare-only(?: (?:Prefix|Suffix) Modifier\b| \(| \}))/.test(line));
+  const corruptionModifiers: NonNullable<MapData['corruptionModifiers']> = {};
+  const rolledAffixes: NonNullable<MapData['rolledAffixes']> = [];
+  let section = '';
+  for (const line of lines) {
+    if (line.startsWith('{') || /^-+$/.test(line)) {
+      section = line;
+      continue;
+    }
+    if (/Corruption Implicit Modifier/i.test(section) || /\(implicit\)$/i.test(line)) {
+      const normalized = line.replace(/\(\d+[-–]\d+\)/g, '');
+      const patterns = {
+        explicitMagnitude: /(\d+)% increased Explicit Modifier magnitudes/i,
+        atlasPassiveEffect: /Atlas Passives have (\d+)% increased Effect on Area/i,
+        rarity: /(\d+)% increased Rarity of Items found/i,
+        packSize: /(\d+)% increased (?:Monster )?Pack Size/i,
+        randomNotables: /(\d+) (?:additional )?random unallocated notable Atlas Passives/i,
+      };
+      for (const [key, pattern] of Object.entries(patterns)) {
+        const match = normalized.match(pattern);
+        if (match) corruptionModifiers[key as keyof typeof corruptionModifiers] = Number(match[1]);
+      }
+    } else {
+      const side = section.match(/^\{ (?:Rare-only )?(Prefix|Suffix) Modifier\b/)?.[1];
+      // Only project a single explicitly rolled percentage. Fixed, mixed and
+      // unscalable lines have no verified rounding contract from the clipboard.
+      const rolled = line.match(/^(\D*)(\d+)\(\d+[-–]\d+\)%(?!.*\d)(.*)$/);
+      if ((side === 'Prefix' || side === 'Suffix') && rolled && !/Unscalable Value/i.test(line))
+        rolledAffixes.push({ side, line: rolled[1] + '{roll}%' + rolled[3], base: Number(rolled[2]) });
+    }
+  }
   const explicitModCount = isUnidentified
     ? undefined
     : explicitHeaders.length > 0
@@ -135,6 +168,10 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
   }
 
   return {
+    ...(Object.keys(corruptionModifiers).length ? { corruptionModifiers } : {}),
+    ...(atlasDropsLine && rolledAffixes.length ? { rolledAffixes } : {}),
+    ...(atlasDropsLine && { itemRarity, atlasDrops: Number(atlasDropsLine[1]) }),
+    ...(threadLine && { moreThreads: Number(threadLine[1]) }),
     tier, name, quantity, rarity, packSize, quality, qualityType,
     moreCurrency, moreMaps, moreScarabs, moreDivCards, modCount, explicitModCount,
     isOriginator, isEmpoweredMirage, isNightmare, isCorrupted, isUnidentified,
@@ -144,13 +181,34 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
   };
 };
 
-/** Recover additive exact-mod evidence from retained clipboard text without
- * rewriting any other authored or historical map field. This is intentionally
- * narrow: old records whose raw text was already stripped remain unknown. */
+/** Recover explicit counts and Covens clipboard observations when the original
+ * capture is available. Other saved fields keep their historical values. */
 export function recoverExactModifierCount(map: MapData): MapData {
-  if (map.explicitModCount != null || !map.rawText) return map;
+  if (!map.rawText) return map;
+  const covensCopy = map.atlasDrops === undefined && map.rawText.includes('Atlas Drops:');
+  const needsDetails = (!map.rolledAffixes && map.rawText.includes('Atlas Drops:')) ||
+    (!map.corruptionModifiers && /Corruption Implicit Modifier|\(implicit\)/i.test(map.rawText));
+  if (!covensCopy && !needsDetails && map.explicitModCount != null) return map;
   const reparsed = parseMapClipboard(map.rawText);
-  return reparsed?.explicitModCount == null
+  if ((reparsed?.corruptionModifiers && !map.corruptionModifiers) || (reparsed?.rolledAffixes && !map.rolledAffixes)) map = { ...map,
+    ...(reparsed.corruptionModifiers && { corruptionModifiers: reparsed.corruptionModifiers }),
+    ...(reparsed.rolledAffixes && { rolledAffixes: reparsed.rolledAffixes }) };
+  if (covensCopy && reparsed?.atlasDrops !== undefined) {
+    return { ...map, atlasDrops: reparsed.atlasDrops, moreThreads: reparsed.moreThreads,
+      explicitModCount: reparsed.explicitModCount, deliriumRewardTypes: reparsed.deliriumRewardTypes };
+  }
+  return reparsed?.explicitModCount == null || reparsed.explicitModCount === map.explicitModCount
     ? map
     : { ...map, explicitModCount: reparsed.explicitModCount };
+}
+
+/** A stripped legacy copy can have zero-filled historical fields and no way
+ * to recover the Covens observations. Use session provenance for the headings
+ * and preserve positive historical evidence in mixed imports. */
+export function mapLogStatColumns(
+  leagueName: string, maps: ReadonlyArray<Pick<MapData, 'atlasDrops' | 'moreThreads' | 'quantity' | 'moreScarabs'>>,
+  rules = BUNDLED_MANIFEST.leagueRules,
+): { covens: boolean; legacy: boolean } {
+  const covens = rules?.[leagueName]?.atlasDrops === true || maps.some(map => map.atlasDrops !== undefined || map.moreThreads !== undefined);
+  return { covens, legacy: !covens || maps.some(map => map.quantity > 0 || map.moreScarabs > 0) };
 }

@@ -63,6 +63,19 @@ describe('session-bound Divine price', () => {
     expect(useSessionStore.getState().divinePriceFetchedAt).toBeGreaterThan(0);
   });
 
+  it('retains a quoted 200c on initialization and historical refresh', async () => {
+    resetStore(0, 0);
+    useSessionStore.getState().setDivinePriceManual(200);
+    const snapshot = useSessionStore.getState().settings;
+    await useSessionStore.getState().initDivinePrice();
+    useSessionStore.setState({ sessionLifecycle: 'historical' });
+    await useSessionStore.getState().initDivinePrice({ force: true });
+    leagueState.confirmed = null;
+    expect(await useSessionStore.getState().initDivinePrice({ force: true, repriceLoaded: true })).toBe('unconfirmed');
+    expect(useSessionStore.getState().settings).toEqual(snapshot);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('fetches when the price is the legacy default (200)', async () => {
     resetStore(200, Date.now());
     await useSessionStore.getState().initDivinePrice();
@@ -257,7 +270,7 @@ describe('historical-session protection', () => {
       sessionLifecycle: 'live',
     });
     await useSessionStore.getState().initDivinePrice({ force: true });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(useSessionStore.getState().settings.divinePrice).toBe(0);
     expect(useSessionStore.getState().settings.leagueName).toBe('');
     expect(useSessionStore.getState().divinePriceFetchedAt).toBe(0);

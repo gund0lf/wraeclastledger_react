@@ -16,7 +16,7 @@
  * entity with a lifecycle. It changes when GGG changes tooltip WORDING, which
  * is a parser concern.
  */
-import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
+import { ALLFLAME_MANIFEST, BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
 
 // ─── SCARAB LIST (derived) ────────────────────────────────────────────────────
 // Current ACTIVE entries from the bundled revision. Reworked entries remain
@@ -28,9 +28,14 @@ export const SCARAB_LIST: string[] =
 export const CHISEL_TYPES: Record<string, { label: string; statKey: string; bonusAt20: number }> =
   Object.fromEntries(
     BUNDLED_MANIFEST.chisels
-      .filter((c) => c.status === 'active')
+      .filter((c) => c.status === 'active' || c.status === 'reworked')
       .map((c) => [c.name, { label: c.label ?? c.name, statKey: c.statKey, bonusAt20: c.bonusAt20 }])
   );
+
+export function chiselForLeague(name: string, league: string | null | undefined) {
+  const manifest = BUNDLED_MANIFEST.leagueRules?.[league || ''] ? BUNDLED_MANIFEST : ALLFLAME_MANIFEST;
+  return manifest.chisels.find(item => item.name === name);
+}
 
 export const CHISEL_SELECT_DATA = [
   { value: '', label: '— None —' },

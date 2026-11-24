@@ -1,3 +1,4 @@
+import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
 /**
  * discordExport.ts - pure builder for the WraeclastLedger Discord export string (WP1).
  *
@@ -15,14 +16,16 @@
  * moving every parser in lockstep.
  */
 import { SessionSettings, LootItem, ManualLootItem } from '../types';
-import { generateRunRegex, trimmedMean } from './priceUtils';
-import { computeProfit, computeMultiplier, resolveFragmentCount } from './profit';
+import { generateRunRegex, mapDropAverages, trimmedMean } from './priceUtils';
+import { deviceInvestment, computeProfit, computeMultiplier, resolveFragmentCount } from './profit';
 import { EXPORT_EMOJI as E } from './discordEmoji';
 import { buildLootSummary, lootSummaryWireLine } from './lootSummary';
 import { isSafeStrategyAtlasUrl } from './atlasUrl';
 import type { DiscordImport } from './parseDiscordExport';
 import {
   formatObservedDeliriumLine,
+  groupedDeliriumNote,
+  isGroupedDeliriumNote,
   summarizeObservedDelirium,
 } from './deliriumMetadata';
 
@@ -30,6 +33,7 @@ import {
 export interface ExportMapStats {
   quantity: number; rarity: number; packSize: number;
   moreCurrency: number; moreScarabs: number;
+  atlasDrops?: number; moreThreads?: number;
   explicitModCount?: number;
   isUnidentified?: boolean;
   deliriousPct?: number;
@@ -88,8 +92,13 @@ const compactAstrolabeType = (value: string): string => {
   return compact || value.trim();
 };
 
+export function hasShareDivinePrice(price: number): boolean {
+  return Number.isFinite(price) && price > 0;
+}
+
 export function buildDiscordExport(input: DiscordExportInput): string {
   const { maps, settings, lootItems, baselineTotal, investmentNeutralization } = input;
+  if (!hasShareDivinePrice(settings.divinePrice)) return '';
   const baselineItems = input.baselineItems ?? [];
   const manualLootItems = input.manualLootItems ?? [];
   const inlineText = (value: string | undefined): string =>
@@ -121,13 +130,16 @@ export function buildDiscordExport(input: DiscordExportInput): string {
   });
   const { multiplier, usesObservedMods, observedModAverage } = computeMultiplier(settings, maps);
   const multiplyingModifiers = resolveFragmentCount(settings);
-  const observedDelirium = summarizeObservedDelirium(maps);
+  const summary = summarizeObservedDelirium(maps);
+  const grouped = summary && summary.levelCounts.length > 11 ? groupedDeliriumNote(summary, n) : '';
+  const observedDelirium = grouped ? null : summary;
 
   const excludedItems = lootItems.filter((l) => l.excluded);
   const gemNetPL = (settings.advGemCount * settings.advGemSellPrice) - (settings.advGemCount * settings.advGemBuyPrice);
   const league   = settings.leagueName;
 
-  const avgQuant   = trimmedMean(maps.map((m) => m.quantity));
+  const drops = mapDropAverages(maps);
+  const avgQuant = drops.quantity;
   const avgPack    = trimmedMean(maps.map((m) => m.packSize));
   const avgCurr    = trimmedMean(maps.map((m) => m.moreCurrency));
   const avgRarity  = trimmedMean(maps.map((m) => m.rarity));
@@ -141,11 +153,30 @@ export function buildDiscordExport(input: DiscordExportInput): string {
   const gameDataPatchVersion = input.gameDataPatchVersion?.trim() ?? '';
   const hasGameDataProvenance = Number.isInteger(gameDataRevision)
     && gameDataRevision! > 0 && gameDataPatchVersion.length > 0;
+  const threadDevice = BUNDLED_MANIFEST.leagueRules?.[league]?.threadSlots;
+  const notes = stratNotes.split(' | ');
+  const deviceNotes = [
+    ...deviceInvestment(settings).activeSlots.filter(slot => slot?.name && slot.count > 0).map(slot => slot.count + ' x ' + slot.name + ' @ ' + slot.price + 'c'),
+    ...(settings.ember?.name ? [settings.ember.name + ' @ ' + settings.ember.price + 'c'] : []),
+  ];
+  const filteredNotes = notes.filter(part => !isGroupedDeliriumNote(part)
+    && !(deviceNotes.length && /^Map device per map: (?:\d+ x [A-Za-z ]+ Thread|Allflame Ember of [A-Za-z ]+) @ [\d.]+c(?:, (?:\d+ x [A-Za-z ]+ Thread|Allflame Ember of [A-Za-z ]+) @ [\d.]+c)*$/.test(part)));
+  if (deviceNotes.length) filteredNotes.push('Map device per map: ' + deviceNotes.join(', '));
+  if (drops.atlasCount || drops.threadCount) {
+    const dropNotes: string[] = [];
+    if (drops.atlasCount) dropNotes.push('Atlas Drops ' + Math.round(drops.atlas) + '% (' + drops.atlasCount + '/' + n + ' maps)');
+    if (drops.threadCount) dropNotes.push('More Threads ' + Math.round(drops.threads) + '% (' + drops.threadCount + '/' + n + ' maps)');
+    const prior = /^Map observations: (?:Atlas Drops|More Threads) \d+% \(\d+\/\d+ maps\)(?:, More Threads \d+% \(\d+\/\d+ maps\))?$/;
+    for (let i = filteredNotes.length - 1; i >= 0; i--) if (prior.test(filteredNotes[i])) filteredNotes.splice(i, 1);
+    filteredNotes.push('Map observations: ' + dropNotes.join(', '));
+  }
+  const distribution = grouped || (!summary ? notes.find(isGroupedDeliriumNote) : '');
+  if (distribution) filteredNotes.push(distribution);
   return formatDiscordExport({
     mapCount: n, mapType: settings.mapType, multiplier,
     avgQuant, avgRarity, avgPack, avgCurr, perMapCost: allInPerMap,
     totalInvest: profit.totalInvest, totalReturn: profit.lootGain, netProfit: profit.net,
-    divPerMap: profit.divPerMap, divPrice: profit.div,
+    divPerMap: profit.divPerMap, divPrice: settings.divinePrice,
     chisel: settings.chiselType || 'None', chiselPrice: settings.chiselPrice, chiselConfigured: !!settings.chiselType,
     scarabs: settings.scarabs.filter(s => s.name).map(s => s.name),
     scarabCosts: settings.scarabs.filter(s => s.name).map(s => s.cost),
@@ -157,15 +188,16 @@ export function buildDiscordExport(input: DiscordExportInput): string {
     atlasPoints: hasPoints ? atlasPts : null, atlasPointsMax: hasPoints ? atlasPtsMax : null,
     league, gameDataRevision: hasGameDataProvenance ? gameDataRevision : null,
     gameDataPatchVersion: hasGameDataProvenance ? gameDataPatchVersion : null,
-    multiplyingModifiersAllocated: multiplyingModifiers.source !== 'off',
-    multiplyingModifiersFragmentCount: multiplyingModifiers.count,
-    strategyName: stratName, strategyNotes: stratNotes, typeTags: shareTags,
+    multiplyingModifiersAllocated: threadDevice ? null : multiplyingModifiers.source !== 'off',
+    multiplyingModifiersFragmentCount: threadDevice ? null : multiplyingModifiers.count,
+    strategyName: stratName, strategyNotes: filteredNotes.filter(Boolean).join(' | '), typeTags: shareTags,
     isGroupPlay, groupSize, sessionMinutes,
     excludedDrops: excludedItems.map(i => ({ name: i.name, value: i.total })),
     gemInfo: settings.advGemCount > 0 ? { count: settings.advGemCount,
       buy: settings.advGemCount * settings.advGemBuyPrice,
       sell: settings.advGemCount * settings.advGemSellPrice, net: gemNetPL } : null,
-    runRegex: n > 0 ? generateRunRegex({ avgQuant, avgPack, avgCurr, avgRarity, avgScarabs }, []) : '',
+    runRegex: n > 0 ? generateRunRegex({ avgQuant: drops.atlasCount ? drops.atlas : avgQuant, avgPack, avgCurr, avgRarity, avgScarabs,
+      atlasDrops: drops.atlasCount > 0, avgThreads: drops.threads }, []) : '',
     observedModAverage: usesObservedMods ? observedModAverage : null,
     updateStrategyId: input.updateStrategyId ?? null,
     evidenceTargetStrategyId: input.evidence?.targetStrategyId ?? null,
@@ -272,9 +304,9 @@ export function formatDiscordExport(p: DiscordExportPresentation): string {
     ...(hasGameDataProvenance
       ? [`**Data:** r${gameDataRevision}/${gameDataPatchVersion}`]
       : []),
-    `**Multiplying Modifiers:** ${!p.multiplyingModifiersAllocated
-      ? 'Off'
-      : `${p.multiplyingModifiersFragmentCount} fragments`}`,
+    ...(p.multiplyingModifiersAllocated == null ? [] : [
+      `**Multiplying Modifiers:** ${p.multiplyingModifiersAllocated ? p.multiplyingModifiersFragmentCount + ' fragments' : 'Off'}`,
+    ]),
     ...(p.strategyName ? [`${E.strategy.uni} **Strategy:** ${p.strategyName}`] : []),
     ...(p.typeTags.length > 0 ? [`${E.tags.uni} **Tags:** ${p.typeTags.join(', ')}`] : []),
     ...(p.strategyNotes ? [`${E.notes.uni} **Notes:** ${p.strategyNotes}`] : []),

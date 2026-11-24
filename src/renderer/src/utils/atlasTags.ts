@@ -1,6 +1,8 @@
 import type { AtlasStatGroup } from '../../../shared/atlasStats';
 
 const TITLE_TO_TAG: Record<string, string> = {
+  strongboxes: 'ambush',
+  'divination cards': 'divination',
   delirium: 'delirium',
   beyond: 'beyond',
   legion: 'legion',
@@ -24,6 +26,7 @@ const TITLE_TO_TAG: Record<string, string> = {
   'rogue exiles': 'anarchy',
   mercenaries: 'trarthus',
   'settlers of kalguur': 'kalguur',
+  'the eater of worlds': 'eater',
   'eater of worlds': 'eater',
   'the eater': 'eater',
   'the searing exarch': 'exarch',
@@ -41,6 +44,9 @@ const SCARAB_DROP_CHANCE_RE =
  * Any other mechanic-specific effect is evidence of deliberate investment,
  * while direct scarabs are handled independently by shareTags. */
 function hasMeaningfulPositiveEvidence(stats: readonly string[]): boolean {
+  stats = stats.map(stat => stat.replace(/\[([^\]|]+)(?:\|([^\]]+))?\]/g, (_token, name: string, label?: string) => label || name))
+    .filter(stat => !/chance for Threads in your Maps to be of type|Threads found in your Maps cannot be of type|chance to drop (?:an additional )?Threads?/i.test(stat));
+  if (!stats.length) return false;
   const encounterChance = stats.reduce((sum, stat) => {
     const match = stat.trim().match(ENCOUNTER_CHANCE_RE);
     return sum + (match ? Number.parseInt(match[1], 10) : 0);

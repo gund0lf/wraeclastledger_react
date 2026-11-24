@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { IconBrandDiscord, IconCheck, IconPlus, IconPlaylistAdd, IconRefresh, IconLock } from '@tabler/icons-react';
 import { useSessionKeys, useSessionStore } from '../store/useSessionStore';
 import { restoreShareDraft } from '../utils/shareDraft';
-import { buildDiscordExport } from '../utils/discordExport';
+import { buildDiscordExport, hasShareDivinePrice } from '../utils/discordExport';
 import {
   buildDiscordSharePayload,
   DISCORD_SHARE_COMMAND_MAX,
@@ -309,7 +309,9 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
 
   // All math lives in utils/profit.ts via buildDiscordExport (WP1) — the export
   // is guaranteed to match the Dashboard.
-  const baseDiscordExport = useMemo(() => buildDiscordExport({
+  // This modal stays mounted in the workspace. A closed preview must not
+  // rebuild the loot evidence or start compact encoding during session restore.
+  const baseDiscordExport = useMemo(() => !opened ? '' : buildDiscordExport({
     maps, settings, lootItems, baselineItems, baselineTotal, manualLootItems, investmentNeutralization,
     stratName, stratNotes, shareTags, isGroupPlay,
     groupSize: isGroupPlay ? groupSize : null,
@@ -317,7 +319,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     updateStrategyId: evidenceTargetId ? null : updateTargetId,
     gameDataRevision: activeManifest.revision,
     gameDataPatchVersion: activeManifest.patchVersion,
-  }), [maps, settings, lootItems, baselineItems, baselineTotal, manualLootItems, investmentNeutralization,
+  }), [opened, maps, settings, lootItems, baselineItems, baselineTotal, manualLootItems, investmentNeutralization,
        stratName, stratNotes, shareTags, isGroupPlay, groupSize, sessionMinutes,
        updateTargetId, evidenceTargetId, activeManifest.revision, activeManifest.patchVersion]);
 
@@ -369,7 +371,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
       evidenceTargetFingerprint, evidenceFetchError, baseDiscordExport, maps]);
 
   const discordExport = useMemo(() => {
-    if (!evidenceTargetId || !evidenceProof || evidenceExpectedRevision == null) {
+    if (!baseDiscordExport || !evidenceTargetId || !evidenceProof || evidenceExpectedRevision == null) {
       return baseDiscordExport;
     }
     return buildDiscordExport({
@@ -397,7 +399,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   // Same export with EMPTY notes: the character budget derives the live notes
   // cap from everything else in the card (exportBudget.ts). Cheap - the pure
   // builder already runs per keystroke for the preview.
-  const discordExportNoNotes = useMemo(() => buildDiscordExport({
+  const discordExportNoNotes = useMemo(() => !opened ? '' : buildDiscordExport({
     maps, settings, lootItems, baselineItems, baselineTotal, manualLootItems, investmentNeutralization,
     stratName, stratNotes: '', shareTags, isGroupPlay,
     groupSize: isGroupPlay ? groupSize : null,
@@ -413,12 +415,12 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     } : null,
     gameDataRevision: activeManifest.revision,
     gameDataPatchVersion: activeManifest.patchVersion,
-  }), [maps, settings, lootItems, baselineItems, baselineTotal, manualLootItems, investmentNeutralization,
+  }), [opened, maps, settings, lootItems, baselineItems, baselineTotal, manualLootItems, investmentNeutralization,
        stratName, shareTags, isGroupPlay, groupSize, sessionMinutes,
        updateTargetId, evidenceTargetId, evidenceExpectedRevision, evidenceProof,
        activeManifest.revision, activeManifest.patchVersion]);
 
-  const parsedDiscordExport = useMemo(() => parseDiscordExport(discordExport), [discordExport]);
+  const parsedDiscordExport = useMemo(() => discordExport ? parseDiscordExport(discordExport) : null, [discordExport]);
   const authorCore = useMemo(() => {
     try { return parsedDiscordExport ? buildDiscordSharePayload(parsedDiscordExport) : ''; }
     catch { return ''; } // The existing encoder reports the field/size error below.
@@ -501,7 +503,8 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   const leagueBlock = leagueShareBlock(settings.leagueName);
 
   const shareMissingFields = missingShareFields(parseDiscordExport(baseDiscordExport));
-  const shareIncomplete = shareMissingFields.length > 0;
+  const missingDivinePrice = !hasShareDivinePrice(settings.divinePrice);
+  const shareIncomplete = !missingDivinePrice && shareMissingFields.length > 0;
   const costCompleteness = useMemo(() => investmentCompleteness(settings), [settings]);
   const costsIncomplete = costCompleteness.hasIncompleteCosts;
   const impossibleAtlasPoints = hasImpossibleAtlasPoints(settings.atlasPoints, settings.atlasPointsMax);
@@ -510,6 +513,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   const evidenceBlocked = evidenceTargetId !== null && evidenceProof === null;
   const previewWithheld = impossibleAtlasPoints
     || leagueBlock !== null
+    || missingDivinePrice
     || evidenceBlocked
     || shareIncomplete
     || costsIncomplete;
@@ -744,6 +748,9 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
             </Text>
           </Alert>
         )}
+        {missingDivinePrice && !sharePosted && <Alert color="orange" role="alert">
+          Set the Divine price in Investment before sharing. Choose your league manually there and refresh, or enter the price in chaos.
+        </Alert>}
         {leagueBlock === 'ended' && (
           <Alert color="red" variant="light" p="xs">
             <Text size="xs">
@@ -754,7 +761,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
         {leagueBlock === 'missing' && (
           <Alert color="red" variant="light" p="xs">
             <Text size="xs">
-              This session has no confirmed league yet, and sharing requires one. Once a live league is detected (or you start a session under one), sharing unlocks.
+              This session has no confirmed league yet, and sharing requires one. Choose your league manually in Investment or retry Auto detection there.
             </Text>
           </Alert>
         )}
@@ -903,7 +910,8 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
         {!sharePosted && previewWithheld ? (
           <Alert color="red" variant="light" p="xs">
             <Text size="xs">
-              {evidenceBlocked
+              {missingDivinePrice ? 'Preview needs a Divine price for this session.' :
+              evidenceBlocked
                 ? evidenceFetchError || evidencePreflightError
                   ? 'Preview withheld until the evidence preflight above passes.'
                   : 'Preparing the revision and setup evidence proof...'

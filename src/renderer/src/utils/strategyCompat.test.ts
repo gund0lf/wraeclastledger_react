@@ -41,6 +41,12 @@ describe('atlasVersionOf', () => {
 });
 
 describe('retargetAtlasUrl', () => {
+  it.each([['3.29.0-atlas', '3.30.0-atlas'], ['3.30.0-atlas', '3.29.0-atlas']])(
+    'keeps the authored allocation when viewing %s from %s', (from, to) => {
+      const authored = `https://pathofpathing.com/?v=${from}#AAAABgAADAsAJMFG`;
+      expect(retargetAtlasUrl(authored, to)).toBe(authored);
+    },
+  );
   it('replaces the complete atlas version while preserving the allocation hash', () => {
     const authored = 'https://pathofpathing.com/?v=3.28.0-atlas-league#AAAABgAADAsAJMFG';
     expect(retargetAtlasUrl(authored, '3.29.0-atlas')).toBe(
@@ -48,9 +54,14 @@ describe('retargetAtlasUrl', () => {
     );
   });
 
+  it('keeps unknown layouts on their authored version', () => {
+    const url = 'https://pathofpathing.com/?v=unknown#tree';
+    expect(retargetAtlasUrl(url, '3.30.0-atlas')).toBe(url);
+  });
+
   it('preserves surrounding query parameters', () => {
-    expect(retargetAtlasUrl('https://pathofpathing.com/?foo=1&v=old&bar=2#tree', 'new')).toBe(
-      'https://pathofpathing.com/?foo=1&v=new&bar=2#tree',
+    expect(retargetAtlasUrl('https://pathofpathing.com/?foo=1&v=3.28.0-atlas&bar=2#tree', '3.29.0-atlas')).toBe(
+      'https://pathofpathing.com/?foo=1&v=3.29.0-atlas&bar=2#tree',
     );
   });
 
@@ -66,13 +77,13 @@ describe('retargetAtlasUrl', () => {
 });
 
 describe('compat on the bundled manifest', () => {
-  it('a strategy of unchanged scarabs + chisel is ok', () => {
+  it('a retired scarab is reported independently of an available chisel', () => {
     const r = checkStrategyCompat(strat({
       scarabs: [{ name: 'Abyss Scarab of Descending', cost: 5 }, { name: 'Titanic Scarab', cost: 10 }],
       chisel: 'Avarice',
     }));
-    expect(r.level).toBe('ok');
-    expect(r.issues).toHaveLength(0);
+    expect(r.level).toBe('removed');
+    expect(r.issues).toHaveLength(2);
   });
 
   it('keeps a historical Cartographer chisel readable but flags it as removed', () => {
@@ -104,8 +115,6 @@ describe('compat on the bundled manifest', () => {
 describe('compat against a synthetic 3.29-style manifest', () => {
   const m: GameDataManifest = {
     ...BUNDLED_MANIFEST,
-    schemaVersion: 1,
-    contextKey: 'poe1-challenge',
     revision: BUNDLED_MANIFEST.revision + 1,
     atlasTreeVersion: '3.29',
     scarabs: [
@@ -200,8 +209,6 @@ describe('compat against a synthetic 3.29-style manifest', () => {
     // name-differs guard must suppress the rename issue rather than emit noise.
     const dangling: GameDataManifest = {
       ...BUNDLED_MANIFEST,
-      schemaVersion: 1,
-      contextKey: 'poe1-challenge',
       revision: BUNDLED_MANIFEST.revision + 1,
       scarabs: [{ id: 'orphan-scarab', name: 'Orphan Scarab', status: 'renamed', aliasOf: 'does-not-exist' }],
     };

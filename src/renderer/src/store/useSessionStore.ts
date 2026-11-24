@@ -3,8 +3,8 @@ import { emptyAuthorPreferences, parseAuthorPreferences, type AuthorPreferences 
 import { useShallow } from 'zustand/react/shallow';
 import { MapData, SessionSettings, LootItem, ManualLootItem, ManualSessionStatistics, ManualRunTimer, SavedSession, ScarabSlot, ScarabPreset, RegexSet, ExclusionPreset, LeagueCloseouts } from '../types';
 import { v4 as uuidv4 } from 'uuid';
-import { requestDivinePrice, sanitizeExclusionTerms } from '../utils/priceUtils';
-import { confirmedLeagueSync, currentLeagueSync, getCurrentLeague, normalizeLeagueOverride, setLeagueOverrideValue } from '../utils/league';
+import { DIVINE_PRICE_COOLDOWN_MS, requestDivinePrice, sanitizeExclusionTerms } from '../utils/priceUtils';
+import { confirmedLeagueSync, currentLeagueSync, getCurrentLeague, leagueFallbackSince, normalizeLeagueOverride, setLeagueOverrideValue } from '../utils/league';
 import { ModGroupState, cloneDefaultGroups } from '../utils/regexBuilderPresets';
 import { isRetrospectiveLeague, normalizeLeagueKey } from '../utils/retrospectives';
 import { MAP_DEVICE_SLOT_COUNT } from '../../../shared/mapDevice';
@@ -412,7 +412,7 @@ export interface SessionState {
   // too. Only the explicit reprice confirmation flow passes
   // { repriceLoaded: true }, and even then leagueName stays untouched
   // (league is session provenance, never a side effect of a price quote).
-  initDivinePrice: (opts?: { force?: boolean; repriceLoaded?: boolean }) => Promise<void>;
+  initDivinePrice: (opts?: { force?: boolean; repriceLoaded?: boolean; retryLeague?: boolean }) => Promise<void | 'unavailable' | 'unconfirmed'>;
   /** Manual divine-price entry updates this session's price snapshot. */
   setDivinePriceManual: (v: number) => void;
   saveAsNewSession: (name: string) => void;
@@ -793,7 +793,7 @@ export const useSessionStore = create<SessionStoreState>()(
         };
       }),
 
-      initDivinePrice: async (opts = {}) => {
+      initDivinePrice: async (opts = {}): Promise<void | 'unavailable' | 'unconfirmed'> => {
         // Divine price is a session snapshot. Automatically seed only an unset
         // or legacy-default session; once authored, it stays fixed regardless
         // of age. `force` is an explicit refresh/override action.
@@ -824,12 +824,13 @@ export const useSessionStore = create<SessionStoreState>()(
         // context; skipping here used to carry the ended league's value for up
         // to 30 minutes. A context change also bypasses the one-minute retry
         // cooldown because that cooldown belongs to the previous league.
-        const league = await getCurrentLeague();
+        const league = await getCurrentLeague(opts.force || opts.retryLeague);
         if (!ownsSession(get()) || invocation < latestApplicableDivineInit) return;
         const resolvedContext = currentLeagueSync();
         if (resolvedContext && resolvedContext !== league) return;
+        if (confirmedLeagueSync() !== league) return 'unconfirmed';
         const leagueChanged = st.leagueName.trim() !== '' && st.leagueName !== league;
-        const isUnset = st.divinePrice === 0 || st.divinePrice === 200;
+        const isUnset = st.divinePrice === 0 || (st.divinePrice === 200 && !st.divinePriceQuotedAt);
         if (!opts.force && !leagueChanged && !isUnset) return;
         // A later automatic no-op must not supersede a real explicit refresh.
         latestApplicableDivineInit = invocation;
@@ -852,7 +853,7 @@ export const useSessionStore = create<SessionStoreState>()(
           // whichever league happened to become confirmed while it was pending.
           const currentLeague = currentLeagueSync();
           if ((currentLeague && currentLeague !== request.league) ||
-            (realLeague && realLeague !== request.league)) return {};
+            realLeague !== request.league) return {};
           const sameOrUnstamped = !!realLeague && (
             !s.settings.leagueName || s.settings.leagueName === realLeague
           );
@@ -900,6 +901,8 @@ export const useSessionStore = create<SessionStoreState>()(
         });
         if (!opts.force && !opts.repriceLoaded) withAutomaticSessionMutation(applyPriceSnapshot);
         else applyPriceSnapshot();
+        if (request.isCurrent() && !(price && price > 0)) return 'unavailable';
+        return;
       },
 
       setDivinePriceManual: (v) => {
@@ -1326,4 +1329,34 @@ if (hydratedLeagueOverride !== useSessionStore.getState().leagueOverride) {
   useSessionStore.setState({ leagueOverride: hydratedLeagueOverride });
 }
 setLeagueOverrideValue(hydratedLeagueOverride);
+
+/** The dashboard owns one automatic fallback retry per live session, across panel mounts. */
+export function scheduleLiveDivineRetry(): (() => void) | undefined {
+  const { sessionNonce, leagueOverride, sessionLifecycle, settings } = useSessionStore.getState();
+  if (sessionLifecycle !== 'live' || leagueOverride || settings.divinePrice || confirmedLeagueSync()) {
+    return;
+  }
+  let cancelled = false;
+  let timer: ReturnType<typeof setTimeout>;
+  const eligible = (): boolean => {
+    const current = useSessionStore.getState();
+    return !cancelled && current.sessionNonce === sessionNonce && current.sessionLifecycle === 'live' &&
+      !current.leagueOverride && !current.settings.divinePrice;
+  };
+  const retryWhenDue = async (): Promise<void> => {
+    if (!eligible()) return;
+    // A manual Refresh may still be running when the cooldown expires.
+    await getCurrentLeague();
+    const failedAt = leagueFallbackSince();
+    if (!eligible() || failedAt === null) return;
+    const delay = failedAt + DIVINE_PRICE_COOLDOWN_MS - Date.now();
+    if (delay > 0) {
+      timer = setTimeout(retryWhenDue, delay);
+    } else {
+      await useSessionStore.getState().initDivinePrice({ retryLeague: true });
+    }
+  };
+  void retryWhenDue();
+  return () => { cancelled = true; clearTimeout(timer); };
+}
 import { LEGACY_TARGET_KEYS, withStrategyTarget, type StrategyTarget } from '../../../shared/strategyTarget';

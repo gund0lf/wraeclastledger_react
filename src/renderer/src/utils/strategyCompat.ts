@@ -67,6 +67,8 @@ export function retargetAtlasUrl(url: string, currentVersion: string): string {
   try { authoredVersion = decodeURIComponent(match[2]); }
   catch { return url; }
   if (!authoredVersion || authoredVersion === currentVersion) return url;
+  const trees = getManifest().atlasTrees;
+  if (!trees?.[authoredVersion]?.layout || trees[authoredVersion].layout !== trees[currentVersion]?.layout) return url;
   return `${url.slice(0, match.index)}${match[1]}${encodeURIComponent(currentVersion)}${url.slice(match.index + match[0].length)}`;
 }
 

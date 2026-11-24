@@ -110,10 +110,10 @@ describe('Regex visual-alignment presentation contract', () => {
     expect(sessionSource).toContain('placeholder="Search regular and Nightmare mods…"');
     expect(sessionSource).toContain('options={brickModCatalogues.regular}');
     expect(sessionSource).toContain('options={brickModCatalogues.nightmare}');
-    expect(sessionSource).toContain('>Shared</Badge>');
+    expect(sessionSource).toContain("option.familyId ? 'Shared' : 'Both pools'");
     expect(sessionSource).toContain('Left-click excludes. Right-click includes');
     expect(sessionSource).not.toContain('Shift+Enter');
-    expect(sessionSource).toContain('Shared rows only pin related variants');
+    expect(sessionSource).toContain('Related variants can be selected separately');
     expect(sessionSource).toContain('>How this works</span>');
     expect(sessionSource.match(/>How this works<\/span>/g)).toHaveLength(1);
     expect(sessionSource).not.toContain('>?</Badge>');

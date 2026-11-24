@@ -92,6 +92,25 @@ export function summarizeObservedDelirium(
   };
 }
 
+/** Older share readers accept eleven exact percentages. Describe a wider
+ * distribution in plain text so a range cannot be read as an exact level. */
+export function isGroupedDeliriumNote(text: string): boolean {
+  return /^Delirium distribution \(\d+\/\d+ maps\): (?:\d+(?:-\d+)?% x\d+(?:, |\. Reward tracks: ))+(?:none|[^|\n]+ x\d+)\.$/.test(text);
+}
+
+export function groupedDeliriumNote(summary: ObservedDeliriumSummary, mapCount: number): string {
+  const bands = new Map<number, number>();
+  for (const { percentage, count } of summary.levelCounts) {
+    const lower = Math.floor(percentage / 10) * 10;
+    bands.set(lower, (bands.get(lower) ?? 0) + count);
+  }
+  const levels = [...bands].map(([lower, count]) =>
+    (lower === 100 ? '100' : lower + '-' + (lower + 9)) + '% x' + count);
+  const rewards = summary.rewardCounts.map(({ name, count }) => name + ' x' + count);
+  return 'Delirium distribution (' + summary.sampleSize + '/' + mapCount + ' maps): '
+    + levels.join(', ') + '. Reward tracks: ' + (rewards.join(', ') || 'none') + '.';
+}
+
 export function formatObservedDeliriumLine(
   summary: ObservedDeliriumSummary,
   mapCount: number,

@@ -39,7 +39,7 @@ export interface GameEntity {
 
 /** Chisels carry the map-stat math the calculators need. */
 export interface ChiselEntity extends GameEntity {
-  statKey: 'quantity' | 'moreCurrency' | 'rarity' | 'packSize' | 'moreScarabs' | 'moreDivCards';
+  statKey: 'quantity' | 'moreCurrency' | 'rarity' | 'packSize' | 'moreScarabs' | 'moreThreads' | 'moreDivCards';
   bonusAt20: number;
 }
 
@@ -56,6 +56,11 @@ export interface GameDataManifest {
    *  unknown, NOT a guess) — §5.4 Tier 1 fills this per rollover. */
   atlasTreeVersion: string;
   mechanics: Record<string, MechanicStatus>;
+  threads?: GameEntity[];
+  embers?: GameEntity[];
+  leagueRules?: Record<string, { atlasDrops: boolean; threadSlots: number; threadCap: number }>;
+  atlasCompletion?: { objectives: number; itemQuantity: number };
+  atlasTrees?: Record<string, { layout: string; maxPoints: number; choices?: Record<string, { name: string; options: { id: string; text: string }[] }> }>;
   scarabs: GameEntity[];
   deliriumOrbs: GameEntity[];
   astrolabes: GameEntity[];

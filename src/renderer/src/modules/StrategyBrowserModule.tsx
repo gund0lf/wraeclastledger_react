@@ -7,7 +7,7 @@ import { useState, useEffect, useLayoutEffect, useSyncExternalStore, useRef } fr
 import { IconRefresh, IconBrandDiscord, IconShare2 } from '@tabler/icons-react';
 import { useSessionKeys, useSessionStore } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
-import { KNOWN_LEAGUES, activeKnownLeagues, isLeagueEnded } from '../utils/league';
+import { orderedLeagueOptions, activeKnownLeagues, isLeagueEnded } from '../utils/league';
 import { parseDiscordExport } from '../utils/parseDiscordExport';
 import {
   Strategy, ALL_TYPE_TAGS, BROWSER_COLS, BROWSER_GRID_TEMPLATE, BROWSER_ROW_GAP, BROWSER_ROW_PAD_X,
@@ -171,7 +171,7 @@ const StrategyBrowserContent = ({ safe }: { safe: boolean }) => {
       const patch = buildAtlasStatsSyncPatch(
         result.groups,
         url,
-        current.settings.leagueName,
+        current.settings.leagueName, undefined, result.allocatedNodeIds,
       );
       applyAtlasStatsSyncPatch(updateSetting, patch);
       // The compact authored fragment count remains stored as a compatibility
@@ -252,6 +252,8 @@ const StrategyBrowserContent = ({ safe }: { safe: boolean }) => {
 
   const applyReusableSetup = (plan: ImportedSetupPlan): void => {
     applyImportedMapType(plan.mapType, (mapType) => updateSetting('mapType', mapType));
+    updateSetting('threadSlots', []);
+    updateSetting('ember', undefined);
     updateSetting('chiselType', plan.chiselType);
     updateSetting('chiselUsed', plan.chiselType.length > 0);
     updateSetting('chiselPrice', 0);
@@ -566,8 +568,7 @@ const StrategyBrowserContent = ({ safe }: { safe: boolean }) => {
                   data={ALL_TYPE_TAGS.map((t) => ({ value: t, label: t.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') }))}
                   value={typeTags} onChange={setTypeTags} maxDropdownHeight={200} searchable />
                 <Select size="xs" style={{ width: 110 }}
-                  data={[...new Set([...(leagueOverride ? [leagueOverride] : []), ...KNOWN_LEAGUES])]
-                    .filter((l) => l !== 'Standard').map((l) => ({ value: l, label: l }))}
+                  data={orderedLeagueOptions([leagueOverride, leagueFilter]).map((l) => ({ value: l, label: l }))}
                   value={leagueFilter} onChange={(v) => setLeagueFilter(v ?? leagueOverride ?? activeKnownLeagues()[0])} />
                 <TextInput size="xs" placeholder="Min d/map" style={{ width: 80 }}
                   value={minDiv} onChange={(e) => setMinDiv(e.currentTarget.value)} />

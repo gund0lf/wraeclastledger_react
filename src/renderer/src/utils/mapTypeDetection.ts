@@ -2,7 +2,7 @@ import type { MapData, SessionSettings } from '../types';
 
 export function isEightModCandidate(map: MapData): boolean {
   if (!map.isCorrupted && !map.isNightmare) return false;
-  return map.explicitModCount != null ? map.explicitModCount > 6 : map.modCount > 6;
+  return map.explicitModCount != null ? map.explicitModCount >= 8 : map.modCount > 6;
 }
 
 export function inferMapType(

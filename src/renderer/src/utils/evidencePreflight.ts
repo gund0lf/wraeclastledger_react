@@ -1,3 +1,4 @@
+import { isGroupedDeliriumNote } from './deliriumMetadata';
 import { parseDiscordExport } from './parseDiscordExport';
 import {
   authoredRollupFromDiscordImport,
@@ -71,6 +72,14 @@ export async function prepareEvidenceSubmission(input: {
     );
   }
 
+  // Legacy evidence fingerprints have no Thread or Ember fields. A pooled
+  // contribution must wait until both ends can authenticate the device setup.
+  if ([target, local].some(run => run.strategyNotes.split(' | ').some(part => part.startsWith('Map device per map: ')))) {
+    throw new EvidencePreflightError('setup_mismatch', 'Pooling Thread or Ember setups requires a newer sharing format. You can share this run separately.');
+  }
+  if ([target, local].some(run => run.strategyNotes.split(' | ').some(isGroupedDeliriumNote))) {
+    throw new EvidencePreflightError('setup_mismatch', 'This distribution exceeds the pooled evidence format. Share this run separately to keep its Delirium summary.');
+  }
   const targetSnapshot = setupSnapshotFromDiscordImport(target);
   const currentTargetFingerprint = await fingerprintSetupSnapshot(targetSnapshot);
   if (currentTargetFingerprint !== input.persistedTargetFingerprint) {

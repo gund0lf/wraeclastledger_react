@@ -11,7 +11,7 @@ import {
   OPEN_SUFFIX_PATTERN,
   REGEX_CHAR_LIMIT,
 } from './regexBuilder';
-import type { ModGroupState } from './regexBuilderPresets';
+import { ATLAS_PRESET_GROUPS, PRESET_GROUPS, type ModGroupState } from './regexBuilderPresets';
 
 const group = (
   id: string,
@@ -241,4 +241,34 @@ describe('magic-map workflow generation', () => {
     expect(result.regex).toBe('"size.*([2-9].|\\d..)%"');
     expect(result.invalidCount).toBe(1);
   });
+});
+
+it('uses Covens headers and adjusts only the selected chisel stat', () => {
+  const chisel = { stat: 'moreThreads' as const, applied: true, bonus: 50 };
+  for (const [stat, header, old, min] of [
+    ['atlasDrops', 'Atlas Drops', 'Item Quantity', 23],
+    ['moreThreads', 'More Threads', 'More Scarabs', 73],
+  ] as const) {
+    const re = new RegExp(compileMagicMapPredicate({ kind: 'stat', stat, minimum: 23 }, chisel)!, 'i');
+    expect(re.test(`${header}: +${min}%`)).toBe(true);
+    expect(re.test(`${header}: +${min - 1}%`)).toBe(false);
+    expect(re.test(`${old}: +100%`)).toBe(false);
+  }
+});
+
+it('preserves preset tokens and presents the current reward for every Nightmare preset', () => {
+  for (const [i, group] of ATLAS_PRESET_GROUPS.entries()) {
+    expect(group.mods.map(mod => [mod.id, mod.token])).toEqual(PRESET_GROUPS[i].mods.map(mod => [mod.id, mod.token]));
+    if (group.id !== 'open-affixes') {
+      for (const mod of group.mods) {
+        expect(mod.detail).toContain('Atlas Drops');
+        expect(mod.label).not.toMatch(/undefined|scarabs|quant/i);
+      }
+    }
+  }
+  const rows = ATLAS_PRESET_GROUPS.flatMap(group => group.mods);
+  for (const [id, text] of [['chain3','16% Atlas Drops'], ['poss','16% Atlas Drops'], ['speed','28% Rarity'],
+    ['penet','36% Rarity'], ['labyhaz','27% Rarity'], ['wni','16% Atlas Drops'], ['volati','53% Threads']]) {
+    expect(rows.find(row => row.id === id)?.detail).toContain(text);
+  }
 });

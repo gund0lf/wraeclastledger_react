@@ -1,3 +1,8 @@
+import { allocatedChoiceNodes } from './atlasChoices';
+import { parseMapClipboard, recoverExactModifierCount } from './mapParser';
+import { describeMapEffects } from './profit';
+import { deriveShareTags } from './shareTags';
+import { deriveAtlasCalcSettingsSnapshot } from '../../../shared/atlasStats';
 /**
  * profit.test.ts — WP1 test suite for the extracted profit engine.
  *
@@ -10,7 +15,7 @@
 import { describe, it, expect } from 'vitest';
 import { SessionSettings, LootItem, MapData } from '../types';
 import {
-  computeCosts, computeProfit, computeMultiplier,
+  computeCosts, computeProfit, computeMultiplier, deviceInvestment,
   computeRollingSessionTotal, hasInvestmentCosts, isPreservationScarab, resolveFragmentCount,
 } from './profit';
 
@@ -449,5 +454,120 @@ describe('computeMultiplier', () => {
     const settings = baseSettings({ mapType: '8-mod', mountingModifiers: true });
     expect(computeMultiplier(settings, [3, 4, 5, undefined].map((n) => observedMap(n))).effectiveMods).toBe(8);
     expect(computeMultiplier(settings, [3, 4, 5].map((n) => observedMap(n)).concat(observedMap(6, true))).usesObservedMods).toBe(false);
+  });
+});
+
+describe('Thread and Ember investment', () => {
+  const url = 'https://pathofpathing.com/?v=3.30.0-atlas#AAAABgAAAgEAcXVxdQAA';
+  const setup = baseSettings({ leagueName: 'Covens', atlasTreeUrl: url, baseMapCost: 0,
+    threadSlots: [{ name: 'Abyss Thread', count: 8, price: 2 }, { name: 'Legion Thread', count: 7, price: 3 },
+      { name: 'Breach Thread', count: 5, price: 1 }], ember: { name: 'Allflame Ember of Toads', price: 10 },
+    atlasStatsRead: { schemaVersion: 1, sourceUrl: url, leagueName: 'Covens', readAt: '2026-11-23',
+      calc: deriveAtlasCalcSettingsSnapshot([{ title: 'Map Device', stats: [
+        'Map Device has 20% chance not to consume [Thread|Threads]',
+        '5% increased effect of Explicit Modifiers on your Maps per different [Thread] used with Map',
+      ] }]) },
+  });
+  it('prices paid units once per run, applies savings only to Threads and counts different types', () => {
+    expect(deviceInvestment(setup)).toMatchObject({ paid: 20, effective: 20, types: 3, threadEffect: 15, emberCost: 10 });
+    expect(computeCosts(setup, 2).totalInvest - computeCosts({ ...setup, threadSlots: [], ember: undefined }, 2).totalInvest)
+      .toBeCloseTo(2 * (42 * 0.8 + 10));
+    expect(deviceInvestment({ ...setup, atlasTreeUrl: '' })).toMatchObject({ threadCost: 42, threadEffect: 0 });
+  });
+  it('charges only the first slot, preserves dormant rows and restores them when the node is removed', () => {
+    const calc = deriveAtlasCalcSettingsSnapshot([{ title: 'Unwavering Vision', stats: [
+      'You can only apply one type of [Thread] to your Maps',
+      'Your Maps with [Thread|Threads] applied gain 2 additional Threads, which can bypass the 8 Thread maximum',
+    ] }]);
+    const read = { ...setup.atlasStatsRead!, calc };
+    const compact = deriveAtlasCalcSettingsSnapshot([{ title: 'Threads', stats: [
+      'Your Maps with [Thread|Threads] applied gain 2 additional Threads,which can bypass the 8 Thread maximum',
+    ] }]);
+    expect(compact.threadRules?.freeThreads).toBe(2);
+    expect(deviceInvestment({ ...setup, atlasStatsRead: read })).toMatchObject({ oneType: true, paid: 8, effective: 10, threadCost: 16, types: 1 });
+    expect(deviceInvestment({ ...setup, atlasStatsRead: read, threadSlots: [{ name: '', count: 1, price: 0 }, setup.threadSlots![1]] }))
+      .toMatchObject({ paid: 0, effective: 0, threadCost: 0 });
+    expect(deviceInvestment(setup)).toMatchObject({ paid: 20, types: 3, oneType: false });
+    expect(deviceInvestment({ ...setup, atlasStatsRead: read, threadSlots: setup.threadSlots!.slice(0, 1) }))
+      .toMatchObject({ paid: 8, effective: 10, threadCost: 16, oneType: true });
+  });
+});
+
+describe('Covens choices and explicit magnitude', () => {
+  const url = 'https://pathofpathing.com/?v=3.30.0-atlas#AAAABgAABAMAbz1xdfECcXUAAA==';
+  const modifierStats = [
+    '16% increased effect of Explicit Modifiers on your Maps', '6% increased effect of Explicit Modifiers on your Maps',
+    '2% increased effect of Explicit Modifiers on your Maps per Explicit Modifier',
+    '5% increased effect of Explicit Modifiers on your Maps per different Thread used with Map',
+  ];
+  const calc = deriveAtlasCalcSettingsSnapshot([{ title: 'Map modifiers', stats: modifierStats }]);
+  const settings = baseSettings({ ...calc, atlasTreeUrl: url, leagueName: 'Covens',
+    atlasStatsRead: { schemaVersion: 1, sourceUrl: url, leagueName: 'Covens', readAt: '', calc },
+    atlasChoiceAnswers: { sourceUrl: url, leagueName: 'Covens', effects: { '28477': '49076', '61698': '9590' } },
+    threadSlots: ['Expedition', 'Blight', 'Breach'].map(name => ({ name: name + ' Thread', count: 8, price: 0 })) });
+  const copy = `Item Class: Maps
+Rarity: Magic
+Shocking Map (Tier 6)
+--------
+Atlas Drops: +17% (augmented)
+Item Rarity: +9% (augmented)
+Monster Pack Size: +6% (augmented)
+--------
+{ Corruption Implicit Modifier }
+11(10-20)% increased Explicit Modifier magnitudes — Unscalable Value
+--------
+{ Prefix Modifier "Shocking" (Tier: 1) — 11% Increased }
+Monsters deal 89(70-89)% extra Physical Damage as Lightning
+--------
+Corrupted`;
+  it('reads two choice nodes from the copied allocation and scopes saved answers to its tree', () => {
+    expect(allocatedChoiceNodes(url).map(n => n.name)).toEqual(expect.arrayContaining(['Malignant Modifiers', 'Merged Worlds']));
+    expect(deriveShareTags(settings, [])).toContain('kalguur');
+    expect(deriveShareTags({ ...settings, leagueName: 'Allflame' }, [])).not.toContain('kalguur');
+    expect(allocatedChoiceNodes(url.replace('3.30', '3.29'))).toEqual([]);
+    expect(allocatedChoiceNodes(url.slice(0, -8))).toEqual([]);
+  });
+  it('estimates the Shocking prefix with Mounting and Shaping the Valleys allocated', () => {
+    const map = { ...parseMapClipboard(copy)!, id: 'shocking' };
+    const shaping = deriveAtlasCalcSettingsSnapshot([{
+      title: 'Map modifiers', stats: [...modifierStats, 'Your Maps have an additional random Modifier'],
+    }]);
+    const setup = { ...settings, atlasStatsRead: { ...settings.atlasStatsRead!, calc: shaping } };
+    expect(setup.atlasStatsRead.calc).toMatchObject({ mountingModifiers: true, additionalRandomModifier: true });
+    expect(map.explicitModCount).toBe(1);
+    const effects = describeMapEffects(setup, map);
+    expect(effects).toContain('Shaping the Valleys · one additional random map modifier');
+    expect(effects).toContain('Monsters deal 160% extra Physical Damage as Lightning · prefix estimate from current setup');
+  });
+
+  it('applies local rounding first and selects the appropriate affix multiplier for each map', () => {
+    const map = { ...parseMapClipboard(copy)!, id: 'fixture' };
+    expect(map.corruptionModifiers).toEqual({ explicitMagnitude: 11 });
+    expect(recoverExactModifierCount({ ...map, corruptionModifiers: undefined }).corruptionModifiers).toEqual(map.corruptionModifiers);
+    expect(describeMapEffects(settings, map).join(' ')).toContain('160% extra Physical Damage');
+    expect(describeMapEffects(settings, { ...map, rolledAffixes: map.rolledAffixes?.map(r => ({ ...r, side: 'Suffix' })) }).join(' ')).toContain('136% extra Physical Damage');
+    const area = deriveAtlasCalcSettingsSnapshot([{ title: 'Maps', stats: [
+      '15% increased Pack Size in your Maps', '13% increased Rarity of Items found in your Maps',
+      '88% increased Maps found in your Maps', '5% increased Maps found in your Maps for each Explicit Modifier',
+      '6% increased Threads found in your Maps', 'Incursions in your Maps have 4% increased Pack Size',
+      '25% increased Magic Pack Size in your Maps',
+    ] }]);
+    expect(area).toMatchObject({ areaPackSize: 15, areaRarity: 13, increasedMapsFound: 88,
+      mapsFoundPerExplicit: 5, increasedThreadsFound: 6 });
+    const unknown = deriveAtlasCalcSettingsSnapshot([{ title: 'Maps', stats: [
+      'Your Maps are opened with 5 additional random Unallocated Notable Atlas Passives',
+      'Your Maps have an additional random Modifier',
+      'Your Corrupted Rare Maps are modified unpredictably when opened',
+    ] }]);
+    expect(unknown).toMatchObject({ additionalRandomModifier: true, randomNotables: 5, rerollsCorruptedRare: true });
+    const changed = { ...settings, atlasStatsRead: { ...settings.atlasStatsRead!, calc: unknown } };
+    expect(describeMapEffects(changed, map).join(' ')).toContain('area effects unknown');
+    expect(describeMapEffects(changed, map).join(' ')).not.toContain('Twist of Fate');
+    expect(describeMapEffects(changed, { ...map, itemRarity: 'Rare' }).join(' ')).toContain('Twist of Fate');
+    const eight = computeMultiplier(settings, [observedMap(8)]);
+    expect(eight.multiplier).toBeCloseTo(1.53);
+    expect(eight.prefixMultiplier).toBeCloseTo(1.78);
+    expect(eight.suffixMultiplier).toBeCloseTo(1.53);
+    expect(describeMapEffects(settings, { ...map, corruptionModifiers: { randomNotables: 8 } })).toEqual(['8 random unallocated notables · effects unknown']);
   });
 });

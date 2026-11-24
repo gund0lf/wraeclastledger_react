@@ -24,7 +24,6 @@ const DEFAULT_OUT_DIR = join(ROOT, 'traceuer-server-side', 'wraeclast-strategy',
 const ENTITY_STATUSES = new Set(['active', 'reworked', 'renamed', 'removed']);
 const MECHANIC_STATUSES = new Set(['active', 'reworked', 'removed']);
 const ENTITY_GROUPS = ['scarabs', 'deliriumOrbs', 'astrolabes', 'chisels'];
-const SUPPORTED_SCHEMA_VERSION = 1;
 const SUPPORTED_CONTEXT_KEY = 'poe1-challenge';
 
 function fail(message) {
@@ -35,7 +34,8 @@ export function validateManifest(manifest) {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) fail('manifest must be an object');
   if (!Number.isInteger(manifest.revision) || manifest.revision < 1) fail('revision must be a positive integer');
   if (manifest.revision > 1 || manifest.schemaVersion !== undefined || manifest.contextKey !== undefined) {
-    if (manifest.schemaVersion !== SUPPORTED_SCHEMA_VERSION) fail(`schemaVersion must be ${SUPPORTED_SCHEMA_VERSION}`);
+    const expectedSchema = manifest.revision < 5 ? 1 : 2;
+    if (manifest.schemaVersion !== expectedSchema) fail(`schemaVersion must be ${expectedSchema}`);
     if (manifest.contextKey !== SUPPORTED_CONTEXT_KEY) fail(`contextKey must be "${SUPPORTED_CONTEXT_KEY}"`);
   }
   if (typeof manifest.patchVersion !== 'string' || !manifest.patchVersion.trim()) fail('patchVersion must be non-empty');
@@ -50,7 +50,7 @@ export function validateManifest(manifest) {
   const entities = [];
   const ids = new Map();
   const namesByGroup = new Map();
-  for (const group of ENTITY_GROUPS) {
+  for (const group of [...ENTITY_GROUPS, ...(manifest.revision >= 5 ? ['threads', 'embers'] : [])]) {
     const rows = manifest[group];
     if (!Array.isArray(rows)) fail(`${group} must be an array`);
     const names = new Set();

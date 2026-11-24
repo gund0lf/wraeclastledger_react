@@ -34,6 +34,7 @@ export const MOD_TOKENS = {
   reflect_physical_damage: 's ref',
   reflect_elemental_damage: 'f ele',
   high_crit_chance_multiplier: 'ike m',  // [V:py] High Crit Chance + Multiplier
+  brick_profane_nightmare: '\\b([89]\\d|100)%.*a chaos',
   extra_chaos_damage_withered: 'withe',  // [V:py] Extra Chaos Damage + Withered
   extra_fire_damage: 'fire',  // [V:py] Extra Fire Damage
   extra_cold_damage: 'as col',  // [V:py] Extra Cold Damage
@@ -87,6 +88,16 @@ export const MOD_TOKENS = {
   monsters_maim_on_hit: 'aim on',  // [V:py] Monsters Maim on Hit
   monsters_hinder_on_hit: 'inder',  // [V:py] Monsters Hinder on Hit
   monsters_blind_on_hit: 'lind o',  // [V:py] Monsters Blind on Hit
+  // Covens rare-only encounter suffixes.
+  encounter_mirage: "a mirage",
+  encounter_evocator_beidat: "of beidat",
+  encounter_evocator_ghorr: "of ghorr",
+  encounter_evocator_ktash: "of k'tash",
+  encounter_buried_pandemonium: "d pandemon",
+  encounter_buried_apex: "d apex",
+  encounter_buried_stalker: "d stalker",
+  encounter_mirror_delirium: "mirror of",
+  encounter_viridian_wildwood: "n wildwood",
   increased_rare_monsters: 'rare mo',  // [V:py] Increased Rare Monsters
   increased_magic_monsters: 'agic mo',  // [V:py] Increased Magic Monsters
 

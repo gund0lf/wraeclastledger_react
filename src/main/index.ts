@@ -1,3 +1,6 @@
+import { exchangeChaosPrices } from '../shared/exchangeChaosPrices';
+import { visceraCatalogue } from '../shared/visceraCatalogue';
+import { BUNDLED_MANIFEST } from '../shared/gameData/manifest';
 import { app, shell, BrowserWindow, ipcMain, clipboard, dialog, globalShortcut, powerMonitor, screen, safeStorage } from 'electron'
 import { AuthorHandoffVault } from './authorHandoffVault'
 import { AuthorHandoffService } from './authorHandoffService'
@@ -20,7 +23,7 @@ import {
   resolveBrickTradeStats,
 } from '../shared/brickMods'
 import type { ResolvedBrickTradeStat, UnavailableBrickTradeStat } from '../shared/brickMods'
-import type { AtlasStatGroup, AtlasStatsReadResult } from '../shared/atlasStats'
+import { READ_ATLAS_ALLOCATION, READ_ATLAS_STAT_GROUPS, readAllocatedNodeIds, type AtlasStatGroup, type AtlasStatsReadResult } from '../shared/atlasStats'
 import {
   createKeyedSerialTask,
   isAllowedExternalUrl,
@@ -35,6 +38,8 @@ import {
   type ClipboardBridgeStatus,
 } from '../shared/protonClipboardBridge'
 import {
+  tradeMapNumericFilters,
+  tradeMapDropFilters,
   buildDeliriumRewardTradeStatFilter,
   buildDeliriumTradeStatFilter,
   SPECIAL_MAP_STAT_TEXT,
@@ -688,21 +693,12 @@ async function readAtlasTreeStats(rawUrl: string): Promise<AtlasStatsReadResult>
           container.scrollTop = container.scrollHeight;
           await new Promise(function(resolve) { setTimeout(resolve, 150); });
         }
-        var statEls = Array.from(document.querySelectorAll('#skillTreeStats_Content .stat[data-group-name]'));
-        var groups = {};
-        var order = [];
-        statEls.forEach(function(el) {
-          var name = el.getAttribute('data-group-name');
-          if (!groups[name]) { groups[name] = []; order.push(name); }
-          var text = el.textContent.trim();
-          if (text) groups[name].push(text);
-        });
-        return order.map(function(name) { return { title: name, stats: groups[name] }; });
+        return { groups: ${READ_ATLAS_STAT_GROUPS}, allocation: ${READ_ATLAS_ALLOCATION} };
       })()
     `);
 
-    if (!Array.isArray(raw)) return { groups: null, error: 'Path of Pathing returned invalid stats' };
-    const groups: AtlasStatGroup[] = raw.flatMap((group: unknown) => {
+    if (!raw || typeof raw !== 'object' || !('groups' in raw) || !Array.isArray(raw.groups)) return { groups: null, error: 'Path of Pathing returned invalid stats' };
+    const groups: AtlasStatGroup[] = raw.groups.flatMap((group: unknown) => {
       if (!group || typeof group !== 'object') return [];
       const candidate = group as { title?: unknown; stats?: unknown };
       if (typeof candidate.title !== 'string' || !Array.isArray(candidate.stats) ||
@@ -710,7 +706,7 @@ async function readAtlasTreeStats(rawUrl: string): Promise<AtlasStatsReadResult>
       return [{ title: candidate.title, stats: candidate.stats as string[] }];
     });
     return groups.length > 0
-      ? { groups, error: null }
+      ? { groups, allocatedNodeIds: readAllocatedNodeIds('allocation' in raw ? raw.allocation : null), error: null }
       : { groups: null, error: 'No Atlas Tree stats were found' };
   } catch (error) {
     console.error('[Atlas Tree reader]', error);
@@ -727,12 +723,6 @@ ipcMain.handle('atlas-tree:read-stats', (_event, rawUrl: string) =>
 // ── PoE Trade stat ID cache ───────────────────────────────────────────────────
 const STATS_CACHE = new Map<string, string>();
 let statsFetchPromise: Promise<void> | null = null;
-
-const PSEUDO_IDS: Record<string, string> = {
-  currency: 'pseudo.pseudo_map_more_currency_drops',
-  scarabs:  'pseudo.pseudo_map_more_scarab_drops',
-  maps:     'pseudo.pseudo_map_more_map_drops',
-};
 
 const STAT_LOOKUPS: Record<string, string> = {
   empowered:       'Empowered Mirage which covers the entire Map',
@@ -792,6 +782,15 @@ async function ensureStatsLoaded(): Promise<void> {
       for (const group of data.result) {
         if (group.id.includes('2')) continue;
         for (const entry of group.entries) {
+          if (group.id === 'explicit') {
+            if (entry.text === 'Players in Area are #% Delirious') STATS_CACHE.set('atlas_delirious_pct', entry.id);
+            if (entry.text.startsWith('Delirium Reward Type: ')) {
+              for (const [key, label] of Object.entries(STAT_LOOKUPS)) {
+                const expected = key === 'deli_scarabs' ? 'Delirium Reward Type: Threads' : label.replace(/^enchant:/, '');
+                if (key.startsWith('deli_') && expected === entry.text) STATS_CACHE.set('atlas_' + key, entry.id);
+              }
+            }
+          }
           for (const [key, rawNeedle] of Object.entries(STAT_LOOKUPS)) {
             if (STATS_CACHE.has(key)) continue;
             const enchantOnly = rawNeedle.startsWith('enchant:');
@@ -852,39 +851,23 @@ interface TradeParams {
 ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
   await ensureStatsLoaded();
 
-  const { league, minIIQ, minPack, minIIR, minCurrency, minScarabs, minMaps,
+  const { league,
           mapType, empowered, minDelirious, deliRewardTypes, brickExclusions, brickInclusions,
-          minTier, corruptedFilter } = params;
+          corruptedFilter } = params;
 
+  const atlasDrops = BUNDLED_MANIFEST.leagueRules?.[league]?.atlasDrops;
   // Corrupted: explicit override wins, else mapType default
   let corruptedOption: string | null = null;
   if      (corruptedFilter === 'yes') corruptedOption = 'true';
   else if (corruptedFilter === 'no')  corruptedOption = 'false';
-  else if (mapType === '8mod')        corruptedOption = 'true';
-  else if (mapType === 'regular')     corruptedOption = 'false';
+  else if (!atlasDrops && mapType === '8mod')        corruptedOption = 'true';
+  else if (!atlasDrops && mapType === 'regular')     corruptedOption = 'false';
 
-  const mapFilters: Record<string, { min?: number; max?: number }> = {};
-  if (minIIQ  > 0)  mapFilters['map_iiq']     = { min: minIIQ };
-  if (minPack > 0)  mapFilters['map_packsize'] = { min: minPack };
-  if (minIIR  > 0)  mapFilters['map_iir']      = { min: minIIR };
-  if (minTier > 0)  mapFilters['map_tier']     = { min: minTier };
-
-  // 8-mod maps: add max IIQ/IIR/Pack to exclude nightmare maps.
-  // Verified regular top-tier mods cap out at IIQ:143, IIR:82, Pack:53 (best 4P+4S).
-  // Any map rolling higher must have uber-tier mods — almost certainly a nightmare map.
-  // Buffer of +2/+3 added to avoid false positives from rounding.
-  if (mapType === '8mod') {
-    mapFilters['map_iiq']     = { ...(mapFilters['map_iiq']     ?? {}), max: 145 };
-    mapFilters['map_iir']     = { ...(mapFilters['map_iir']     ?? {}), max: 85  };
-    mapFilters['map_packsize']= { ...(mapFilters['map_packsize']?? {}), max: 55  };
-  }
+  const mapFilters = tradeMapNumericFilters(params, !!atlasDrops);
 
   const statsArray: unknown[] = [];
 
-  const pseudoFilters: { id: string; value: { min: number } }[] = [];
-  if (minCurrency > 0) pseudoFilters.push({ id: PSEUDO_IDS.currency, value: { min: minCurrency } });
-  if (minScarabs  > 0) pseudoFilters.push({ id: PSEUDO_IDS.scarabs,  value: { min: minScarabs  } });
-  if (minMaps     > 0) pseudoFilters.push({ id: PSEUDO_IDS.maps,     value: { min: minMaps     } });
+  const pseudoFilters = tradeMapDropFilters(params);
   if (pseudoFilters.length > 0) statsArray.push({ type: 'and', filters: pseudoFilters });
 
   const originatorStatId = SPECIAL_MAP_STAT_IDS.get('originator');
@@ -923,7 +906,7 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
 
   try {
     const deliriumFilter = buildDeliriumTradeStatFilter(
-      STATS_CACHE.get('delirious_pct'),
+      STATS_CACHE.get(atlasDrops ? 'atlas_delirious_pct' : 'delirious_pct'),
       minDelirious,
     );
     if (deliriumFilter) statsArray.push(deliriumFilter);
@@ -935,8 +918,9 @@ ipcMain.handle('trade:search-maps', async (_event, params: TradeParams) => {
   }
 
   if (deliRewardTypes.length > 0) {
+    if (atlasDrops && deliRewardTypes.some(key => !STATS_CACHE.has('atlas_' + key))) return { url: null, error: 'Selected Delirium reward is unavailable on Trade' };
     const rewardFilter = buildDeliriumRewardTradeStatFilter(
-      deliRewardTypes.map((key) => STATS_CACHE.get(key)),
+      deliRewardTypes.map((key) => STATS_CACHE.get(atlasDrops ? 'atlas_' + key : key)),
     );
     if (rewardFilter) statsArray.push(rewardFilter);
   }
@@ -1125,9 +1109,11 @@ ipcMain.handle('poeninja:economy-icons', async (_event, family: 'exchange' | 'st
     );
     if (!res.ok) return { icons: null, slugs: [], names: [], error: `poe.ninja ${res.status}` };
     const data = await res.json() as {
-      items?: { name?: string; image?: string | null }[];
-      lines?: { id?: string; name?: string; baseType?: string; icon?: string }[];
+      core?: { primary?: string };
+      items?: { id?: string; name?: string; image?: string | null }[];
+      lines?: { id?: string; name?: string; primaryValue?: number; baseType?: string; icon?: string }[];
     };
+    if (family === 'stash' && type === 'Viscera') return visceraCatalogue(data.lines ?? []);
     const icons: { name: string; icon: string }[] = [];
     if (family === 'exchange') {
       for (const it of data.items ?? []) {
@@ -1152,7 +1138,9 @@ ipcMain.handle('poeninja:economy-icons', async (_event, family: 'exchange' | 'st
     const names = family === 'exchange'
       ? (data.items ?? []).map((it) => it.name).filter((s): s is string => !!s)
       : [];
-    return { icons, slugs, names, error: null };
+    const prices = family === 'exchange' && ['Thread', 'AllflameEmber'].includes(type)
+      ? exchangeChaosPrices(data) : undefined;
+    return { icons, slugs, names, prices, error: null };
   } catch (err: any) {
     return { icons: null, slugs: [], names: [], error: err?.message ?? 'fetch failed' };
   } finally {

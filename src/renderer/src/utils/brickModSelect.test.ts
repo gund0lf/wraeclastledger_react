@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BRICK_MOD_DEFS, brickRegexTerm } from '../../../shared/brickMods';
 import {
   buildBrickModCatalogues,
   filterBrickModSelectOptions,
@@ -178,4 +179,20 @@ describe('brick modifier select presentation', () => {
     expect(filterBrickModSelectOptions(catalogues.nightmare, 'temporal chains').map((item) => item.value))
       .toEqual(['uber_triple_curse_vuln_temporal_elem']);
   });
+});
+
+it('finds and toggles the shared Nightmare affixes by their in-game names', () => {
+  const source = BRICK_MOD_DEFS.map(def => ({
+    ...def, regexTerm: brickRegexTerm(def), tradeTexts: def.tradePatterns.map(p => p.text),
+  }));
+  const both = buildBrickModCatalogues(source);
+  for (const name of ['Enthralled', 'Fleet', 'of Toughness', 'of Impotence']) {
+    const [option] = filterBrickModSelectOptions(both.nightmare, name);
+    expect(option.label).toContain(name);
+    const { exclusions } = toggleBrickSelectionState(source, [], [], option.value, 'exclude');
+    for (const context of ['regular', 'nightmare'] as const) {
+      expect(selectedBrickIdsForContext(source, exclusions, context)).toEqual([option.value]);
+    }
+    expect(toggleBrickExclusion(source, exclusions, option.value)).toEqual([]);
+  }
 });

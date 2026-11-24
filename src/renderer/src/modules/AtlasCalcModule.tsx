@@ -1,3 +1,7 @@
+import { allocatedChoiceNodes } from '../utils/atlasChoices';
+import { deviceInvestment } from '../utils/profit';
+import { atlasVersionOf } from '../utils/strategyCompat';
+import { getAtlasCompletionBonus, getManifest } from '../utils/gameData';
 import {
   ActionIcon,
   Badge,
@@ -5,6 +9,7 @@ import {
   Card,
   Group,
   Stack,
+  Select,
   Switch,
   Text,
   Tooltip,
@@ -17,7 +22,7 @@ import { useSessionKeys, useSessionStore } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
 import { computeMultiplier } from '../utils/profit';
 import { inferMapType } from '../utils/mapTypeDetection';
-import { confirmedLeagueSync } from '../utils/league';
+import { confirmedLeagueSync, mapDisplayLeague } from '../utils/league';
 import { COLOR, FONT } from '../utils/uiTokens';
 import { isPathofpathingTreeUrl } from '../utils/atlasUrl';
 import {
@@ -146,6 +151,10 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
 
   const mapSource = describeMapModifierSource(maps, settings.mapType);
   const syncState = atlasSyncState(settings, sessionLifecycle);
+  const choiceNodes = syncState === 'current' ? allocatedChoiceNodes(settings.atlasTreeUrl, settings.atlasStatsRead?.choiceNodeIds) : [];
+  const answers = settings.atlasChoiceAnswers;
+  const choices = answers?.sourceUrl === settings.atlasTreeUrl && answers.leagueName === settings.leagueName
+    ? answers.effects : {};
   const syncStatus = atlasSyncPresentation(syncState);
   const hasTree = isPathofpathingTreeUrl(settings.atlasTreeUrl);
   const riskScarabs = scarabOfRiskMods / 2;
@@ -220,7 +229,7 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
       const patch = buildAtlasStatsSyncPatch(
         result.groups,
         sourceUrl,
-        current.settings.leagueName,
+        current.settings.leagueName, undefined, result.allocatedNodeIds,
       );
       applyAtlasStatsSyncPatch(current.updateSetting, patch, 'automatic');
     } catch (error) {
@@ -236,8 +245,14 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
     : maps.length === 0
       ? 'No map sample'
       : `${settings.mapType} fallback · ${mapSource.source.replace('Map Log · ', '')}`;
-  const inputsMeta = `${mapInputMeta} · ${fragmentCount} ${fragmentCount === 1 ? 'frag' : 'frags'}`;
-  const breakdownMeta = `+${fmt1(mountBonus + fragmentEffect + nodeEffect)}% mods · ${settings.atlasBonus ? '+25% IIQ' : 'Bonus off'}`;
+  const displayLeague = mapDisplayLeague(settings.leagueName, sessionLifecycle, maps.length);
+  const threads = getManifest().leagueRules?.[displayLeague]?.threadSlots ? deviceInvestment(settings) : null;
+  const completion = getAtlasCompletionBonus();
+  const bonusLabel = `+${completion.itemQuantity}% item quantity`;
+  const typeLabel = threads?.types === 1 ? 'Thread type' : 'Thread types';
+  const currentCalc = syncState === 'current' ? settings.atlasStatsRead?.calc : undefined;
+  const inputsMeta = `${mapInputMeta} · ${threads ? threads.types + ' ' + typeLabel : fragmentCount + ' frags'}`;
+  const breakdownMeta = `+${fmt1(mountBonus + (threads?.threadEffect ?? fragmentEffect) + nodeEffect)}% mods · ${settings.atlasBonus ? bonusLabel : 'Bonus off'}`;
   const heroContext = mapSource.observed
     ? `${fmt1(effectiveMods)} effective modifiers · observed`
     : maps.length === 0
@@ -271,11 +286,30 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
             <Text fw={700} className="atlas-calc-hero-value" style={{ fontSize: compactPanel ? FONT.xl : 24 }}>
               {multiplier.toFixed(3)}×
             </Text>
+            {(multiplierResult.prefixMultiplier !== multiplier || multiplierResult.suffixMultiplier !== multiplier) &&
+              <Text size="xs">Prefixes {multiplierResult.prefixMultiplier.toFixed(3)}× · Suffixes {multiplierResult.suffixMultiplier.toFixed(3)}×</Text>}
+            {currentCalc?.areaPackSize && <Text size="xs">+{currentCalc.areaPackSize}% area pack size</Text>}
+            {currentCalc?.areaRarity && <Text size="xs">+{currentCalc.areaRarity}% area item rarity</Text>}
+            {currentCalc?.increasedThreadsFound && <Text size="xs">{currentCalc.increasedThreadsFound}% increased Threads found</Text>}
+            {currentCalc?.increasedMapsFound && <Text size="xs">{currentCalc.increasedMapsFound}% increased Maps found</Text>}
+            {currentCalc?.mapsFoundPerExplicit && <Text size="xs">{currentCalc.mapsFoundPerExplicit}% increased Maps found per explicit modifier</Text>}
+            {currentCalc?.additionalRandomModifier && <Text size="xs" c="dimmed">Shaping the Valleys adds a random modifier when the map opens. Mounting Modifiers counts the modifiers on the map item.</Text>}
+            {currentCalc?.randomNotables && <Text size="xs" c="dimmed">{currentCalc.randomNotables} additional random notables · area effects unknown</Text>}
+            {currentCalc?.rerollsCorruptedRare && <Text size="xs" c="dimmed">Twist of Fate · corrupted rare maps can change when opened</Text>}
             <Text tt="uppercase" c="dimmed" className="atlas-calc-hero-label">Atlas Multiplier</Text>
             <Text c="dimmed" className="atlas-calc-hero-context" title={heroContext}>{heroContext}</Text>
           </div>
         </div>
 
+        {syncState === 'current' && settings.atlasStatsRead?.choiceNodeIds === undefined &&
+          getManifest().atlasTrees?.[atlasVersionOf(settings.atlasTreeUrl)]?.choices &&
+          <Text size="xs" c="dimmed">Full allocation unavailable. Sync the tree again to check choices reached along a path.</Text>}
+        {choiceNodes.map(node => <Select key={node.id} size="xs" label={node.name}
+          description="Select the effect you allocated in game." placeholder="Unknown" clearable
+          data={node.options.map(option => ({ value: option.id, label: option.text }))}
+          value={choices[node.id] || null}
+          onChange={value => updateSetting('atlasChoiceAnswers', { sourceUrl: settings.atlasTreeUrl,
+            leagueName: settings.leagueName, effects: { ...choices, [node.id]: value || '' } })} />)}
         {showGuidance && (
           <div
             className={`atlas-calc-guidance${syncError ? ' is-error' : syncState === 'current' ? '' : ' is-attention'}`}
@@ -335,12 +369,12 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
               <div className="atlas-calc-guidance-copy">
                 <Text size="xs" fw={600}>Atlas Bonus</Text>
                 <Text size="xs" c="dimmed" className="atlas-calc-guidance-detail">
-                  Is it complete for {activeLeague}? This choice is reused for new sessions in the league.
+                  Completed all {completion.objectives} objectives in {activeLeague}?
                 </Text>
               </div>
               <Group gap={5} wrap="nowrap" className="atlas-calc-guidance-actions">
                 <Button size="compact-xs" variant="light" onClick={() => setAtlasBonus(true)}>
-                  Complete · +25% IIQ
+                  Complete · {bonusLabel}
                 </Button>
                 <Button size="compact-xs" variant="default" onClick={() => setAtlasBonus(false)}>
                   Not yet
@@ -384,6 +418,8 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
                     detail="Allocation is derived only from a successful Atlas Tree setup sync."
                     active={settings.mountingModifiers}
                   />
+                  {threads ? <SourceRow name="Multiplying Modifiers" value={`+${fmt1(threads.threadEffect)}%`} source={atlasSource}
+                    detail={`${threads.types} ${typeLabel} selected in Investment.`} active={threads.threadEffect > 0} /> : <>
                   <SourceRow
                     name="Multiplying Modifiers"
                     value={settings.multiplyingModifiersAllocated ? `On · +${fmt1(fragmentEffect)}%` : 'Off'}
@@ -398,9 +434,10 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
                     detail={`${MULTIPLYING_EFFECT_PER_FRAGMENT}% increased effect per fragment. Legacy/imported counts are used only when Investment has no occupied slots.`}
                     active={settings.multiplyingModifiersAllocated && fragmentCount > 0}
                   />
+                  </>}
                   <SourceRow
-                    name="Small modifier nodes"
-                    value={settings.smallNodesAllocated > 0 ? `${settings.smallNodesAllocated} · +${fmt1(nodeEffect)}%` : 'None'}
+                    name={threads ? "Flat explicit modifier effect" : "Small modifier nodes"}
+                    value={threads ? `+${fmt1(nodeEffect)}%` : settings.smallNodesAllocated > 0 ? `${settings.smallNodesAllocated} · +${fmt1(nodeEffect)}%` : 'None'}
                     source={atlasSource}
                     detail="The allocated small-node count is derived only from a successful Atlas Tree setup sync."
                     active={settings.smallNodesAllocated > 0}
@@ -414,12 +451,12 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
                       {activeLeague ? `${activeLeague} league preference` : 'League preference'} · Quantity only
                     </Text>
                   </div>
-                  <Tooltip label="Completing all 100 Atlas Bonus Objectives grants a flat +25% IIQ. Atlas progress resets each league." multiline w={260}>
+                  <Tooltip label={`Completing all ${completion.objectives} Atlas Bonus Objectives grants ${bonusLabel}. Atlas progress resets each league.`} multiline w={260}>
                     <Switch
                       size="xs"
                       checked={settings.atlasBonus}
                       onChange={(event) => setAtlasBonus(event.currentTarget.checked)}
-                      label={settings.atlasBonus ? '+25% IIQ' : 'Off'}
+                      label={settings.atlasBonus ? bonusLabel : 'Off'}
                       labelPosition="left"
                     />
                   </Tooltip>
@@ -454,16 +491,16 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
                   <Text size="xs">+{fmt1(mountBonus)}%</Text>
                 </Group>
                 <Group justify="space-between" wrap="nowrap">
-                  <Text size="xs" c="dimmed">Multiplying ({fragmentCount} × {MULTIPLYING_EFFECT_PER_FRAGMENT}%)</Text>
-                  <Text size="xs">+{fmt1(fragmentEffect)}%</Text>
+                  <Text size="xs" c="dimmed">Multiplying ({threads ? `${threads.types} ${typeLabel}` : `${fragmentCount} × ${MULTIPLYING_EFFECT_PER_FRAGMENT}%`})</Text>
+                  <Text size="xs">+{fmt1(threads?.threadEffect ?? fragmentEffect)}%</Text>
                 </Group>
                 <Group justify="space-between" wrap="nowrap">
-                  <Text size="xs" c="dimmed">Small nodes ({settings.smallNodesAllocated} × 2%)</Text>
+                  <Text size="xs" c="dimmed">{threads ? 'Flat explicit modifier effect' : `Small nodes (${settings.smallNodesAllocated} × 2%)`}</Text>
                   <Text size="xs">+{fmt1(nodeEffect)}%</Text>
                 </Group>
                 <Group justify="space-between" wrap="nowrap">
                   <Text size="xs" c="dimmed">Atlas Bonus (Quantity only)</Text>
-                  <Text size="xs">{settings.atlasBonus ? '+25% flat IIQ' : 'Off'}</Text>
+                  <Text size="xs">{settings.atlasBonus ? bonusLabel : 'Off'}</Text>
                 </Group>
               </Stack>
             </div>

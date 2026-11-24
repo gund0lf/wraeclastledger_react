@@ -27,6 +27,20 @@ const attributionReaders = (attribution: unknown) => [
   () => parseSafeDetail({ ...fixture.frozen, attribution }).attribution
 ]
 describe('shared safe strategy reader contract', () => {
+  it.each([6, 7, 11, 12])('checks %i distinct Delirium levels in strategy and run responses', count => {
+    const summary = { sample_size: count, rewards: [], levels: Array.from({ length: count },
+      (_, i) => ({ percentage: 32 + i, count: 1 })) };
+    const readers = [
+      ...[fixture.detail, fixture.frozen].map(detail => () => parseSafeDetail({
+        ...detail, ancillary: { ...detail.ancillary, observed_delirium: summary },
+      }).ancillary.observed_delirium),
+      () => parseSafeRun({ ...fixture.run, observed_delirium: summary }).observed_delirium,
+    ];
+    for (const read of readers) {
+      if (count > 11) expect(read).toThrow();
+      else expect(read()).toEqual(summary);
+    }
+  });
   it('accepts the shared server/website list contract without reconstructing recorded values', () => {
     for (const { expected } of listContract.cases) {
       const { snapshot_schema_version: _snapshotVersion, ...display } = expected
@@ -146,7 +160,7 @@ describe('shared safe strategy reader contract', () => {
   it('prepares real replacement/evidence v5 submissions from the public seed and retains exact run identity', async () => {
     const d = parseSafeDetail(fixture.detail)
     const maps = Array.from({ length: 2 }, () => ({ quantity: 100, rarity: 60, packSize: 40, moreCurrency: 20, moreScarabs: 10, explicitModCount: 8 }))
-    const raw = buildDiscordExport({ maps, settings: { ...DEFAULT_SETTINGS, leagueName: 'Allflame', mapType: '8-mod', chiselType: '',
+    const raw = buildDiscordExport({ maps, settings: { ...DEFAULT_SETTINGS, divinePrice: 200, leagueName: 'Allflame', mapType: '8-mod', chiselType: '',
       scarabs: fixture.input.scarabs.map(s => ({ name: s.name, cost: 4 })), atlasTreeUrl: fixture.input.atlasTreeUrl,
       multiplyingModifiersAllocated: true, fragmentCountOverride: 3 }, lootItems: [], baselineTotal: 0, investmentNeutralization: 0,
       stratName: 'Synthetic Herd', shareTags: ['bestiary'], isGroupPlay: false, gameDataRevision: 4, gameDataPatchVersion: '3.29' })

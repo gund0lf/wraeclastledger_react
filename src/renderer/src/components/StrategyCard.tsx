@@ -35,7 +35,7 @@ import { COLOR, FONT } from '../utils/uiTokens';
 import { formatRelativeAge, latestStrategyActivity } from '../utils/relativeTime';
 import { computePublishedSetupCostBreakdown } from '../utils/strategySetupCosts';
 import { strategyRowIdentity } from '../utils/strategyIdentity';
-import { CHISEL_TYPES } from '../utils/constants';
+import { chiselForLeague } from '../utils/constants';
 import { isSafeStrategyAtlasUrl } from '../utils/atlasUrl';
 import './StrategyCard.css';
 
@@ -270,7 +270,7 @@ export const StrategyCard = ({
           : 'not recorded'}`,
       ].join('\n')
     : '';
-  const chiselStatKey = strategy.chisel ? CHISEL_TYPES[strategy.chisel]?.statKey : null;
+  const chiselStatKey = strategy.chisel ? chiselForLeague(strategy.chisel, strategy.league)?.statKey : null;
   const requirementColor = (statKey: string): string => (
     chiselStatKey === statKey ? COLOR.warning : COLOR.accent
   );

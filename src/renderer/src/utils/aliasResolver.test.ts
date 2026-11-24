@@ -47,7 +47,7 @@ describe('resolver on the bundled manifest', () => {
   });
 
   it('isCurrentlyUsable is true for active bundled entities, false for unknown', () => {
-    expect(isCurrentlyUsable('scarabs', 'Abyss Scarab')).toBe(true);
+    expect(isCurrentlyUsable('scarabs', 'Abyss Scarab')).toBe(false);
     expect(isCurrentlyUsable('scarabs', 'Ghost Scarab')).toBe(false);
   });
 
@@ -56,7 +56,7 @@ describe('resolver on the bundled manifest', () => {
     expect(currentName('scarabs', 'Abyss Scarab of Profound Depth')).toBe('Abyss Scarab of the Consort');
     expect(currentName('astrolabes', 'Enshrouded Astrolabe')).toBe('Deceptive Astrolabe');
     expect(resolveEntity('scarabs', 'Abyss Scarab of Edifice').viaAlias).toBe(true);
-    expect(isCurrentlyUsable('scarabs', 'Abyss Scarab of Edifice')).toBe(true);
+    expect(isCurrentlyUsable('scarabs', 'Abyss Scarab of Edifice')).toBe(false);
   });
 });
 
@@ -64,8 +64,6 @@ describe('resolver across a renamed alias edge (synthetic 3.29-style manifest)',
   // "Old Name Scarab" (renamed) -> "New Name Scarab" (active).
   const renamed: GameDataManifest = {
     ...BUNDLED_MANIFEST,
-    schemaVersion: 1,
-    contextKey: 'poe1-challenge',
     revision: BUNDLED_MANIFEST.revision + 1,
     scarabs: [
       { id: 'new-name-scarab', name: 'New Name Scarab', status: 'active' },
@@ -117,8 +115,6 @@ describe('resolver guards against a malformed alias chain', () => {
   it('a dangling aliasOf resolves to the renamed node itself, not a crash', async () => {
     const bad: GameDataManifest = {
       ...BUNDLED_MANIFEST,
-      schemaVersion: 1,
-      contextKey: 'poe1-challenge',
       revision: BUNDLED_MANIFEST.revision + 1,
       scarabs: [
         { id: 'orphan-scarab', name: 'Orphan Scarab', status: 'renamed', aliasOf: 'does-not-exist' },

@@ -40,6 +40,80 @@ describe('Divine quote ownership through the real store and cache', () => {
     vi.unstubAllGlobals();
   });
 
+  it('recovers in Auto after reopening and creating a session when detection initially fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    league.setLeagueOverrideValue(null);
+    store.setState({ leagueOverride: null });
+    fetch.mockRejectedValue(new Error('private fixture address'));
+    store.getState().newSession();
+    expect(await store.getState().initDivinePrice()).toBe('unconfirmed');
+    expect(store.getState().settings.divinePrice).toBe(0);
+    expect(league.confirmedLeagueSync()).toBeNull();
+    expect(warn.mock.calls.flat().join(' ')).toContain('Covens request failed');
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('private fixture address');
+    fetch.mockResolvedValue({ lines: [...quote(197).lines, ...Array.from({ length: 6 },
+      (_, i) => ({ id: String(i), primaryValue: 1 }))] });
+    await store.getState().initDivinePrice({ force: true });
+    expect(league.confirmedLeagueSync()).toBe('Covens');
+    expect(store.getState().settings).toMatchObject({ leagueName: 'Covens', divinePrice: 197 });
+  });
+
+  async function startUnconfirmedSession() {
+    league.setLeagueOverrideValue(null);
+    store.setState({ leagueOverride: null });
+    fetch.mockResolvedValue(quote(197)); // A price alone cannot confirm the league.
+    await league.getCurrentLeague();
+    store.getState().newSession();
+    const { scheduleLiveDivineRetry } = await import('./useSessionStore');
+    return scheduleLiveDivineRetry();
+  }
+
+  it('automatically recovers a fresh live session after the cooldown without opening Investment', async () => {
+    const cancel = await startUnconfirmedSession();
+    fetch.mockClear();
+    fetch.mockResolvedValue({ lines: [...quote(197).lines, ...Array.from({ length: 6 },
+      (_, i) => ({ id: String(i), primaryValue: 1 }))] });
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(store.getState().settings.divinePrice).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetch.mock.calls).toEqual([['Covens'], ['Covens']]); // detection then quote
+    expect(store.getState().settings).toMatchObject({ leagueName: 'Covens', divinePrice: 197 });
+    cancel?.();
+  });
+
+  it('honours a newer failed manual probe and automatically retries only once', async () => {
+    const cancel = await startUnconfirmedSession();
+    await vi.advanceTimersByTimeAsync(30_000);
+    const manual = deferred<ReturnType<typeof quote>>();
+    fetch.mockReturnValueOnce(manual.promise);
+    const refreshing = store.getState().initDivinePrice({ force: true });
+    await vi.advanceTimersByTimeAsync(32_000); // The automatic timer fires while Refresh is pending.
+    manual.resolve(quote(197));
+    expect(await refreshing).toBe('unconfirmed');
+    fetch.mockClear();
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(fetch).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(fetch.mock.calls).toEqual([['Covens'], ['Allflame']]);
+    expect(store.getState().settings.divinePrice).toBe(0);
+    cancel?.();
+  });
+
+  it.each(['manual price', 'historical session', 'new session', 'unmount'])(
+    'abandons the pending retry after %s', async (change) => {
+      const cancel = await startUnconfirmedSession();
+      if (change === 'manual price') store.getState().setDivinePriceManual(200);
+      if (change === 'historical session') store.setState({ sessionLifecycle: 'historical' });
+      if (change === 'new session') store.getState().newSession();
+      if (change === 'unmount') cancel?.();
+      fetch.mockClear();
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(fetch).not.toHaveBeenCalled();
+      expect(store.getState().settings.divinePrice).toBe(change === 'manual price' ? 200 : 0);
+      cancel?.();
+    });
+
   it('shares a pending automatic seed and resolves it into one complete snapshot', async () => {
     const pending = deferred<ReturnType<typeof quote>>();
     fetch.mockReturnValue(pending.promise);

@@ -1,3 +1,4 @@
+import { getManifest } from '../utils/gameData';
 import {
   ActionIcon,
   Alert,
@@ -48,7 +49,7 @@ import {
   deriveValuableBeastGains,
   estimateBestiaryEncounter,
   observedRatePercent,
-  remainingUntrackedMaps,
+  formatMercenaryObservations,
   totalValuableBeastGains,
 } from '../utils/runStatistics';
 import './RunStatisticsModule.css';
@@ -104,6 +105,8 @@ const modelEligibleContext = (
   && !attribution.legacyUnattributed
   && !attribution.overflowed
   && attribution.contexts.length === 1
+  && attribution.contexts[0].modelRevision === 'allflame-v1'
+  && !getManifest().leagueRules?.[attribution.contexts[0].leagueName]?.threadSlots
     ? attribution.contexts[0]
     : null
 );
@@ -156,9 +159,8 @@ const SetupContextBlock = ({
                     : ''}
                 </Text>
                 <Text size="xs" c="dimmed">
-                  Scarabs: {context.scarabNames.length > 0
-                    ? context.scarabNames.join(' · ')
-                    : 'none occupied'}
+                  {context.deviceItems ? 'Device: ' + (context.deviceItems.join(' · ') || 'none configured')
+                    : 'Scarabs: ' + (context.scarabNames.join(' · ') || 'none occupied')}
                   {' · '}source {context.captureSource === 'loot-snapshots'
                     ? 'loot snapshots'
                     : 'manual entry'}
@@ -395,9 +397,6 @@ export const RunStatisticsModule = () => {
     ? globalStatistics.mercenaryTotal
     : totalMercenaryEncounters(manualStatistics);
   const mercenaryMapCount = isGlobal ? globalStatistics.mercenaryMapCount : mapCount;
-  const untrackedMercenaryMaps = isGlobal
-    ? globalStatistics.untrackedMercenaryMaps
-    : remainingUntrackedMaps(mercenaryTotal, mapCount);
   const sessionBeastGains = useMemo(
     () => deriveValuableBeastGains(baselineItems, lootItems),
     [baselineItems, lootItems],
@@ -1019,9 +1018,9 @@ export const RunStatisticsModule = () => {
                 onClose={() => setBeastStatisticsInfoDismissed(true)}
               >
                 <Text size="xs">
-                  A setup estimate requires one fully attributed setup with Path of Pathing stats and
-                  guaranteed Einhar (+100% Atlas chance or a Bestiary Scarab). Raw gains remain visible;
-                  mixed, legacy, or unavailable setup evidence is never replaced by current settings.
+                  {beastSetup?.contexts.some(context => getManifest().leagueRules?.[context.leagueName]?.threadSlots)
+                    ? 'Observed gains are available. Encounter estimates are unavailable for this league’s device and Atlas rules.'
+                    : 'A setup estimate requires one attributed setup with Atlas stats and guaranteed Einhar from Atlas chance or a Bestiary Scarab.'}
                 </Text>
               </Alert>
             ) : null}
@@ -1037,10 +1036,10 @@ export const RunStatisticsModule = () => {
           <StatisticsSection
             id="mercenaries"
             title="Mercenaries"
-            description="Track only the archetypes you care about; the remainder is shown as Other."
+            description="Record encounters for the Mercenary archetypes you track."
             badge={(
               <Badge size="sm" variant="light" color="blue" style={{ flexShrink: 0 }}>
-                {formatCollapsedRate(mercenaryTotal, mercenaryMapCount, 'Tracked')}
+                {formatMercenaryObservations(mercenaryTotal, mercenaryMapCount)}
               </Badge>
             )}
             opened={openSections.mercenaries}
@@ -1113,8 +1112,7 @@ export const RunStatisticsModule = () => {
                         <Box style={{ flex: 1, minWidth: 220 }}>
                           <Text size="xs" fw={600}>{row.archetype}</Text>
                           <Text size="xs" c="dimmed">
-                            {row.count.toLocaleString()} / {row.mapCount.toLocaleString()} tracked maps
-                            {' · '}{formatPercent(observedRatePercent(row.count, row.mapCount))}
+                            {formatMercenaryObservations(row.count, row.mapCount)}
                             {' · '}{formatPercent(observedRatePercent(row.count, mercenaryTotal))} of tracked
                             {isGlobal && ` · ${row.sessionCount.toLocaleString()} ${row.sessionCount === 1 ? 'session' : 'sessions'}`}
                           </Text>
@@ -1156,27 +1154,12 @@ export const RunStatisticsModule = () => {
                   );
                 })}
 
-                {mercenaryMapCount > 0 && (
-                  <Paper withBorder p="xs">
-                    <Text size="xs" fw={600}>Other / untracked remainder</Text>
-                    <Text size="xs" c="dimmed">
-                      {untrackedMercenaryMaps.toLocaleString()} / {mercenaryMapCount.toLocaleString()} tracked maps
-                      {' · '}{formatPercent(observedRatePercent(untrackedMercenaryMaps, mercenaryMapCount))}
-                    </Text>
-                    {((!isGlobal && mercenaryScarabSetup.infamy) || mercenaryTotal > mercenaryMapCount) && (
-                      <Text size="xs" c="dimmed">
-                        Approximation only: extra or overlapping Mercenaries mean aggregate counts cannot prove
-                        exactly how many maps contained none of the tracked archetypes.
-                      </Text>
-                    )}
-                  </Paper>
-                )}
               </Stack>
             ) : (
               <Text size="xs" c="dimmed" ta="center" py="md">
                 {isGlobal
                   ? 'No Mercenary archetypes recorded across sessions.'
-                  : 'No tracked Mercenary archetypes yet. Maps without a tracked row remain Other.'}
+                  : 'No Mercenary encounters recorded yet.'}
               </Text>
             )}
             </div>

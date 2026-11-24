@@ -80,6 +80,8 @@ const PRECISION_URL    = 'https://web.poecdn.com/gen/image/AccuracyandCriticalCh
 const FLAME_URL        = 'https://web.poecdn.com/gen/image/PuzzlePieceJewel_CleansingFire.png';
 const FLESH_URL        = 'https://web.poecdn.com/gen/image/PuzzlePieceJewel_Chaos.png';
 
+import { visceraCatalogue } from '../../../shared/visceraCatalogue';
+
 const fetchedLeagues = new Set<string>();
 const fetchCounts = new Map<string, number>();
 
@@ -89,6 +91,13 @@ beforeAll(() => {
       fetchEconomyIcons: async (_family: string, league: string, type: string) => {
         fetchedLeagues.add(league);
         fetchCounts.set(league, (fetchCounts.get(league) ?? 0) + 1);
+        if (_family === 'stash' && type === 'Viscera') return visceraCatalogue([
+          { name: "Coven Queen's Crown", icon: 'queen' },
+          { name: "Coven Queen's Crown", icon: 'queen' },
+          { name: 'Artificial Appendage', icon: 'arm' },
+          { name: 'Artificial Appendage', icon: 'leg' },
+          { name: 'Artificial Appendage', icon: 'arm' },
+        ]);
         if (type === 'Currency') return { icons: [
           // Standard serves DIFFERENT art for the same key — first-write-wins
           // means the challenge league's CHAOS_URL must survive.
@@ -541,4 +550,40 @@ describe('WP6.2 item-name helpers', () => {
     expect(deliOrbItemName("Diviner's Delirium Orb")).toBe("Diviner's Delirium Orb");
     expect(deliOrbItemName(null)).toBeNull();
   });
+});
+
+it('classifies Viscera by name and uses only art shared by its variants', async () => {
+  const catalogue = await getItemIcons();
+  expect(catalogue.resolveCategory("Coven Queen's Crown")).toBe('League');
+  expect(catalogue.resolve("Coven Queen's Crown")).toBe('queen');
+  expect(catalogue.resolveCategory('Artificial Appendage')).toBe('League');
+  expect(catalogue.resolve('Artificial Appendage')).toBeUndefined();
+});
+
+it('lets queued input run during large catalogue builds and retains current and legacy art', async () => {
+  clearIconCache();
+  let inputHandled = false;
+  const rows = Array.from({ length: 2200 }, (_, i) => ({ name: `Synthetic Accessory ${i}`, icon: `art-${i}` }));
+  const mock = vi.spyOn(window.api, 'fetchEconomyIcons').mockImplementation(async (_, league, type) => {
+    let icons: typeof rows = [];
+    if (type === 'UniqueAccessory') {
+      if (league === 'Standard') icons = [{ name: rows[0].name, icon: 'older' }, { name: 'Historical accessory', icon: 'legacy' }];
+      else {
+        icons = rows;
+        setTimeout(() => { inputHandled = true; }, 0);
+      }
+    }
+    return { icons, slugs: [], names: [], error: null };
+  });
+  try {
+    const catalogue = await getItemIcons();
+    expect(inputHandled).toBe(true);
+    expect(catalogue.resolve(rows[0].name)).toBe('art-0');
+    expect(catalogue.resolve(rows[2199].name)).toBe('art-2199');
+    expect(catalogue.resolve('Historical accessory')).toBe('legacy');
+    expect(catalogue.resolveCategoryIcon('Unique Accessories')).toBe('art-0');
+  } finally {
+    mock.mockRestore();
+    clearIconCache();
+  }
 });

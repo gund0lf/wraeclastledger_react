@@ -104,6 +104,8 @@ export const getAvailablePresetIds = (
 export type MagicMapNumericStat =
   | 'moreCurrency'
   | 'packSize'
+  | 'atlasDrops'
+  | 'moreThreads'
   | 'quantity'
   | 'rarity'
   | 'moreMaps'
@@ -113,6 +115,8 @@ export type MagicMapNumericStat =
 export const MAGIC_MAP_STAT_LABELS: Record<MagicMapNumericStat, string> = {
   moreCurrency: 'More Currency',
   packSize: 'Pack Size',
+  atlasDrops: 'Atlas Drops',
+  moreThreads: 'More Threads',
   quantity: 'Item Quantity',
   rarity: 'Item Rarity',
   moreMaps: 'More Maps',
@@ -123,6 +127,8 @@ export const MAGIC_MAP_STAT_LABELS: Record<MagicMapNumericStat, string> = {
 const MAGIC_MAP_STAT_ANCHORS: Record<MagicMapNumericStat, string> = {
   moreCurrency: 'curr',
   packSize: 'size',
+  atlasDrops: 'atlas drops',
+  moreThreads: 'more threads',
   quantity: 'm q',
   rarity: 'm rar',
   moreMaps: 'maps',

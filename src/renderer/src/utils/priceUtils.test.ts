@@ -7,6 +7,7 @@ import {
   generateRunRegex,
   generateSlamRegex,
   generateTradeRegex,
+  mapDropAverages, tradeDropFloor,
   resolveTradeRegexExclusions,
 } from './priceUtils';
 import {
@@ -588,4 +589,24 @@ describe('generateSlamRegex', () => {
     );
     expect(r).toContain('"ractu"');
   });
+});
+
+it('matches the printed Covens Thread percentage in the stash regex', () => {
+  const regex = generateTradeRegex([], [], 0, 0, 0, 0, -1, [], 35, 0, true);
+  const match = new RegExp(regex.slice(1, -1), 'i');
+  expect(match.test('More Threads: +35%')).toBe(true);
+  expect(match.test('More Threads: +34%')).toBe(false);
+  expect(match.test('More Scarabs: +35%')).toBe(false);
+});
+
+it('prefills only a matching Trade stat, including mixed map copies and legacy shares', () => {
+  const old = { quantity: 127 };
+  const current = { quantity: 0, atlasDrops: 83 };
+  expect(tradeDropFloor(true, undefined, 127)).toBe(0);
+  expect(tradeDropFloor(false, undefined, 127)).toBe(120);
+  expect(tradeDropFloor(true, mapDropAverages([old]), 127)).toBe(0);
+  const both = mapDropAverages([old, current]);
+  expect(tradeDropFloor(true, both)).toBe(80);
+  expect(tradeDropFloor(false, both)).toBe(120);
+  expect(tradeDropFloor(true, mapDropAverages([{ quantity: 0, atlasDrops: 0 }]), 127)).toBe(0);
 });

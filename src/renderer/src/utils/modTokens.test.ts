@@ -408,7 +408,7 @@ describe('exact Trade-stat resolution', () => {
         '+41–45% to Monster Critical Strike Multiplier',
       ],
       extra_chaos_damage_withered: [
-        'Monsters gain #% of their Physical Damage as Extra Chaos Damage',
+        'Monsters gain 31–35% of their Physical Damage as Extra Chaos Damage',
         'Monsters Inflict Withered for 2 seconds on Hit',
       ],
       boss_damage_attack_speed: [
@@ -518,7 +518,7 @@ describe('exact Trade-stat resolution', () => {
   it('pins the complete exact-pattern registry', () => {
     const snapshot = BRICK_MOD_DEFS.map(({ id, tradePatterns }) => ({ id, tradePatterns }));
     expect(createHash('sha256').update(JSON.stringify(snapshot)).digest('hex')).toBe(
-      'c3e3507269f819dfb261671751b9c5ec3956e7becd0926f86a2583b08c1dd7f8',
+      'feb81a7fa45f1270aab402acdc0496c5c7bc595e7d5f512427e87c112d6bd758',
     );
   });
 
@@ -577,14 +577,37 @@ describe('exact Trade-stat resolution', () => {
     });
   });
 
-  it('limits positive selection to the three reviewed farming targets', () => {
+  it('offers the reviewed farming and Covens encounter targets', () => {
     expect(BRICK_MOD_DEFS
       .filter((def) => def.inclusionEligible)
       .map((def) => def.id)).toEqual([
+      'encounter_mirage',
+      'encounter_evocator_beidat',
+      'encounter_evocator_ghorr',
+      'encounter_evocator_ktash',
+      'encounter_buried_pandemonium',
+      'encounter_buried_apex',
+      'encounter_buried_stalker',
+      'encounter_mirror_delirium',
+      'encounter_viridian_wildwood',
       'increased_rare_monsters',
       'increased_magic_monsters',
       'uber_rare_monsters_fracture_on_death',
     ]);
+  });
+
+  it('matches each Covens encounter in the stash and resolves its exact explicit Trade stat', () => {
+    const encounters = BRICK_MOD_DEFS.filter(def => def.id.startsWith('encounter_'));
+    const registry = encounters.map(def => ({ id: def.tradePatterns[0].statId!, text: def.tradePatterns[0].text }));
+    for (const def of encounters) {
+      const term = new RegExp(MOD_TOKENS[def.id], 'i');
+      expect(registry.filter(stat => term.test(stat.text))).toEqual([{
+        id: def.tradePatterns[0].statId, text: def.tradePatterns[0].text,
+      }]);
+      const resolved = resolveBrickTradeStats(registry, [def]);
+      expect(buildBrickTradeInclusionStatGroup([def.id], resolved.resolved)?.filters)
+        .toEqual([{ id: def.tradePatterns[0].statId }]);
+    }
   });
 
   it('omits positive selections that are not curated or resolved', () => {
@@ -760,4 +783,27 @@ describe('exact Trade-stat resolution', () => {
       'brick:uber_triple_curse_vuln_temporal_elem',
     ])).toBe('oral');
   });
+});
+
+it('distinguishes regular and Nightmare Profane stash text and Trade bounds', () => {
+  const defs = BRICK_MOD_DEFS.filter(row => row.id === 'extra_chaos_damage_withered' || row.id === 'brick_profane_nightmare');
+  const [regular, nightmare] = defs.map(def => new RegExp(brickRegexTerm(def), 'i'));
+  const line = (n: number) => `Monsters gain ${n}% of their Physical Damage as Extra Chaos Damage`;
+  for (const n of [31, 33, 35]) {
+    expect(regular.test(line(n) + '\nMonsters Inflict Withered for 2 seconds on Hit')).toBe(true);
+    expect(nightmare.test(line(n))).toBe(false);
+  }
+  for (let n = 80; n <= 100; n++) {
+    expect(nightmare.test(line(n))).toBe(true);
+    expect(regular.test(line(n))).toBe(false);
+  }
+  expect(nightmare.test(line(180))).toBe(false);
+  expect(nightmare.test(line(90).replace('Chaos Damage', 'Damage of a random Element'))).toBe(false);
+  const id = 'explicit.stat_1840747977';
+  const { resolved } = resolveBrickTradeStats([{ id, text: defs[0].tradePatterns[0].text }], defs);
+  for (const selection of [[0], [1], [0, 1]]) {
+    const expected = [{ id, value: { min: 31, max: 35 } }, { id, value: { min: 80, max: 100 } }];
+    expect(buildBrickTradeStatGroups(selection.map(i => defs[i].id), resolved))
+      .toEqual([{ type: 'not', filters: selection.map(i => expected[i]) }]);
+  }
 });

@@ -13,7 +13,9 @@ const map = (over: Partial<MapData> = {}): MapData => ({
 describe('isEightModCandidate', () => {
   it('lets an exact advanced count override a misleading description-line count', () => {
     expect(isEightModCandidate(map({ explicitModCount: 6, modCount: 10 }))).toBe(false);
+    expect(isEightModCandidate(map({ explicitModCount: 7, modCount: 10 }))).toBe(false);
     expect(isEightModCandidate(map({ explicitModCount: 8, modCount: 10 }))).toBe(true);
+    expect(isEightModCandidate(map({ explicitModCount: 9, modCount: 10 }))).toBe(true);
   });
 
   it('retains the legacy heuristic for headerless persisted copies', () => {

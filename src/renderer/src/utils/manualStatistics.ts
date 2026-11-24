@@ -1,3 +1,5 @@
+import { deviceInvestment } from './profit';
+import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
 import type {
   ManualAtlasAnomalyCount,
   ManualMercenaryCount,
@@ -245,7 +247,7 @@ const sanitizeInlineList = (
 const sanitizeSetupContext = (value: unknown): RunStatisticsSetupContext | null => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const input = value as Record<string, unknown>;
-  if (input.schemaVersion !== 1 || input.modelRevision !== 'allflame-v1') return null;
+  if (input.schemaVersion !== 1 || (input.modelRevision !== 'allflame-v1' && input.modelRevision !== 'observations-v1')) return null;
   if (input.captureSource !== 'manual-entry' && input.captureSource !== 'loot-snapshots') return null;
   if (input.atlasSource !== 'path-of-pathing' && input.atlasSource !== 'unavailable') return null;
   const leagueName = inlineText(input.leagueName, 80);
@@ -263,7 +265,7 @@ const sanitizeSetupContext = (value: unknown): RunStatisticsSetupContext | null 
 
   const result: RunStatisticsSetupContext = {
     schemaVersion: 1,
-    modelRevision: 'allflame-v1',
+    modelRevision: input.modelRevision,
     captureSource: input.captureSource,
     leagueName,
     atlasSource: input.atlasSource,
@@ -271,6 +273,11 @@ const sanitizeSetupContext = (value: unknown): RunStatisticsSetupContext | null 
     atlasDetectedTags,
     scarabNames,
   };
+  if (input.deviceItems !== undefined) {
+    const items = sanitizeInlineList(input.deviceItems, 17, 160, false);
+    if (!items) return null;
+    result.deviceItems = items;
+  }
   if (input.atlasSource === 'path-of-pathing') {
     if (!atlasTreeUrl || !isPathofpathingUrl(atlasTreeUrl)) return null;
     const bestiary = sanitizeAtlasSetup(input.bestiaryAtlasSetup, BESTIARY_ATLAS_SETUP_KEYS);
@@ -339,7 +346,11 @@ export function buildRunStatisticsSetupContext(
     && isPathofpathingUrl(atlasTreeUrl);
   return {
     schemaVersion: 1,
-    modelRevision: 'allflame-v1',
+    modelRevision: BUNDLED_MANIFEST.leagueRules?.[settings.leagueName]?.threadSlots ? 'observations-v1' : 'allflame-v1',
+    ...(BUNDLED_MANIFEST.leagueRules?.[settings.leagueName]?.threadSlots ? { deviceItems: [
+      ...deviceInvestment(settings).activeSlots.filter(slot => slot?.name && slot.count > 0).map(slot => slot.count + ' x ' + slot.name),
+      ...(settings.ember?.name ? [settings.ember.name] : []),
+    ] } : {}),
     captureSource,
     leagueName: inlineText(settings.leagueName, 80) ?? 'Unknown league',
     atlasSource: hasAtlasStats ? 'path-of-pathing' : 'unavailable',

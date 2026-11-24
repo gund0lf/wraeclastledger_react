@@ -12,7 +12,7 @@ import type {
 import { getModuleComponent } from './layout/Registry';
 import { defaultLayout } from './layout/defaultLayout';
 import { Box, Button, Menu, Text, ActionIcon, Tooltip, Badge, Alert, getDefaultZIndex } from '@mantine/core';
-import { useSessionStore } from './store/useSessionStore';
+import { scheduleLiveDivineRetry, useSessionStore } from './store/useSessionStore';
 import { useUIStore } from './store/useUIStore';
 import { parseMapClipboard } from './utils/mapParser';
 import { getGameDataStatus, initGameData } from './utils/gameData';
@@ -83,6 +83,10 @@ function App({ initialLayoutRawValue }: { initialLayoutRawValue: string | null }
   const isSetupSidebarCollapsed = setupSidebarCollapsed(model);
   const [checking, setChecking] = useState(false);
   const [layoutError, setLayoutError] = useState<string | null>(null);
+  const sessionNonce = useSessionStore((s) => s.sessionNonce);
+  const sessionLifecycle = useSessionStore((s) => s.sessionLifecycle);
+  const leagueOverride = useSessionStore((s) => s.leagueOverride);
+  useEffect(() => scheduleLiveDivineRetry(), [sessionNonce, sessionLifecycle, leagueOverride]);
   const repositorySaveError = useSessionStore((state) => state.saveError);
   const [gameDataStatus, setGameDataStatus] = useState(getGameDataStatus);
   const panelRequestNonce = useUIStore((state) => state.panelRequestNonce);

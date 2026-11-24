@@ -1,3 +1,5 @@
+import { currentChoiceEffects } from './atlasChoices';
+import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
 /**
  * profit.ts — single source of truth for ALL profit / cost / multiplier math (WP1).
  *
@@ -77,6 +79,28 @@ export function computeRollingSessionTotal(settings: SessionSettings, mapCount: 
     + astrolabeTotal;
 }
 
+type DeviceSettings = Partial<Pick<SessionSettings, 'threadSlots' | 'ember' | 'atlasStatsRead' | 'atlasTreeUrl' | 'leagueName' | 'atlasChoiceAnswers'>>;
+
+export function deviceInvestment(settings: DeviceSettings) {
+  const read = settings.atlasStatsRead;
+  const rules = read && read.sourceUrl === settings.atlasTreeUrl && read.leagueName === settings.leagueName
+    ? read.calc?.threadRules : undefined;
+  const oneType = rules?.oneType === true;
+  const configuredSlots = settings.threadSlots ?? [];
+  const activeSlots = oneType ? configuredSlots.slice(0, 1) : configuredSlots;
+  const slots = activeSlots.filter(slot => slot?.name && Number.isInteger(slot.count) && slot.count > 0);
+  const types = new Set(slots.map(slot => slot.name)).size;
+  const paid = slots.reduce((sum, slot) => sum + slot.count, 0);
+  const gross = slots.reduce((sum, slot) => sum + slot.count * Math.max(0, slot.price || 0), 0);
+  return {
+    paid, effective: paid + (paid ? rules?.freeThreads || 0 : 0), types, oneType, activeSlots,
+    saveChance: rules?.saveChance || 0,
+    threadCost: gross * (1 - Math.min(100, Math.max(0, rules?.saveChance || 0)) / 100),
+    emberCost: settings.ember?.name ? Math.max(0, settings.ember.price || 0) : 0,
+    threadEffect: types * (rules?.effectPerType || 0),
+  };
+}
+
 export function computeCosts(settings: SessionSettings, mapCount: number): CostBreakdown {
   const chiselCost = settings.chiselType && settings.chiselPrice > 0 ? settings.chiselPrice : 0;
   const hasPreservation = settings.scarabs.some((s) => isPreservationScarab(s.name));
@@ -88,9 +112,10 @@ export function computeCosts(settings: SessionSettings, mapCount: number): CostB
     : 0;
   const isSplit = settings.advSplitPrice > 0;
   // Split sessions: each run consumes half a (map + chisel + split op); scarabs are per-run.
-  const perMapBase = isSplit
+  const device = deviceInvestment(settings);
+  const perMapBase = device.threadCost + device.emberCost + (isSplit
     ? (settings.baseMapCost + chiselCost + settings.advSplitPrice) / 2 + perMapScarabs
-    : settings.baseMapCost + chiselCost + perMapScarabs;
+    : settings.baseMapCost + chiselCost + perMapScarabs);
   const rollingSessionTotal = computeRollingSessionTotal(settings, mapCount);
   const totalInvest = perMapBase * mapCount + rollingSessionTotal + oneTimeScarabs;
   return { chiselCost, hasPreservation, perMapScarabs, oneTimeScarabs, perMapBase, rollingSessionTotal, totalInvest };
@@ -168,9 +193,12 @@ export function computeProfit(input: ProfitInputs): ProfitResult {
 
 export interface MultiplierResult {
   multiplier: number;
+  prefixMultiplier: number;
+  suffixMultiplier: number;
   fragmentCount: number;
   fragmentCountSource: FragmentCountSource;
   fragmentEffect: number;
+  threadEffect: number;
   nodeEffect: number;       // smallNodesAllocated x 2
   scarabOfRiskMods: number; // +2 mods per "...of Risk" scarab
   effectiveMods: number;    // selected/observed base mods + scarabOfRiskMods
@@ -198,14 +226,14 @@ export interface FragmentCountResolution {
 type FragmentSettings = Pick<
   SessionSettings,
   'multiplyingModifiersAllocated' | 'fragmentCountOverride' | 'scarabs'
->;
+> & Partial<Pick<SessionSettings, 'leagueName'>>;
 
 /** Resolve Multiplying Modifiers from one source of truth. A retained authored
  * override is protocol evidence for legacy/imported sessions and therefore wins.
  * Ordinary source-derived sessions have no override, so populated Investment
  * slots are authoritative there; device capacity is the final fallback. */
 export function resolveFragmentCount(settings: FragmentSettings): FragmentCountResolution {
-  if (!settings.multiplyingModifiersAllocated) return { count: 0, source: 'off', effect: 0 };
+  if (BUNDLED_MANIFEST.leagueRules?.[settings.leagueName || '']?.threadSlots || !settings.multiplyingModifiersAllocated) return { count: 0, source: 'off', effect: 0 };
 
   if (settings.fragmentCountOverride !== null) {
     const count = Math.min(
@@ -244,11 +272,12 @@ export function computeObservedModSample(maps: readonly ObservedModMap[]): Obser
 }
 
 export function computeMultiplier(
-  settings: Pick<SessionSettings, 'multiplyingModifiersAllocated' | 'fragmentCountOverride' | 'smallNodesAllocated' | 'mountingModifiers' | 'mapType' | 'scarabs'>,
+  settings: Pick<SessionSettings, 'multiplyingModifiersAllocated' | 'fragmentCountOverride' | 'smallNodesAllocated' | 'mountingModifiers' | 'mapType' | 'scarabs'> & DeviceSettings,
   maps: readonly ObservedModMap[] = [],
 ): MultiplierResult {
   const fragments        = resolveFragmentCount(settings);
   const fragmentEffect   = fragments.effect;
+  const { threadEffect } = deviceInvestment(settings);
   const nodeEffect       = settings.smallNodesAllocated * 2;
   const scarabOfRiskMods = settings.scarabs.filter((s) => s.name.toLowerCase().includes('of risk')).length * 2;
   const observed         = computeObservedModSample(maps);
@@ -256,12 +285,51 @@ export function computeMultiplier(
   const baseMods         = usesObservedMods ? observed.average : settings.mapType === '8-mod' ? 8 : 6;
   const effectiveMods    = baseMods + scarabOfRiskMods;
   const mountBonus       = settings.mountingModifiers ? effectiveMods * 2 : 0;
-  const multiplier       = 1 + (fragmentEffect + nodeEffect + mountBonus) / 100;
+  const multiplier       = 1 + (threadEffect + fragmentEffect + nodeEffect + mountBonus) / 100;
+  const effects = currentChoiceEffects(settings);
+  const affixEffect = (side: 'Prefix' | 'Suffix') => {
+    const pattern = new RegExp(`^(\\d+)% increased effect of ${side} Modifiers on your Maps$`, 'i');
+    return effects.reduce((total, text) => total + Number(text.match(pattern)?.[1] ?? 0), 0);
+  };
   return {
+    prefixMultiplier: multiplier + affixEffect('Prefix') / 100,
+    suffixMultiplier: multiplier + affixEffect('Suffix') / 100,
     multiplier, fragmentCount: fragments.count, fragmentCountSource: fragments.source,
-    fragmentEffect, nodeEffect, scarabOfRiskMods, effectiveMods, mountBonus,
+    fragmentEffect, threadEffect, nodeEffect, scarabOfRiskMods, effectiveMods, mountBonus,
     observedModAverage: observed?.average ?? null,
     observedSampleSize: observed?.sampleSize ?? 0,
     usesObservedMods,
   };
+}
+
+export function describeMapEffects(settings: SessionSettings, map: MapData): string[] {
+  const implicit = map.corruptionModifiers;
+  const lines: string[] = [];
+  if (implicit?.explicitMagnitude) lines.push(`Local explicit magnitude +${implicit.explicitMagnitude}%`);
+  if (implicit?.atlasPassiveEffect) lines.push(`Atlas passive effect +${implicit.atlasPassiveEffect}%`);
+  if (implicit?.rarity) lines.push(`Item rarity implicit +${implicit.rarity}%`);
+  if (implicit?.packSize) lines.push(`Pack size implicit +${implicit.packSize}%`);
+  if (implicit?.randomNotables) lines.push(`${implicit.randomNotables} random unallocated notables · effects unknown`);
+  const read = settings.atlasStatsRead;
+  const calc = read?.sourceUrl === settings.atlasTreeUrl && read?.leagueName === settings.leagueName ? read?.calc : undefined;
+  if (calc?.additionalRandomModifier) lines.push('Shaping the Valleys · one additional random map modifier');
+  if (calc?.randomNotables) lines.push(`${calc.randomNotables} random Atlas notables · area effects unknown`);
+  const couldReroll = calc?.rerollsCorruptedRare && map.isCorrupted && (!map.itemRarity || map.itemRarity === 'Rare');
+  if (couldReroll) lines.push('Twist of Fate · modifiers can change when opened');
+  // One in-game Shocking Map test with Shaping and Mounting gave 160% on the
+  // copied prefix. Counting the modifier added on opening would predict 162%.
+  if (couldReroll || calc?.randomNotables) return lines;
+  if (!map.rolledAffixes?.length || map.explicitModCount == null || implicit?.randomNotables) return lines;
+  const { prefixMultiplier, suffixMultiplier } = computeMultiplier(settings, [map]);
+  for (const affix of map.rolledAffixes) {
+    const pct = Math.round(100 * ((affix.side === 'Prefix' ? prefixMultiplier : suffixMultiplier) - 1));
+    const local = Math.floor(affix.base * (100 + (implicit?.explicitMagnitude ?? 0)) / 100);
+    if (implicit?.atlasPassiveEffect) {
+      lines.push(affix.line.replace('{roll}', String(local)) + ' · area rounding unverified');
+    } else {
+      const area = Math.floor(local * (100 + pct) / 100);
+      lines.push(affix.line.replace('{roll}', String(area)) + ` · ${affix.side.toLowerCase()} estimate from current setup`);
+    }
+  }
+  return lines;
 }

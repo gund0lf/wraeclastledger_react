@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   atlasRemountSource,
+  readInitializedAtlasPoints,
   isPathofpathingTreeUrl,
   isPathofpathingUrl,
   shouldAutoApplyExternalAtlasView,
@@ -67,5 +68,38 @@ describe('Atlas panel remount source', () => {
 
   it('retains the known-safe source when the captured value is invalid', () => {
     expect(atlasRemountSource(TREE_URL, 'not a URL')).toBe(TREE_URL);
+  });
+});
+
+describe('Atlas point capture after navigation', () => {
+  it('waits through delayed tree initialization and accepts the rendered maximum', async () => {
+    vi.useFakeTimers();
+    try {
+      let max = 121;
+      const read = vi.fn(async () => ({ url: TREE_URL.replace("3.29", "3.30"), allocated: 0, max }));
+      const result = readInitializedAtlasPoints(read, () => true);
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(read.mock.calls.length).toBeGreaterThan(1);
+      max = 150;
+      await vi.advanceTimersByTimeAsync(250);
+      expect(await result).toMatchObject({ allocated: 0, max: 150 });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('ignores a late read after a replacement and times out on initial markup', async () => {
+    vi.useFakeTimers();
+    try {
+      let current = true;
+      const stale = readInitializedAtlasPoints(async () => {
+        current = false;
+        return { url: TREE_URL, allocated: 12, max: 138 };
+      }, () => current);
+      const timeout = readInitializedAtlasPoints(async () => (
+        { url: TREE_URL, allocated: 0, max: 121 }
+      ), () => true);
+      await vi.advanceTimersByTimeAsync(5500);
+      expect(await stale).toBeNull();
+      expect(await timeout).toBeNull();
+    } finally { vi.useRealTimers(); }
   });
 });

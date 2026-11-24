@@ -42,7 +42,7 @@ const costs = nullable(shape({ chisel: nullable(price), scarabs: array(price, 5)
 const runEconomics = shape({ recurring_cost_per_map_chaos: metric, total_invest_chaos: metric, net_profit_chaos: metric,
   net_per_map_divines: metric, divine_price_chaos: metric })
 const timing = shape({ reported_minutes: metric })
-const delirium = nullable(shape({ sample_size: integer(), levels: array(shape({ percentage: integer(100), count: integer() }), 6),
+const delirium = nullable(shape({ sample_size: integer(), levels: array(shape({ percentage: integer(100), count: integer() }), 11),
   rewards: array(shape({ name: string(160), count: integer() }), 100) }))
 const lootIdentity: Check<Record<string, string | number | null> | null> = v => {
   if (v === null) return null

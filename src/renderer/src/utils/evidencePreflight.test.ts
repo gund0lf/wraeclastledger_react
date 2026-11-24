@@ -18,6 +18,7 @@ const maps = [
 function makeSettings(overrides: Partial<SessionSettings> = {}): SessionSettings {
   return {
     ...DEFAULT_SETTINGS,
+    divinePrice: 1, // Explicit quote preserves the published proof fixture.
     leagueName: 'Allflame',
     mapType: '6-mod',
     chiselUsed: true,
@@ -252,4 +253,12 @@ describe('evidence submission preflight', () => {
       mapParsedAt: localMaps.map((_, index) => 1_000 + index),
     })).resolves.toMatchObject({ mapCount: 9 });
   });
+});
+
+it('keeps a Thread setup out of pools whose fingerprints only describe scarabs', async () => {
+  const raw = makeExport(makeSettings({ leagueName: 'Covens',
+    threadSlots: [{ name: 'Breach Thread', count: 3, price: 2 }] }));
+  await expectCode(prepareEvidenceSubmission({ targetRawExport: raw, localRawExport: raw,
+    targetCurrentRevision: 4, expectedRevision: 4, persistedTargetFingerprint: 'sha256-v1:' + '0'.repeat(64),
+    mapParsedAt: [1_000, 2_000] }), 'setup_mismatch');
 });

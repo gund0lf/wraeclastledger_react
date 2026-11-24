@@ -1,3 +1,4 @@
+import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
 import { v4 as uuidv4 } from 'uuid';
 import { parseAuthorPreferences } from '../../../shared/authorRecognition';
 import {
@@ -801,6 +802,18 @@ export function forkPayloadIntoLeague(
   const sourceSettings = payload.settings;
   const forkSettings: Record<string, unknown> = sourceSettings && typeof sourceSettings === 'object' &&
     !Array.isArray(sourceSettings) ? { ...sourceSettings } : {};
+  if (forkSettings.leagueName !== league) {
+    const deviceRules = BUNDLED_MANIFEST.leagueRules;
+    const priorRules = deviceRules?.[String(forkSettings.leagueName || '')];
+    const nextRules = deviceRules?.[league];
+    delete forkSettings.threadSlots;
+    delete forkSettings.ember;
+    if (nextRules && !priorRules) {
+      forkSettings.scarabs = DEFAULT_SETTINGS.scarabs.map(slot => ({ ...slot }));
+      forkSettings.multiplyingModifiersAllocated = false;
+      forkSettings.fragmentCountOverride = null;
+    }
+  }
   forkSettings.leagueName = league;
   forkSettings.divinePrice = 0;
   forkSettings.atlasBonus = atlasBonus;

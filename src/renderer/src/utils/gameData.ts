@@ -21,7 +21,7 @@ import { STRATEGY_API_URL } from './strategyConstants';
 let active: GameDataManifest = BUNDLED_MANIFEST;
 let initPromise: Promise<GameDataManifest> | null = null;
 
-export const GAME_DATA_SCHEMA_VERSION = 1;
+export const GAME_DATA_SCHEMA_VERSION = 2;
 export const GAME_DATA_CONTEXT_KEY = 'poe1-challenge';
 export type GameDataSource = 'bundled' | 'cache' | 'server';
 export interface GameDataStatus {
@@ -36,6 +36,10 @@ let status: GameDataStatus = {
   source: 'bundled',
   warning: null,
 };
+
+export function getAtlasCompletionBonus() {
+  return active.atlasCompletion ?? BUNDLED_MANIFEST.atlasCompletion!;
+}
 
 export function getGameDataStatus(): GameDataStatus {
   return { ...status };
@@ -57,16 +61,30 @@ export function isValidManifest(m: unknown): m is GameDataManifest {
     && typeof x.revision === 'number' && Number.isFinite(x.revision)
     && typeof x.patchVersion === 'string'
     && typeof x.atlasTreeVersion === 'string'
+    && (!x.atlasCompletion || (Number.isInteger(x.atlasCompletion.objectives) && x.atlasCompletion.objectives > 0
+      && Number.isFinite(x.atlasCompletion.itemQuantity) && x.atlasCompletion.itemQuantity >= 0))
     && !!x.mechanics && typeof x.mechanics === 'object'
     && Array.isArray(x.scarabs) && x.scarabs.length > 0
     && Array.isArray(x.deliriumOrbs)
     && Array.isArray(x.astrolabes)
-    && Array.isArray(x.chisels);
+    && Array.isArray(x.chisels)
+    && (x.revision < 5 || (
+      [x.threads, x.embers].every(group => Array.isArray(group) && group.every(item => item
+        && typeof item.name === 'string' && typeof item.id === 'string' && typeof item.status === 'string'))
+      && !!x.leagueRules && Object.values(x.leagueRules).every(rule => rule && typeof rule.atlasDrops === 'boolean'
+        && Number.isInteger(rule.threadSlots) && rule.threadSlots >= 0 && rule.threadSlots <= 16
+        && Number.isInteger(rule.threadCap) && rule.threadCap > 0 && rule.threadCap <= 100)
+      && !!x.atlasTrees && Object.values(x.atlasTrees).every(tree => tree && typeof tree.layout === 'string'
+        && Number.isInteger(tree.maxPoints) && tree.maxPoints > 0 && (!tree.choices ||
+          Object.values(tree.choices).every(node => node && typeof node.name === 'string' && Array.isArray(node.options)
+            && node.options.every(option => option && typeof option.id === 'string' && typeof option.text === 'string'))))
+    ));
 }
 
 export function isApplicableManifest(m: GameDataManifest): boolean {
   if (m.revision === 1 && m.schemaVersion === undefined && m.contextKey === undefined) return true;
-  return m.schemaVersion === GAME_DATA_SCHEMA_VERSION && m.contextKey === GAME_DATA_CONTEXT_KEY;
+  const expectedSchema = m.revision < 5 ? 1 : GAME_DATA_SCHEMA_VERSION;
+  return m.schemaVersion === expectedSchema && m.contextKey === GAME_DATA_CONTEXT_KEY;
 }
 
 function syncStatus(source: GameDataSource, warning = status.warning): void {
@@ -227,10 +245,10 @@ export function activeAstrolabeList(): { value: string; label: string }[] {
 }
 
 /** Active chisels keyed by stored name — legacy CHISEL_TYPES shape. */
-export function activeChiselTypes(): Record<string, { label: string; statKey: ChiselEntity['statKey']; bonusAt20: number }> {
+export function activeChiselTypes(manifest = getManifest()): Record<string, { label: string; statKey: ChiselEntity['statKey']; bonusAt20: number }> {
   const out: Record<string, { label: string; statKey: ChiselEntity['statKey']; bonusAt20: number }> = {};
-  for (const c of getManifest().chisels) {
-    if (!isActive(c)) continue;
+  for (const c of manifest.chisels) {
+    if (!isSelectable(c)) continue;
     out[c.name] = { label: c.label ?? c.name, statKey: c.statKey, bonusAt20: c.bonusAt20 };
   }
   return out;

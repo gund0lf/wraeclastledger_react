@@ -133,7 +133,6 @@ export interface GlobalRunStatistics {
   mercenaryTotal: number;
   mercenaryMapCount: number;
   mercenarySessionCount: number;
-  untrackedMercenaryMaps: number;
   beastGains: ValuableBeastGain[];
   beastMapCount: number;
   beastSessionCount: number;
@@ -206,7 +205,6 @@ export function aggregateRunStatisticsSessions(
   let mercenaryTotal = 0;
   let mercenaryMapCount = 0;
   let mercenarySessionCount = 0;
-  let untrackedMercenaryMaps = 0;
   let beastMapCount = 0;
   let beastSessionCount = 0;
 
@@ -247,7 +245,6 @@ export function aggregateRunStatisticsSessions(
       mercenaryTotal += sessionMercenaryTotal;
       mercenaryMapCount += session.mapCount;
       mercenarySessionCount += 1;
-      untrackedMercenaryMaps += remainingUntrackedMaps(sessionMercenaryTotal, session.mapCount);
       for (const row of mercenaries) {
         const aggregate = mercenaryRows.get(row.archetype)
           ?? { count: 0, mapCount: 0, sessionCount: 0 };
@@ -303,7 +300,6 @@ export function aggregateRunStatisticsSessions(
     mercenaryTotal,
     mercenaryMapCount,
     mercenarySessionCount,
-    untrackedMercenaryMaps,
     beastGains,
     beastMapCount,
     beastSessionCount,
@@ -314,8 +310,8 @@ export function observedRatePercent(count: number, denominator: number): number 
   return denominator > 0 ? (count / denominator) * 100 : null;
 }
 
-export function remainingUntrackedMaps(trackedCount: number, mapCount: number): number {
-  return Math.max(0, mapCount - trackedCount);
+export function formatMercenaryObservations(count: number, maps: number): string {
+  return `${count.toLocaleString()} ${count === 1 ? 'encounter' : 'encounters'} across ${maps.toLocaleString()} ${maps === 1 ? 'map' : 'maps'}`;
 }
 
 const normalizedScarabName = (value: string): string => value.trim().toLowerCase();

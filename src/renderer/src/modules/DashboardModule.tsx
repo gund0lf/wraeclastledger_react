@@ -1,3 +1,5 @@
+import { getAtlasCompletionBonus, getManifest } from '../utils/gameData';
+import { currentLeagueSync, KNOWN_LEAGUES } from '../utils/league';
 import {
   Card, Text, Group, Stack, Badge, Divider, ActionIcon,
   Button, SegmentedControl, Table, Checkbox, TextInput,
@@ -7,13 +9,14 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { useState, useMemo, useRef, useEffect, useReducer } from 'react';
 import { useSessionKeys } from '../store/useSessionStore';
-import { QUALITY_STAT_EFFECTS, CHISEL_TYPES, DELIRIUM_ORB_LIST } from '../utils/constants';
+import { QUALITY_STAT_EFFECTS, chiselForLeague, DELIRIUM_ORB_LIST } from '../utils/constants';
 import { LootCategory, ManualLootItem, MapData, LootItem } from '../types';
 import { parseLootCsv, diffLootItems } from '../utils/lootUtils';
 import {
   IconCoins, IconFileImport, IconPencil, IconPlus, IconPackage,
   IconSearch, IconTrash,
 } from '@tabler/icons-react';
+import { mapLogStatColumns } from '../utils/mapParser';
 import { getItemIcons, chiselItemName } from '../utils/itemIcons';
 import type { ItemIdentity } from '../utils/itemIcons';
 import {
@@ -30,6 +33,7 @@ import {
 import { PoeItemIcon } from '../components/ui/PoeItemIcon';
 import { LootCategoryGlyph, LootCategoryIcon } from '../components/ui/LootCategoryIcon';
 import { computeProfit, computeMultiplier } from '../utils/profit';
+import { hasCurrentAtlasStatsRead } from '../utils/atlasStatsSync';
 import { describeMapModifierSource } from '../utils/atlasCalcPresentation';
 import { fcSep } from '../utils/parseDiscordExport';
 import { computeTimeEstimate, formatActiveTime } from '../utils/timeEstimate';
@@ -68,10 +72,10 @@ const INITIAL_ROWS = 25;
 const STEP_ROWS    = 25;
 
 const STAT_KEYS: (keyof MapData)[] = [
-  'quantity', 'rarity', 'packSize', 'moreCurrency', 'moreMaps', 'moreScarabs', 'moreDivCards',
+  'quantity', 'atlasDrops', 'rarity', 'packSize', 'moreCurrency', 'moreMaps', 'moreThreads', 'moreScarabs', 'moreDivCards',
 ];
 const STAT_LABELS: Record<string, string> = {
-  quantity: 'Quantity', rarity: 'Rarity', packSize: 'Pack Size',
+  quantity: 'Quantity', atlasDrops: 'Atlas Drops', moreThreads: 'Threads', rarity: 'Rarity', packSize: 'Pack Size',
   moreCurrency: 'Currency', moreMaps: 'Maps', moreScarabs: 'Scarabs',
   moreDivCards: 'Div Cards',
 };
@@ -113,7 +117,7 @@ const ResolvedLootIcon = ({
   if (!url || failedUrl === url) return <LootCategoryFallback name={name} tab={tab} category={category} />;
   return (
     <Tooltip label={name} openDelay={500} withinPortal>
-      <Image src={url} w={ICON_SIZE} h={ICON_SIZE} fit="contain"
+      <Image src={url} loading="lazy" decoding="async" w={ICON_SIZE} h={ICON_SIZE} fit="contain"
         style={{ flexShrink: 0 }} onError={() => setFailedUrl(url)} />
     </Tooltip>
   );
@@ -142,7 +146,10 @@ export const DashboardModule = () => {
   // store-level guards already freeze prices/league/points; this is the
   // visible explanation.
   const crossLeague = isCrossLeagueSession(sessionLifecycle, settings.leagueName);
+  const deviceLeague = settings.leagueName || currentLeagueSync() || KNOWN_LEAGUES[0];
+  const usesThreads = Boolean(getManifest().leagueRules?.[deviceLeague]?.threadSlots);
 
+  const atlasCalc = hasCurrentAtlasStatsRead(settings) ? settings.atlasStatsRead?.calc : undefined;
   const stats = useMemo(() => {
     const count = maps.length;
     if (count === 0) return null;
@@ -150,24 +157,39 @@ export const DashboardModule = () => {
     const qualBonuses: Record<string, number> = {};
     for (const map of maps) {
       const e = QUALITY_STAT_EFFECTS[map.qualityType];
-      if (e && map.quality > 0) qualBonuses[e.statKey] = (qualBonuses[e.statKey] ?? 0) + map.quality * e.multiplier;
+      if (e && map.quality > 0) {
+        const rarityBonus = e.statKey === 'rarity' ? chiselForLeague('Procurement', settings.leagueName)?.bonusAt20 : undefined;
+        const perQuality = rarityBonus === undefined ? e.multiplier : rarityBonus / 20;
+        qualBonuses[e.statKey] = (qualBonuses[e.statKey] ?? 0) + map.quality * perQuality;
+      }
     }
-    const chiselInfo = settings.chiselType ? CHISEL_TYPES[settings.chiselType] : null;
+    const chiselInfo = settings.chiselType ? chiselForLeague(settings.chiselType, settings.leagueName) : null;
     const chiselExp: Record<string, number> = {};
     if (chiselInfo && settings.chiselPrice > 0) {
       const unc = maps.filter((m) => m.quality === 0).length;
       if (unc > 0) chiselExp[chiselInfo.statKey] = (unc / count) * chiselInfo.bonusAt20;
     }
-    const result: Record<string, { avg: number; proj: number; hasChisel: boolean }> = {};
+    const result: Record<string, { avg: number; proj?: number; hasChisel?: boolean }> = {};
+    const columns = mapLogStatColumns(settings.leagueName, maps, getManifest().leagueRules);
     for (const key of STAT_KEYS) {
+      if (key === 'atlasDrops' || key === 'moreThreads') {
+        const observed = maps.flatMap((map) => map[key] === undefined ? [] : [map[key]]);
+        if (observed.length) result[key] = { avg: observed.reduce((sum, n) => sum + n, 0) / observed.length };
+        continue;
+      }
+      if (!columns.legacy && (key === 'quantity' || key === 'moreScarabs')) continue;
       const avg    = maps.reduce((acc, m) => acc + ((m[key] as number) ?? 0), 0) / count;
-      const qBonus = ((qualBonuses[key as string] ?? 0) / count) + (chiselExp[key as string] ?? 0);
-      const atlasQFlat = (key === 'quantity' && settings.atlasBonus) ? 25 : 0;
-      result[key as string] = { avg, proj: (avg - qBonus) * multiplier + qBonus + atlasQFlat,
+      const implicitKey = key === 'rarity' || key === 'packSize' ? key : undefined;
+      const implicitBonus = implicitKey ? maps.reduce((sum, map) => sum + (map.corruptionModifiers?.[implicitKey] ?? 0), 0) / count : 0;
+      const qBonus = implicitBonus + ((qualBonuses[key as string] ?? 0) / count) + (chiselExp[key as string] ?? 0);
+      const atlasQFlat = (key === 'quantity' && settings.atlasBonus) ? getAtlasCompletionBonus().itemQuantity : 0;
+      const areaBonus = usesThreads && key === 'packSize' ? atlasCalc?.areaPackSize ?? 0
+        : usesThreads && key === 'rarity' ? atlasCalc?.areaRarity ?? 0 : 0;
+      result[key as string] = { avg, proj: (avg - qBonus) * multiplier + qBonus + atlasQFlat + areaBonus,
         hasChisel: !!(chiselInfo?.statKey === key as string) };
     }
     return { count, multiplier, usesObservedMods, observedModAverage, stats: result };
-  }, [maps, settings]);
+  }, [maps, settings, atlasCalc, usesThreads]);
   const mapModifierSource = useMemo(
     () => describeMapModifierSource(maps, settings.mapType),
     [maps, settings.mapType],
@@ -301,9 +323,10 @@ export const DashboardModule = () => {
   useEffect(() => { setVisibleDiffRows(INITIAL_ROWS); }, [lootView, diffTab]);
 
   const allDiffRows = useMemo(() => hasBoth ? diffLootItems(baselineItems, lootItems) : [], [baselineItems, lootItems, hasBoth]);
-  const gains    = allDiffRows.filter((r) => r.delta > 0);
-  const losses   = allDiffRows.filter((r) => r.delta < 0).sort((a, b) => a.delta - b.delta);
-  const netGain  = gains.reduce((a, b) => a + b.delta, 0) + losses.reduce((a, b) => a + b.delta, 0);
+  const gains = useMemo(() => allDiffRows.filter((r) => r.delta > 0), [allDiffRows]);
+  const losses = useMemo(() => allDiffRows.filter((r) => r.delta < 0).sort((a, b) => a.delta - b.delta), [allDiffRows]);
+  const netGain = useMemo(() => gains.reduce((a, b) => a + b.delta, 0)
+    + losses.reduce((a, b) => a + b.delta, 0), [gains, losses]);
   const activeDiff = diffTab === 'gains' ? gains : losses;
 
   const detectedMatches = useMemo(() => {
@@ -963,7 +986,7 @@ export const DashboardModule = () => {
             the count contextualises its averages. Frees a full row. */}
 
         {!onboardingDismissed && maps.length === 0 && !hasCurrent && !hasBaseline && (
-          <GettingStartedCard onDismiss={dismissOnboarding} />
+          <GettingStartedCard usesThreads={usesThreads} onDismiss={dismissOnboarding} />
         )}
 
         <div style={{ flexShrink: 0 }}>
@@ -1047,6 +1070,13 @@ export const DashboardModule = () => {
                   )}
                 </Group>
               }>
+              {usesThreads && maps.some(map => map.corruptionModifiers?.atlasPassiveEffect) &&
+                <Text size="xs" c="dimmed">Projections use base Atlas bonuses. Map-specific increases to Atlas passive effect can change the area totals.</Text>}
+              {atlasCalc?.additionalRandomModifier && <Text size="xs" c="dimmed">Projections exclude the random modifier from Shaping the Valleys.</Text>}
+              {!!atlasCalc?.randomNotables && <Text size="xs" c="dimmed">Projections exclude {atlasCalc.randomNotables} random notables.</Text>}
+              {atlasCalc?.rerollsCorruptedRare && maps.some(map => map.isCorrupted && (!map.itemRarity || map.itemRarity === 'Rare')) &&
+                <Text size="xs" c="dimmed">Twist of Fate can change copied map values when a corrupted rare map opens.</Text>}
+              {usesThreads && settings.atlasBonus && <Text size="xs" c="dimmed">Atlas completion · +{getAtlasCompletionBonus().itemQuantity}% item quantity</Text>}
               <div className="dashboard-multiplier-grid">
                 {STAT_KEYS.map((key) => {
                   const d = stats.stats[key as string];
@@ -1056,20 +1086,22 @@ export const DashboardModule = () => {
                       key={key as string}
                       boxed
                       labelStyle={{ marginBottom: 2, lineHeight: 1 }}
-                      label={STAT_LABELS[key as string]}
+                      label={d.proj === undefined ? `${STAT_LABELS[key as string]} (observed)` : STAT_LABELS[key as string]}
                       value={
                         <Group gap={4} justify="center" align="center" wrap="nowrap" style={{ flex: 1 }}>
                           <Text fw={500} style={{ fontSize: FONT.stat, color: COLOR.textMuted, fontVariantNumeric: 'tabular-nums' }}>
                             {d.avg.toFixed(1)}%
                           </Text>
-                          <Text style={{ fontSize: FONT.small, color: COLOR.borderSoft }}>→</Text>
-                          <Text fw={600} style={{
-                            fontSize: FONT.lg,
-                            color: d.hasChisel ? COLOR.warning : COLOR.accent,
-                            fontVariantNumeric: 'tabular-nums',
-                          }}>
-                            {d.proj.toFixed(1)}%
-                          </Text>
+                          {d.proj !== undefined && <>
+                            <Text style={{ fontSize: FONT.small, color: COLOR.borderSoft }}>→</Text>
+                            <Text fw={600} style={{
+                              fontSize: FONT.lg,
+                              color: d.hasChisel ? COLOR.warning : COLOR.accent,
+                              fontVariantNumeric: 'tabular-nums',
+                            }}>
+                              {d.proj.toFixed(1)}%
+                            </Text>
+                          </>}
                         </Group>
                       }
                     />
@@ -1221,7 +1253,7 @@ export const DashboardModule = () => {
               <Stack align="center" justify="center" style={{ flex: 1 }} gap="xs">
                 <Text size="xs" c="dimmed" ta="center">Import a baseline before your session, then a return CSV to see your gains.</Text>
                 <Text size="xs" c="dimmed" ta="center" style={{ fontStyle: 'italic', fontSize: FONT.small }}>
-                  Tip: before importing a baseline, move your investment items (maps, scarabs etc.) out of any WealthyExile-monitored tab into your inventory or an unmonitored tab, then change zones so WealthyExile updates, then refresh and import. Otherwise your investment will be counted twice.
+                  Before importing a baseline, move investment items such as {usesThreads ? 'maps, Threads and Embers' : 'maps and scarabs'} from WealthyExile-monitored tabs into your inventory or an unmonitored tab. Change zones, refresh WealthyExile, then import the baseline to avoid counting your investment twice.
                 </Text>
                 <Text size="xs" c="dimmed" ta="center" style={{ fontSize: FONT.small }}>
                   Export from{' '}

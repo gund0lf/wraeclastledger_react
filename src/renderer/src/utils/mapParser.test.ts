@@ -1,5 +1,28 @@
 import { describe, it, expect } from 'vitest';
-import { parseMapClipboard, recoverExactModifierCount } from './mapParser';
+import { mapLogStatColumns, parseMapClipboard, recoverExactModifierCount } from './mapParser';
+
+describe('Covens clipboard observations', () => {
+  it.each(['{ Rare-only (Tier: 1) }', '{ Rare-only }', '{ Rare-only Prefix Modifier "Test" }', '{ Rare-only Suffix Modifier "of Madness" }'])(
+    'counts one %s and recovers the fields missed by an older reader', rare => {
+      const rawText = ['Item Class: Maps', 'Rarity: Rare', 'Synthetic Strand', 'Map (Tier 16)',
+        '--------', 'Atlas Drops: +75% (augmented)', 'More Threads: +35% (augmented)',
+        '--------', '{ Corruption Implicit Modifier }', 'Example implicit',
+        '--------', '{ Prefix Modifier "Synthetic" }', 'Example line', 'Second line', rare,
+        'Players in Area are 32% Delirious — Unscalable Value',
+        'Delirium Reward Type: Jewellery — Unscalable Value',
+        '--------', 'Travel to a Map'].join('\n');
+      const parsed = parseMapClipboard(rawText)!;
+      const expected = { atlasDrops: 75, moreThreads: 35, explicitModCount: 2,
+        deliriousPct: 32, deliriumRewardTypes: ['Jewellery'] };
+      expect(parsed).toMatchObject(expected);
+      const old = { ...parsed, id: 'map', name: 'Saved name', atlasDrops: undefined,
+        moreThreads: undefined, explicitModCount: 1, deliriumRewardTypes: ['Jewellery — Unscalable Value'] };
+      const recovered = recoverExactModifierCount(old);
+      expect(recovered).toMatchObject({ ...expected, name: 'Saved name' });
+      expect(recoverExactModifierCount(recovered)).toBe(recovered);
+      expect(recoverExactModifierCount({ ...old, rawText: undefined }).atlasDrops).toBeUndefined();
+    });
+});
 
 const ADVANCED_8_AFFIX_CORRUPTED = [
   'Item Class: Maps', 'Rarity: Rare', 'Unstable Gulf', 'Map (Tier 16)', '--------',
@@ -686,4 +709,12 @@ describe('parseMapClipboard — unidentified maps', () => {
     expect(map).not.toBe(null);
     expect(map!.isUnidentified).toBe(false);
   });
+});
+
+it('keeps stripped Covens observations unknown and historical columns visible in mixed captures', () => {
+  const stripped = { quantity: 0, moreScarabs: 0 };
+  const old = { quantity: 80, moreScarabs: 22 };
+  expect(mapLogStatColumns('Covens', [stripped])).toEqual({ covens: true, legacy: false });
+  expect(mapLogStatColumns('Allflame', [old])).toEqual({ covens: false, legacy: true });
+  expect(mapLogStatColumns('', [old, { ...stripped, atlasDrops: 60 }])).toEqual({ covens: true, legacy: true });
 });

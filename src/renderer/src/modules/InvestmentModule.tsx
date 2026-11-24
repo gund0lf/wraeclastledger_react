@@ -1,5 +1,6 @@
+import { DeviceInvestmentInputs } from '../components/DeviceInvestmentInputs';
 import {
-  Card, Text, NumberInput, Divider, Group, Stack,
+  Anchor, Card, Text, NumberInput, Divider, Group, Stack,
   Select, Button, Modal, SimpleGrid, Autocomplete, Badge,
   ActionIcon, TextInput, Menu, Alert, Tooltip,
 } from '@mantine/core';
@@ -10,7 +11,7 @@ import { useSessionInputDraft } from '../components/useSessionInputDraft';
 import {
   shouldShowMechanicInput, selectableAstrolabeList,
   selectableChiselList, selectableDeliriumOrbList, selectableScarabOptions,
-  preserveHistoricalSelection,
+  getManifest, preserveHistoricalSelection,
 } from '../utils/gameData';
 import { parsePriceInput } from '../utils/priceUtils';
 import { computeCosts } from '../utils/profit';
@@ -22,7 +23,7 @@ import {
   nextScarabSelection,
 } from '../utils/investmentSetup';
 import { fcSep } from '../utils/parseDiscordExport';
-import { KNOWN_LEAGUES, confirmedLeagueSync, fetchSelectableLeagues, currentLeagueSync } from '../utils/league';
+import { KNOWN_LEAGUES, orderedLeagueOptions, confirmedLeagueSync, fetchSelectableLeagues, currentLeagueSync } from '../utils/league';
 import { isCrossLeagueSession, isLiveSessionLeagueMismatch } from '../utils/historicalSession';
 import { chiselItemName, deliOrbItemName } from '../utils/itemIcons';
 import { PoeItemIcon } from '../components/ui/PoeItemIcon';
@@ -80,7 +81,8 @@ const PriceInput = ({
   previewWidth?: number; compactSpacing?: boolean;
 }) => {
   const { raw, change, commit } = useSessionInputDraft(
-    selectValue, onChange, (text) => parsePriceInput(text, divinePrice),
+    selectValue, onChange, (text) =>
+      !divinePrice && /d$/i.test(text.trim()) ? selectValue(useSessionStore.getState()) : parsePriceInput(text, divinePrice),
     (value) => value > 0 ? String(value) : '',
   );
   const divPreview = (() => {
@@ -90,6 +92,7 @@ const PriceInput = ({
   })();
   return (
     <TextInput label={label} description={description} placeholder={placeholder} value={raw}
+      error={!divinePrice && /d$/i.test(raw.trim()) ? 'Divine price unavailable. Enter chaos or choose your league manually in Investment.' : undefined}
       onChange={(e) => change(e.currentTarget.value)}
       onBlur={commit} onKeyDown={(e) => {
         if (e.key === 'Enter' && !e.nativeEvent.isComposing) commit();
@@ -184,6 +187,9 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
   const [presetSaveOpen, setPresetSaveOpen] = useState(false); // scarab preset "Save current as…" dialog
   const [presetSaveName, setPresetSaveName] = useState('');
   const [fetchingPrice, setFetchingPrice] = useState(false);
+  const [failedQuote, setFailedQuote] = useState<{ nonce: number; override: string | null; reason: 'unavailable' | 'unconfirmed'; automatic?: boolean }>();
+  const failedRefresh = failedQuote?.nonce === sessionNonce && failedQuote.override === leagueOverride
+    && (!failedQuote.automatic || !settings.divinePrice);
   const [confirmedActiveLeague, setConfirmedActiveLeague] = useState<string | null>(() => confirmedLeagueSync());
   const [hoveredReset, setHoveredReset] = useState(false); // reset-costs icon red hover (Sessions pattern)
   const [hoveredPresetTrashId, setHoveredPresetTrashId] = useState<string | null>(null); // preset delete red hover
@@ -200,12 +206,10 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
     setLeagueList(await fetchSelectableLeagues());
   };
   const historical = sessionLifecycle === 'historical';
+  const deviceLeague = settings.leagueName || currentLeagueSync() || KNOWN_LEAGUES[0];
+  const deviceRules = getManifest().leagueRules?.[deviceLeague];
   const leagueOptions = useMemo(() => {
-    const names = [...leagueList];
-    // The persisted override must always be selectable, even if the index
-    // no longer lists it (e.g. an ended event league).
-    if (leagueOverride && !names.includes(leagueOverride)) names.unshift(leagueOverride);
-    if (settings.leagueName && !names.includes(settings.leagueName)) names.unshift(settings.leagueName);
+    const names = orderedLeagueOptions([...leagueList, leagueOverride, settings.leagueName]);
     return [
       {
         value: '',
@@ -228,7 +232,7 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
     if (!settings.leagueName.trim() && next) setPendingSessionLeague(next);
   };
 
-  const divinePrice = settings.divinePrice || 1;
+  const divinePrice = settings.divinePrice;
   const deliriumOrbOptions = withNoneOption(preserveHistoricalSelection(
     selectableDeliriumOrbList(), settings.advDeliOrbType,
   ));
@@ -270,19 +274,14 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
   const gemSellTotal    = settings.advGemCount * settings.advGemSellPrice;
   const gemNetPL        = gemSellTotal - gemBuyTotal;
 
-  // Auto-seed an unset/legacy-default session on mount. Once set, Divine price
-  // is a session snapshot and changes only through explicit refresh/override.
-  // priceUtils' cooldown prevents retry storms while an unset seed is offline.
-  useEffect(() => {
-    initDivinePrice();
-  }, []);
-
   // Seed each new session's independent price snapshot.
   useEffect(() => {
     if (sessionLifecycle !== 'live') return;
     let active = true;
-    void initDivinePrice().finally(() => {
-      if (active) setConfirmedActiveLeague(confirmedLeagueSync());
+    void initDivinePrice().then((reason) => {
+      if (!active) return;
+      if (reason) setFailedQuote({ nonce: sessionNonce, override: leagueOverride, reason, automatic: true });
+      setConfirmedActiveLeague(confirmedLeagueSync());
     });
     return () => { active = false; };
   }, [sessionLifecycle, leagueOverride, sessionNonce, initDivinePrice]);
@@ -297,14 +296,16 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
   const handleFetchPrice = async () => {
     if (historical) { setRepriceConfirmOpen(true); return; }
     setFetchingPrice(true);
-    await initDivinePrice({ force: true });
+    const result = await initDivinePrice({ force: true });
+    setFailedQuote(result ? { nonce: sessionNonce, override: leagueOverride, reason: result } : undefined);
     setConfirmedActiveLeague(confirmedLeagueSync());
     setFetchingPrice(false);
   };
   const confirmReprice = async () => {
     setRepriceConfirmOpen(false);
     setFetchingPrice(true);
-    await initDivinePrice({ force: true, repriceLoaded: true });
+    const result = await initDivinePrice({ force: true, repriceLoaded: true });
+    setFailedQuote(result ? { nonce: sessionNonce, override: leagueOverride, reason: result } : undefined);
     setFetchingPrice(false);
   };
   // Cross-league loaded session (e.g. an Ancestors session opened under
@@ -610,10 +611,10 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
               : 'League — leave on Auto unless detection picks the wrong league'}
             style={{ minWidth: 0, width: '100%' }}
           />
-          <Tooltip label="All-in cost per map: total investment (base map + chisel + scarabs incl. one-time + session costs) divided by parsed maps. Equals Dashboard Investment / maps." withArrow multiline w={280}>
+          <Tooltip label="Total investment divided by maps run. Includes the map, map device, preparation and session costs." withArrow multiline w={280}>
             <Badge size={isMaximized ? 'md' : 'sm'} color="gray" variant="outline"
               className="investment-cost-per-map">
-              {totalPerMapFull.toFixed(1)}c/map
+              {totalPerMapFull.toLocaleString('en', { maximumFractionDigits: 2 })}c/map
             </Badge>
           </Tooltip>
         </div>
@@ -649,8 +650,8 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
                 )
               }>
                 <NumberInput
-                  value={settings.divinePrice}
-                  onChange={(v) => setDivinePriceManual(Number(v))}
+                  value={settings.divinePrice || ''} placeholder="—" aria-label="Divine price in chaos"
+                  onChange={(v) => { setFailedQuote(undefined); setDivinePriceManual(Number(v)); }}
                   suffix="c" size={isMaximized ? 'md' : 'sm'} hideControls
                   className="investment-divine-input"
                   styles={{ input: { textAlign: 'center', fontWeight: 700, fontSize: FONT.stat } }}
@@ -663,6 +664,12 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
                   }
                   rightSectionPointerEvents="all"
                 />
+                {(!settings.divinePrice || failedRefresh) && <Text size="xs" c="dimmed" ta="center" role="status">
+                  {failedRefresh && failedQuote.reason === 'unconfirmed' && !confirmedLeagueSync()
+                    ? 'League unconfirmed. Retry or choose your league manually in Investment.'
+                    : 'Price unavailable. Choose your league manually in Investment or enter a chaos price.'}{' · '}<Anchor component="button" type="button" size="xs" disabled={fetchingPrice}
+                    onClick={handleFetchPrice}>Retry</Anchor>
+                </Text>}
               </InvestmentMetric>
 
               <InvestmentMetric label="Session costs">
@@ -693,6 +700,8 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
                   style={hoveredReset ? { color: 'var(--mantine-color-red-4)', borderColor: 'var(--mantine-color-red-7)' } : undefined}
                   onClick={() => {
                     setHoveredReset(false);
+                    updateSetting('threadSlots', []);
+                    updateSetting('ember', undefined);
                     updateSetting('baseMapCost', 0);
                     updateSetting('chiselUsed', false);
                     updateSetting('chiselType', '');
@@ -766,6 +775,9 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
             </Group>
           )}
 
+          {deviceRules && <DeviceInvestmentInputs settings={settings} update={updateSetting}
+            league={deviceLeague} historical={historical} readOnly={crossLeague} rules={deviceRules} />}
+          {(!deviceRules || settings.scarabs.some(slot => slot.name)) && <>
           <div className="investment-scarab-header">
             <Group gap={5} wrap="nowrap">
               <SectionLabel>Map-device scarabs</SectionLabel>
@@ -829,6 +841,7 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
               </Group>
             ))}
           </Stack>
+          </>}
         </Stack>
       </Card>
     </>

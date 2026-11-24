@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildAtlasStatsSyncPatch, hasCurrentAtlasStatsRead } from './atlasStatsSync';
+import { readAllocatedNodeIds } from '../../../shared/atlasStats';
+import { allocatedChoiceNodes, currentChoiceEffects } from './atlasChoices';
 import { DEFAULT_SETTINGS } from '../store/useSessionStore';
 
 const url = 'https://pathofpathing.com/?v=3.29.0-atlas#AAAABgAAQzIQBJgJ';
@@ -42,6 +44,24 @@ describe('Atlas setup sync', () => {
     expect(hasCurrentAtlasStatsRead(settings)).toBe(true);
     expect(hasCurrentAtlasStatsRead({ ...settings, atlasTreeUrl: `${url}x` })).toBe(false);
     expect(hasCurrentAtlasStatsRead({ ...settings, leagueName: 'Mirage' })).toBe(false);
+  });
+
+  it('reads a transit choice from a full allocation and retains the answered effect for this tree', () => {
+    const url = 'https://pathofpathing.com/?v=3.30.0-atlas#AAAABgAAAwIAYfNxdXF1AAA=';
+    const code = btoa(String.fromCharCode(0, 0, 0, 6, 0, 0, 2, 0x61, 0xf3, 0x90, 0x06, 0, 0));
+    const ids = readAllocatedNodeIds({ code, points: 2 });
+    expect(ids).toEqual([25075, 36870]);
+    expect(readAllocatedNodeIds({ code, points: 1 })).toBeUndefined();
+    expect(readAllocatedNodeIds({ code: code.slice(0, -4), points: 2 })).toBeUndefined();
+    expect(allocatedChoiceNodes(url)).toEqual([]);
+    const patch = buildAtlasStatsSyncPatch([], url, 'Covens', undefined, ids);
+    expect(patch.atlasStatsRead?.choiceNodeIds).toEqual([36870]);
+    const [choice] = allocatedChoiceNodes(url, patch.atlasStatsRead?.choiceNodeIds);
+    expect(choice.name).toBe('Controlled Detonation');
+    const settings = { ...DEFAULT_SETTINGS, ...patch, leagueName: 'Covens', atlasTreeUrl: url,
+      atlasChoiceAnswers: { sourceUrl: url, leagueName: 'Covens', effects: { '36870': choice.options[1].id } } };
+    expect(currentChoiceEffects(settings)).toEqual(['Expedition Detonation Chains in your Maps travel 50% faster']);
+    expect(currentChoiceEffects({ ...settings, leagueName: 'Allflame' })).toEqual([]);
   });
 
   it('rejects a stock or incomplete source URL', () => {

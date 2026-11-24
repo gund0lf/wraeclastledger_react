@@ -8,10 +8,11 @@ import { atlasVersionOf, retargetAtlasUrl } from '../utils/strategyCompat';
 import { isCrossLeagueSession } from '../utils/historicalSession';
 import { SectionLabel } from '../components/ui/SectionLabel';
 import { COLOR, FONT } from '../utils/uiTokens'
-import type { AtlasStatGroup } from '../../../shared/atlasStats';
+import { READ_ATLAS_ALLOCATION, READ_ATLAS_STAT_GROUPS, readAllocatedNodeIds, type AtlasStatGroup } from '../../../shared/atlasStats';
 import { applyAtlasStatsSyncPatch, buildAtlasStatsSyncPatch } from '../utils/atlasStatsSync';
 import {
   atlasRemountSource,
+  readInitializedAtlasPoints,
   isPathofpathingTreeUrl,
   isPathofpathingUrl,
   shouldAutoApplyExternalAtlasView,
@@ -248,9 +249,11 @@ export const AtlasTreeModule = () => {
     const listenerSession = useSessionStore.getState();
     const listenerSessionNonce = listenerSession.sessionNonce;
     const listenerActiveSessionId = listenerSession.activeSessionId;
+    let mounted = true;
+    let pointRequest = 0;
     const isListenerSessionCurrent = () => {
       const current = useSessionStore.getState();
-      return current.sessionNonce === listenerSessionNonce
+      return mounted && current.sessionNonce === listenerSessionNonce
         && current.activeSessionId === listenerActiveSessionId;
     };
     // Capture atlas points (allocated/max) from the pathofpathing counter
@@ -259,42 +262,25 @@ export const AtlasTreeModule = () => {
     // on load; the small delay lets the spans update after the nav event.
     // Author-declared share context ONLY — never load-bearing (batch 2026-07).
     const readPoints = (origin: 'user' | 'automatic') => {
-      setTimeout(async () => {
-        if (!isListenerSessionCurrent()) return;
-        try {
-          const r = await (wv as any).executeJavaScript(`
-            (function() {
-              var a = document.getElementById('skillTreeNormalNodeCount');
-              var m = document.getElementById('skillTreeNormalNodeCountMaximum');
-              if (!a || !m) return null;
-              var av = parseInt(a.textContent, 10);
-              var mv = parseInt(m.textContent, 10);
-              if (isNaN(av) || isNaN(mv) || mv <= 0) return null;
-              return { allocated: av, max: mv };
-            })()
-          `);
-          if (!isListenerSessionCurrent()) return;
-          if (r && typeof r.allocated === 'number' && typeof r.max === 'number') {
-            const st = useSessionStore.getState();
-            // Phase 1.5 historical guard (rollover plan, 2026-07-11): a
-            // cross-league loaded session's stored tree may render under a
-            // NEWER patch's ?v= — its point counts must never overwrite the
-            // historical session's data. Same-league tree edits still
-            // capture (a deliberate user action on their own session).
-            if (isCrossLeagueSession(st.sessionLifecycle, st.settings.leagueName)) {
-              console.log('[AtlasTree] point capture skipped — historical session');
-              return;
-            }
-            const s = st.settings;
-            if (s.atlasPoints !== r.allocated || s.atlasPointsMax !== r.max) {
-              updateSetting('atlasPoints', r.allocated, origin);
-              updateSetting('atlasPointsMax', r.max, origin);
-            }
-          }
-        } catch (err) {
-          console.error('[AtlasTree] failed to read atlas points:', err);
+      const request = ++pointRequest;
+      const isCurrent = () => isListenerSessionCurrent() && request === pointRequest;
+      void readInitializedAtlasPoints(() => wv.executeJavaScript(`
+        (() => {
+          const a = document.getElementById('skillTreeNormalNodeCount')?.textContent?.trim();
+          const m = document.getElementById('skillTreeNormalNodeCountMaximum')?.textContent?.trim();
+          return a && m ? { allocated: Number(a), max: Number(m), url: location.href } : null;
+        })()
+      `), isCurrent).then((counter) => {
+        if (!counter || !isCurrent()) return;
+        const { sessionLifecycle, settings } = useSessionStore.getState();
+        if (isCrossLeagueSession(sessionLifecycle, settings.leagueName)) return;
+        if (settings.atlasPoints !== counter.allocated || settings.atlasPointsMax !== counter.max) {
+          updateSetting('atlasPoints', counter.allocated, origin);
+          updateSetting('atlasPointsMax', counter.max, origin);
         }
-      }, 250);
+      }).catch((err) => {
+        if (isCurrent()) console.error('[AtlasTree] failed to read atlas points:', err);
+      });
     };
     const handleNav = (e: any) => {
       if (!isListenerSessionCurrent()) return;
@@ -386,6 +372,7 @@ export const AtlasTreeModule = () => {
     wv.addEventListener('did-navigate-in-page', handleNav);
     wv.addEventListener('did-finish-load', handleFinishLoad);
     return () => {
+      mounted = false;
       wv.removeEventListener('will-navigate', handleWillNavigate);
       wv.removeEventListener('did-navigate', handleNav);
       wv.removeEventListener('did-navigate-in-page', handleNav);
@@ -446,28 +433,7 @@ export const AtlasTreeModule = () => {
               await new Promise(function(r) { setTimeout(r, 150); });
               container.scrollTop = orig;
             }
-            var statEls = Array.from(document.querySelectorAll('#skillTreeStats_Content .stat[data-group-name]'));
-            if (statEls.length > 0) {
-              var groups = {};
-              var order = [];
-              statEls.forEach(function(el) {
-                var g = el.getAttribute('data-group-name');
-                if (!groups[g]) { groups[g] = []; order.push(g); }
-                var t = el.textContent.trim();
-                if (t) groups[g].push(t);
-              });
-              return order.map(function(g) { return { title: g, stats: groups[g] }; });
-            }
-            var content = document.getElementById('skillTreeStats_Content');
-            if (!content) return null;
-            var result = [];
-            content.querySelectorAll('.group').forEach(function(g) {
-              var titleEl = g.querySelector('span.title') || g.querySelector('.title');
-              var title = titleEl ? titleEl.textContent.trim() : 'Other';
-              var stats = Array.from(g.querySelectorAll('.stat')).map(function(s) { return s.textContent.trim(); }).filter(Boolean);
-              if (stats.length > 0) result.push({ title: title, stats: stats });
-            });
-            return result.length > 0 ? result : null;
+            return { groups: ${READ_ATLAS_STAT_GROUPS}, allocation: ${mode === 'apply' ? READ_ATLAS_ALLOCATION : 'null'}, url: location.href };
           } catch(e) { return { error: e.message }; }
         })()
       `);
@@ -477,7 +443,7 @@ export const AtlasTreeModule = () => {
       await closeUpstreamStatsPanel(wv);
       if (!isCurrentSession()) return;
 
-      if (!result || (result as any).error) {
+      if (!result?.groups || (result as any).error) {
         setStatsError((result as any)?.error
           ?? 'No stats found. Select some nodes in the atlas tree first — if nodes ARE selected and this keeps happening, pathofpathing may have changed its layout; please report it.');
         setStatGroups([]);
@@ -487,16 +453,14 @@ export const AtlasTreeModule = () => {
         return;
       }
 
-      const groups: AtlasStatGroup[] = Array.isArray(result)
-        ? result as AtlasStatGroup[]
-        : Object.entries(result as Record<string, string[]>).map(([title, stats]) => ({ title, stats }));
+      const groups: AtlasStatGroup[] = result.groups;
 
       setStatGroups(groups);
       setStatsOpen(mode === 'inspect');
 
       // Inspection is deliberately read-only. Only the clearly named setup
       // sync refreshes Atlas Calc, Run Statistics inputs, and source identity.
-      if (mode === 'apply' && !applyGroupsToCalc(groups, capturedUrlRef.current)) {
+      if (mode === 'apply' && !applyGroupsToCalc(groups, result.url, readAllocatedNodeIds(result.allocation))) {
         setStatsOpen(true);
       }
     } catch {
@@ -584,13 +548,13 @@ export const AtlasTreeModule = () => {
   // ── Apply stats to Atlas Calc ─────────────────────────────────────────────
   // applyGroupsToCalc takes groups directly (avoids stale-state issues when
   // called right after readStats resolves)
-  const applyGroupsToCalc = (groups: AtlasStatGroup[], sourceUrl: string): boolean => {
+  const applyGroupsToCalc = (groups: AtlasStatGroup[], sourceUrl: string, allocatedNodeIds?: number[]): boolean => {
     try {
       const current = useSessionStore.getState();
       const patch = buildAtlasStatsSyncPatch(
         groups,
         sourceUrl,
-        current.settings.leagueName,
+        current.settings.leagueName, undefined, allocatedNodeIds,
       );
       applyAtlasStatsSyncPatch(updateSetting, patch);
       const appliedParts = [
@@ -611,7 +575,7 @@ export const AtlasTreeModule = () => {
   const applyToAtlasCalc = () => readStats('apply');
 
   const applyVisibleStatsToCalc = () => {
-    if (applyGroupsToCalc(statGroups, capturedUrlRef.current)) setStatsOpen(false);
+    void readStats('apply');
   };
 
   return (
@@ -637,7 +601,7 @@ export const AtlasTreeModule = () => {
             Load original
           </Button>
         )}
-        {versionMismatch && showOriginal && (
+        {versionMismatch && showOriginal && atlasViewUrl(authoredUrl) !== authoredUrl && (
           <Button size="compact-xs" variant="subtle" color="yellow" onClick={loadCurrentVersion}>
             Show on {currentVersion.replace(/\.0-atlas$/, '')}
           </Button>

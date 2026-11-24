@@ -40,6 +40,10 @@ export const CAT_COLORS: Partial<Record<ItemCategory, string>> = {
 };
 
 const RULES: [RegExp | ((name: string) => boolean), ItemCategory][] = [
+  [/^frayed thread$/i, 'Currency'],
+  [/^(?:Abyss|Bestiary|Betrayal|Blight|Breach|Expedition|Incursion|Legion|Ritual|Ultimatum) Thread$/i, 'Fragments'],
+  [/^Allflame Ember of /i, 'League'],
+  [/^(?:royal visage|the black barya|cursed poppet)$/i, 'Fragments'],
   [/scarab/i,               'Scarabs'],
   [/delirium orb/i,         'Deliriums'],
   [/\boil\b/i,              'Oils'],

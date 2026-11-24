@@ -13,7 +13,7 @@
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { Image } from '@mantine/core';
-import { IconBug, IconCircleDashed, IconDiamond, IconTool, IconWorld } from '@tabler/icons-react';
+import { IconFlame, IconNeedleThread, IconBug, IconCircleDashed, IconDiamond, IconTool, IconWorld } from '@tabler/icons-react';
 import { getItemIcons } from '../../utils/itemIcons';
 import { useSessionStore } from '../../store/useSessionStore';
 import { COLOR } from '../../utils/uiTokens';
@@ -21,11 +21,13 @@ import type { LootCategory } from '../../types';
 
 type Resolvers = Pick<Awaited<ReturnType<typeof getItemIcons>>,
   'resolve' | 'resolveGemPreview' | 'resolveCategoryIcon'>;
-export type PoeItemCategory = 'scarab' | 'orb' | 'chisel' | 'gem' | 'astrolabe';
+export type PoeItemCategory = 'thread' | 'ember' | 'scarab' | 'orb' | 'chisel' | 'gem' | 'astrolabe';
 let cachedResolvers: Resolvers | null = null;
 
 const CategoryFallback = ({ category, size }: { category: PoeItemCategory; size: number }) => {
   const props = { size, stroke: 1.5, color: COLOR.textMuted, style: { flexShrink: 0 } };
+  if (category === 'thread') return <IconNeedleThread {...props} />;
+  if (category === 'ember') return <IconFlame {...props} />;
   if (category === 'scarab') return <IconBug {...props} />;
   if (category === 'chisel') return <IconTool {...props} />;
   if (category === 'gem') return <IconDiamond {...props} />;
