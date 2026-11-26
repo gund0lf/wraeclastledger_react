@@ -288,7 +288,7 @@ function App({ initialLayoutRawValue }: { initialLayoutRawValue: string | null }
         <Box style={{ position: 'absolute', left: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
         <Menu shadow="md" width={220}>
           <Menu.Target>
-            <Button size="compact-xs" variant="subtle" color="gray" style={{ fontSize: 11 }}>
+            <Button size="compact-xs" variant="subtle" color="gray">
               + Add Panel
             </Button>
           </Menu.Target>

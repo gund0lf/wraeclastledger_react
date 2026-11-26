@@ -26,7 +26,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       'Investment accepts granted Threads separately from paid Threads, including a type with zero paid. Saved sessions keep their granted counts and paused slots.',
       'Covens Atlas Calc shows Shaping the Valleys. Regex summaries label Atlas Drops and More Threads, and the modifier guide highlights the mouse controls. Capture, investment, run statistics and setup hints now describe the relevant mechanics.',
       'Map Capture retains confirmed Mirage, Sentinel, Evocator, Wildwood and Mirror of Delirium modifiers after reopening a session. Run Statistics shows how many readable maps rolled each family and how many maps have unknown modifiers.',
-      'Show or hide the timer and counter overlay directly from the main toolbar, next to Add Panel.',
+      'Show or hide the timer and counter overlay directly from the main toolbar. The toggle and Add Panel use the same compact button size and label alignment.',
       'Manage public names now explains when a private confirmation has already been used.',
       'Personal and public Retrospectives now let you expand each league separately. The league with the latest cutoff opens first.',
       'Run Statistics records the selected Atlas choices with each observed setup. Changing a choice on the same tree now distinguishes those observations. Older observations keep their original setup information.',
