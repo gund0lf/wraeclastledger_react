@@ -30,6 +30,15 @@ describe('isAllowedPathOfPathingUrl', () => {
 });
 
 describe('community and OS external URL validation', () => {
+  it('accepts an authored Ledger strategy URL while keeping upstream sync scoped to its reader', () => {
+    const link = 'https://atlas.wraeclastledger.com/?v=3.30.0-atlas&choices=712-17864#tree';
+    expect(isSafeStrategyAtlasUrl(link)).toBe(true);
+    expect(isAllowedPathOfPathingUrl(link)).toBe(false);
+    for (const invalid of [link.replace('https:', 'http:'), link.replace('.com/', '.com:444/'),
+      link.replace('.com/', '.com.example/'), link.replace('atlas.', 'user@atlas.'), link.split('#')[0]]) {
+      expect(isSafeStrategyAtlasUrl(invalid)).toBe(false);
+    }
+  });
   it('keeps legacy official Atlas links while rejecting attacker-controlled origins', () => {
     expect(isSafeStrategyAtlasUrl('https://pathofpathing.com/#AAAA')).toBe(true);
     expect(isSafeStrategyAtlasUrl(

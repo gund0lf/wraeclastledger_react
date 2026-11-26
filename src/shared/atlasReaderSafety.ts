@@ -8,26 +8,30 @@ function hasSafeUrlText(rawUrl: string): boolean {
     && !/[\u0000-\u001f\u007f]/.test(rawUrl)
 }
 
-export function isAllowedPathOfPathingUrl(rawUrl: string): boolean {
-  if (!hasSafeUrlText(rawUrl)) return false
+function parseAtlasUrl(rawUrl: string): URL | null {
+  if (!hasSafeUrlText(rawUrl)) return null
   try {
     const url = new URL(rawUrl);
     return url.protocol === 'https:'
-      && url.hostname === PATH_OF_PATHING_HOST
       && url.port === ''
       && url.username === ''
-      && url.password === '';
+      && url.password === '' ? url : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+export function isAllowedPathOfPathingUrl(rawUrl: string): boolean {
+  return parseAtlasUrl(rawUrl)?.hostname === PATH_OF_PATHING_HOST
 }
 
 /** Community strategies may contain older Path of Pathing links that predate
  * the current version query. They remain safe to open when the origin is exact
  * and an allocation fragment is present, even if they are too old to import. */
 export function isSafeStrategyAtlasUrl(rawUrl: string): boolean {
-  if (!isAllowedPathOfPathingUrl(rawUrl)) return false
-  return new URL(rawUrl).hash.length > 1
+  const url = parseAtlasUrl(rawUrl)
+  return url !== null && url.hash.length > 1
+    && (url.hostname === PATH_OF_PATHING_HOST || url.hostname === 'atlas.wraeclastledger.com')
 }
 
 /** The main process is the final authority for renderer-requested OS links. */
