@@ -1,4 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_SETTINGS } from '../store/useSessionStore';
+import { decodeSessionPayload, toJsonObject } from '../repository/sessionPayloadCodec';
+import { buildAtlasStatsSyncPatch } from './atlasStatsSync';
+import { computeMultiplier } from './profit';
+import { buildDiscordExport } from './discordExport';
 import type { RepositoryWorkflow } from '../../../shared/sessionRepositoryIpc';
 import {
   coalescePendingSessionSnapshot,
@@ -123,6 +128,37 @@ describe('WP14 repository lifecycle provenance', () => {
     });
     expect(forked.settings).not.toHaveProperty('divinePriceQuotedAt');
     expect(original.settings).toMatchObject({ leagueName: 'Mirage', divinePrice: 215 });
+  });
+
+  it('starts a cross-league fork without old Atlas bonuses until a new tree is synced', () => {
+    const oldUrl = 'https://pathofpathing.com/?v=3.29.0-atlas#AAAABgAAQzIQBJgJ';
+    const newUrl = oldUrl.replace('3.29', '3.30');
+    const mounting = '2% increased effect of Explicit Modifiers on your Maps per Explicit Modifier';
+    const oldSettings = { ...DEFAULT_SETTINGS, leagueName: 'Allflame', atlasTreeUrl: oldUrl,
+      ...buildAtlasStatsSyncPatch([{ title: 'Map Modifiers', stats: [
+        '10% increased effect of Explicit Modifiers on your Maps', mounting,
+      ] }], oldUrl, 'Allflame'), atlasDetectedTags: ['bestiary'] };
+    const source = toJsonObject({ settings: oldSettings, sessionNotes: 'historical evidence' });
+    const fork = forkPayloadIntoLeague(source, 'Covens', false);
+    const copy = decodeSessionPayload(fork, DEFAULT_SETTINGS);
+    expect(computeMultiplier(oldSettings).multiplier).toBeCloseTo(1.22);
+    expect(computeMultiplier(copy.settings).multiplier).toBe(1);
+    expect(copy.settings.atlasDetectedTags).toEqual([]);
+    expect(copy.settings.atlasTreeUrl).toBe(DEFAULT_SETTINGS.atlasTreeUrl);
+    expect(copy.settings.atlasStatsRead).toBeUndefined();
+    expect(copy.settings.bestiaryAtlasSetup).toBeUndefined();
+    expect(copy.settings.mercenaryAtlasSetup).toBeUndefined();
+    expect(copy.sessionNotes).toBe('historical evidence');
+    const synced = { ...copy.settings, atlasTreeUrl: newUrl, ...buildAtlasStatsSyncPatch(
+      [{ title: 'Map Modifiers', stats: [mounting] }], newUrl, 'Covens') };
+    expect(computeMultiplier(synced).multiplier).toBeCloseTo(1.12);
+    const reopened = decodeSessionPayload(toJsonObject({
+      ...copy, settings: { ...synced, divinePrice: 200 },
+    }), DEFAULT_SETTINGS);
+    expect(buildDiscordExport(reopened)).toContain('**Multiplier:** 1.12×');
+    expect(source.settings).toEqual(toJsonObject(oldSettings));
+    const sameLeague = forkPayloadIntoLeague(source, 'Allflame', true);
+    expect(computeMultiplier(decodeSessionPayload(sameLeague, DEFAULT_SETTINGS).settings).multiplier).toBeCloseTo(1.22);
   });
 
   it('suspends a persisted live target from a different confirmed league', () => {

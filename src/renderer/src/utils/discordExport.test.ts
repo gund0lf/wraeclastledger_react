@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { SessionSettings, LootItem } from '../types';
-import { buildDiscordExport, formatDiscordExport, ExportMapStats, type DiscordExportInput } from './discordExport';
+import { buildDiscordExport, formatDiscordExport, postedCardExport, ExportMapStats, type DiscordExportInput } from './discordExport';
 import { parseDiscordExport } from './parseDiscordExport';
 import { EXPORT_EMOJI } from './discordEmoji';
 import { buildDiscordSharePayload, decodeDiscordSharePayload } from './discordShareWire';
@@ -73,12 +73,33 @@ const build = () => buildDiscordExport({
   isGroupPlay: false,
 });
 
+it('budgets the observed distribution and the actual Atlas choice labels on a Covens card', () => {
+  const raw = build();
+  const parsed = parseDiscordExport(raw)!;
+  const card = postedCardExport(raw, { ...parsed, covens: {
+    version: 1, threads: null, ember: null, orbs: null, encounters: null,
+    atlas_drops: { sum: 260, count: 5 }, more_threads: null,
+    atlas: { version: '3.30.0-atlas', choices: [{ node: 712, option: 50999 }] },
+    delirium: { resolution: 'exact', levels: Array.from({ length: 30 }, (_, i) => [5 + i, 1]), rewards: [['armour', 30]] },
+  } });
+  expect(card).toContain('52% (5 maps)');
+  expect(card).toContain('**Atlas choices:** Outside Entities');
+  expect(card).toContain('30 maps at 5–34% (distribution in Ledger)');
+  expect(card).not.toContain('Avg Quant');
+  expect(postedCardExport(raw, parsed)).toBe(raw);
+});
+
 // Reuse the established export inputs, but freeze the complete output from the
 // formatter before its extraction. Parser round-trips alone can miss a matching
 // encoder/parser change; these expected UTF-8 bytes have no formatter dependency.
 const wireRegressionBase: DiscordExportInput = {
   maps, settings: settings(), lootItems, baselineTotal, investmentNeutralization: 0,
 };
+it('shares the measured Atlas Drops average even when Regex trims an outlier', () => {
+  const measured = [40, 40, 40, 40, 100].map(atlasDrops => ({ ...maps[0], atlasDrops }));
+  const raw = buildDiscordExport({ ...wireRegressionBase, maps: measured, settings: settings({ leagueName: 'Covens' }) });
+  expect(raw).toContain('Map observations: Atlas Drops 52% (5/5 maps)');
+});
 const wireRegressionCases: { name: string; input: DiscordExportInput }[] = [
   { name: 'preservation', input: { ...wireRegressionBase,
     shareTags: ['originator', 'breach', 'cartography', 'astrolabe-grasping'], isGroupPlay: false } },

@@ -31,7 +31,7 @@ import { PublicRetrospectives } from '../components/PublicRetrospectives';
 import type { DiscordImport } from '../utils/parseDiscordExport';
 import { COLOR, FONT } from '../utils/uiTokens'
 import { WorkingSessionGuardModal } from '../components/WorkingSessionGuardModal';
-import { applyAtlasStatsSyncPatch, buildAtlasStatsSyncPatch } from '../utils/atlasStatsSync';
+import { applyAtlasStatsSyncPatch, buildAtlasStatsSyncPatch, readAtlasStatsForLeague } from '../utils/atlasStatsSync';
 import { fingerprintSetupSnapshot, setupSnapshotFromDiscordImport } from '../utils/evidenceIdentity';
 import { usePanelMaximized, useSetupSidebarCollapsed } from '../layout/panelLayoutContext';
 import { deriveShareTags } from '../utils/shareTags';
@@ -161,7 +161,7 @@ const StrategyBrowserContent = ({ safe }: { safe: boolean }) => {
   ) => {
     const targetSessionNonce = useSessionStore.getState().sessionNonce;
     requestAtlasApply(targetSessionNonce); // visible Atlas Tree lifecycle/reload
-    void window.api.readAtlasTreeStats(url).then((result) => {
+    void readAtlasStatsForLeague(url, useSessionStore.getState().settings.leagueName).then((result) => {
       if (useSessionStore.getState().sessionNonce !== targetSessionNonce) return;
       if (!result.groups) {
         setLoadedMsg(`Build loaded, but Atlas Calc could not read the Atlas Tree: ${result.error ?? 'unknown error'}.`);
@@ -262,6 +262,7 @@ const StrategyBrowserContent = ({ safe }: { safe: boolean }) => {
       updateScarab(index, 'cost', 0);
     }
     updateAdvSetting('advDeliOrbType', plan.deliriumType);
+    updateAdvSetting('deliriumOrbSpend', plan.deliriumOrbTypes?.map(type => ({ type, count: 0, priceEach: null })));
     updateAdvSetting('advDeliOrbQtyPerMap', plan.deliriumCountPerMap);
     updateAdvSetting('advDeliOrbPriceEach', 0);
     updateAdvSetting('advAstrolabeType', plan.astrolabeType);
@@ -270,16 +271,23 @@ const StrategyBrowserContent = ({ safe }: { safe: boolean }) => {
   };
 
   // ── Load build (called by both StrategyCard and ImportModal) ─────────────────
-  const applySetupSource = async (setup: StrategySetupCode, action?: SafeStrategyAction): Promise<void> => {
+  const applySetupSource = async (setup: StrategySetupCode, action?: SafeStrategyAction, continuationLeague?: string): Promise<void> => {
     const plan = buildSetupOnlyImportPlan(setup);
     action?.assertCurrent();
     if (action) setSetupCommitting(true);
     try {
-      await startWorking(true, action);
+      await startWorking(true, action, continuationLeague);
       action?.assertCurrent();
       updateSetting('strategyTarget', null);
       updateSetting('strategySourceParty', setup.party ?? null);
       applyReusableSetup(plan.investment);
+      if (plan.device && setup.league === useSessionStore.getState().settings.leagueName) {
+        updateSetting('threadSlots', plan.device.threadSlots);
+        updateSetting('ember', plan.device.ember);
+        if (plan.atlasTreeUrl) updateSetting('atlasChoiceAnswers', {
+          sourceUrl: plan.atlasTreeUrl, leagueName: setup.league, effects: plan.device.choices,
+        });
+      }
       const modifiers = plan.multiplyingModifiers;
       if (modifiers.allocated !== null) {
         updateSetting('multiplyingModifiersAllocated', modifiers.allocated);
@@ -492,7 +500,7 @@ const StrategyBrowserContent = ({ safe }: { safe: boolean }) => {
           />
           <Text size="xs" c="dimmed">
             {continueSource === 'fresh'
-              ? 'Clones the published scarabs, chisel, Atlas tree, delirium and astrolabe settings into a new empty session.'
+              ? 'Loads the available published setup into an empty session. Enter prices for the new run.'
               : 'Keeps the current maps, loot, settings and authored prices. Compatibility is checked before sharing, so an unrelated setup is blocked rather than mixed into the pool.'}
           </Text>
           {continueOperation === 'evidence' && (continueCandidate?.evidence_run_count ?? 0) > 0 && (

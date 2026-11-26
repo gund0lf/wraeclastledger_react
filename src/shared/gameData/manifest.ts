@@ -440,7 +440,7 @@ const atlasChoices330 = {
 export const BUNDLED_MANIFEST: GameDataManifest = {
   ...ALLFLAME_MANIFEST,
   atlasCompletion: { objectives: 100, itemQuantity: 25 },
-  revision: 5,
+  revision: 6,
   schemaVersion: 2,
   patchVersion: '3.30',
   atlasTreeVersion: '3.30.0-atlas',
@@ -450,7 +450,8 @@ export const BUNDLED_MANIFEST: GameDataManifest = {
     '3.29.0-atlas': { layout: '3.28', maxPoints: 138 },
     '3.30.0-atlas': { layout: '3.30', maxPoints: 150, choices: atlasChoices330 },
   },
-  leagueRules: { Covens: { atlasDrops: true, threadSlots: 3, threadCap: 8 } },
+  leagueRules: { Covens: { atlasDrops: true, threadSlots: 3, threadCap: 8, atlasTreeVersion: '3.30.0-atlas', deliriumOrbs: 'reforge' } },
+  legacyDeliriumLayerLeagues: ['Allflame', 'Mirage', 'Ancestors'],
   mechanics: { ...ALLFLAME_MANIFEST.mechanics, scarabs: 'removed', threads: 'active' },
   scarabs: ALLFLAME_MANIFEST.scarabs.map(item => item.status === 'renamed' ? item : { ...item, status: 'removed' }),
   threads: ['Abyss', 'Bestiary', 'Betrayal', 'Blight', 'Breach', 'Expedition', 'Incursion', 'Legion', 'Ritual', 'Ultimatum']

@@ -23,11 +23,15 @@ export function allocatedChoiceNodes(sourceUrl: string, allocatedIds?: readonly 
   } catch { return []; }
 }
 
-export function currentChoiceEffects(settings: ChoiceContext) {
+export function currentChoiceSelections(settings: ChoiceContext) {
   const answers = settings.atlasChoiceAnswers;
   if (!answers || !settings.atlasTreeUrl || answers.sourceUrl !== settings.atlasTreeUrl
     || answers.leagueName !== settings.leagueName || settings.atlasStatsRead?.sourceUrl !== answers.sourceUrl
     || settings.atlasStatsRead.leagueName !== answers.leagueName) return [];
   return allocatedChoiceNodes(answers.sourceUrl, settings.atlasStatsRead?.choiceNodeIds).flatMap(node =>
-    node.options.filter(option => option.id === answers.effects?.[node.id]).map(option => option.text));
+    node.options.filter(option => option.id === answers.effects?.[node.id]).map(option => ({ nodeId: node.id, option })));
+}
+
+export function currentChoiceEffects(settings: ChoiceContext) {
+  return currentChoiceSelections(settings).map(({ option }) => option.text);
 }

@@ -19,7 +19,7 @@ const validatedPayloadJson = (raw: unknown, allowAuthor = false): string => {
     throw new TypeError('Compact Discord payload is outside the allowed size')
   }
   const payload = JSON.parse(raw) as unknown
-  if (!Array.isArray(payload) || (payload[0] !== 4 && !(allowAuthor && [5, 6, 7].includes(payload[0])))) {
+  if (!Array.isArray(payload) || (![4, 8].includes(payload[0]) && !(allowAuthor && [5, 6, 7].includes(payload[0])))) {
     throw new TypeError('Compact Discord payload has an unsupported schema')
   }
   return raw

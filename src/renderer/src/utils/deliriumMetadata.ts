@@ -14,6 +14,30 @@ export interface DeliriumMapObservation {
   deliriumRewardTypes?: readonly string[];
 }
 
+// Older readers store independent level and reward counts. A readable note
+// preserves their association for mixed single-reward maps.
+export function pairedDeliriumNote(maps: readonly DeliriumMapObservation[]): string | null {
+  const pairs = new Map<string, number>();
+  const types = new Set<string>();
+  const levels = new Set<number>();
+  for (const { deliriousPct, deliriumRewardTypes } of maps) {
+    if (deliriousPct == null || !Number.isInteger(deliriousPct) || deliriousPct < 0 || deliriousPct > 100
+      || deliriumRewardTypes?.length !== 1) continue;
+    const type = deliriumRewardTypes[0].trim();
+    if (!/^[A-Za-z][A-Za-z '’-]{0,59}$/.test(type)) continue;
+    types.add(type);
+    levels.add(deliriousPct);
+    const key = `${deliriousPct}% ${type}`;
+    pairs.set(key, (pairs.get(key) ?? 0) + 1);
+  }
+  if (types.size < 2 || levels.size < 2) return null;
+  return 'Observed Delirium by reward: ' + [...pairs].map(([pair, count]) => `${pair} x${count}`).join(', ');
+}
+
+export function isPairedDeliriumNote(text: string): boolean {
+  return /^Observed Delirium by reward: \d{1,3}% [A-Za-z '’-]+ x\d+(?:, \d{1,3}% [A-Za-z '’-]+ x\d+)*$/.test(text);
+}
+
 export const DELIRIUM_COLUMN_MIN_WIDTH = 1050;
 
 /** The wide column is based on the actual Map Log panel, not the window. */

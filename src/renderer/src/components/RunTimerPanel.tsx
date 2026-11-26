@@ -22,6 +22,7 @@ import { formatStopwatch, manualRunTimerElapsed } from '../utils/manualRunTimer'
 import { OVERLAY_COUNTER_OPTIONS, overlayCounterSnapshot } from '../utils/overlayCounters';
 import { sameOverlayShortcut } from '../utils/overlayShortcutRecorder';
 import { OverlayShortcutRecorder } from './OverlayShortcutRecorder';
+import { OverlayVisibilityButton } from './OverlayVisibilityButton';
 import { FONT } from '../utils/uiTokens';
 
 export function RunTimerPanel() {
@@ -249,15 +250,7 @@ export function RunTimerPanel() {
             The overlay never opens a second repository.
           </Text>
           <Group justify="space-between">
-            <Button
-              variant={overlayPreferences.visible ? 'default' : 'filled'}
-              onClick={() => setOverlayPreferences({
-                visible: !overlayPreferences.visible,
-                ...(!overlayPreferences.visible ? {} : { clickThrough: false }),
-              })}
-            >
-              {overlayPreferences.visible ? 'Hide overlay' : 'Show overlay'}
-            </Button>
+            <OverlayVisibilityButton />
             <SegmentedControl
               size="xs"
               value={overlayPreferences.mode}

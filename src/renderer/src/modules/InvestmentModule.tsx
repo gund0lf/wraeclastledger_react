@@ -1,4 +1,5 @@
 import { DeviceInvestmentInputs } from '../components/DeviceInvestmentInputs';
+import { DeliriumSpendInputs } from '../components/DeliriumSpendInputs';
 import {
   Anchor, Card, Text, NumberInput, Divider, Group, Stack,
   Select, Button, Modal, SimpleGrid, Autocomplete, Badge,
@@ -14,7 +15,7 @@ import {
   getManifest, preserveHistoricalSelection,
 } from '../utils/gameData';
 import { parsePriceInput } from '../utils/priceUtils';
-import { computeCosts } from '../utils/profit';
+import { computeCosts, deliriumSessionCost } from '../utils/profit';
 import { investmentCompleteness, type InvestmentSectionStatus } from '../utils/investmentCompleteness';
 import {
   nextAstrolabeSelection,
@@ -24,6 +25,7 @@ import {
 } from '../utils/investmentSetup';
 import { fcSep } from '../utils/parseDiscordExport';
 import { KNOWN_LEAGUES, orderedLeagueOptions, confirmedLeagueSync, fetchSelectableLeagues, currentLeagueSync } from '../utils/league';
+import { deliriumOrbRule, paidDeliriumOrbLimit } from '../../../shared/deliriumOrbs';
 import { isCrossLeagueSession, isLiveSessionLeagueMismatch } from '../utils/historicalSession';
 import { chiselItemName, deliOrbItemName } from '../utils/itemIcons';
 import { PoeItemIcon } from '../components/ui/PoeItemIcon';
@@ -256,9 +258,11 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
   // costs) spread over parsed maps — badge x maps always equals the Dashboard's
   // Investment figure. One definition, no gaps.
   const totalPerMapFull = costs.totalInvest / mapCount;
-  const deliPerMap      = settings.advDeliOrbType
-    ? settings.advDeliOrbQtyPerMap * settings.advDeliOrbPriceEach
-    : 0;
+  const sessionOrbMode = settings.deliriumOrbSpend !== undefined || (
+    !settings.advDeliOrbType && !settings.advDeliOrbQtyPerMap && !settings.advDeliOrbPriceEach
+    && deliriumOrbRule(historical ? settings.leagueName : deviceLeague, getManifest()) === 'reforge');
+  const deliTotal = deliriumSessionCost(settings, maps.length);
+  const deliPerMap = sessionOrbMode && !maps.length ? 0 : deliTotal / mapCount;
   const astrolabeTotal  = settings.advAstrolabeType
     ? settings.advAstrolabePrice * settings.advAstrolabeCount
     : 0;
@@ -401,6 +405,12 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
             </SimpleGrid>
           </AdvSection>
           <AdvSection title="Delirium Orbs" status={completeness.sections.delirium}>
+            {sessionOrbMode ? <>
+              <DeliriumSpendInputs rows={settings.deliriumOrbSpend ?? []}
+                onChange={rows => updateAdvSetting('deliriumOrbSpend', rows)} />
+              <Text size="xs">{deliTotal.toLocaleString()}c spent
+                {maps.length > 0 ? ` · ${deliPerMap.toFixed(2)}c per map` : ' · per map available after first map'}</Text>
+            </> : <>
             <Select label="Orb Type" data={deliriumOrbOptions} value={settings.advDeliOrbType || null}
               onChange={(v) => {
                 const next = nextDeliriumSelection(settings, v);
@@ -416,18 +426,25 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
                 </Group>
               )} />
             <SimpleGrid cols={2} style={{ alignItems: 'flex-end' }}>
-              <NumberInput label="Per map (1–5)" size="xs" value={settings.advDeliOrbQtyPerMap}
-                onChange={(v) => updateAdvSetting('advDeliOrbQtyPerMap', Number(v))} min={0} max={5} />
+              <NumberInput label="Orbs paid per map" size="xs" value={settings.advDeliOrbQtyPerMap}
+                allowDecimal={false} allowNegative={false} min={0} max={paidDeliriumOrbLimit(deviceLeague)}
+                onChange={(v) => {
+                  const count = Number(v);
+                  if (Number.isSafeInteger(count) && count >= 0 && count <= paidDeliriumOrbLimit(deviceLeague)) {
+                    updateAdvSetting('advDeliOrbQtyPerMap', count);
+                  }
+                }} />
               <PriceInput label="Price each" selectValue={(state) => state.settings.advDeliOrbPriceEach}
                 onChange={(v) => updateAdvSetting('advDeliOrbPriceEach', v)} divinePrice={divinePrice} placeholder="e.g. 0.5d" />
             </SimpleGrid>
             <Text size="xs" c="teal" style={{ visibility: deliPerMap > 0 ? 'visible' : 'hidden' }} aria-hidden={deliPerMap <= 0}>
               → {deliPerMap.toFixed(2)}c per map
             </Text>
+            </>}
           </AdvSection>
           {showAstrolabe && (
           <AdvSection title="Astrolabe" status={completeness.sections.astrolabe}>
-            <Text size="xs" c="dimmed">Random duration. Enter price each + count used this session.</Text>
+            <Text size="xs" c="dimmed">Enter the price per Astrolabe and the number used this session.</Text>
             <Select label="Type" data={astrolabeOptions} value={settings.advAstrolabeType || null}
               onChange={(v) => {
                 const next = nextAstrolabeSelection(settings, v);
@@ -523,7 +540,7 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
             <Text size="sm" fw={700} style={{ fontVariantNumeric: 'tabular-nums' }}>{fcSep(rollingSessionTotal, false, 2)}</Text>
           </Group>
           <Text size="xs" c="dimmed">
-            Chaos, exalt, scour, alch, astrolabes, and delirium orbs ({settings.advDeliOrbQtyPerMap > 0 ? `${deliPerMap.toFixed(0)}c/map × ${maps.length || 1} maps` : 'none'}). Updates live as maps are parsed.
+            Includes rolling currency, astrolabes and {deliTotal.toLocaleString()}c of Delirium Orbs.
           </Text>
           <Button color="blue" onClick={closeAdv}>Done</Button>
         </Stack>
@@ -614,7 +631,7 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
           <Tooltip label="Total investment divided by maps run. Includes the map, map device, preparation and session costs." withArrow multiline w={280}>
             <Badge size={isMaximized ? 'md' : 'sm'} color="gray" variant="outline"
               className="investment-cost-per-map">
-              {totalPerMapFull.toLocaleString('en', { maximumFractionDigits: 2 })}c/map
+              {sessionOrbMode && !maps.length ? '—' : totalPerMapFull.toLocaleString('en', { maximumFractionDigits: 2 })}c/map
             </Badge>
           </Tooltip>
         </div>
@@ -717,6 +734,7 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
                     updateAdvSetting('advDeliOrbType', '');
                     updateAdvSetting('advDeliOrbQtyPerMap', 0);
                     updateAdvSetting('advDeliOrbPriceEach', 0);
+                    if (settings.deliriumOrbSpend) updateAdvSetting('deliriumOrbSpend', []);
                     updateAdvSetting('advSplitPrice', 0);
                     updateAdvSetting('advAstrolabeType', '');
                     updateAdvSetting('advAstrolabePrice', 0);

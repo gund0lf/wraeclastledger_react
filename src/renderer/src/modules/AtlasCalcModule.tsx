@@ -32,7 +32,7 @@ import {
   fragmentSourceLabel,
   shouldShowAtlasSyncGuidance,
 } from '../utils/atlasCalcPresentation';
-import { applyAtlasStatsSyncPatch, buildAtlasStatsSyncPatch } from '../utils/atlasStatsSync';
+import { applyAtlasStatsSyncPatch, buildAtlasStatsSyncPatch, readAtlasStatsForLeague } from '../utils/atlasStatsSync';
 import { MULTIPLYING_EFFECT_PER_FRAGMENT } from '../../../shared/mapDevice';
 import './AtlasCalcModule.css';
 
@@ -160,6 +160,7 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
   const riskScarabs = scarabOfRiskMods / 2;
   const atlasSource = syncState === 'current'
     ? 'Atlas Tree · current sync'
+    : syncState === 'other-league-read' ? 'Atlas Tree · last sync for another league'
     : syncState === 'changed-since-read'
       ? 'Atlas Tree · last sync is stale'
       : syncState === 'previous-league'
@@ -185,7 +186,10 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
         title: 'Atlas sync unavailable',
         detail: `The Atlas Tree could not be read: ${syncError}`,
       }
-    : syncState === 'changed-since-read'
+    : syncState === 'other-league-read'
+      ? { title: 'Verify Atlas setup',
+          detail: `These Atlas bonuses were last synced for ${settings.atlasStatsRead?.leagueName}. Sync your ${settings.leagueName} tree to update them.` }
+      : syncState === 'changed-since-read'
         ? {
             title: 'Atlas Tree changed',
             detail: 'A different tree URL was detected. Sync again to refresh the derived setup.',
@@ -198,7 +202,9 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
           : syncState === 'legacy-imported'
             ? {
                 title: 'Verify Atlas setup',
-                detail: 'This session has Atlas values without a verified tree snapshot. Sync to verify them.',
+                detail: settings.leagueName
+                  ? `These Atlas bonuses haven't been verified for ${settings.leagueName}. Sync your tree to check them.`
+                  : 'This session has Atlas values without a verified tree snapshot. Sync to verify them.',
               }
             : hasTree
               ? {
@@ -210,6 +216,7 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
                   detail: 'Build or paste your tree in Atlas Tree, then return here to sync its allocated modifiers.',
                 };
   const showGuidanceAction = syncError !== null
+    || syncState === 'other-league-read'
     || syncState === 'never-read'
     || syncState === 'changed-since-read'
     || syncState === 'legacy-imported';
@@ -222,7 +229,7 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
     setSyncError(null);
     try {
       if (!window.api) throw new Error('Atlas Tree reader is unavailable');
-      const result = await window.api.readAtlasTreeStats(sourceUrl);
+      const result = await readAtlasStatsForLeague(sourceUrl, settings.leagueName);
       if (useSessionStore.getState().sessionNonce !== targetNonce) return;
       if (!result.groups) throw new Error(result.error ?? 'No Atlas Tree stats were found');
       const current = useSessionStore.getState();
@@ -404,13 +411,16 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
                     detail={mapSource.detail}
                     active={mapSource.observed}
                   />
-                  <SourceRow
+                  {threads ? <SourceRow name="Shaping the Valleys" source={atlasSource}
+                    value={currentCalc ? currentCalc.additionalRandomModifier ? 'Allocated' : 'Not allocated' : 'Unverified'}
+                    detail="Adds a random modifier when the map opens. Mounting Modifiers counts the explicit modifiers on the map item."
+                    active={!!currentCalc?.additionalRandomModifier} /> : <SourceRow
                     name="Scarab of Risk"
                     value={riskScarabs > 0 ? `+${scarabOfRiskMods} modifiers` : 'None'}
                     source={`Investment · ${riskScarabs} ${riskScarabs === 1 ? 'scarab' : 'scarabs'}`}
                     detail="Each Cartography Scarab of Risk adds two explicit modifiers before Mounting Modifiers is calculated."
                     active={riskScarabs > 0}
-                  />
+                  />}
                   <SourceRow
                     name="Mounting Modifiers"
                     value={settings.mountingModifiers ? `On · +${fmt1(mountBonus)}%` : 'Off'}
@@ -480,7 +490,7 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
                   <Text size="xs" c="dimmed">Base modifiers</Text>
                   <Text size="xs">{mapSource.value}</Text>
                 </Group>
-                {scarabOfRiskMods > 0 && (
+                {!threads && scarabOfRiskMods > 0 && (
                   <Group justify="space-between" wrap="nowrap">
                     <Text size="xs" c="dimmed">Risk ({riskScarabs} × 2 modifiers)</Text>
                     <Text size="xs">{fmt1(effectiveMods)} effective</Text>

@@ -43,7 +43,8 @@ export function safeSetupUnavailableMessage(reason: string): string {
   return Object.hasOwn(messages, reason) ? messages[reason] : 'The reusable setup is unavailable.'
 }
 
-export function safeContinuationMessage(reason: string): string {
+export function safeContinuationMessage(reason: string, unnamed = false): string {
+  if (unnamed && (reason === 'inactive_registration' || reason === 'missing_membership')) return 'Name this strategy to continue it.'
   const messages: Record<string, string> = {
     frozen: 'Frozen strategies cannot be continued.',
     missing_membership: 'Continuation needs a confirmed public name for this strategy.',

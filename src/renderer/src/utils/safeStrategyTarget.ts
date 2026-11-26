@@ -16,13 +16,16 @@ export async function refreshSafeAuthorState(): Promise<void> {
   if (!result.value.author_actions_available) throw new Error('Author controls are temporarily unavailable.')
 }
 
+import { covensSetupIdentity } from '../../../shared/covensImport'
+import type { CovensWire } from '../../../shared/covensWireValidator.mjs'
 export function safeContinuationSnapshot(d: SafeDetail): EvidenceSetupSnapshot {
   if (d.scope !== 'current' || d.continuation_setup.status !== 'available') throw new Error('This strategy has no available continuation seed.')
   const { seed: s, identity_version: version } = d.continuation_setup
   if (!s.delirium || s.delirium.count_per_map === null || !s.league_key ||
     (version === 2 && (typeof s.multiplying_modifiers?.allocated !== 'boolean' || s.multiplying_modifiers.fragment_count === null)) ||
     (version === 1 && s.multiplying_modifiers !== null)) throw new Error('The original run setup is incomplete.')
-  const base = { schemaVersion: 1 as const, leagueKey: s.league_key, mapType: s.map_type, partySize: s.party_size,
+  const device = d.reusable_setup.status === 'available' && d.reusable_setup.value.covens
+  const base = { ...(device ? {covens: covensSetupIdentity(device)} : {}), schemaVersion: 1 as const, leagueKey: s.league_key, mapType: s.map_type, partySize: s.party_size,
     chiselType: s.chisel, scarabs: s.scarabs, delirium: { type: s.delirium.type, countPerMap: s.delirium.count_per_map },
     astrolabeType: s.astrolabe, atlasAllocationHash: atlasAllocationHash(s.atlas_tree_url), multiplierMilli: s.multiplier_milli,
     gameDataRevision: s.game_data.revision, gameDataPatchVersion: s.game_data.patch_version }
@@ -54,7 +57,7 @@ export async function bindSafeTarget(d: SafeDetail, operation: 'replace' | 'evid
 
 /** Rechecks the current safe record without rebasing the saved intent. */
 export async function prepareSafeContinuation(target: StrategyTarget, d: SafeDetail, prefs: AuthorPreferences,
-  raw: string, mapParsedAt: Array<number | undefined>): Promise<{ operation: unknown[]; author: { name: string; registration_id: string }; revision: number }> {
+  raw: string, mapParsedAt: Array<number | undefined>, covens?: CovensWire): Promise<{ operation: unknown[]; author: { name: string; registration_id: string }; revision: number }> {
   if (target.state !== 'ready') throw new Error('Review the saved target before preparing another submission.')
   if (d.scope !== 'current' || d.id !== target.id || d.revision !== target.revision) throw new Error('The published revision changed. Review the current strategy; the saved target and run are retained.')
   const author = confirmedStrategyAuthor(d, prefs)
@@ -63,6 +66,7 @@ export async function prepareSafeContinuation(target: StrategyTarget, d: SafeDet
   const snapshot = safeContinuationSnapshot(d)
   const local = parseDiscordExport(raw)
   if (!local || local.operationError) throw new Error('The local run could not be reconstructed.')
+  if (covens) local.covens = covens
   const localSnapshot = setupSnapshotFromDiscordImport(local)
   if (localSnapshot.leagueKey !== snapshot.leagueKey) throw new Error('The run belongs to another league. Keep it in its original league.')
   const attribution = { name: author.name, registration_id: author.registrationId }

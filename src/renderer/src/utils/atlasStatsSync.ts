@@ -3,8 +3,11 @@ import {
   deriveBestiaryAtlasSetup,
   deriveMercenaryAtlasSetup,
   type AtlasStatGroup,
+  type AtlasStatsReadResult,
 } from '../../../shared/atlasStats';
 import type { SessionSettings } from '../types';
+import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
+import { getManifest } from './gameData';
 import { allocatedChoiceNodes } from './atlasChoices';
 import { deriveAtlasDetectedTags } from './atlasTags';
 import { isPathofpathingTreeUrl } from './atlasUrl';
@@ -27,12 +30,33 @@ export type UpdateSessionSetting = <K extends keyof SessionSettings>(
   origin?: SessionMutationOrigin,
 ) => void;
 
+export function incompatibleAtlasVersion(sourceUrl: string, league: string): string | undefined {
+  const required = getManifest().leagueRules?.[league]?.atlasTreeVersion
+    ?? BUNDLED_MANIFEST.leagueRules?.[league]?.atlasTreeVersion;
+  if (required && new URL(sourceUrl).searchParams.get('v') !== required) return required;
+  return undefined;
+}
+
+function assertSyncSource(sourceUrl: string, leagueName: string): void {
+  if (!isPathofpathingTreeUrl(sourceUrl)) {
+    throw new Error('A complete Path of Pathing tree URL is required for setup sync');
+  }
+  const required = incompatibleAtlasVersion(sourceUrl, leagueName);
+  if (required) throw new Error(`Open a ${required} tree to sync Atlas bonuses for ${leagueName}.`);
+}
+
+export async function readAtlasStatsForLeague(sourceUrl: string, leagueName: string): Promise<AtlasStatsReadResult> {
+  assertSyncSource(sourceUrl, leagueName);
+  return window.api.readAtlasTreeStats(sourceUrl);
+}
+
 export function hasCurrentAtlasStatsRead(settings: SessionSettings): boolean {
   const read = settings.atlasStatsRead;
   return read !== undefined
     && read.schemaVersion === 1
     && typeof read.sourceUrl === 'string'
     && isPathofpathingTreeUrl(read.sourceUrl)
+    && !incompatibleAtlasVersion(read.sourceUrl, settings.leagueName)
     && read.sourceUrl === settings.atlasTreeUrl
     && read.leagueName === settings.leagueName
     && typeof read.readAt === 'string'
@@ -51,10 +75,10 @@ export function buildAtlasStatsSyncPatch(
   leagueName: string,
   readAt = new Date().toISOString(),
   allocatedNodeIds?: number[],
+  authoredUrl = sourceUrl,
 ): AtlasStatsSyncPatch {
-  if (!isPathofpathingTreeUrl(sourceUrl)) {
-    throw new Error('A complete Path of Pathing tree URL is required for setup sync');
-  }
+  assertSyncSource(sourceUrl, leagueName);
+  if (authoredUrl !== sourceUrl && isPathofpathingTreeUrl(authoredUrl)) assertSyncSource(authoredUrl, leagueName);
   const calc = deriveAtlasCalcSettingsSnapshot(groups);
   return {
     ...calc,

@@ -169,6 +169,7 @@ export function isWorkingSessionMeaningful(
   for (const key of settingKeys) {
     if (key === 'threadSlots' && !state.settings.threadSlots?.some(slot => slot.name)) continue;
     if (key === 'ember' && !state.settings.ember?.name) continue;
+    if (key === 'deliriumOrbSpend' && !state.settings.deliriumOrbSpend?.length) continue;
     if ((key === 'strategyTarget' || key === 'strategySourceParty') && state.settings[key] == null) continue;
     if (AUTO_MANAGED_SETTINGS.has(key)) continue;
     if (key === 'regexExclusions' && valuesEqual(

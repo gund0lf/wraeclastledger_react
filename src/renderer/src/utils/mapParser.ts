@@ -1,5 +1,50 @@
 import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
-import { MapData } from '../types';
+import { BRICK_MOD_DEFS } from '../../../shared/brickMods';
+import type { EncounterFamily, MapData } from '../types';
+
+const explicitHeader = /^\{ (?:(?:Prefix|Suffix) Modifier\b|Rare-only(?: (?:Prefix|Suffix) Modifier\b| \(| \}))/;
+const stripMapColors = (text: string) => text.replace(/<[^>]+>\{([^}]*)\}/g, '$1');
+
+export const encounterFamilyLabels = {
+  mirage: 'Mirage', beyond: 'Beyond (Evocator)', sentinel: 'Buried Sentinel',
+  wildwood: 'Viridian Wildwood', delirium: 'Mirror of Delirium',
+} satisfies Record<EncounterFamily, string>;
+
+const encounterFamilyByMod: Readonly<Record<string, EncounterFamily | undefined>> = {
+  encounter_mirage: 'mirage', encounter_viridian_wildwood: 'wildwood', encounter_mirror_delirium: 'delirium',
+  encounter_buried_apex: 'sentinel', encounter_buried_stalker: 'sentinel', encounter_buried_pandemonium: 'sentinel',
+  encounter_evocator_beidat: 'beyond', encounter_evocator_ghorr: 'beyond', encounter_evocator_ktash: 'beyond',
+};
+const encounterLines = new Map(BRICK_MOD_DEFS.flatMap(def => {
+  const family = encounterFamilyByMod[def.id];
+  return family ? def.tradePatterns.map(({ text }) => [text.toLowerCase(), family] as const) : [];
+}));
+
+function readEncounterFamilies(lines: readonly string[]): EncounterFamily[] | undefined {
+  if (lines.includes('Unidentified')) return undefined;
+  const families = new Set<EncounterFamily>();
+  let explicit = false;
+  let readable = lines.includes('Rarity: Normal');
+  for (const line of lines) {
+    if (line.startsWith('{') || /^-+$/.test(line)) {
+      explicit = explicitHeader.test(line);
+    } else if (explicit && line) {
+      readable = true;
+      const family = encounterLines.get(line.replace(/\s+— Unscalable Value$/i, '').toLowerCase());
+      if (family) families.add(family);
+    }
+  }
+  return readable ? [...families] : undefined;
+}
+
+type EncounterMap = Pick<MapData, 'confirmedEncounters' | 'rawText'>;
+
+export function confirmedMapEncounters(map: EncounterMap): EncounterFamily[] | undefined {
+  const stored = map.confirmedEncounters;
+  if (Array.isArray(stored) && stored.every(id => Object.hasOwn(encounterFamilyLabels, id))) return stored;
+  if (typeof map.rawText !== 'string') return undefined;
+  return readEncounterFamilies(stripMapColors(map.rawText).split('\n').map(line => line.trim()));
+}
 
 /**
  * Parse a PoE map item tooltip from clipboard.
@@ -21,7 +66,7 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
   if (!isMap) return null;
 
   // Strip PoE color tags (<tag>{content} → content) before any further parsing
-  const clean = text.replace(/<[^>]+>\{([^}]*)\}/g, '$1');
+  const clean = stripMapColors(text);
 
   // ── Basic stats ────────────────────────────────────────────────────────────
   // Tier extraction handles three formats:
@@ -99,7 +144,8 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
   // one header per real affix, even when that affix has several description
   // lines. An identified Normal map has an equally exact count of zero without
   // needing headers. Unidentified and headerless Magic/Rare copies stay unknown.
-  const explicitHeaders = lines.filter((line) => /^\{ (?:(?:Prefix|Suffix) Modifier\b|Rare-only(?: (?:Prefix|Suffix) Modifier\b| \(| \}))/.test(line));
+  const explicitHeaders = lines.filter((line) => explicitHeader.test(line));
+  const confirmedEncounters = readEncounterFamilies(lines);
   const corruptionModifiers: NonNullable<MapData['corruptionModifiers']> = {};
   const rolledAffixes: NonNullable<MapData['rolledAffixes']> = [];
   let section = '';
@@ -173,6 +219,7 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
     ...(atlasDropsLine && { itemRarity, atlasDrops: Number(atlasDropsLine[1]) }),
     ...(threadLine && { moreThreads: Number(threadLine[1]) }),
     tier, name, quantity, rarity, packSize, quality, qualityType,
+    ...(confirmedEncounters && { confirmedEncounters }),
     moreCurrency, moreMaps, moreScarabs, moreDivCards, modCount, explicitModCount,
     isOriginator, isEmpoweredMirage, isNightmare, isCorrupted, isUnidentified,
     ...(deliriousPct !== undefined ? { deliriousPct } : {}),
@@ -184,12 +231,17 @@ export const parseMapClipboard = (text: string): Omit<MapData, 'id'> | null => {
 /** Recover explicit counts and Covens clipboard observations when the original
  * capture is available. Other saved fields keep their historical values. */
 export function recoverExactModifierCount(map: MapData): MapData {
-  if (!map.rawText) return map;
-  const covensCopy = map.atlasDrops === undefined && map.rawText.includes('Atlas Drops:');
-  const needsDetails = (!map.rolledAffixes && map.rawText.includes('Atlas Drops:')) ||
-    (!map.corruptionModifiers && /Corruption Implicit Modifier|\(implicit\)/i.test(map.rawText));
+  const raw = map.rawText;
+  if (!raw) return map;
+  if (map.confirmedEncounters === undefined) {
+    const confirmedEncounters = confirmedMapEncounters(map);
+    if (confirmedEncounters) map = { ...map, confirmedEncounters };
+  }
+  const covensCopy = map.atlasDrops === undefined && raw.includes('Atlas Drops:');
+  const needsDetails = (!map.rolledAffixes && raw.includes('Atlas Drops:')) ||
+    (!map.corruptionModifiers && /Corruption Implicit Modifier|\(implicit\)/i.test(raw));
   if (!covensCopy && !needsDetails && map.explicitModCount != null) return map;
-  const reparsed = parseMapClipboard(map.rawText);
+  const reparsed = parseMapClipboard(raw);
   if ((reparsed?.corruptionModifiers && !map.corruptionModifiers) || (reparsed?.rolledAffixes && !map.rolledAffixes)) map = { ...map,
     ...(reparsed.corruptionModifiers && { corruptionModifiers: reparsed.corruptionModifiers }),
     ...(reparsed.rolledAffixes && { rolledAffixes: reparsed.rolledAffixes }) };
@@ -200,6 +252,19 @@ export function recoverExactModifierCount(map: MapData): MapData {
   return reparsed?.explicitModCount == null || reparsed.explicitModCount === map.explicitModCount
     ? map
     : { ...map, explicitModCount: reparsed.explicitModCount };
+}
+
+/** Historical saves always have a numeric quantity, including the placeholder
+ * zero on newer maps. Only count it when the map or its league supports it. */
+export function legacyDropMaps(maps: readonly MapData[], leagueName: string, rules = BUNDLED_MANIFEST.leagueRules) {
+  return maps.filter(map => map.quantity > 0 || map.moreScarabs > 0
+    || /^Item Quantity:/m.test(map.rawText ?? '')
+    || (!rules?.[leagueName]?.atlasDrops && map.atlasDrops === undefined && map.moreThreads === undefined));
+}
+
+export function observedDropAverage(maps: readonly Pick<MapData, 'quantity' | 'atlasDrops' | 'moreThreads'>[], key: 'quantity' | 'atlasDrops' | 'moreThreads') {
+  const values = maps.flatMap(map => map[key] === undefined ? [] : [map[key]]);
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
 }
 
 /** A stripped legacy copy can have zero-filled historical fields and no way

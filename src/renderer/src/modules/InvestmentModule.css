@@ -174,6 +174,7 @@
 .device-grid .mantine-NumberInput-input { text-align: right; }
 .device-total { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .device-ember { grid-column: 1 / 3; }
+.device-grant-spacer { grid-column: span 2; }
 .device-market { grid-column: 1 / -1; margin-inline-end: calc(var(--device-total-width) + 5px); text-align: right; }
 .device-divider, .device-summary { border-top: 1px solid var(--setup-border, var(--mantine-color-dark-4)); }
 .device-divider { grid-column: 1 / -1; margin-block-start: 4px; }

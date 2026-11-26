@@ -63,6 +63,8 @@ export function isValidManifest(m: unknown): m is GameDataManifest {
     && typeof x.atlasTreeVersion === 'string'
     && (!x.atlasCompletion || (Number.isInteger(x.atlasCompletion.objectives) && x.atlasCompletion.objectives > 0
       && Number.isFinite(x.atlasCompletion.itemQuantity) && x.atlasCompletion.itemQuantity >= 0))
+    && (x.legacyDeliriumLayerLeagues === undefined || (Array.isArray(x.legacyDeliriumLayerLeagues)
+      && x.legacyDeliriumLayerLeagues.every(name => typeof name === 'string')))
     && !!x.mechanics && typeof x.mechanics === 'object'
     && Array.isArray(x.scarabs) && x.scarabs.length > 0
     && Array.isArray(x.deliriumOrbs)
@@ -72,6 +74,8 @@ export function isValidManifest(m: unknown): m is GameDataManifest {
       [x.threads, x.embers].every(group => Array.isArray(group) && group.every(item => item
         && typeof item.name === 'string' && typeof item.id === 'string' && typeof item.status === 'string'))
       && !!x.leagueRules && Object.values(x.leagueRules).every(rule => rule && typeof rule.atlasDrops === 'boolean'
+        && (rule.atlasTreeVersion === undefined || typeof rule.atlasTreeVersion === 'string' && Object.hasOwn(x.atlasTrees ?? {}, rule.atlasTreeVersion))
+        && (rule.deliriumOrbs === undefined || ['layers', 'reforge'].includes(rule.deliriumOrbs))
         && Number.isInteger(rule.threadSlots) && rule.threadSlots >= 0 && rule.threadSlots <= 16
         && Number.isInteger(rule.threadCap) && rule.threadCap > 0 && rule.threadCap <= 100)
       && !!x.atlasTrees && Object.values(x.atlasTrees).every(tree => tree && typeof tree.layout === 'string'

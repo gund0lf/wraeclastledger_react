@@ -1,5 +1,5 @@
 export const AUTHOR_COMMAND_ACTION_LABELS = {
-  preview: 'Review naming or unregister',
+  preview: 'Review public name change',
   recover: 'Recover names',
   confirmation: 'Get private publication confirmation'
 } as const

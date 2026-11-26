@@ -1,4 +1,6 @@
 import { isSafeStrategyAtlasUrl } from './atlasReaderSafety';
+import { paidDeliriumOrbLimit } from './deliriumOrbs';
+import { validCovensImport, type CovensImport } from './covensImport';
 
 export const SETUP_CODE_PREFIX = 'wls1.';
 export const SETUP_CODE_MIN_APP_VERSION = '1.0.97';
@@ -16,6 +18,8 @@ export interface StrategySetupCode {
   chisel: string | null;
   scarabs: string[];
   delirium: { type: string; countPerMap: number | null } | null;
+  deliriumOrbTypes?: string[];
+  covens?: CovensImport;
   astrolabe: string | null;
   atlasTreeUrl: string | null;
   runRegex: string;
@@ -74,7 +78,7 @@ const text = (value: unknown, max: number, multiline = false): value is string =
 const name = (value: unknown): boolean => text(value, 120) && value.trim().length > 0;
 
 export function isStrategySetupCode(value: unknown): value is StrategySetupCode {
-  const optional = ['history', 'reference', 'multiplyingModifiers', 'party'];
+  const optional = ['history', 'reference', 'multiplyingModifiers', 'party', 'deliriumOrbTypes', 'covens'];
   if (!record(value) || !exactKeys(value, [...keys, ...optional.filter((key) => value[key] !== undefined)])
     || value.version !== 1 || value.kind !== 'setup'
     || !text(value.title, 80) || !text(value.notes, 4000, true) || !text(value.league, 80)
@@ -113,8 +117,13 @@ export function isStrategySetupCode(value: unknown): value is StrategySetupCode 
       || !h.scarabPrices.every((p) => p === null || (typeof p === 'number' && Number.isFinite(p) && p >= 0 && p <= 1e15))) return false;
   }
   const deli = value.delirium;
+  if (value.covens !== undefined && (value.scarabs.length || deli !== null ||
+    !validCovensImport(value.covens, value.league, value.atlasTreeUrl))) return false;
+  if (value.deliriumOrbTypes !== undefined && (deli !== null || !Array.isArray(value.deliriumOrbTypes)
+    || !value.deliriumOrbTypes.every(name) || new Set(value.deliriumOrbTypes).size !== value.deliriumOrbTypes.length)) return false;
   return deli === null || (record(deli) && exactKeys(deli, ['type', 'countPerMap']) && name(deli.type)
-    && (deli.countPerMap === null || (Number.isInteger(deli.countPerMap) && Number(deli.countPerMap) >= 1 && Number(deli.countPerMap) <= 5)));
+    && (deli.countPerMap === null || (Number.isSafeInteger(deli.countPerMap) && Number(deli.countPerMap) >= 1
+      && Number(deli.countPerMap) <= paidDeliriumOrbLimit(value.league))));
 }
 
 export function encodeStrategySetupCode(value: StrategySetupCode): string {

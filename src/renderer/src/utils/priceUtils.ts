@@ -2,6 +2,7 @@ import { getCurrentLeague } from './league';
 import { MOD_TOKENS } from './modTokens';
 import { exactIntegerThresholdPattern } from './regexThreshold';
 import {
+  LEGACY_STRONG_PROFANE_TERM,
   brickExclusionMarker,
   compileBrickExclusionPattern,
   compileBrickInclusionPattern,
@@ -47,6 +48,7 @@ export function sanitizeExclusionTerms(terms: string[]): string[] {
   const sanitized = terms
     .map((t) => t.trim().replace(/^"|"$/g, '').replace(/^!/, ''))
     .map((t) => legacyReflectTerms.has(t) ? MOD_TOKENS.thorns_reflection : t)
+    .map((t) => t === LEGACY_STRONG_PROFANE_TERM ? brickExclusionMarker('brick_profane_nightmare') : t)
     .filter((t) => t.length > 0 && !t.includes('"') && !t.includes('(') && !t.includes('*'));
   return [...new Set(sanitized)];
 }

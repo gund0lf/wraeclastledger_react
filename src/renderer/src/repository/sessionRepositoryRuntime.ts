@@ -808,10 +808,22 @@ export function forkPayloadIntoLeague(
     const nextRules = deviceRules?.[league];
     delete forkSettings.threadSlots;
     delete forkSettings.ember;
+    // A new league needs its own Atlas sync. Keeping the old URL here would
+    // let a subsequent sync attribute the old allocation to the new league.
+    forkSettings.atlasTreeUrl = DEFAULT_SETTINGS.atlasTreeUrl;
+    forkSettings.atlasPoints = null;
+    forkSettings.atlasPointsMax = null;
+    forkSettings.smallNodesAllocated = 0;
+    forkSettings.mountingModifiers = false;
+    forkSettings.multiplyingModifiersAllocated = false;
+    forkSettings.fragmentCountOverride = null;
+    forkSettings.atlasDetectedTags = [];
+    delete forkSettings.atlasStatsRead;
+    delete forkSettings.atlasChoiceAnswers;
+    delete forkSettings.bestiaryAtlasSetup;
+    delete forkSettings.mercenaryAtlasSetup;
     if (nextRules && !priorRules) {
       forkSettings.scarabs = DEFAULT_SETTINGS.scarabs.map(slot => ({ ...slot }));
-      forkSettings.multiplyingModifiersAllocated = false;
-      forkSettings.fragmentCountOverride = null;
     }
   }
   forkSettings.leagueName = league;
@@ -878,9 +890,8 @@ export async function forkCurrentToConfirmedLeague(name: string): Promise<void> 
   queueRepositoryMetadataRefresh();
 }
 
-function freshWorkingPayload(): JsonObject {
+export function freshWorkingPayload(known = confirmedLeagueSync()): JsonObject {
   const state = useSessionStore.getState();
-  const known = confirmedLeagueSync();
   return encodeSessionPayload({
     maps: [],
     lootItems: [],
@@ -906,7 +917,7 @@ function freshWorkingPayload(): JsonObject {
 export async function startWorking(replaceExisting = false, action?: {
   assertCurrent(): void;
   activated(): void;
-}): Promise<void> {
+}, continuationLeague?: string): Promise<void> {
   action?.assertCurrent();
   useSessionStore.getState().pauseManualTimer();
   await flushRepositoryNow();
@@ -960,7 +971,7 @@ export async function startWorking(replaceExisting = false, action?: {
   } catch (error) {
     if (!(error instanceof SessionRepositoryClientError && error.repositoryError.code === 'not-found')) throw error;
   }
-  const payload = freshWorkingPayload();
+  const payload = freshWorkingPayload(continuationLeague);
   const activationId = uuidv4();
   action?.assertCurrent();
   const saved = await repositoryClient().request({
@@ -998,7 +1009,7 @@ export async function startWorking(replaceExisting = false, action?: {
     lifecycle: 'live',
     suspended: false,
     activationId,
-    pendingAtlasBonusSeed: confirmedLeagueSync() === null,
+    pendingAtlasBonusSeed: !continuationLeague && confirmedLeagueSync() === null,
     pendingAtlasBonusValue: null,
   }));
   queueRepositoryMetadataRefresh();

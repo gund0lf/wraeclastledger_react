@@ -8,6 +8,7 @@
  */
 import { strFromU8, strToU8, unzlibSync, zlibSync } from 'fflate';
 import { buildAuthorSubmission, type AuthorSubmissionMetadata } from '../../../shared/authorSubmission';
+import { validCovens, type CovensWire } from '../../../shared/covensWireValidator.mjs';
 import type { DiscordImport } from './parseDiscordExport';
 import type { ObservedDeliriumSummary } from './deliriumMetadata';
 import {
@@ -163,11 +164,14 @@ const expandObservedDelirium = (value: unknown): ObservedDeliriumWire | null | f
 
 /** Build the lossless schema-v4 JSON. Electron main applies Brotli and the
  * bot validates the same tuple before rebuilding the canonical readable card. */
-export function buildDiscordSharePayload(parsed: DiscordImport): string {
+export function buildDiscordSharePayload(parsed: DiscordImport, covens: CovensWire | undefined = parsed.covens): string {
   if (parsed.lootSummaryInvalid) throw new TypeError('Cannot encode invalid loot evidence');
   const partyCode = parsed.isGroupPlay ? (parsed.groupSize ?? 1) : 0;
+  if (covens && (parsed.league !== 'Covens' || parsed.gameDataPatchVersion !== '3.30'
+    || !validCovens(covens,parsed.mapCount) || parsed.scarabs.length || parsed.deliOrbQty))
+    throw new TypeError('Incompatible Covens share fields');
   return JSON.stringify([
-    DISCORD_SHARE_BROTLI_VERSION,
+    covens ? 8 : DISCORD_SHARE_BROTLI_VERSION,
     encodeOperation(parsed),
     [
       parsed.mapCount,
@@ -197,7 +201,8 @@ export function buildDiscordSharePayload(parsed: DiscordImport): string {
     ],
     parsed.runRegex,
     parsed.lootSummary ? compactShareLootSummary(parsed.lootSummary) : null,
-    compactObservedDelirium(parsed.observedDelirium),
+    covens ? null : compactObservedDelirium(parsed.observedDelirium),
+    ...(covens ? [covens] : []),
   ]);
 }
 
@@ -212,6 +217,14 @@ export function decodeDiscordSharePayload(payloadJson: string): DiscordImport | 
       // Validate the envelope, then import only through the existing core path.
       if (buildAuthorSubmission(JSON.stringify(payload[1]), payload[2] as AuthorSubmissionMetadata) !== payloadJson) return null;
       payload = payload[1];
+    }
+    if (tuple(payload,13) && payload[0] === 8) {
+      const fields = payload[12];
+      if (!tuple(payload[2],8) || !validCovens(fields, Number(payload[2][0]))
+        || !tuple(payload[4],9) || !Array.isArray(payload[4][2]) || payload[4][2].length || payload[4][3] !== 0
+        || !tuple(payload[6],5) || payload[6][0] !== 'Covens' || payload[6][2] !== '3.30' || payload[11] !== null) return null;
+      const decoded = decodeDiscordSharePayload(JSON.stringify([4, ...payload.slice(1,12)]));
+      return decoded ? { ...decoded, covens: fields } : null;
     }
     if (!tuple(payload, 12) || payload[0] !== DISCORD_SHARE_BROTLI_VERSION
       || !tuple(payload[3], 6) || !tuple(payload[5], 3)

@@ -57,7 +57,7 @@ function matchesShareForm(share: DurableShareView, core: string, target: Strateg
   try {
     const prepared: unknown = JSON.parse(share.core), form: unknown = JSON.parse(core)
     if (!Array.isArray(prepared) || !Array.isArray(form) || prepared.length !== form.length ||
-      prepared[0] !== 4 || form[0] !== 4 || form[1] !== 0 || !Array.isArray(prepared[1]) ||
+      ![4, 8].includes(prepared[0]) || form[0] !== prepared[0] || form[1] !== 0 || !Array.isArray(prepared[1]) ||
       prepared[1][0] !== (target.operation === 'replace' ? 1 : 2) || prepared[1][1] !== target.id ||
       (target.operation === 'evidence' && prepared[1][2] !== target.revision)) return false
     // The form has no continuation authority. That slot is supplied only after

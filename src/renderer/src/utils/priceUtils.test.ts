@@ -3,6 +3,7 @@ import {
   parsePriceInput,
   formatChaos,
   trimmedMean,
+  buildExclusionRegexBlock,
   sanitizeExclusionTerms,
   generateRunRegex,
   generateSlamRegex,
@@ -122,6 +123,12 @@ describe('trimmedMean', () => {
 
 // ─── sanitizeExclusionTerms ───────────────────────────────────────────────────
 describe('sanitizeExclusionTerms', () => {
+  it('keeps the old Profane selection when compiling the full stash exclusion block', () => {
+    const old = ['withe', '\\b([89]\\d|100)%.*a chaos'];
+    const selected = ['brick:extra_chaos_damage_withered', 'brick:brick_profane_nightmare'];
+    expect(buildExclusionRegexBlock(old)).toBe(buildExclusionRegexBlock(selected));
+  });
+
   it('passes through clean bare terms unchanged', () => {
     expect(sanitizeExclusionTerms(['eche', 'tab', 'wb'])).toEqual(['eche', 'tab', 'wb']);
   });

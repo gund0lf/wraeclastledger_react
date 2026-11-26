@@ -14,6 +14,7 @@ import {
 } from './discordShareWire';
 import { expandCompactShareLootSummary, type LootSummary } from './lootSummary';
 import { strToU8, zlibSync } from 'fflate';
+import legacyCovens from './fixtures/legacy-covens-1.0.99.json';
 import memoryStrandsFixtures from './fixtures/memory-strands-share.json';
 import { decodeLootSummary, encodeLootSummary } from './lootSummary';
 import {
@@ -26,6 +27,12 @@ import {
   DISCORD_SHARE_BROTLI_TOKEN_MAX,
   encodeDiscordShareBrotli,
 } from '../../../main/discordShareCompression';
+
+it('reads a 1.0.99 Covens share without inferring structured setup from its notes', () => {
+  const parsed = decodeDiscordSharePayload(decodeDiscordShareBrotli(legacyCovens.wl3));
+  expect(parsed).toMatchObject({ league: 'Covens', mapCount: 6, deliOrbType: 'Fine', deliOrbQty: 3 });
+  expect(parsed?.covens ?? null).toBeNull();
+});
 
 const lootSummary = (): LootSummary => {
   const rows = Array.from({ length: 30 }, (_, index) => ({
@@ -469,4 +476,20 @@ describe('compact Discord share wire', () => {
     expect(decodeDiscordShareWire(injected)).toBeNull();
     expect(parseDiscordExport(injected)).toBeNull();
   });
+});
+
+it('round trips Covens through authored Brotli and refuses inconsistent observations', () => {
+  const field = {version:1 as const, threads:[{slot:1,id:'bestiary-thread',paid:2,granted:1,paused:false,price_each:null}],
+    atlas_drops:{sum:60,count:1},more_threads:null,atlas:null,ember:null,
+    orbs:[{id:'deli-threaded',used:5,price_each:{unit:'chaos' as const,amount:2}}],
+    delirium:null,encounters:{readable:1,unknown:0,confirmed:{mirage:1,beyond:0,sentinel:0,delirium:0,wildwood:0}}};
+  const imported = parsed({ league:'Covens', gameDataPatchVersion:'3.30', mapCount:1,
+    scarabs:[], scarabCosts:[], deliOrbQty:0, observedDelirium:null, lootSummary:null });
+  const core = buildDiscordSharePayload(imported,field);
+  const envelope = buildAuthorSubmission(core,{author:{name:'Example',registration_id:null},expected_revision:null,confirmation_request_id:null});
+  const decoded = decodeDiscordSharePayload(decodeDiscordShareBrotli(encodeDiscordShareBrotli(envelope,true)));
+  expect(decoded?.covens).toEqual(field);
+  const invalid = JSON.parse(core);
+  invalid[12].encounters.unknown = 5;
+  expect(decodeDiscordSharePayload(JSON.stringify(invalid))).toBeNull();
 });

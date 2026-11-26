@@ -8,6 +8,7 @@ import { BROWSER_MIN_CONTENT_WIDTH } from '../utils/strategyConstants';
 import { FrozenBrowserRequests, frozenStrategyKey } from '../utils/strategyBrowserRequests';
 import { COLOR } from '../utils/uiTokens';
 import { StrategyCard } from './StrategyCard';
+import { RetrospectiveLeagueSection } from './RetrospectiveLeagueSection';
 
 interface Props {
   onLoadStrategy: (strategy: Strategy) => void;
@@ -145,19 +146,14 @@ export const PublicRetrospectives = ({ onLoadStrategy }: Props) => {
           Public snapshot not published yet.
         </Alert>
       ) : (
-        snapshots.map((snapshot) => {
+        [...snapshots].sort((a, b) => Date.parse(b.cutoff_utc) - Date.parse(a.cutoff_utc)).map((snapshot, index) => {
           const snapshotBoards = boards[snapshot.league_key];
           return (
-            <Card key={snapshot.league_key} padding="xs" radius="sm" withBorder>
-              <Stack gap="xs">
+            <RetrospectiveLeagueSection key={snapshot.league_key} league={snapshot.league_name}
+              countLabel={`${snapshot.strategy_count} frozen`} newest={index === 0}>
+              <Stack gap="xs" mt="xs">
                 <Group justify="space-between" align="flex-start" wrap="nowrap">
                   <div>
-                    <Group gap={6}>
-                      <Text size="sm" fw={700}>{snapshot.league_name}</Text>
-                      <Badge size="xs" color="blue" variant="light">
-                        {snapshot.strategy_count} frozen
-                      </Badge>
-                    </Group>
                     <Text size="xs" c="dimmed">
                       Cutoff {displayTime(snapshot.cutoff_utc)}
                     </Text>
@@ -192,7 +188,7 @@ export const PublicRetrospectives = ({ onLoadStrategy }: Props) => {
                   </>
                 )}
               </Stack>
-            </Card>
+            </RetrospectiveLeagueSection>
           );
         })
       )}

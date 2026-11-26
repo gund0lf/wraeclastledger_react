@@ -1,6 +1,8 @@
 import type { BestiaryAtlasSetup, MercenaryAtlasSetup } from '../../../shared/atlasStats';
 import type {
   LootItem,
+  MapData,
+  EncounterFamily,
   ManualSessionStatistics,
   SavedSession,
   ScarabSlot,
@@ -13,6 +15,7 @@ import {
   type ManualStatisticField,
   type MercenaryAttribute,
 } from './manualStatistics';
+import { confirmedMapEncounters } from './mapParser';
 
 /** Current Allflame valuable-beast shortlist from Sad's poe.re Bestiary export
  * at a 20-chaos floor (2026-08-21). Prices are deliberately not persisted;
@@ -99,6 +102,7 @@ export function totalValuableBeastGains(gains: ValuableBeastGain[]): number {
 
 export interface RunStatisticsSessionSnapshot {
   id: string;
+  maps?: readonly MapData[];
   mapCount: number;
   manualStatistics: ManualSessionStatistics;
   baselineItems: LootItem[];
@@ -121,6 +125,7 @@ export interface AggregatedMercenary extends AggregatedRunStatistic {
 
 export interface GlobalRunStatistics {
   sessionCount: number;
+  confirmedEncounters: ReturnType<typeof summarizeConfirmedEncounters>;
   mapCount: number;
   counters: Record<ManualStatisticField, AggregatedRunStatistic>;
   svalinnCraterCount: number;
@@ -139,6 +144,7 @@ export interface GlobalRunStatistics {
 }
 
 interface CurrentRunStatisticsSnapshot {
+  maps?: readonly MapData[];
   mapCount: number;
   manualStatistics: ManualSessionStatistics;
   baselineItems: LootItem[];
@@ -153,6 +159,7 @@ const ownsStatistic = (
 const savedRunStatisticsSnapshot = (session: SavedSession): RunStatisticsSessionSnapshot => ({
   id: session.id,
   mapCount: session.maps.length,
+  maps: session.maps,
   manualStatistics: normalizeLocalManualStatistics(session.manualStatistics),
   baselineItems: session.baselineItems ?? [],
   lootItems: session.lootItems ?? [],
@@ -288,6 +295,7 @@ export function aggregateRunStatisticsSessions(
 
   return {
     sessionCount: sessions.length,
+    confirmedEncounters: summarizeConfirmedEncounters(sessions.flatMap(session => session.maps ?? [])),
     mapCount,
     counters,
     svalinnCraterCount,
@@ -304,6 +312,18 @@ export function aggregateRunStatisticsSessions(
     beastMapCount,
     beastSessionCount,
   };
+}
+
+export function summarizeConfirmedEncounters(maps: readonly MapData[]) {
+  const counts: Record<EncounterFamily, number> = { mirage: 0, beyond: 0, sentinel: 0, wildwood: 0, delirium: 0 };
+  let readable = 0;
+  for (const map of maps) {
+    const families = confirmedMapEncounters(map);
+    if (!families) continue;
+    readable++;
+    for (const family of new Set(families)) counts[family]++;
+  }
+  return { readable, counts };
 }
 
 export function observedRatePercent(count: number, denominator: number): number | null {

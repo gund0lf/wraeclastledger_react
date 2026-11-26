@@ -42,7 +42,7 @@ describe('safe reader failures and retries', () => {
     expect(controller.getSnapshot()).toMatchObject({ detail: null, error: 'Unavailable detail' })
     await controller.expand(fixture.row.id)
     expect(controller.getSnapshot()).toMatchObject({ error: null, detail: { scope: frozen ? 'frozen' : 'current' } })
-    const target = safeDetailPath(frozen ? parseSafeDetail(fixture.frozen) : detail())
+    const target = safeDetailPath(frozen ? parseSafeDetail(fixture.frozen) : detail()) + '?format=covens-v1'
     expect(read.mock.calls.map(([url]) => url)).toEqual([path, path, target, target])
   })
 

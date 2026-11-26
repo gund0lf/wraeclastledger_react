@@ -8,10 +8,10 @@ export function buildImportPreview(result: StrategyImport) {
   if (result.kind === 'setup') {
     const s = result.value;
     return { title: s.title, notes: s.notes, league: s.league, mapType: s.mapType,
-      chisel: s.chisel, scarabs: s.scarabs, delirium: s.delirium, astrolabe: s.astrolabe,
+      chisel: s.chisel, scarabs: s.scarabs, delirium: s.delirium, deliriumOrbTypes: s.deliriumOrbTypes, astrolabe: s.astrolabe,
       atlasTreeUrl: s.atlasTreeUrl, runRegex: s.runRegex, slamRegex: s.reference?.slamRegex ?? '', history: s.history ?? null,
       isGroupPlay: s.party?.group === true, groupSize: s.party?.size ?? null, excludedDrops: [], gemInfo: null, operationError: null,
-      approximateTotals: undefined as DiscordImport['approximateTotals'] };
+      observedDelirium: null, approximateTotals: undefined as DiscordImport['approximateTotals'] };
   }
   const r = result.value;
   const history: SetupHistory = {
@@ -26,8 +26,10 @@ export function buildImportPreview(result: StrategyImport) {
   return { title: r.strategyName, notes: r.strategyNotes, league: r.league, mapType: r.mapType,
     chisel: r.chisel === 'None' ? null : r.chisel, scarabs: r.scarabs,
     delirium: r.deliOrbType ? { type: r.deliOrbType, countPerMap: r.deliOrbQty } : null,
+    deliriumOrbTypes: undefined,
     astrolabe: r.astroType, atlasTreeUrl: r.atlasTreeUrl, runRegex: r.runRegex, slamRegex: r.slamRegex,
     history, isGroupPlay: r.isGroupPlay, groupSize: r.groupSize, excludedDrops: r.excludedDrops,
-    gemInfo: r.gemInfo, operationError: r.operationError, approximateTotals: r.approximateTotals };
+    gemInfo: r.gemInfo, operationError: r.operationError,
+    observedDelirium: r.observedDelirium ?? null, approximateTotals: r.approximateTotals };
 }
 export type ImportPreview = ReturnType<typeof buildImportPreview>;

@@ -60,7 +60,8 @@ export function investmentCompleteness(settings: SessionSettings): InvestmentCom
   const deliriumConfigured = settings.advDeliOrbType.trim().length > 0
     || touchedNumber(settings.advDeliOrbQtyPerMap)
     || touchedNumber(settings.advDeliOrbPriceEach);
-  const delirium = status(
+  const delirium = settings.deliriumOrbSpend ? status(settings.deliriumOrbSpend.length > 0,
+    settings.deliriumOrbSpend.every(row => row.count > 0 && row.priceEach !== null)) : status(
     deliriumConfigured,
     settings.advDeliOrbType.trim().length > 0
       && positive(settings.advDeliOrbQtyPerMap)

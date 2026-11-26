@@ -554,7 +554,7 @@ export const AtlasTreeModule = () => {
       const patch = buildAtlasStatsSyncPatch(
         groups,
         sourceUrl,
-        current.settings.leagueName, undefined, allocatedNodeIds,
+        current.settings.leagueName, undefined, allocatedNodeIds, current.settings.atlasTreeUrl,
       );
       applyAtlasStatsSyncPatch(updateSetting, patch);
       const appliedParts = [

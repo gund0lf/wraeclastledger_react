@@ -33,8 +33,7 @@ export function buildAuthorSubmission(
   const core: unknown = JSON.parse(coreJson)
   if (
     !Array.isArray(core) ||
-    core.length !== 12 ||
-    core[0] !== 4 ||
+    !((core[0] === 4 && core.length === 12) || (core[0] === 8 && core.length === 13)) ||
     JSON.stringify(core) !== coreJson ||
     !['author,confirmation_request_id,expected_revision', 'author,confirmation_request_id,expected_revision,share_intent_id',
       'author,confirmation_request_id,draft_revision,expected_revision,share_intent_id'].includes(Object.keys(metadata).sort().join(',')) ||

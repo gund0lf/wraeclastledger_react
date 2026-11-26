@@ -41,7 +41,7 @@ export interface BrickModDef {
 export interface BrickTradePattern {
   text: string;
   statId?: string;
-  value?: { min: number; max: number };
+  value?: { min: number; max?: number };
 }
 
 export interface TradeStatEntry {
@@ -56,7 +56,7 @@ export interface ResolvedBrickTradeStat {
 
 export interface BrickTradeFilter {
   id: string;
-  value?: { min: number; max: number };
+  value?: BrickTradePattern['value'];
 }
 
 export interface BrickTradeStatGroup {
@@ -93,7 +93,7 @@ export const BRICK_MOD_DEFS: BrickModDef[] = [
   { id: 'less_recovery_rate', label: 'Players: Less Life/ES Recovery Rate', summaryLabel: 'Less Recovery', tradePatterns: [{ text: "Players have #% less Recovery Rate of Life and Energy Shield" }], category: 'regular' },
   { id: 'cannot_be_leeched_from', label: 'Cannot Be Leeched From', tradePatterns: [{ text: "Monsters cannot be Leeched from" }], category: 'regular' },
   { id: 'brick_crit_regular', label: 'High Crit Chance + Multiplier', summaryLabel: 'Crit Multi 41–45%', affixLines: ['Monsters have 360–400% increased Critical Strike Chance', '+41–45% to Monster Critical Strike Multiplier'], tradePatterns: [{ text: "+#% to Monster Critical Strike Multiplier", statId: 'explicit.stat_57326096', value: { min: 41, max: 45 } }], category: 'regular', familyId: 'critical_multiplier' },
-  { id: 'extra_chaos_damage_withered', label: 'Extra Chaos Damage + Withered', summaryLabel: 'Profane 31–35% + Withered', affixLines: ['Monsters gain 31–35% of their Physical Damage as Extra Chaos Damage', 'Monsters Inflict Withered for 2 seconds on Hit'], tradePatterns: [{ text: "Monsters gain #% of their Physical Damage as Extra Chaos Damage", statId: 'explicit.stat_1840747977', value: { min: 31, max: 35 } }], category: 'regular' },
+  { id: 'extra_chaos_damage_withered', label: 'Extra Chaos Damage + Withered', summaryLabel: 'Profane + Withered', affixLines: ['Monsters gain 31–35% of their Physical Damage as Extra Chaos Damage', 'Monsters Inflict Withered for 2 seconds on Hit'], tradePatterns: [{ text: "Monsters have #% chance to inflict Withered for 2 seconds on Hit", statId: 'explicit.stat_3044826007' }], category: 'regular' },
   { id: 'extra_fire_damage', label: 'Extra Fire Damage', tradePatterns: [{ text: "Monsters deal #% extra Physical Damage as Fire" }], category: 'regular' },
   { id: 'extra_cold_damage', label: 'Extra Cold Damage', tradePatterns: [{ text: "Monsters deal #% extra Physical Damage as Cold" }], category: 'regular' },
   { id: 'extra_lightning_damage', label: 'Extra Lightning Damage', tradePatterns: [{ text: "Monsters deal #% extra Physical Damage as Lightning" }], category: 'regular' },
@@ -182,7 +182,7 @@ export const BRICK_MOD_DEFS: BrickModDef[] = [
   { id: 'increased_magic_monsters', label: 'Increased Magic Monsters', tradePatterns: [{ text: "#% increased Magic Monsters" }], category: 'regular', inclusionEligible: true },
 
   // ── Nightmare ──
-  { id: 'brick_profane_nightmare', label: 'Profane — Extra Chaos Damage', summaryLabel: 'Profane 80–100%', affixLines: ['Monsters gain 80–100% of their Physical Damage as Extra Chaos Damage'], tradePatterns: [{ text: "Monsters gain #% of their Physical Damage as Extra Chaos Damage", statId: 'explicit.stat_1840747977', value: { min: 80, max: 100 } }], category: 'nightmare' },
+  { id: 'brick_profane_nightmare', label: 'Profane — Extra Chaos Damage (Nightmare / Originator)', summaryLabel: 'Profane 80%+', affixLines: ['Monsters gain 80–100% of their Physical Damage as Extra Chaos Damage'], tradePatterns: [{ text: "Monsters gain #% of their Physical Damage as Extra Chaos Damage", statId: 'explicit.stat_1840747977', value: { min: 80 } }], category: 'nightmare' },
   { id: 'brick_thorns_combined_nightmare', label: 'Thorns Reflection', summaryLabel: 'Thorns 1500/2500', affixLines: ['Rare Monsters have Physical Thorns reflecting 1500 Physical Damage', 'Rare Monsters have Elemental Thorns reflecting 2500 Elemental Damage'], tradePatterns: [{ text: "Rare Monsters have Elemental Thorns reflecting # Elemental Damage", statId: 'explicit.stat_3938822425', value: { min: 2500, max: 2500 } }], category: 'nightmare', familyId: 'thorns' },
   { id: 'brick_crit_nightmare', label: 'High Crit Chance + Multiplier', summaryLabel: 'Crit Multi 70–75%', affixLines: ['Monsters have 650–700% increased Critical Strike Chance', '+70–75% to Monster Critical Strike Multiplier'], tradePatterns: [{ text: "+#% to Monster Critical Strike Multiplier", statId: 'explicit.stat_57326096', value: { min: 70, max: 75 } }], category: 'nightmare', familyId: 'critical_multiplier' },
   { id: 'brick_es_nightmare', label: 'Extra Energy Shield from Life', summaryLabel: 'Life to ES 70–80%', affixLines: ['Monsters gain 70–80% of Maximum Life as Extra Maximum Energy Shield'], tradePatterns: [{ text: "Monsters gain #% of Maximum Life as Extra Maximum Energy Shield", statId: 'explicit.stat_2887760183', value: { min: 70, max: 80 } }], category: 'nightmare', familyId: 'energy_shield_from_life' },
@@ -331,6 +331,8 @@ export const brickIdFromExclusionMarker = (entry: string): string | null =>
 const BRICK_DEF_BY_ID = new Map<string, BrickModDef>(BRICK_MOD_DEFS.map((def) => [def.id, def]));
 const FAMILY_BY_ID = new Map(BRICK_MOD_FAMILIES.map((entry) => [entry.id, entry]));
 
+export const LEGACY_STRONG_PROFANE_TERM = '\\b([89]\\d|100)%.*a chaos';
+
 /** Old catalogue tokens are interpreted by their previous real stash reach.
  * This lets existing sessions/presets transition without silently weakening
  * exclusions before the user next edits them. */
@@ -338,6 +340,8 @@ const LEGACY_LINKED_TOKEN_TARGETS: Readonly<Record<string, readonly ModTokenId[]
   // Pre-fix Endurance-gain catalogue token. Its UI meaning was always the gain
   // mechanic, even though the substring also caught steal-charges in stash.
   ndur: ['monsters_gain_endurance_charges'],
+  withe: ['extra_chaos_damage_withered'],
+  [LEGACY_STRONG_PROFANE_TERM]: ['brick_profane_nightmare'],
   [MOD_TOKENS.thorns_reflection]: [
     'brick_thorns_physical_regular',
     'brick_thorns_elemental_regular',

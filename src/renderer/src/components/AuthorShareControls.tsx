@@ -1,6 +1,7 @@
 import { ActionIcon, Alert, Badge, Box, Button, Combobox, Divider, Group, InputBase, Loader, Stack, Text, useCombobox } from '@mantine/core'
 import { IconAlertTriangle, IconCheck, IconCopy, IconSettings } from '@tabler/icons-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { COVENS_SHARE_UNAVAILABLE } from '../../../shared/authorHandoff';
 import { createPortal } from 'react-dom'
 import type { AuthorContext, AuthorResult, AuthorResults } from '../../../shared/authorHandoff'
 import { shareCopyPresentation, shareStatusText, type DurableShareView } from '../../../shared/durableShare'
@@ -147,6 +148,11 @@ export function AuthorShareControls({ core, raw, blocked, restorationError, onMa
       if (!sessionIdentity) throw new Error('The selected session is still loading. Try again when it is ready.')
       let author = selected?.confirmed ? { name: selected.name, registration_id: selected.registrationId }
         : { name: normalizePublicAuthorName(name).name, registration_id: null }
+      if (JSON.parse(core)[0] === 8) {
+        const capability = await window.api.authorHandoff({ action: 'share-formats' })
+        if (!capability.ok || !capability.value) throw new Error(COVENS_SHARE_UNAVAILABLE)
+        if (active.current !== context) return
+      }
       let preparedCore = core, revision: number | null = null
       if (target) {
         if (target.state !== 'ready') throw new Error('Choose Continue from the Strategy Browser for your next update.')
@@ -155,7 +161,7 @@ export function AuthorShareControls({ core, raw, blocked, restorationError, onMa
         const detail = await safeStrategyReader.detail({ scope: 'current', snapshot_key: null, id: target.id,
           revision: target.revision, read_version: target.generation }, true)
         if (active.current !== context) return
-        const proof = await prepareSafeContinuation(target, detail, useSessionStore.getState().authorPreferences, raw, maps.map(m => m.parsedAt))
+        const proof = await prepareSafeContinuation(target, detail, useSessionStore.getState().authorPreferences, raw, maps.map(m => m.parsedAt), JSON.parse(core)[12])
         if (active.current !== context) return
         const tuple = JSON.parse(core); tuple[1] = proof.operation
         preparedCore = JSON.stringify(tuple); author = proof.author; revision = proof.revision

@@ -2,10 +2,11 @@ import { Modal, Stack, Text, Alert, Textarea, ScrollArea } from '@mantine/core';
 import { useRef, useState } from 'react';
 import { useSessionStore } from '../store/useSessionStore';
 import { parseDiscordExport, type DiscordImport } from '../utils/parseDiscordExport';
-import { decodeStrategySetupCode, type StrategySetupCode } from '../../../shared/strategySetupCode';
+import { decodeStrategySetupCode, isStrategySetupCode, type StrategySetupCode } from '../../../shared/strategySetupCode';
 import { decodeDiscordSharePayload, looksLikeBrotliDiscordShareWire } from '../utils/discordShareWire';
 import { buildImportPreview, type StrategyImport } from '../utils/importPreview';
 import { StrategyImportPreview } from './StrategyImportPreview';
+import { reusableCovens } from '../../../shared/covensImport';
 import { FONT } from '../utils/uiTokens';
 
 interface Props {
@@ -49,7 +50,18 @@ export const ImportModal = ({ opened, onClose, onLoadBuild, onLoadSetup }: Props
       parsed = parseDiscordExport(text);
     }
     if (sequence !== parseSequence.current) return;
-    setResult(parsed ? { kind: 'discord', value: parsed } : null);
+    if (parsed?.covens) {
+      const setup: StrategySetupCode = {version: 1, kind: 'setup', title: parsed.strategyName, notes: parsed.strategyNotes,
+        league: parsed.league, mapType: parsed.mapType === '8-mod' ? '8-mod' : '6-mod', chisel: parsed.chisel || null,
+        scarabs: [], delirium: null, astrolabe: parsed.astroType || null, atlasTreeUrl: parsed.atlasTreeUrl || null,
+        runRegex: parsed.runRegex, covens: reusableCovens(parsed.covens),
+        ...(parsed.covens.orbs ? {deliriumOrbTypes: parsed.covens.orbs.map(row => row.id)} : {}),
+        party: {group: parsed.isGroupPlay, size: parsed.groupSize},
+        multiplyingModifiers: {allocated: parsed.multiplyingModifiersAllocated, fragmentCount: parsed.multiplyingModifiersFragmentCount},
+      };
+      if (!isStrategySetupCode(setup)) { setResult(null); setParseError(true); return; }
+      setResult({kind: 'setup', value: setup});
+    } else setResult(parsed ? { kind: 'discord', value: parsed } : null);
     setParseError(!parsed && text.trim().length > 100);
   };
 

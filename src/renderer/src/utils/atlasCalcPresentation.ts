@@ -3,12 +3,14 @@ import type { FragmentCountSource } from './profit';
 import { computeObservedModSample } from './profit';
 import type { MapData, SessionSettings } from '../types';
 import { isCrossLeagueSession } from './historicalSession';
-import { hasCurrentAtlasStatsRead } from './atlasStatsSync';
+import { isPathofpathingTreeUrl } from './atlasUrl';
+import { hasCurrentAtlasStatsRead, incompatibleAtlasVersion } from './atlasStatsSync';
 
 export type AtlasSyncState =
   | 'never-read'
   | 'current'
   | 'changed-since-read'
+  | 'other-league-read'
   | 'previous-league'
   | 'legacy-imported';
 
@@ -22,6 +24,8 @@ export function atlasSyncPresentation(state: AtlasSyncState): AtlasSyncPresentat
   switch (state) {
     case 'current':
       return { label: 'Synced', color: 'green', detail: 'Derived inputs match the saved Atlas Tree.' };
+    case 'other-league-read':
+      return { label: 'Verify league', color: 'yellow', detail: 'The last Atlas sync was for another league.' };
     case 'changed-since-read':
       return { label: 'Tree changed', color: 'yellow', detail: 'The tree URL changed after the last successful setup sync.' };
     case 'previous-league':
@@ -62,6 +66,11 @@ export function atlasSyncState(
     return 'previous-league';
   }
   if (!read) return hasLegacyEvidence ? 'legacy-imported' : 'never-read';
+  if (settings.leagueName && read.leagueName !== settings.leagueName) {
+    return read.leagueName?.trim() ? 'other-league-read' : 'legacy-imported';
+  }
+  if (read.sourceUrl === settings.atlasTreeUrl && isPathofpathingTreeUrl(read.sourceUrl)
+    && incompatibleAtlasVersion(read.sourceUrl, settings.leagueName)) return 'legacy-imported';
   return hasCurrentAtlasStatsRead(settings) ? 'current' : 'changed-since-read';
 }
 

@@ -110,7 +110,7 @@ describe('manual session statistics', () => {
   });
 
   it('stores the current Atlas anomaly catalogue as counted local rows', () => {
-    expect(ATLAS_ANOMALIES).toHaveLength(11);
+    expect(new Set(ATLAS_ANOMALIES).size).toBe(13);
     let stats = addManualAtlasAnomalyCount({}, 'The Manor Foyer', 2);
     stats = addManualAtlasAnomalyCount(stats, 'The Manor Foyer', 1);
     expect(stats.atlasAnomalies).toEqual([{ name: 'The Manor Foyer', count: 3 }]);

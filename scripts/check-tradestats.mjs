@@ -17,7 +17,6 @@ const SOURCE = join(ROOT, 'src', 'shared', 'brickMods.ts');
 const SPECIAL_MAP_SOURCE = join(ROOT, 'src', 'shared', 'tradeMapFilters.ts');
 const TRADE_STATS_URL = 'https://www.pathofexile.com/api/trade/data/stats';
 const EXPECTED_SHARED_BRICK_SETS = new Set([
-  'extra_chaos_damage_withered|brick_profane_nightmare',
   'brick_crit_regular|brick_crit_nightmare',
   'brick_es_regular|brick_es_nightmare',
   'brick_max_res_regular|brick_max_res_nightmare',

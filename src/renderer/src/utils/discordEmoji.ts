@@ -29,6 +29,8 @@ export interface ExportEmoji {
 }
 
 export const EXPORT_EMOJI = {
+  thread:    { uni: '\uD83E\uDDF5', plain: '[thread]', name: 'wl_thread' },
+  ember:     { uni: '\uD83D\uDD25', plain: '[ember]', name: 'wl_ember' },
   maps:      { uni: '\uD83D\uDCE6',       plain: '[maps]',     name: 'wl_maps' },
   chisel:    { uni: '\uD83E\uDEA8',       plain: '[chisel]',   name: 'wl_chisel' },
   stats:     { uni: '\uD83D\uDCCA',       plain: '[stats]',    name: 'wl_stats' },

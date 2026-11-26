@@ -2,11 +2,12 @@ import {
   Modal, Stack, Text, Alert, TextInput, NumberInput, Combobox, Pill, useCombobox,
   Textarea, Group, SegmentedControl, Divider, Button, CopyButton,
 } from '@mantine/core';
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { IconBrandDiscord, IconCheck, IconPlus, IconPlaylistAdd, IconRefresh, IconLock } from '@tabler/icons-react';
 import { useSessionKeys, useSessionStore } from '../store/useSessionStore';
 import { restoreShareDraft } from '../utils/shareDraft';
-import { buildDiscordExport, hasShareDivinePrice } from '../utils/discordExport';
+import { postedCardExport, buildDiscordExport, hasShareDivinePrice } from '../utils/discordExport';
+import { LEGACY_DELIRIUM_ORB_LIMIT } from '../../../shared/deliriumOrbs';
 import {
   buildDiscordSharePayload,
   DISCORD_SHARE_COMMAND_MAX,
@@ -15,6 +16,7 @@ import { parseTimeInput } from '../utils/sessionTime';
 import { computeTimeEstimate, formatActiveTime } from '../utils/timeEstimate';
 import { manualRunTimerElapsed } from '../utils/manualRunTimer';
 import { ALL_TYPE_TAGS, STRATEGY_API_URL, type Strategy } from '../utils/strategyConstants';
+import { shareTagIssue } from '../utils/shareTags';
 import { parseDiscordExport } from '../utils/parseDiscordExport';
 import { missingShareFields } from '../utils/shareCompleteness';
 import { investmentCompleteness } from '../utils/investmentCompleteness';
@@ -52,13 +54,14 @@ const SETUP_FIELD_LABELS: Record<string, string> = {
   multiplyingModifiers: 'Multiplying Modifiers setup',
 };
 
-function ShareTagsField({ value, onChange, disabled }: {
+function ShareTagsField({ value, onChange, disabled, choices }: {
   value: string[]; onChange: (tags: string[]) => void; disabled: boolean;
+  choices: string[];
 }) {
   const [search, setSearch] = useState('');
   const dropdown = useCombobox({ onDropdownClose: () => { setSearch(''); dropdown.resetSelectedOption(); } });
   const label = (tag: string) => tag.split('-').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-  const options = ALL_TYPE_TAGS.filter((tag) => !value.includes(tag) && label(tag).toLowerCase().includes(search.toLowerCase()));
+  const options = choices.filter((tag) => !value.includes(tag) && label(tag).toLowerCase().includes(search.toLowerCase()));
   return <Stack gap={4}>
     <Text size="xs" fw={500}>Tags</Text>
     <Combobox store={dropdown} withinPortal={false} onOptionSubmit={(tag) => {
@@ -86,6 +89,10 @@ function ShareTagsField({ value, onChange, disabled }: {
   </Stack>;
 }
 
+import { COVENS_SHARE_UNAVAILABLE } from '../../../shared/authorHandoff';
+import { buildCovensShare } from '../utils/covensShare';
+import { needsAtlasShareReview, reviewAtlasForShare, type AtlasShareReview } from '../utils/atlasShareReview';
+
 interface Props {
   opened: boolean;
   onClose: () => void;
@@ -93,8 +100,64 @@ interface Props {
   initialTags: string[];
 }
 
-export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
+export const ShareModal = (props: Props) => {
+  const { sessionNonce, currentSessionIdentity, settings } = useSessionKeys('sessionNonce', 'currentSessionIdentity', 'settings');
+  const scope = JSON.stringify([sessionNonce, currentSessionIdentity, settings.leagueName, settings.atlasTreeUrl]);
+  return <ShareAtlasGate key={scope} {...props} />;
+};
+
+function ShareAtlasGate({ opened, onClose, initialTags }: Props) {
+  const { settings, maps } = useSessionKeys('settings', 'maps');
+  const [review, setReview] = useState<AtlasShareReview>();
+  const [error, setError] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const pending = useRef<AbortController | null>(null);
+  const prompt = opened && !review && needsAtlasShareReview(settings);
+
+  useLayoutEffect(() => {
+    if (!opened) { setReview(undefined); setError(undefined); setBusy(false); }
+    return () => { pending.current?.abort(); pending.current = null; };
+  }, [opened]);
+
+  const close = () => {
+    pending.current?.abort();
+    onClose();
+  };
+  const choose = async (choice: 'sync' | 'recorded') => {
+    if (pending.current) return;
+    const attempt = new AbortController();
+    pending.current = attempt;
+    setBusy(true);
+    setError(undefined);
+    try {
+      const result = await reviewAtlasForShare(settings, maps, choice, attempt.signal);
+      if (!attempt.signal.aborted && result) setReview(result);
+    } catch (err) {
+      if (!attempt.signal.aborted) setError(err instanceof Error ? err.message : 'Could not sync the Atlas tree.');
+    } finally {
+      if (!attempt.signal.aborted) { pending.current = null; setBusy(false); }
+    }
+  };
+  return <>
+    {prompt && <Modal opened onClose={close} title="Review Atlas tree before sharing" size="sm">
+      <Stack gap="sm">
+        <Text size="sm">This tree has no matching, complete Atlas read for this league. Sync now to include its allocated choice nodes and any answers recorded for this tree.</Text>
+        <Text size="sm">Share as recorded keeps the current tree link and omits Atlas choices. Your saved run keeps its recorded values.</Text>
+        {error && <Alert color="red" role="alert">{error}</Alert>}
+        <Group justify="flex-end">
+          <Button size="xs" variant="subtle" onClick={close}>Cancel</Button>
+          <Button size="xs" variant="default" disabled={busy} onClick={() => void choose('recorded')}>Share as recorded</Button>
+          <Button size="xs" loading={busy} onClick={() => void choose('sync')}>Sync now</Button>
+        </Group>
+      </Stack>
+    </Modal>}
+    <SharePreview opened={opened && !prompt} onClose={close} initialTags={review?.tags ?? initialTags} reviewedAtlas={review?.atlas} />
+  </>;
+}
+
+const SharePreview = ({ opened, onClose, initialTags, reviewedAtlas }: Props & { reviewedAtlas?: AtlasShareReview['atlas'] }) => {
   const [authorReview, setAuthorReview] = useState<boolean | null>(null);
+  const [canShareCovens, setCanShareCovens] = useState(false);
   const [authorReviewError, setAuthorReviewError] = useState<string | null>(null);
   const [manageNames, setManageNames] = useState(false);
   const [manageNamesAction, setManageNamesAction] = useState<'recover' | undefined>();
@@ -104,6 +167,10 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     if (!opened) return;
     let stopped = false;
     setAuthorReviewError(null);
+    setCanShareCovens(false);
+    void window.api.authorHandoff({ action: 'share-formats' }).then(r => {
+      if (!stopped) setCanShareCovens(r.ok && r.value === true);
+    }).catch(() => { if (!stopped) setCanShareCovens(false); });
     window.api.authorHandoff({ action: 'available' }).then((r) => {
       if (stopped) return;
       if (r.ok) setAuthorReview(r.value);
@@ -420,7 +487,14 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
        updateTargetId, evidenceTargetId, evidenceExpectedRevision, evidenceProof,
        activeManifest.revision, activeManifest.patchVersion]);
 
-  const parsedDiscordExport = useMemo(() => discordExport ? parseDiscordExport(discordExport) : null, [discordExport]);
+  const structured = useMemo(() => {
+    try { return { fields: opened ? buildCovensShare(settings, maps, reviewedAtlas) : null, error: null }; }
+    catch (error) { return { fields: null, error: error instanceof Error ? error.message : 'Cannot encode Covens setup.' }; }
+  }, [opened, settings, maps, reviewedAtlas]);
+  const parsedDiscordExport = useMemo(() => {
+    const parsed = discordExport && parseDiscordExport(discordExport);
+    return parsed && structured.fields ? { ...parsed, covens: structured.fields } : parsed || null;
+  }, [discordExport,structured.fields]);
   const authorCore = useMemo(() => {
     try { return parsedDiscordExport ? buildDiscordSharePayload(parsedDiscordExport) : ''; }
     catch { return ''; } // The existing encoder reports the field/size error below.
@@ -473,10 +547,14 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   }, [parsedDiscordExport]);
   const discordWire = discordWireResult.wire;
   const discordWireError = discordWireResult.error;
+  const visibleExport = postedCardExport(discordExport, parsedDiscordExport);
+  const noNotes = parseDiscordExport(discordExportNoNotes);
+  const visibleNoNotes = postedCardExport(discordExportNoNotes, noNotes && structured.fields
+    ? { ...noNotes, covens: structured.fields } : null);
   const budget = computeCompactShareBudget(
     discordWire,
-    discordExport,
-    discordExportNoNotes,
+    visibleExport,
+    visibleNoNotes,
     stratNotes.length,
     parsedDiscordExport?.lootSummary ?? null,
   );
@@ -495,7 +573,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
     || budgetNearLimit,
   );
   const postedCardPreview = postedDetails?.preview ?? compactPostedCardPreview(
-    discordExport,
+    visibleExport,
     parsedDiscordExport?.lootSummary ?? null,
   );
   // Ended/missing league blocks sharing outright (decided 2026-07-19): the
@@ -504,6 +582,10 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
 
   const shareMissingFields = missingShareFields(parseDiscordExport(baseDiscordExport));
   const missingDivinePrice = !hasShareDivinePrice(settings.divinePrice);
+  const tagIssue = evidenceTargetId ? null : shareTagIssue(shareTags, settings.leagueName, initialTags);
+  const tagChoices = ALL_TYPE_TAGS.filter(tag => !shareTagIssue([tag], settings.leagueName, initialTags));
+  const unsupportedOrbSpend = structured.error || (structured.fields && !canShareCovens ? COVENS_SHARE_UNAVAILABLE : null);
+  const unsupportedOrbCount = !settings.deliriumOrbSpend && Boolean(settings.advDeliOrbType) && settings.advDeliOrbQtyPerMap > LEGACY_DELIRIUM_ORB_LIMIT;
   const shareIncomplete = !missingDivinePrice && shareMissingFields.length > 0;
   const costCompleteness = useMemo(() => investmentCompleteness(settings), [settings]);
   const costsIncomplete = costCompleteness.hasIncompleteCosts;
@@ -512,8 +594,11 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
   // overflow keeps the preview visible so the author can see what to trim.
   const evidenceBlocked = evidenceTargetId !== null && evidenceProof === null;
   const previewWithheld = impossibleAtlasPoints
+    || tagIssue !== null
     || leagueBlock !== null
     || missingDivinePrice
+    || unsupportedOrbCount
+    || Boolean(unsupportedOrbSpend)
     || evidenceBlocked
     || shareIncomplete
     || costsIncomplete;
@@ -806,7 +891,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
           maxLength={STRAT_NAME_MAX}
           disabled={evidenceTargetId !== null || shareTracking || sharePosted}
           value={postedDetails?.title ?? stratName} onChange={(e) => setStratName(e.currentTarget.value)} />
-        <ShareTagsField value={postedDetails?.tags ?? shareTags} onChange={setShareTags}
+        <ShareTagsField value={postedDetails?.tags ?? shareTags} onChange={setShareTags} choices={tagChoices}
           disabled={evidenceTargetId !== null || shareTracking || sharePosted || draftLoading} />
         <Stack gap={2}>
           <Textarea size="xs" label={<>Notes <Text span inherit c={COLOR.textDim}>optional · shown on the card</Text></>}
@@ -910,7 +995,9 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
         {!sharePosted && previewWithheld ? (
           <Alert color="red" variant="light" p="xs">
             <Text size="xs">
-              {missingDivinePrice ? 'Preview needs a Divine price for this session.' :
+              {tagIssue ?? (unsupportedOrbSpend ? unsupportedOrbSpend :
+                unsupportedOrbCount ? 'Your local costs include more than five Delirium Orbs per map. Public sharing currently supports up to five.' :
+              missingDivinePrice ? 'Preview needs a Divine price for this session.' :
               evidenceBlocked
                 ? evidenceFetchError || evidencePreflightError
                   ? 'Preview withheld until the evidence preflight above passes.'
@@ -921,7 +1008,7 @@ export const ShareModal = ({ opened, onClose, initialTags }: Props) => {
                   ? 'Preview withheld until the configured setup costs above have current prices and usage.'
                 : impossibleAtlasPoints
                 ? 'Preview withheld until the impossible Atlas allocation is corrected.'
-                : 'Preview withheld — this league no longer accepts new shares.'}
+                : 'Preview withheld — this league no longer accepts new shares.')}
             </Text>
           </Alert>
         ) : (

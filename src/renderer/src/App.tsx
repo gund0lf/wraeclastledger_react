@@ -28,6 +28,7 @@ import {
 } from './layout/panelLayoutState';
 import { retryRepositorySave, saveRepositoryLayout } from './repository/sessionRepositoryRuntime';
 import { OverlayController } from './components/OverlayController';
+import { OverlayVisibilityButton } from './components/OverlayVisibilityButton';
 import { ShareResultNotice } from './components/ShareResultNotice';
 import { ClipboardCaptureGuard } from '../../shared/clipboardCapture';
 
@@ -284,7 +285,7 @@ function App({ initialLayoutRawValue }: { initialLayoutRawValue: string | null }
         display: 'flex', alignItems: 'center', paddingLeft: 8, paddingRight: 8,
         flexShrink: 0, gap: 8, position: 'relative',
       }}>
-        <Box style={{ position: 'absolute', left: 8 }}>
+        <Box style={{ position: 'absolute', left: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
         <Menu shadow="md" width={220}>
           <Menu.Target>
             <Button size="compact-xs" variant="subtle" color="gray" style={{ fontSize: 11 }}>
@@ -311,6 +312,7 @@ function App({ initialLayoutRawValue }: { initialLayoutRawValue: string | null }
             }}>Reset layout to default</Menu.Item>
           </Menu.Dropdown>
         </Menu>
+        <OverlayVisibilityButton compact />
         </Box>
 
         {/* Spacer */}

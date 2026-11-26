@@ -62,11 +62,17 @@ export interface CostBreakdown {
  * meaningful total before the first map is parsed (parity with the old
  * calcAdvTotal behavior).
  */
-export function computeRollingSessionTotal(settings: SessionSettings, mapCount: number): number {
-  const n = mapCount || 1;
-  const deliTotal = settings.advDeliOrbType.trim()
-    ? settings.advDeliOrbQtyPerMap * settings.advDeliOrbPriceEach * n
+export function deliriumSessionCost(settings: SessionSettings, mapCount: number): number {
+  if (settings.deliriumOrbSpend) {
+    return settings.deliriumOrbSpend.reduce((sum, row) => sum + row.count * (row.priceEach ?? 0), 0);
+  }
+  return settings.advDeliOrbType.trim()
+    ? settings.advDeliOrbQtyPerMap * settings.advDeliOrbPriceEach * (mapCount || 1)
     : 0;
+}
+
+export function computeRollingSessionTotal(settings: SessionSettings, mapCount: number): number {
+  const deliTotal = deliriumSessionCost(settings, mapCount);
   const astrolabeTotal = settings.advAstrolabeType.trim()
     ? settings.advAstrolabePrice * settings.advAstrolabeCount
     : 0;
@@ -87,13 +93,16 @@ export function deviceInvestment(settings: DeviceSettings) {
     ? read.calc?.threadRules : undefined;
   const oneType = rules?.oneType === true;
   const configuredSlots = settings.threadSlots ?? [];
-  const activeSlots = oneType ? configuredSlots.slice(0, 1) : configuredSlots;
-  const slots = activeSlots.filter(slot => slot?.name && Number.isInteger(slot.count) && slot.count > 0);
+  const activeSlots = (oneType ? configuredSlots.slice(0, 1) : configuredSlots).filter(slot => !slot?.paused);
+  const slots = activeSlots.filter(slot => slot?.name && Number.isInteger(slot.count) &&
+    (slot.count > 0 || (slot.count === 0 && (slot.granted ?? 0) > 0)));
   const types = new Set(slots.map(slot => slot.name)).size;
   const paid = slots.reduce((sum, slot) => sum + slot.count, 0);
   const gross = slots.reduce((sum, slot) => sum + slot.count * Math.max(0, slot.price || 0), 0);
+  const granted = slots.some(slot => slot.granted !== undefined)
+    ? slots.reduce((sum, slot) => sum + (slot.granted ?? 0), 0) : (paid ? rules?.freeThreads || 0 : 0);
   return {
-    paid, effective: paid + (paid ? rules?.freeThreads || 0 : 0), types, oneType, activeSlots,
+    paid, effective: paid + granted, types, oneType, activeSlots,
     saveChance: rules?.saveChance || 0,
     threadCost: gross * (1 - Math.min(100, Math.max(0, rules?.saveChance || 0)) / 100),
     emberCost: settings.ember?.name ? Math.max(0, settings.ember.price || 0) : 0,

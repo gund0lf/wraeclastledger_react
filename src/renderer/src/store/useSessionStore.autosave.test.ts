@@ -17,6 +17,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useSessionStore, flushActiveSessionAutoSave, DEFAULT_SETTINGS } from './useSessionStore';
 import type { MapData } from '../types';
+import { ATLAS_ANOMALIES } from '../utils/manualStatistics';
+import { OVERLAY_COUNTER_OPTIONS, overlayCounterSnapshot } from '../utils/overlayCounters';
+import { aggregateRunStatisticsSessions, collectRunStatisticsSessions } from '../utils/runStatistics';
 
 const DEBOUNCE = 800;
 
@@ -94,6 +97,33 @@ describe('WP10 auto-save', () => {
     expect(saved.settings.baseMapCost).toBe(12);
     expect(saved.notes).toBe('juiced deli');
   });
+
+  it.each(['Templar Vaults', 'Archon of Corruption Hideouts'])(
+    'offers %s in both anomaly pickers and restores its session and global counts',
+    (name) => {
+      const counterId = `anomaly:${name}`;
+      expect(ATLAS_ANOMALIES).toContain(name);
+      expect(OVERLAY_COUNTER_OPTIONS.find(({ group }) => group === 'Atlas anomalies')?.items)
+        .toContainEqual({ value: counterId, label: name });
+
+      const id = saveActive('Anomaly run');
+      useSessionStore.getState().addMap(mapFixture());
+      useSessionStore.getState().addManualAtlasAnomalyCount(name, 1);
+      vi.advanceTimersByTime(DEBOUNCE);
+      useSessionStore.getState().newSession();
+      expect(overlayCounterSnapshot(counterId, useSessionStore.getState().manualStatistics)?.value).toBe(0);
+      useSessionStore.getState().loadSession(id);
+
+      const reopened = useSessionStore.getState();
+      expect(overlayCounterSnapshot(counterId, reopened.manualStatistics))
+        .toEqual({ id: counterId, label: name, value: 1 });
+      const sessions = collectRunStatisticsSessions(
+        { ...reopened, mapCount: reopened.maps.length }, id, reopened.savedSessions,
+      );
+      expect(aggregateRunStatisticsSessions(sessions).atlasAnomalies)
+        .toEqual([{ name, count: 1, mapCount: 1, sessionCount: 1 }]);
+    },
+  );
 
   it('auto-saves and restores manual statistics without bleeding into a new session', () => {
     const id = saveActive('A');

@@ -15,6 +15,7 @@ import { formatChaosValue } from './currencyDisplay';
 import { isSafeStrategyAtlasUrl } from './atlasUrl';
 
 export interface DiscordImport {
+  covens?: import('../../../shared/covensWireValidator.mjs').CovensWire;
   mapCount: number; mapType: string; multiplier: number;
   avgQuant: number; avgRarity: number; avgPack: number; avgCurr: number;
   perMapCost: number; totalInvest: number; totalReturn: number;

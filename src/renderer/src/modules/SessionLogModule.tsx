@@ -251,7 +251,7 @@ export const SessionLogModule = () => {
             <Tooltip multiline w={260} label={sessionLifecycle === 'historical'
               ? 'Capture is paused while viewing a saved session. Use Resume capture in Sessions when you want to continue it.'
               : isWatching
-                ? 'Capturing — copy a map with Ctrl+C; 3.29 records exact modifier counts automatically.'
+                ? 'Capturing — copy a map with Ctrl+C; advanced modifier descriptions record exact counts.'
                 : 'Paused — turn on Capture, then copy a map with Ctrl+C.'}>
               <Switch checked={isWatching} onChange={toggleWatch}
                 disabled={sessionLifecycle === 'historical'}

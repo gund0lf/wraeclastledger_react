@@ -475,6 +475,11 @@ describe('Thread and Ember investment', () => {
     expect(deviceInvestment({ ...setup, atlasTreeUrl: '' })).toMatchObject({ threadCost: 42, threadEffect: 0 });
   });
   it('charges only the first slot, preserves dormant rows and restores them when the node is removed', () => {
+    const imported = deviceInvestment({ threadSlots: [
+      { name: 'Bestiary Thread', count: 8, granted: 2, price: 3 },
+      { name: 'Breach Thread', count: 2, paused: true, price: 7 },
+    ] });
+    expect(imported).toMatchObject({ paid: 8, effective: 10, threadCost: 24, types: 1 });
     const calc = deriveAtlasCalcSettingsSnapshot([{ title: 'Unwavering Vision', stats: [
       'You can only apply one type of [Thread] to your Maps',
       'Your Maps with [Thread|Threads] applied gain 2 additional Threads, which can bypass the 8 Thread maximum',

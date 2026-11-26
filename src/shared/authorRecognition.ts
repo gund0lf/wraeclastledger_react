@@ -12,6 +12,11 @@ export interface AuthorPreferences {
   registrations: RecognizedAuthor[]
   defaultRegistrationId: string | null
 }
+export function initialAssignmentRegistration(preferences: AuthorPreferences, choice: string | null): RecognizedAuthor | undefined {
+  const id = choice ?? preferences.defaultRegistrationId
+  return preferences.registrations.find(registration => registration.confirmed && registration.registrationId === id)
+}
+
 export interface AuthorReceipt {
   schema_version: 1
   request_id: string

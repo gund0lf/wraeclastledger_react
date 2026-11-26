@@ -4,7 +4,7 @@ import { AUTHOR_COMMAND_ACTION_LABELS, authorCommandHelp } from './authorCommand
 
 describe('Discord author-command help', () => {
   it.each([
-    ['preview', 'Review naming or unregister'],
+    ['preview', 'Review public name change'],
     ['recover', 'Recover names'],
     ['confirmation', 'Get private publication confirmation']
   ] as const)('shows the visible choice for %s without changing its internal value', (action, label) => {

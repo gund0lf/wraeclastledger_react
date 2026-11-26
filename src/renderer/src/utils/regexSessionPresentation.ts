@@ -4,12 +4,14 @@ export interface RegexSessionAverages {
   avgPack: number;
   avgCurr: number;
   avgScarabs?: number;
+  atlasDrops?: boolean;
+  avgThreads?: number;
 }
 
 export function formatRegexAverageSummary(averages: RegexSessionAverages): string {
   const avgScarabs = averages.avgScarabs ?? 0;
   const parts = [
-    `${averages.avgQuant.toFixed(0)}%Q`,
+    `${averages.avgQuant.toFixed(0)}%${averages.atlasDrops ? ' Atlas Drops' : 'Q'}`,
     `${averages.avgRarity.toFixed(0)}%R`,
     `${averages.avgPack.toFixed(0)}%P`,
   ];
@@ -17,7 +19,10 @@ export function formatRegexAverageSummary(averages: RegexSessionAverages): strin
   if (averages.avgCurr > 0) {
     parts.push(`${averages.avgCurr.toFixed(0)}% Curr`);
   }
-  if (avgScarabs > 0) {
+  if (averages.atlasDrops && averages.avgThreads !== undefined) {
+    parts.push(`${averages.avgThreads.toFixed(0)}% More Threads`);
+  }
+  if (!averages.atlasDrops && avgScarabs > 0) {
     parts.push(`${avgScarabs.toFixed(0)}% Scarabs`);
   }
 

@@ -12,11 +12,12 @@ import { useSessionKeys } from '../store/useSessionStore';
 import { QUALITY_STAT_EFFECTS, chiselForLeague, DELIRIUM_ORB_LIST } from '../utils/constants';
 import { LootCategory, ManualLootItem, MapData, LootItem } from '../types';
 import { parseLootCsv, diffLootItems } from '../utils/lootUtils';
+import { deviceInvestmentLosses } from '../utils/deviceInvestmentLosses';
 import {
   IconCoins, IconFileImport, IconPencil, IconPlus, IconPackage,
   IconSearch, IconTrash,
 } from '@tabler/icons-react';
-import { mapLogStatColumns } from '../utils/mapParser';
+import { legacyDropMaps, observedDropAverage } from '../utils/mapParser';
 import { getItemIcons, chiselItemName } from '../utils/itemIcons';
 import type { ItemIdentity } from '../utils/itemIcons';
 import {
@@ -75,7 +76,7 @@ const STAT_KEYS: (keyof MapData)[] = [
   'quantity', 'atlasDrops', 'rarity', 'packSize', 'moreCurrency', 'moreMaps', 'moreThreads', 'moreScarabs', 'moreDivCards',
 ];
 const STAT_LABELS: Record<string, string> = {
-  quantity: 'Quantity', atlasDrops: 'Atlas Drops', moreThreads: 'Threads', rarity: 'Rarity', packSize: 'Pack Size',
+  quantity: 'Quantity', atlasDrops: 'Atlas Drops', moreThreads: 'More Threads', rarity: 'Rarity', packSize: 'Pack Size',
   moreCurrency: 'Currency', moreMaps: 'Maps', moreScarabs: 'Scarabs',
   moreDivCards: 'Div Cards',
 };
@@ -154,10 +155,12 @@ export const DashboardModule = () => {
     const count = maps.length;
     if (count === 0) return null;
     const { multiplier, usesObservedMods, observedModAverage } = computeMultiplier(settings, maps);
+    const legacy = legacyDropMaps(maps, settings.leagueName, getManifest().leagueRules);
+    const legacySet = new Set(legacy);
     const qualBonuses: Record<string, number> = {};
     for (const map of maps) {
       const e = QUALITY_STAT_EFFECTS[map.qualityType];
-      if (e && map.quality > 0) {
+      if (e && map.quality > 0 && ((e.statKey !== 'quantity' && e.statKey !== 'moreScarabs') || legacySet.has(map))) {
         const rarityBonus = e.statKey === 'rarity' ? chiselForLeague('Procurement', settings.leagueName)?.bonusAt20 : undefined;
         const perQuality = rarityBonus === undefined ? e.multiplier : rarityBonus / 20;
         qualBonuses[e.statKey] = (qualBonuses[e.statKey] ?? 0) + map.quality * perQuality;
@@ -166,22 +169,23 @@ export const DashboardModule = () => {
     const chiselInfo = settings.chiselType ? chiselForLeague(settings.chiselType, settings.leagueName) : null;
     const chiselExp: Record<string, number> = {};
     if (chiselInfo && settings.chiselPrice > 0) {
-      const unc = maps.filter((m) => m.quality === 0).length;
-      if (unc > 0) chiselExp[chiselInfo.statKey] = (unc / count) * chiselInfo.bonusAt20;
+      const sample = chiselInfo.statKey === 'quantity' || chiselInfo.statKey === 'moreScarabs' ? legacy : maps;
+      const unc = sample.filter((m) => m.quality === 0).length;
+      if (unc > 0) chiselExp[chiselInfo.statKey] = (unc / sample.length) * chiselInfo.bonusAt20;
     }
     const result: Record<string, { avg: number; proj?: number; hasChisel?: boolean }> = {};
-    const columns = mapLogStatColumns(settings.leagueName, maps, getManifest().leagueRules);
     for (const key of STAT_KEYS) {
       if (key === 'atlasDrops' || key === 'moreThreads') {
-        const observed = maps.flatMap((map) => map[key] === undefined ? [] : [map[key]]);
-        if (observed.length) result[key] = { avg: observed.reduce((sum, n) => sum + n, 0) / observed.length };
+        const avg = observedDropAverage(maps, key);
+        if (avg !== null) result[key] = { avg };
         continue;
       }
-      if (!columns.legacy && (key === 'quantity' || key === 'moreScarabs')) continue;
-      const avg    = maps.reduce((acc, m) => acc + ((m[key] as number) ?? 0), 0) / count;
+      const sample = key === 'quantity' || key === 'moreScarabs' ? legacy : maps;
+      if (!sample.length) continue;
+      const avg = sample.reduce((acc, m) => acc + ((m[key] as number) ?? 0), 0) / sample.length;
       const implicitKey = key === 'rarity' || key === 'packSize' ? key : undefined;
       const implicitBonus = implicitKey ? maps.reduce((sum, map) => sum + (map.corruptionModifiers?.[implicitKey] ?? 0), 0) / count : 0;
-      const qBonus = implicitBonus + ((qualBonuses[key as string] ?? 0) / count) + (chiselExp[key as string] ?? 0);
+      const qBonus = implicitBonus + ((qualBonuses[key as string] ?? 0) / sample.length) + (chiselExp[key as string] ?? 0);
       const atlasQFlat = (key === 'quantity' && settings.atlasBonus) ? getAtlasCompletionBonus().itemQuantity : 0;
       const areaBonus = usesThreads && key === 'packSize' ? atlasCalc?.areaPackSize ?? 0
         : usesThreads && key === 'rarity' ? atlasCalc?.areaRarity ?? 0 : 0;
@@ -330,23 +334,24 @@ export const DashboardModule = () => {
   const activeDiff = diffTab === 'gains' ? gains : losses;
 
   const detectedMatches = useMemo(() => {
-    if (!hasBoth || losses.length === 0) return [];
+    if (!hasBoth) return [];
     const investItems: { name: string }[] = [
       ...settings.scarabs.filter((s) => s.name.trim()).map((s) => ({ name: s.name })),
       ...(settings.advAstrolabeType ? [{ name: settings.advAstrolabeType }] : []),
-      ...(settings.advDeliOrbType ? (() => {
+      ...(!settings.deliriumOrbSpend && settings.advDeliOrbType ? (() => {
         const entry = DELIRIUM_ORB_LIST.find((o) => o.value === settings.advDeliOrbType);
         const orbName = entry ? entry.label.split(' (')[0] + ' Delirium Orb' : settings.advDeliOrbType + ' Delirium Orb';
         return [{ name: orbName }];
       })() : []),
     ];
-    return losses
+    const legacyMatches = losses
       .filter((r) => {
         const normName = (s: string) => s.normalize('NFKD').replace(/[\u2018\u2019\u02BC]/g, "'").toLowerCase();
         return investItems.some((inv) => normName(inv.name) === normName(r.name));
       })
       .map((r) => ({ name: r.name, value: Math.abs(r.delta) }));
-  }, [hasBoth, losses, settings]);
+    return legacyMatches.concat(deviceInvestmentLosses(settings, maps.length, baselineItems, lootItems));
+  }, [hasBoth, losses, settings, maps.length, baselineItems, lootItems]);
 
   const detectedTotal = detectedMatches.reduce((a, m) => a + m.value, 0);
 
@@ -1080,7 +1085,7 @@ export const DashboardModule = () => {
               <div className="dashboard-multiplier-grid">
                 {STAT_KEYS.map((key) => {
                   const d = stats.stats[key as string];
-                  if (!d || (d.avg === 0 && d.proj === 0)) return null;
+                  if (!d || (key !== 'quantity' && d.avg === 0 && d.proj === 0)) return null;
                   return (
                     <StatTile
                       key={key as string}

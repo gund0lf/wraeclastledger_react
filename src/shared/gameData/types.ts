@@ -58,7 +58,8 @@ export interface GameDataManifest {
   mechanics: Record<string, MechanicStatus>;
   threads?: GameEntity[];
   embers?: GameEntity[];
-  leagueRules?: Record<string, { atlasDrops: boolean; threadSlots: number; threadCap: number }>;
+  leagueRules?: Record<string, { atlasDrops: boolean; threadSlots: number; threadCap: number; atlasTreeVersion?: string; deliriumOrbs?: 'reforge' | 'layers' }>;
+  legacyDeliriumLayerLeagues?: string[];
   atlasCompletion?: { objectives: number; itemQuantity: number };
   atlasTrees?: Record<string, { layout: string; maxPoints: number; choices?: Record<string, { name: string; options: { id: string; text: string }[] }> }>;
   scarabs: GameEntity[];

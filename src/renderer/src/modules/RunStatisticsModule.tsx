@@ -24,6 +24,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { RunTimerPanel } from '../components/RunTimerPanel';
 import { RunStatisticsSetupReadiness } from '../components/RunStatisticsSetupReadiness';
 import type {
+  EncounterFamily,
   RunStatisticsSetupAttribution,
   RunStatisticsSetupCategory,
   RunStatisticsSetupContext,
@@ -42,6 +43,7 @@ import {
 } from '../utils/manualStatistics';
 import {
   buildBestiaryRateModel,
+  summarizeConfirmedEncounters,
   aggregateRunStatisticsSessions,
   collectRunStatisticsSessions,
   deriveMercenaryScarabSetup,
@@ -53,6 +55,7 @@ import {
   totalValuableBeastGains,
 } from '../utils/runStatistics';
 import './RunStatisticsModule.css';
+import { encounterFamilyLabels } from '../utils/mapParser';
 
 const COUNTER_FIELDS: Array<{
   field: ManualStatisticField;
@@ -98,6 +101,15 @@ const atlasSourceIdentity = (url: string | null): string => {
   }
 };
 
+function recordedChoiceLabels(context: RunStatisticsSetupContext): string {
+  if (!context.atlasChoiceIds || !context.atlasTreeUrl) return 'Not recorded';
+  const version = new URL(context.atlasTreeUrl).searchParams.get('v') ?? '';
+  const choices = getManifest().atlasTrees?.[version]?.choices;
+  return Object.entries(context.atlasChoiceIds).map(([node, answer]) =>
+    choices?.[node]?.options.find(option => option.id === answer)?.text ?? `Node ${node}, option ${answer}`
+  ).join(' · ');
+}
+
 const modelEligibleContext = (
   attribution: RunStatisticsSetupAttribution | undefined,
 ): RunStatisticsSetupContext | null => (
@@ -135,13 +147,13 @@ const SetupContextBlock = ({
         {isGlobal ? (
           <Text size="xs" c="dimmed">
             Setup evidence remains attached to each individual session. This combined view does not
-            merge distinct Atlas/scarab configurations into one implied setup.
+            merge distinct Atlas and map investment configurations into one implied setup.
           </Text>
         ) : contexts.length === 0 ? (
           <Text size="xs" c="dimmed">
             {hasObservedResult
               ? 'Unattributed legacy result. The current/final session setup is deliberately not applied retroactively.'
-              : `No recorded setup yet. Atlas/scarab context will be captured from ${sourceLabel}.`}
+              : `No recorded setup yet. Atlas and map investment details will be captured from ${sourceLabel}.`}
           </Text>
         ) : (
           <Stack gap={4}>
@@ -159,8 +171,9 @@ const SetupContextBlock = ({
                     : ''}
                 </Text>
                 <Text size="xs" c="dimmed">
+                  {context.modelRevision === 'observations-v1' && <>Atlas choices: {recordedChoiceLabels(context)}<br /></>}
                   {context.deviceItems ? 'Device: ' + (context.deviceItems.join(' · ') || 'none configured')
-                    : 'Scarabs: ' + (context.scarabNames.join(' · ') || 'none occupied')}
+                    : getManifest().leagueRules?.[context.leagueName]?.threadSlots ? 'Device items unrecorded' : 'Scarabs: ' + (context.scarabNames.join(' · ') || 'none occupied')}
                   {' · '}source {context.captureSource === 'loot-snapshots'
                     ? 'loot snapshots'
                     : 'manual entry'}
@@ -252,7 +265,7 @@ const TechnicalDetails = ({
   );
 };
 
-type StatisticsSectionId = 'kalguuran' | 'wildwood' | 'anomalies' | 'beasts' | 'mercenaries';
+type StatisticsSectionId = 'confirmed' | 'kalguuran' | 'wildwood' | 'anomalies' | 'beasts' | 'mercenaries';
 type StatisticsView = 'session' | 'all';
 
 interface StatisticsSectionProps {
@@ -346,6 +359,7 @@ export const RunStatisticsModule = () => {
   const [mercenaryAmount, setMercenaryAmount] = useState<number | string>(1);
   const [statisticsView, setStatisticsView] = useState<StatisticsView>('session');
   const [openSections, setOpenSections] = useState<Record<StatisticsSectionId, boolean>>({
+    confirmed: true,
     kalguuran: false,
     wildwood: false,
     anomalies: false,
@@ -370,13 +384,15 @@ export const RunStatisticsModule = () => {
   } = useRepositorySessions(repositorySessionIds, isGlobal);
   const globalStatistics = useMemo(() => aggregateRunStatisticsSessions(
     collectRunStatisticsSessions({
-      mapCount: maps.length,
+      maps, mapCount: maps.length,
       manualStatistics,
       baselineItems,
       lootItems,
     }, activeSessionId, savedSessions),
-  ), [activeSessionId, baselineItems, lootItems, manualStatistics, maps.length, savedSessions]);
+  ), [activeSessionId, baselineItems, lootItems, manualStatistics, maps, savedSessions]);
   const mapCount = isGlobal ? globalStatistics.mapCount : maps.length;
+  const sessionEncounters = useMemo(() => summarizeConfirmedEncounters(maps), [maps]);
+  const encounters = isGlobal ? globalStatistics.confirmedEncounters : sessionEncounters;
   const sessionAnomalyRows = useMemo(() => [...(manualStatistics.atlasAnomalies ?? [])].sort(
     (left, right) => left.name.localeCompare(right.name),
   ), [manualStatistics.atlasAnomalies]);
@@ -569,8 +585,8 @@ export const RunStatisticsModule = () => {
               onClose={() => setRunStatisticsInfoDismissed(true)}
             >
               <Text size="xs">
-                Optional and local. Encounter counts are entered manually; valuable beast gains come
-                from Baseline and Return loot snapshots. The Session view is editable. All sessions is
+                Confirmed map modifiers come from Map Capture. You can also record encounters manually.
+                Valuable beast gains come from Baseline and Return loot snapshots. All sessions is
                 read-only and combines each explicitly reported metric without treating missing values
                 as zero. Svalinn uses recorded Craters. Nothing here is included in Discord shares.
               </Text>
@@ -585,6 +601,27 @@ export const RunStatisticsModule = () => {
           )}
 
           <div className="run-statistics-sections">
+          <StatisticsSection
+            id="confirmed"
+            title="Confirmed map modifiers"
+            description="Maps that rolled an explicit encounter modifier. A map can count toward several families."
+            badge={<Badge size="sm" variant="light" color="gray">{encounters.readable} readable · {mapCount - encounters.readable} unknown</Badge>}
+            opened={openSections.confirmed}
+            onToggle={toggleSection}
+          >
+            {encounters.readable > 0 ? (
+              <Stack gap={4}>
+                {Object.entries(encounters.counts).map(([family, count]) => (
+                  <Group key={family} justify="space-between">
+                    <Text size="xs">{encounterFamilyLabels[family as EncounterFamily]}</Text>
+                    <Text size="xs">{count} / {encounters.readable} maps</Text>
+                  </Group>
+                ))}
+              </Stack>
+            ) : (
+              <Text size="xs" c="dimmed">{mapCount ? 'No readable map modifiers in these captures.' : 'Capture a map to see its encounter modifiers.'}</Text>
+            )}
+          </StatisticsSection>
           <StatisticsSection
             id="kalguuran"
             title="Kalguuran"
@@ -669,8 +706,7 @@ export const RunStatisticsModule = () => {
             <Text className="run-statistics-subheading" size="xs" fw={700}>Model / normalization</Text>
             <Paper className="run-statistics-technical-panel" withBorder p="xs">
               <Text size="xs" c="dimmed">
-                Observed Crater rate uses the Map Log and Svalinn uses recorded Craters. No Atlas or
-                scarab adjustment is applied in this first setup-aware slice.
+                Observed Crater rate uses the Map Log and Svalinn uses recorded Craters. Rates use the observed counts without an Atlas or investment adjustment.
               </Text>
             </Paper>
             <DataQualityBlock
@@ -743,8 +779,9 @@ export const RunStatisticsModule = () => {
             <Text className="run-statistics-subheading" size="xs" fw={700}>Model / normalization</Text>
             <Paper className="run-statistics-technical-panel" withBorder p="xs">
               <Text size="xs" c="dimmed">
-                No spawn-rate adjustment is made. Scarab of Wisps pre-empowers monsters with wisps;
-                it is retained as setup context, not treated as proven extra Wildwood chance.
+                The rate counts recorded Wildwood encounters. Atlas choices and map investment are recorded separately.
+                {!isGlobal && modelEligibleContext(wildwoodSetup)?.scarabNames.includes('Scarab of Wisps') &&
+                  ' The recorded Scarab of Wisps pre-empowers monsters with wisps.'}
               </Text>
             </Paper>
             <DataQualityBlock
@@ -879,8 +916,7 @@ export const RunStatisticsModule = () => {
             <Text className="run-statistics-subheading" size="xs" fw={700}>Model / normalization</Text>
             <Paper className="run-statistics-technical-panel" withBorder p="xs">
               <Text size="xs" c="dimmed">
-                Each anomaly remains a direct observed rate. Map modifiers and Risk-scarab setup are
-                not normalized or claimed to cause the result; stable cohorts come later.
+                Each rate counts recorded anomalies across the tracked maps. It includes no adjustment for map modifiers or map investment.
               </Text>
             </Paper>
             <DataQualityBlock
@@ -913,7 +949,7 @@ export const RunStatisticsModule = () => {
                   {globalStatistics.beastSessionCount.toLocaleString()} snapshot
                   {globalStatistics.beastSessionCount === 1 ? ' session' : ' sessions'}
                   {' · '}{globalStatistics.beastMapCount.toLocaleString()} maps. Setup estimates stay in
-                  Session view because Atlas and scarab configurations can differ between runs.
+                  Session view because Atlas and investment settings can differ between runs.
                 </Text>
               </Paper>
             )}
@@ -971,7 +1007,7 @@ export const RunStatisticsModule = () => {
               <Paper className="run-statistics-technical-panel" withBorder p="xs">
                 <Text size="xs" c="dimmed">
                   No cross-session Bestiary model is calculated because each run can have a different
-                  Atlas tree, scarabs, and capture multiplier.
+                  Atlas tree, map investment and capture multiplier.
                 </Text>
               </Paper>
             ) : beastModel ? (
@@ -1054,7 +1090,7 @@ export const RunStatisticsModule = () => {
                   {globalStatistics.mercenarySessionCount.toLocaleString()} reporting
                   {globalStatistics.mercenarySessionCount === 1 ? ' session' : ' sessions'}
                   {' · '}{globalStatistics.mercenaryMapCount.toLocaleString()} tracked maps. Per-run Atlas
-                  and scarab context stays in Session view.
+                  and map investment details stay in Session view.
                 </Text>
               </Paper>
             )}
@@ -1180,7 +1216,7 @@ export const RunStatisticsModule = () => {
               <Paper className="run-statistics-technical-panel" withBorder p="xs">
                 <Text size="xs" c="dimmed">
                   Combined archetype rates are not normalized across different attribute suppression,
-                  House bias, encounter chance, or Trarthan scarab setups.
+                  House bias, encounter chance or different map investments.
                 </Text>
               </Paper>
             ) : mercenarySetupContext && mercenaryAtlasSetup ? (

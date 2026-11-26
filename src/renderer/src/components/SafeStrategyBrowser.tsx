@@ -81,7 +81,7 @@ function SafeBoard({ path, title, onLoad, onContinue, onName, sort, order, onSor
 }
 
 export function SafeStrategyBrowser({ onShare, onImport, applySetup, runAction, onLoadPersonal, message }: {
-  onShare: () => void; onImport: () => void; applySetup: (s: StrategySetupCode, action: SafeStrategyAction) => Promise<void>
+  onShare: () => void; onImport: () => void; applySetup: (s: StrategySetupCode, action: SafeStrategyAction, continuationLeague?: string) => Promise<void>
   runAction: (action: () => Promise<void>, fresh: boolean, current: () => boolean) => void; onLoadPersonal: (id: string) => void; message: string | null
 }) {
   const [view, setView] = useState('current'), [league, setLeague] = useState(activeKnownLeagues()[0] ?? '')
@@ -128,9 +128,8 @@ export function SafeStrategyBrowser({ onShare, onImport, applySetup, runAction, 
       action.assertCurrent()
       if (freshSession) {
         if (fresh.reusable_setup.status !== 'available') throw new Error('The reusable setup is unavailable.')
-        await applySetup(fresh.reusable_setup.value, action)
+        await applySetup(fresh.reusable_setup.value, action, fresh.league ?? undefined)
         action.assertCurrent()
-        useSessionStore.getState().updateSetting('leagueName', fresh.league ?? '')
       }
       useSessionStore.getState().updateSetting('strategyTarget', target)
     }), freshSession, action.current)

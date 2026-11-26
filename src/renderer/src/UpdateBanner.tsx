@@ -27,7 +27,7 @@ const VersionEntry = ({ entry, defaultOpen }: { entry: typeof CHANGELOG[0]; defa
         <ActionIcon size={14} variant="transparent" c="dimmed">
           {open ? <IconChevronDown size={9} /> : <IconChevronRight size={9} />}
         </ActionIcon>
-        <Text size="xs" fw={700} c="blue">v{entry.version}</Text>
+        <Text size="xs" fw={700} c="blue">v{entry.rangeLabel ?? entry.version}</Text>
         <Text size="xs" c="dimmed">{entry.date}</Text>
         <Badge size="xs" color="gray" variant="outline">{entry.changes.length} changes</Badge>
       </Group>

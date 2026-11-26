@@ -1,5 +1,5 @@
 import {
-  ActionIcon, Alert, Badge, Button, Card, Group, Modal, Select, Stack, Text,
+  ActionIcon, Alert, Button, Group, Modal, Select, Stack, Text,
   TextInput, Tooltip,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -17,6 +17,7 @@ import {
   utcIsoToLocalDateTimeInput,
 } from '../utils/retrospectives';
 import { CollapsibleSection } from './ui/CollapsibleSection';
+import { RetrospectiveLeagueSection } from './RetrospectiveLeagueSection';
 import { SessionCompareModal } from './SessionCompareModal';
 import { useRepositorySessions } from '../repository/useRepositorySessions';
 
@@ -201,17 +202,12 @@ export const PersonalRetrospectives = ({ onLoadSession }: Props) => {
             defaultOpen={false}
           >
             <Stack gap="xs">
-              {groups.map((group) => (
-                <Card key={group.leagueKey} padding="xs" radius="sm" withBorder>
-                  <Stack gap={6}>
+              {groups.map((group, index) => (
+                <RetrospectiveLeagueSection key={group.leagueKey} league={group.leagueName}
+                  countLabel={`${group.sessions.length} session${group.sessions.length === 1 ? '' : 's'}`} newest={index === 0}>
+                  <Stack gap={6} mt="xs">
                     <Group justify="space-between" align="flex-start" wrap="nowrap">
                       <div>
-                        <Group gap={6}>
-                          <Text size="xs" fw={700}>{group.leagueName}</Text>
-                          <Badge size="xs" variant="light">
-                            {group.sessions.length} session{group.sessions.length === 1 ? '' : 's'}
-                          </Badge>
-                        </Group>
                         <Tooltip label={displayUtc(group.cutoffUtc)} withArrow>
                           <Text size="xs" c="dimmed" style={{ cursor: 'help' }}>
                             Cutoff {new Date(group.cutoffUtc).toLocaleString()}
@@ -287,7 +283,7 @@ export const PersonalRetrospectives = ({ onLoadSession }: Props) => {
                       </Stack>
                     )}
                   </Stack>
-                </Card>
+                </RetrospectiveLeagueSection>
               ))}
             </Stack>
           </CollapsibleSection>

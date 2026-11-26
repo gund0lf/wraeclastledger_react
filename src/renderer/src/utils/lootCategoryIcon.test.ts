@@ -10,6 +10,10 @@ const iconClass = (category: LootCategory): string => {
 };
 
 describe('loot category artwork fallbacks', () => {
+  it('shows painted Thread artwork for the category', () => {
+    expect(renderToStaticMarkup(createElement(LootCategoryGlyph, { category: 'Threads' }))).toContain('wl_thread.png');
+  });
+
   it('keeps all five Unique families visually distinct when artwork is unavailable', () => {
     expect(iconClass('Unique Weapons')).toBe('sword');
     expect(iconClass('Unique Armours')).toBe('shield');

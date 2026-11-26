@@ -10,6 +10,8 @@
  * live. Sessions saved before C (or that never had a correction) resolve to 0.
  */
 import type { SavedSession } from '../types';
+import { legacyDropMaps, observedDropAverage } from './mapParser';
+import { getManifest } from './gameData';
 import type { RepositorySessionSummary } from '../../../shared/sessionRepositoryIpc';
 import { computeProfit, computeMultiplier } from './profit';
 import { computeTimeEstimate, type TimeEstimate } from './timeEstimate';
@@ -63,7 +65,9 @@ export interface CompareColumn {
   createdAt: string;
   n: number;              // map count
   multiplier: number;
-  avgQuant: number;
+  avgQuant: number | null;
+  avgAtlasDrops: number | null;
+  avgMoreThreads: number | null;
   avgRarity: number;
   avgPack: number;
   avgCurr: number;
@@ -81,7 +85,7 @@ export interface CompareColumn {
 
 const avgOf = (
   session: SavedSession,
-  key: 'quantity' | 'rarity' | 'packSize' | 'moreCurrency'
+  key: 'rarity' | 'packSize' | 'moreCurrency'
 ): number => {
   const n = session.maps.length;
   if (n === 0) return 0;
@@ -106,7 +110,9 @@ export function buildCompareColumn(session: SavedSession): CompareColumn {
     createdAt: session.createdAt,
     n,
     multiplier,
-    avgQuant:  avgOf(session, 'quantity'),
+    avgQuant: observedDropAverage(legacyDropMaps(session.maps, session.settings.leagueName, getManifest().leagueRules), 'quantity'),
+    avgAtlasDrops: observedDropAverage(session.maps, 'atlasDrops'),
+    avgMoreThreads: observedDropAverage(session.maps, 'moreThreads'),
     avgRarity: avgOf(session, 'rarity'),
     avgPack:   avgOf(session, 'packSize'),
     avgCurr:   avgOf(session, 'moreCurrency'),

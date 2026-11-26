@@ -119,6 +119,14 @@ export const TAG_OPTIONS = [
   { value: 'anarchy',     label: 'Anarchy' },
   { value: 'cartography', label: 'Cartography' },
   { value: 'trarthus',    label: 'Trarthus' },
+  { value: 'sentinel',    label: 'Sentinel' },
+  { value: 'mirage',      label: 'Mirage' },
+  { value: 'wildwood',    label: 'Wildwood' },
+  { value: 'shrine',      label: 'Shrine' },
+  { value: 'torment',     label: 'Torment' },
+  { value: 'harbinger',   label: 'Harbinger' },
+  { value: 'metamorph',   label: 'Metamorph' },
+  { value: 'titanic',     label: 'Titanic' },
   { value: 'boss-rush',   label: 'Boss Rush' },
   { value: 'mirage-rush', label: 'Mirage Rush' },
   { value: 'eater',       label: 'Eater of Worlds' },
@@ -135,9 +143,14 @@ export const TAG_OPTIONS = [
   { value: 'astrolabe-fungal',    label: 'Astrolabe: Fungal (Blight)' },
   { value: 'astrolabe-chaotic',   label: 'Astrolabe: Chaotic (Ultimatum)' },
   { value: 'astrolabe-lightless', label: 'Astrolabe: Lightless (Abyss)' },
+  { value: 'astrolabe-immortal',  label: 'Astrolabe: Immortal' },
+  { value: 'astrolabe-feral',     label: 'Astrolabe: Feral' },
+  { value: 'astrolabe-royal',     label: 'Astrolabe: Royal' },
+  { value: 'astrolabe-cryptic',   label: 'Astrolabe: Cryptic' },
 ];
 
 export const ALL_TYPE_TAGS = TAG_OPTIONS.slice(1).map((t) => t.value);
+export const PUBLIC_STRATEGY_TAG_LIMIT = 24;
 
 export const TAG_COLORS: Record<string, string> = {
   regular: 'gray', originator: 'orange', empowered: 'violet',
@@ -177,7 +190,8 @@ export const TAG_SHORT: Record<string, string> = {
   'empowered-originator': 'emp+orig',
   'empowered':            'emp',
   'boss-rush':            'boss',
-  'mirage-rush':          'mirage',
+  'mirage-rush':          'Mirage Rush',
+  'mirage':               'Mirage',
   'delirium':             'deli',
   'astrolabe':            'astro',
   'astrolabe-templar':    'a:templ',
@@ -191,7 +205,13 @@ export const TAG_SHORT: Record<string, string> = {
   'astrolabe-fungal':     'a:fung',
   'astrolabe-chaotic':    'a:chaos',
   'astrolabe-lightless':  'a:light',
+  'astrolabe-immortal':   'a:immortal',
+  'astrolabe-feral':      'a:feral',
+  'astrolabe-royal':      'a:royal',
+  'astrolabe-cryptic':    'a:cryptic',
 };
+
+export const fullTagBadge = (tag: string) => tag === 'mirage-rush' || tag === 'mirage' ? TAG_SHORT[tag] : tag;
 
 // ─── Strategy Browser sorting ─────────────────────────────────────────────────
 // Mirrors the desktop-facing part of the server's SORT_EXPR allow-list

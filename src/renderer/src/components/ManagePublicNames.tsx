@@ -1,7 +1,7 @@
 import { Alert, Badge, Button, Divider, Group, Modal, Select, Stack, Text, TextInput } from '@mantine/core'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AuthorContext, AuthorManagement, PreparedAuthorRequest } from '../../../shared/authorHandoff'
-import { forgetAuthor, invalidateAuthorEpoch } from '../../../shared/authorRecognition'
+import { forgetAuthor, initialAssignmentRegistration, invalidateAuthorEpoch } from '../../../shared/authorRecognition'
 import { normalizePublicAuthorName, PUBLIC_NAME_RETENTION_NOTICE, PUBLIC_NAME_RETIRE_NOTICE } from '../../../shared/authorNames'
 import { useSessionStore } from '../store/useSessionStore'
 import { AuthorConfirmationPanel } from './AuthorConfirmationPanel'
@@ -21,7 +21,14 @@ export function ManagePublicNames({ opened, onClose, selectedStrategy, embedded 
   useEffect(() => {
     if (opened && initialAction === 'recover') { setKind('recovery'); setActionOpen(true) }
   }, [opened, initialAction])
-  const [name, setName] = useState('')
+  const [newName, setNewName] = useState('')
+  const [nameChoice, setNameChoice] = useState<string | null>(null)
+  const savedName = initialAssignmentRegistration(preferences, nameChoice)
+  const name = savedName?.name ?? newName
+  useEffect(() => {
+    setNameChoice(null)
+    setNewName('')
+  }, [opened, selectedId])
   const [registration, setRegistration] = useState<string | null>(null)
   const [request, setRequest] = useState<PreparedAuthorRequest | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -138,8 +145,12 @@ export function ManagePublicNames({ opened, onClose, selectedStrategy, embedded 
           { value: 'unregister', label: 'Retire a public name' },
         ]} />}
       {embedded && <Text size="sm" fw={600} ta="center">{kind === 'unregister' ? 'Retire this name' : 'Recover your name'}</Text>}
-      {kind === 'initial_assignment' && <TextInput size="xs" label="Public author name" styles={inputStyles} value={name} maxLength={256}
-        disabled={!!request} onChange={(e) => setName(e.currentTarget.value)} />}
+      {kind === 'initial_assignment' && preferences.registrations.some(r => r.confirmed) && <Select size="xs" label="Choose a public name"
+        styles={inputStyles} disabled={!!request} allowDeselect={false} value={savedName?.registrationId ?? 'new'}
+        data={[...preferences.registrations.filter(r => r.confirmed).map(r => ({ value: r.registrationId, label: r.name })),
+          { value: 'new', label: 'Use a new name' }]} onChange={setNameChoice} />}
+      {kind === 'initial_assignment' && !savedName && <TextInput size="xs" label="Public author name" styles={inputStyles} value={name} maxLength={256}
+        disabled={!!request} onChange={(e) => setNewName(e.currentTarget.value)} />}
       {kind === 'initial_assignment' && <Text size="xs" c="dimmed">{PUBLIC_NAME_RETENTION_NOTICE}</Text>}
       {embedded && kind === 'unregister'
         ? <Text fw={700} ta="center" mt={-6} style={{ fontSize: FONT.lg }} aria-label="Name to retire">{preferences.registrations.find((r) => r.registrationId === registration)?.name ?? 'Name no longer saved on this PC'}</Text>

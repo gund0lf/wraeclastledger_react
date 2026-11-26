@@ -94,10 +94,26 @@ export function decodeSessionPayload(
     !Array.isArray(payload.settings)
     ? payload.settings as unknown as Partial<SessionSettings> : {};
   const deviceSettings: Partial<SessionSettings> = {};
+  if ('deliriumOrbSpend' in settings) {
+    if (!Array.isArray(settings.deliriumOrbSpend)) throw new Error('Invalid Delirium Orb spending list');
+    const names = new Set<string>();
+    deviceSettings.deliriumOrbSpend = settings.deliriumOrbSpend.map(row => {
+      if (!row || typeof row.type !== 'string' || !row.type.trim() || names.has(row.type)
+        || !Number.isSafeInteger(row.count) || row.count < 0
+        || !(row.priceEach === null || (Number.isFinite(row.priceEach) && row.priceEach >= 0))) {
+        throw new Error('Invalid Delirium Orb spending row');
+      }
+      names.add(row.type);
+      return { type: row.type, count: row.count, priceEach: row.priceEach };
+    });
+  }
   if ('threadSlots' in settings) {
     deviceSettings.threadSlots = Array.isArray(settings.threadSlots) ? settings.threadSlots.slice(0, 16).map(slot =>
-      slot && typeof slot.name === 'string' && Number.isInteger(slot.count) && slot.count >= 1 && slot.count <= 100
-        ? { name: slot.name, count: slot.count, price: Number.isFinite(slot.price) && slot.price >= 0 ? slot.price : 0 }
+      slot && typeof slot.name === 'string' && Number.isInteger(slot.count) && slot.count >= 0 && slot.count <= 100
+        ? { name: slot.name, count: slot.count, price: Number.isFinite(slot.price) && slot.price >= 0 ? slot.price : 0,
+          ...(slot.granted !== undefined && Number.isInteger(slot.granted) && slot.granted >= 0 && slot.granted <= 100
+            ? { granted: slot.granted } : {}),
+          ...(typeof slot.paused === 'boolean' ? { paused: slot.paused } : {}) }
         : { name: '', count: 1, price: 0 }) : [];
   }
   if ('ember' in settings) {

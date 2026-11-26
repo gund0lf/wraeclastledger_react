@@ -7,6 +7,7 @@ import { DIVINE_PRICE_COOLDOWN_MS, requestDivinePrice, sanitizeExclusionTerms } 
 import { confirmedLeagueSync, currentLeagueSync, getCurrentLeague, leagueFallbackSince, normalizeLeagueOverride, setLeagueOverrideValue } from '../utils/league';
 import { ModGroupState, cloneDefaultGroups } from '../utils/regexBuilderPresets';
 import { isRetrospectiveLeague, normalizeLeagueKey } from '../utils/retrospectives';
+import { confirmedMapEncounters } from '../utils/mapParser';
 import { MAP_DEVICE_SLOT_COUNT } from '../../../shared/mapDevice';
 import { sanitizeBrickInclusionEntries } from '../../../shared/brickMods';
 import type {
@@ -123,16 +124,18 @@ export function flushPersist(): void {
 
 /** Strip rawText from a MapData before persisting — flags are materialised first so re-detection on load still works. */
 function stripRawText(m: MapData): MapData {
-  const raw = (m as any).rawText as string | undefined ?? '';
+  const raw = m.rawText ?? '';
+  const confirmedEncounters = confirmedMapEncounters(m);
   // Ensure subtype flags are populated before discarding rawText
   const patched: MapData = {
     ...m,
+    ...(confirmedEncounters && { confirmedEncounters }),
     isOriginator:      m.isOriginator      || raw.includes("Originator's Memories"),
     isEmpoweredMirage: m.isEmpoweredMirage  || raw.includes('Empowered Mirage which covers the entire Map'),
     isNightmare:       m.isNightmare        || raw.includes('Nightmare Map'),
     isCorrupted:       m.isCorrupted        || /\bCorrupted\b/.test(raw),
   };
-  delete (patched as any).rawText;
+  delete patched.rawText;
   return patched;
 }
 
@@ -955,11 +958,13 @@ export const useSessionStore = create<SessionStoreState>()(
           // but wrongly per the runtime).
           const safeM = m as Partial<MapData> & { rawText?: string };
           const raw = safeM.rawText ?? '';
+          const confirmedEncounters = confirmedMapEncounters(safeM);
           const needsRedetect = !safeM.isOriginator && !safeM.isEmpoweredMirage && !safeM.isNightmare && raw.length > 0;
           return {
             isOriginator: false, isEmpoweredMirage: false,
             isNightmare: false,  isCorrupted: false,
             ...safeM,
+            ...(confirmedEncounters && { confirmedEncounters }),
             ...(needsRedetect ? {
               isOriginator:     raw.includes("Originator's Memories"),
               isEmpoweredMirage: raw.includes('Empowered Mirage which covers the entire Map'),

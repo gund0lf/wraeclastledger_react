@@ -285,6 +285,7 @@ const COST_SUMMARY_SETTING_KEYS = [
   'advDeliOrbType',
   'advDeliOrbQtyPerMap',
   'advDeliOrbPriceEach',
+  'deliriumOrbSpend',
   'advSplitPrice',
   'advAstrolabeType',
   'advAstrolabePrice',

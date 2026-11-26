@@ -76,6 +76,11 @@ describe('D5(b) — ended-league handling', () => {
     expect(isLeagueEnded('Unknown League', Date.parse('2099-01-01T00:00:00Z'))).toBe(false);
   });
 
+  it('ends Allflame at its exact November cutoff', () => {
+    const cutoff = Date.parse('2026-11-11T00:00:00Z');
+    expect(isLeagueEnded('Allflame', cutoff - 1)).toBe(false);
+    expect(activeKnownLeagues(cutoff)).not.toContain('Allflame');
+  });
   it('activeKnownLeagues drops ended entries but keeps the rest in order', () => {
     expect(activeKnownLeagues(BEFORE_END)).toEqual([...KNOWN_LEAGUES]);
     const after = activeKnownLeagues(AFTER_END);
@@ -168,7 +173,7 @@ describe('getActiveContext — detection', () => {
     vi.stubGlobal('window', { api: { fetchCurrencyOverview: probe } });
     expect(await league.getActiveContext()).toEqual({ leagueName: 'Covens', source: 'fallback' });
     expect(league.confirmedLeagueSync()).toBeNull();
-    expect(probe.mock.calls).toEqual([['Covens'], ['Allflame']]);
+    expect(probe.mock.calls).toEqual([['Covens']]);
   });
 
   it('detects the first KNOWN_LEAGUES entry with live data (>5 lines)', async () => {

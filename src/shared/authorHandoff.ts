@@ -3,6 +3,7 @@ import type { AuthorSubmissionMetadata } from './authorSubmission'
 import { normalizePublicAuthorName } from './authorNames'
 import type { DurableShareView } from './durableShare'
 
+export const COVENS_SHARE_UNAVAILABLE = 'The server cannot currently accept Covens setup fields. Your session is kept.'
 export const AUTHOR_HANDOFF_CHANNEL = 'author-handoff:request'
 export const AUTHOR_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 export interface AuthorContext { sessionId: string; generation: string }
@@ -15,6 +16,7 @@ export type AuthorManagement =
   | { kind: 'unregister'; intent: { registration_id: string } }
 export type AuthorRequest =
   | { action: 'available' }
+  | { action: 'share-formats' }
   | { action: 'read'; path: string }
   | { action: 'state' }
   | { action: 'share-results' }
@@ -50,6 +52,7 @@ export interface PublicationOperation {
 export interface AuthorConfirmation extends AuthorReceipt { outcome: AuthorOutcome }
 export interface AuthorResults {
   available: boolean
+  'share-formats': boolean
   read: unknown
   state: AuthorServiceState
   'share-results': DurableShareView[]

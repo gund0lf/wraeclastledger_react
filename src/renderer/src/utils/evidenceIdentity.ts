@@ -15,7 +15,10 @@ export const EVIDENCE_IDENTITY_KIND = 'sha256-v1' as const;
 export const SETUP_SCHEMA_VERSION = 1 as const;
 export const SETUP_SCHEMA_VERSION_V2 = 2 as const;
 
+import { covensSetupIdentity, reusableCovens } from '../../../shared/covensImport';
+import type { CovensWire } from '../../../shared/covensWireValidator.mjs';
 export interface EvidenceSetupSnapshotV1 {
+  covens?: ReturnType<typeof covensSetupIdentity>;
   schemaVersion: 1;
   leagueKey: string;
   mapType: string | null;
@@ -59,8 +62,9 @@ export interface SetupSnapshotInput {
 }
 
 export interface EvidenceAuthoredRollupV1 {
+  covens?: CovensWire;
   mapCount: number;
-  avgQuant: number;
+  avgQuant: number | null;
   avgRarity: number;
   avgPack: number;
   avgCurrency: number;
@@ -100,7 +104,7 @@ type HardSetupField = keyof Pick<
 >;
 
 export interface SetupMismatch {
-  field: HardSetupField | 'multiplyingModifiers';
+  field: HardSetupField | 'multiplyingModifiers' | 'covens';
   expected: unknown;
   actual: unknown;
 }
@@ -209,7 +213,7 @@ export function buildSetupSnapshot(input: SetupSnapshotInput): EvidenceSetupSnap
 
 /** Build from the exact values reconstructed from the Discord wire. */
 export function setupSnapshotFromDiscordImport(parsed: DiscordImport): EvidenceSetupSnapshot {
-  return buildSetupSnapshot({
+  const snapshot = buildSetupSnapshot({
     league: parsed.league,
     mapType: parsed.mapType,
     groupSize: parsed.groupSize,
@@ -226,12 +230,14 @@ export function setupSnapshotFromDiscordImport(parsed: DiscordImport): EvidenceS
     multiplyingModifiersAllocated: parsed.multiplyingModifiersAllocated,
     multiplyingModifiersFragmentCount: parsed.multiplyingModifiersFragmentCount,
   });
+  return parsed.covens ? { ...snapshot, covens: covensSetupIdentity(reusableCovens(parsed.covens)) } : snapshot;
 }
 
 export function authoredRollupFromDiscordImport(parsed: DiscordImport): EvidenceAuthoredRollupV1 {
   return {
+    ...(parsed.covens ? { covens: parsed.covens } : {}),
     mapCount: parsed.mapCount,
-    avgQuant: parsed.avgQuant,
+    avgQuant: parsed.covens ? null : parsed.avgQuant,
     avgRarity: parsed.avgRarity,
     avgPack: parsed.avgPack,
     avgCurrency: parsed.avgCurr,
@@ -360,6 +366,8 @@ export function compareSetupSnapshots(
   actual: EvidenceSetupSnapshot,
 ): SetupMismatch[] {
   const mismatches: SetupMismatch[] = [];
+  if (canonicalJson(expected.covens ?? null) !== canonicalJson(actual.covens ?? null))
+    mismatches.push({field: 'covens', expected: expected.covens, actual: actual.covens});
   for (const field of HARD_SETUP_FIELDS) {
     if (canonicalJson(expected[field]) !== canonicalJson(actual[field])) {
       mismatches.push({ field, expected: expected[field], actual: actual[field] });

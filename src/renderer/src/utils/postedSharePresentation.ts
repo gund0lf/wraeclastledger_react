@@ -1,6 +1,6 @@
 import type { ShareDisplaySnapshot } from '../../../shared/durableShare'
 import { decodeDiscordSharePayload } from './discordShareWire'
-import { formatDiscordExport } from './discordExport'
+import { formatDiscordExport, postedCardExport } from './discordExport'
 import { compactPostedCardPreview } from './exportBudget'
 
 /** Historical fields and the preview share one accepted payload. Missing or
@@ -15,6 +15,6 @@ export function postedSharePresentation(snapshot: ShareDisplaySnapshot | null) {
     title: parsed.strategyName, notes: parsed.strategyNotes, tags: parsed.typeTags,
     group: parsed.isGroupPlay, groupSize: parsed.groupSize,
     time: parsed.sessionMinutes == null ? '' : String(parsed.sessionMinutes),
-    preview: compactPostedCardPreview(formatDiscordExport(parsed), parsed.lootSummary),
+    preview: compactPostedCardPreview(postedCardExport(formatDiscordExport(parsed), parsed), parsed.lootSummary),
   }
 }

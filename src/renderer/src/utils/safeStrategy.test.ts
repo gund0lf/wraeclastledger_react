@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fixture from './__fixtures__/safe-strategy-v2.json'
 import listContract from './__fixtures__/safe-strategy-list-v2.json'
 import { parseSafeDetail, parseSafeList, parseSafeRow, parseSafeRun, sameSafeIdentity } from '../../../shared/safeStrategy'
@@ -139,43 +139,47 @@ describe('shared safe strategy reader contract', () => {
     expect(snapshot).toEqual(buildSetupSnapshot(fixture.input))
     expect(await fingerprintSetupSnapshot(snapshot)).toBe(await fingerprintSetupSnapshot(buildSetupSnapshot(fixture.input)))
   })
-  it('requires confirmed registration identity and rejects frozen continuations', async () => {
-    await expect(bindSafeTarget(parseSafeDetail(fixture.frozen), 'replace', prefs)).rejects.toThrow('Frozen')
-    await expect(bindSafeTarget(parseSafeDetail(fixture.detail), 'replace', emptyAuthorPreferences())).rejects.toThrow('Confirm')
-    expect(await bindSafeTarget(parseSafeDetail(fixture.detail), 'evidence', prefs)).toMatchObject({ operation: 'evidence', revision: 2, seed: { version: 2 } })
-  })
-  it('cannot rebase an old evidence pin, while replacement binds only after explicit review', async () => {
-    const d = parseSafeDetail(fixture.detail)
-    const legacy = migrateStrategyTarget({ evidenceTargetStrategyId: d.id, evidenceTargetExpectedRevision: 1,
-      evidenceTargetSetupFingerprint: 'sha256-v1:' + 'a'.repeat(64) })!
-    await expect(bindSafeTarget(d, 'evidence', prefs, legacy)).rejects.toThrow('pin')
-    const replacement = migrateStrategyTarget({ updateTargetStrategyId: d.id })!
-    expect((await bindSafeTarget(d, 'replace', prefs, replacement)).revision).toBe(2)
-  })
-  it('rejects changed revision before using the local run and keeps the intent untouched', async () => {
-    const d = parseSafeDetail(fixture.detail), target = await bindSafeTarget(d, 'replace', prefs)
-    await expect(prepareSafeContinuation(target, { ...d, revision: 3 }, prefs, '', [])).rejects.toThrow('revision changed')
-    expect(target.revision).toBe(2)
-  })
-  it('prepares real replacement/evidence v5 submissions from the public seed and retains exact run identity', async () => {
-    const d = parseSafeDetail(fixture.detail)
-    const maps = Array.from({ length: 2 }, () => ({ quantity: 100, rarity: 60, packSize: 40, moreCurrency: 20, moreScarabs: 10, explicitModCount: 8 }))
-    const raw = buildDiscordExport({ maps, settings: { ...DEFAULT_SETTINGS, divinePrice: 200, leagueName: 'Allflame', mapType: '8-mod', chiselType: '',
-      scarabs: fixture.input.scarabs.map(s => ({ name: s.name, cost: 4 })), atlasTreeUrl: fixture.input.atlasTreeUrl,
-      multiplyingModifiersAllocated: true, fragmentCountOverride: 3 }, lootItems: [], baselineTotal: 0, investmentNeutralization: 0,
-      stratName: 'Synthetic Herd', shareTags: ['bestiary'], isGroupPlay: false, gameDataRevision: 4, gameDataPatchVersion: '3.29' })
-    for (const operation of ['replace', 'evidence'] as const) {
-      const target = await bindSafeTarget(d, operation, prefs)
-      const proof = await prepareSafeContinuation(target, d, prefs, raw, [1000, 2000])
-      const tuple = JSON.parse(buildDiscordSharePayload(parseDiscordExport(raw)!)); tuple[1] = proof.operation
-      const wire = buildAuthorSubmission(JSON.stringify(tuple), { author: proof.author, expected_revision: proof.revision, confirmation_request_id: null })
-      const decoded = decodeDiscordSharePayload(wire)
-      expect(decoded?.operation).toBe(operation === 'replace' ? 'update' : 'evidence')
-      if (operation === 'evidence') {
-        expect(decoded?.evidenceExpectedRevision).toBe(2)
-        await expect(prepareSafeContinuation(target, d, prefs, raw, [1000])).rejects.toThrow('timestamp')
+  describe('continuation while the fixture league was open', () => {
+    beforeEach(() => { vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 1)) })
+    afterEach(() => { vi.restoreAllMocks() })
+    it('requires confirmed registration identity and rejects frozen continuations', async () => {
+      await expect(bindSafeTarget(parseSafeDetail(fixture.frozen), 'replace', prefs)).rejects.toThrow('Frozen')
+      await expect(bindSafeTarget(parseSafeDetail(fixture.detail), 'replace', emptyAuthorPreferences())).rejects.toThrow('Confirm')
+      expect(await bindSafeTarget(parseSafeDetail(fixture.detail), 'evidence', prefs)).toMatchObject({ operation: 'evidence', revision: 2, seed: { version: 2 } })
+    })
+    it('cannot rebase an old evidence pin, while replacement binds only after explicit review', async () => {
+      const d = parseSafeDetail(fixture.detail)
+      const legacy = migrateStrategyTarget({ evidenceTargetStrategyId: d.id, evidenceTargetExpectedRevision: 1,
+        evidenceTargetSetupFingerprint: 'sha256-v1:' + 'a'.repeat(64) })!
+      await expect(bindSafeTarget(d, 'evidence', prefs, legacy)).rejects.toThrow('pin')
+      const replacement = migrateStrategyTarget({ updateTargetStrategyId: d.id })!
+      expect((await bindSafeTarget(d, 'replace', prefs, replacement)).revision).toBe(2)
+    })
+    it('rejects changed revision before using the local run and keeps the intent untouched', async () => {
+      const d = parseSafeDetail(fixture.detail), target = await bindSafeTarget(d, 'replace', prefs)
+      await expect(prepareSafeContinuation(target, { ...d, revision: 3 }, prefs, '', [])).rejects.toThrow('revision changed')
+      expect(target.revision).toBe(2)
+    })
+    it('prepares real replacement/evidence v5 submissions from the public seed and retains exact run identity', async () => {
+      const d = parseSafeDetail(fixture.detail)
+      const maps = Array.from({ length: 2 }, () => ({ quantity: 100, rarity: 60, packSize: 40, moreCurrency: 20, moreScarabs: 10, explicitModCount: 8 }))
+      const raw = buildDiscordExport({ maps, settings: { ...DEFAULT_SETTINGS, divinePrice: 200, leagueName: 'Allflame', mapType: '8-mod', chiselType: '',
+        scarabs: fixture.input.scarabs.map(s => ({ name: s.name, cost: 4 })), atlasTreeUrl: fixture.input.atlasTreeUrl,
+        multiplyingModifiersAllocated: true, fragmentCountOverride: 3 }, lootItems: [], baselineTotal: 0, investmentNeutralization: 0,
+        stratName: 'Synthetic Herd', shareTags: ['bestiary'], isGroupPlay: false, gameDataRevision: 4, gameDataPatchVersion: '3.29' })
+      for (const operation of ['replace', 'evidence'] as const) {
+        const target = await bindSafeTarget(d, operation, prefs)
+        const proof = await prepareSafeContinuation(target, d, prefs, raw, [1000, 2000])
+        const tuple = JSON.parse(buildDiscordSharePayload(parseDiscordExport(raw)!)); tuple[1] = proof.operation
+        const wire = buildAuthorSubmission(JSON.stringify(tuple), { author: proof.author, expected_revision: proof.revision, confirmation_request_id: null })
+        const decoded = decodeDiscordSharePayload(wire)
+        expect(decoded?.operation).toBe(operation === 'replace' ? 'update' : 'evidence')
+        if (operation === 'evidence') {
+          expect(decoded?.evidenceExpectedRevision).toBe(2)
+          await expect(prepareSafeContinuation(target, d, prefs, raw, [1000])).rejects.toThrow('timestamp')
+        }
       }
-    }
+    })
   })
   it('only pools complete prices, including explicit zero and duplicate scarab slots', () => {
     const run = parseSafeRun(fixture.run)

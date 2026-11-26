@@ -8,7 +8,7 @@ export const ITEM_CATEGORIES: ItemCategory[] = [
   'Essences', 'Deliriums', 'Oils', 'Incubators',
   'Unique Weapons', 'Unique Armours', 'Unique Accessories',
   'Unique Flasks', 'Unique Jewels', 'Maps', 'Gems',
-  'Beasts', 'League', 'Other',
+  'Beasts', 'League', 'Other', 'Threads',
 ];
 
 const CATEGORY_DISPLAY_LABELS: Readonly<Record<string, string>> = {
@@ -32,6 +32,7 @@ export const CAT_COLORS: Partial<Record<ItemCategory, string>> = {
   Maps: 'blue',
   Essences: 'pink',
   Fragments: 'cyan',
+  Threads: 'teal',
   Gems: 'green',
   Beasts: 'orange',
   League: 'grape',
@@ -41,7 +42,7 @@ export const CAT_COLORS: Partial<Record<ItemCategory, string>> = {
 
 const RULES: [RegExp | ((name: string) => boolean), ItemCategory][] = [
   [/^frayed thread$/i, 'Currency'],
-  [/^(?:Abyss|Bestiary|Betrayal|Blight|Breach|Expedition|Incursion|Legion|Ritual|Ultimatum) Thread$/i, 'Fragments'],
+  [/^(?:Abyss|Bestiary|Betrayal|Blight|Breach|Expedition|Incursion|Legion|Ritual|Ultimatum) Thread$/i, 'Threads'],
   [/^Allflame Ember of /i, 'League'],
   [/^(?:royal visage|the black barya|cursed poppet)$/i, 'Fragments'],
   [/scarab/i,               'Scarabs'],

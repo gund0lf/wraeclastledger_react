@@ -111,7 +111,8 @@ describe('Regex visual-alignment presentation contract', () => {
     expect(sessionSource).toContain('options={brickModCatalogues.regular}');
     expect(sessionSource).toContain('options={brickModCatalogues.nightmare}');
     expect(sessionSource).toContain("option.familyId ? 'Shared' : 'Both pools'");
-    expect(sessionSource).toContain('Left-click excludes. Right-click includes');
+    expect(sessionSource).toContain('<strong>Left-click</strong> excludes. <strong>Right-click</strong> includes');
+    expect(sessionSource).toContain('<strong>Left-click</strong> excludes a modifier. <strong>Right-click</strong> includes');
     expect(sessionSource).not.toContain('Shift+Enter');
     expect(sessionSource).toContain('Related variants can be selected separately');
     expect(sessionSource).toContain('>How this works</span>');

@@ -191,7 +191,9 @@ describe('assignLootCategories', () => {
 });
 
 it('classifies Thread fragments, Frayed currency, and Embers when the catalogue is offline', () => {
-  expect(categorise('Abyss Thread')).toBe('Fragments');
+  for (const name of ['Abyss', 'Bestiary', 'Betrayal', 'Blight', 'Breach', 'Expedition', 'Incursion', 'Legion', 'Ritual', 'Ultimatum']) {
+    expect(categorise(name + ' Thread', '')).toBe('Threads');
+  }
   expect(categorise('Frayed Thread')).toBe('Currency');
   expect(categorise('Allflame Ember of the Divine')).toBe('League');
   expect(categorise('Threaded Delirium Orb')).toBe('Deliriums');

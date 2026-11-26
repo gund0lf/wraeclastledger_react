@@ -13,6 +13,7 @@ import type {
 } from '../types';
 import { isPathofpathingUrl } from './atlasUrl';
 import { hasCurrentAtlasStatsRead } from './atlasStatsSync';
+import { currentChoiceSelections } from './atlasChoices';
 
 export const MANUAL_STATISTIC_FIELDS = [
   'starfallCraters',
@@ -72,8 +73,7 @@ export const TRARTHAN_HOUSES = [
   'Azadi',
 ] as const;
 
-/** Current 3.29 Atlas anomaly catalogue, grouped together in the UI but kept
- * separate from older random Atlas encounters such as Starfall/Wildwood. */
+/** Named encounters and encounter families used by the manual anomaly counters. */
 export const ATLAS_ANOMALIES = [
   "River's End",
   'Syndicate Hideout',
@@ -86,6 +86,8 @@ export const ATLAS_ANOMALIES = [
   'Planned Heist',
   'The Manor Foyer',
   'Gambling District',
+  'Templar Vaults',
+  'Archon of Corruption Hideouts',
 ] as const;
 
 export type MercenaryAttribute = 'Strength' | 'Dexterity' | 'Intelligence';
@@ -280,12 +282,21 @@ const sanitizeSetupContext = (value: unknown): RunStatisticsSetupContext | null 
   }
   if (input.atlasSource === 'path-of-pathing') {
     if (!atlasTreeUrl || !isPathofpathingUrl(atlasTreeUrl)) return null;
+    if (input.atlasChoiceIds !== undefined) {
+      const ids = input.atlasChoiceIds;
+      if (!ids || typeof ids !== 'object' || Array.isArray(ids)) return null;
+      const entries = Object.entries(ids);
+      if (entries.length > 150 || entries.some(([node, option]) =>
+        !/^[1-9]\d{0,4}$/.test(node) || typeof option !== 'string' || !/^[1-9]\d{0,4}$/.test(option))) return null;
+      if (entries.length) result.atlasChoiceIds = Object.fromEntries(entries);
+    }
     const bestiary = sanitizeAtlasSetup(input.bestiaryAtlasSetup, BESTIARY_ATLAS_SETUP_KEYS);
     const mercenary = sanitizeAtlasSetup(input.mercenaryAtlasSetup, MERCENARY_ATLAS_SETUP_KEYS);
     if (!bestiary || !mercenary) return null;
     result.bestiaryAtlasSetup = bestiary;
     result.mercenaryAtlasSetup = mercenary;
   } else if (atlasTreeUrl !== null
+      || own(input, 'atlasChoiceIds')
       || own(input, 'bestiaryAtlasSetup')
       || own(input, 'mercenaryAtlasSetup')) {
     return null;
@@ -294,7 +305,7 @@ const sanitizeSetupContext = (value: unknown): RunStatisticsSetupContext | null 
 };
 
 export function runStatisticsSetupFingerprint(context: RunStatisticsSetupContext): string {
-  return JSON.stringify(context);
+  return JSON.stringify(sanitizeSetupContext(context) ?? context);
 }
 
 const sanitizeSetupProvenance = (value: unknown): RunStatisticsSetupProvenance | null => {
@@ -344,6 +355,7 @@ export function buildRunStatisticsSetupContext(
     && settings.mercenaryAtlasSetup !== undefined
     && atlasTreeUrl !== null
     && isPathofpathingUrl(atlasTreeUrl);
+  const selections = hasAtlasStats ? currentChoiceSelections(settings) : [];
   return {
     schemaVersion: 1,
     modelRevision: BUNDLED_MANIFEST.leagueRules?.[settings.leagueName]?.threadSlots ? 'observations-v1' : 'allflame-v1',
@@ -355,6 +367,9 @@ export function buildRunStatisticsSetupContext(
     leagueName: inlineText(settings.leagueName, 80) ?? 'Unknown league',
     atlasSource: hasAtlasStats ? 'path-of-pathing' : 'unavailable',
     atlasTreeUrl: hasAtlasStats ? atlasTreeUrl : null,
+    ...(selections.length ? {
+      atlasChoiceIds: Object.fromEntries(selections.map(({ nodeId, option }) => [nodeId, option.id])),
+    } : {}),
     atlasDetectedTags: [...new Set(settings.atlasDetectedTags
       .map((tag) => inlineText(tag, 50))
       .filter((tag): tag is string => tag !== null))]
@@ -407,6 +422,7 @@ export function recordRunStatisticsSetupContext(
   const previous = current.setupProvenance?.[category];
   const contexts = previous?.contexts.map((entry) => ({
     ...entry,
+    ...(entry.atlasChoiceIds && { atlasChoiceIds: { ...entry.atlasChoiceIds } }),
     atlasDetectedTags: [...entry.atlasDetectedTags],
     scarabNames: [...entry.scarabNames],
     ...(entry.bestiaryAtlasSetup ? { bestiaryAtlasSetup: { ...entry.bestiaryAtlasSetup } } : {}),
@@ -557,6 +573,7 @@ export function cloneManualStatistics(value: ManualSessionStatistics): ManualSes
         ...attribution,
         contexts: attribution.contexts.map((context) => ({
           ...context,
+          ...(context.atlasChoiceIds && { atlasChoiceIds: { ...context.atlasChoiceIds } }),
           atlasDetectedTags: [...context.atlasDetectedTags],
           scarabNames: [...context.scarabNames],
           ...(context.bestiaryAtlasSetup

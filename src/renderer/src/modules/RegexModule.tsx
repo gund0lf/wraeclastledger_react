@@ -45,6 +45,7 @@ import {
 import { normalizeBrickExclusionEntries } from '../../../shared/brickMods';
 
 // Badge tooltips explaining how each generated regex is derived (Sad 2026-07-09).
+const ATLAS_RUN_TOOLTIP = 'The Run filter uses pack size and currency floors. Recorded Atlas Drops, rarity and More Threads can add minimum requirements based on your session averages.';
 const RUN_TOOLTIP = 'Run = maps ready to run: floors derived from your session averages — currency and pack (both required on high-currency sessions), plus quantity, rarity, and Scarabs riders at 60% of your averages.';
 const SLAM_TOOLTIP = 'Slam = near-miss maps worth upgrading: 75% of your session\u2019s currency/pack averages, either one is enough. Quantity and rarity are ignored because a slam can still add them.';
 
@@ -361,7 +362,7 @@ export const FromSessionTab = () => {
       avgCurr:    trimmedMean(maps.map((m) => m.moreCurrency)),
       avgRarity:  trimmedMean(maps.map((m) => m.rarity)),
       atlasDrops: drops.atlasCount > 0,
-      avgThreads: drops.threads,
+      avgThreads: drops.threadCount ? drops.threads : undefined,
       avgScarabs: trimmedMean(maps.map((m) => m.moreScarabs)),
     };
     return {
@@ -759,7 +760,7 @@ export const FromSessionTab = () => {
                 {formatRegexAverageSummary(generatedRegex.avg)}
               </Text>
               <Stack gap={4}>
-                <RegexLine value={generatedRegex.run} badge="Run" badgeColor="green" badgeTooltip={RUN_TOOLTIP} charLimit={250} />
+                <RegexLine value={generatedRegex.run} badge="Run" badgeColor="green" badgeTooltip={generatedRegex.avg.atlasDrops ? ATLAS_RUN_TOOLTIP : RUN_TOOLTIP} charLimit={250} />
                 {generatedRegex.slam ? (
                   <RegexLine value={generatedRegex.slam} badge="Slam" badgeColor="orange" badgeTooltip={SLAM_TOOLTIP} charLimit={250} />
                 ) : (
@@ -891,8 +892,7 @@ export const FromSessionTab = () => {
                       <div>
                         <Text size="sm" fw={700}>Exclude or include map modifiers</Text>
                         <Text size="xs" c="dimmed">
-                          Left-click excludes a modifier. On eligible farming targets,
-                          right-click includes it instead. Included rows are teal.
+                          <strong>Left-click</strong> excludes a modifier. <strong>Right-click</strong> includes an eligible farming target. Included rows are teal.
                           Summary pills keep exclusions on the left and inclusions anchored on the
                           right, where additional inclusions grow inward and wrap.
                         </Text>
@@ -1087,7 +1087,7 @@ export const FromSessionTab = () => {
                     ) : undefined}
                   />
                   <Text size="xs" c="dimmed">
-                    Left-click excludes. Right-click includes an eligible farming target.
+                    <strong>Left-click</strong> excludes. <strong>Right-click</strong> includes an eligible farming target.
                     Both pools means one selection applies in either column. Related variants can be selected separately.
                   </Text>
                 </Stack>

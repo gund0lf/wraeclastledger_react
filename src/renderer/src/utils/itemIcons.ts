@@ -112,7 +112,7 @@ const ECONOMY_TYPE_CATEGORY: Readonly<Partial<Record<string, LootCategory>>> = {
   DjinnCoin: 'League',
   Ducat: 'League',
   EnshroudingCrystal: 'League',
-  Thread: 'Fragments',
+  Thread: 'Threads',
   AllflameEmber: 'League',
   Runegraft: 'League',
   Resonator: 'League',
@@ -148,6 +148,7 @@ const ECONOMY_TYPE_CATEGORY: Readonly<Partial<Record<string, LootCategory>>> = {
 // catch-all has one honest representative item.
 const CATEGORY_ART_CANDIDATES: Readonly<Partial<Record<LootCategory, readonly string[]>>> = {
   Currency: ['Divine Orb', 'Chaos Orb'],
+  Threads: ['Bestiary Thread'],
   Fragments: ['Sacrifice at Dusk', 'Incandescent Invitation'],
   Scarabs: ['Breach Scarab', 'Abyss Scarab'],
   'Divination Cards': [],

@@ -54,6 +54,7 @@ export const KNOWN_LEAGUES: string[] = [
 // end-of-day-generous: being hours late off a dead event beats being hours
 // early off a live one, and the manual override remains the escape hatch.
 export const LEAGUE_ENDS_AT: Record<string, string> = {
+  Allflame: '2026-11-11T00:00:00Z',
   Ancestors: '2026-07-17T00:00:00Z',
   Mirage: '2026-07-20T22:00:00Z',
 };

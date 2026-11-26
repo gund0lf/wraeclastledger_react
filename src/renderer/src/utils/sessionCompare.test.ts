@@ -125,7 +125,8 @@ describe('buildCompareColumn', () => {
   it('handles an empty session without NaN/Infinity (0-map guard)', () => {
     const col = buildCompareColumn(mkSession({ maps: [], lootItems: [] }));
     expect(col.n).toBe(0);
-    for (const v of [col.avgQuant, col.avgRarity, col.avgPack, col.avgCurr,
+    expect(col.avgQuant).toBeNull();
+    for (const v of [col.avgRarity, col.avgPack, col.avgCurr,
                      col.costPerMap, col.cPerMap, col.divPerMap]) {
       expect(Number.isFinite(v)).toBe(true);
       expect(v).toBe(0);

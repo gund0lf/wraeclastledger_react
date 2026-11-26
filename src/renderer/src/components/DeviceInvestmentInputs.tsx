@@ -48,7 +48,7 @@ export function DeviceInvestmentInputs({ settings, league, historical, readOnly,
   const changeSlot = (index: number, patch: Partial<typeof slots[number]>) =>
     update('threadSlots', slots.map((slot, i) => i === index ? { ...slot, ...patch } : slot));
   const costs = deviceInvestment(settings);
-  const priced = !costs.activeSlots.some(slot => slot?.name && !slot.price) && (!ember.name || ember.price > 0);
+  const priced = !costs.activeSlots.some(slot => slot?.name && slot.count > 0 && !slot.price) && (!ember.name || ember.price > 0);
   const market = !historical && !readOnly;
   const label = (value: string) => <Text size="xs" c="dimmed">{value}</Text>;
   const total = (value: number | undefined) => <Text size="xs" className="device-total">{value ? formatPrice(value) + 'c' : '—'}</Text>;
@@ -56,29 +56,39 @@ export function DeviceInvestmentInputs({ settings, league, historical, readOnly,
     <NumberInput aria-label={name + ' price each in chaos'} size="xs" hideControls min={0} suffix="c"
       disabled={disabled} value={value || ''} placeholder="—" onChange={v => apply(Math.max(0, Number(v) || 0))} />;
   return <Stack gap={5} className="device-investment">
-    <SectionLabel>Map device</SectionLabel>
+    <SectionLabel>Map device · Threads</SectionLabel>
     {costs.oneType && <Text size="xs" c="dimmed">Unwavering Vision · one Thread type only</Text>}
     <div className="device-grid">
-      {label('Thread')}{label('Count')}{label('Price')}{label('Total')}
+      {label('Thread')}{label('Paid')}{label('Price')}{label('Total')}
       {slots.map((slot, i) => {
-        const paused = costs.oneType && i > 0;
-        const disabled = readOnly || paused;
+        const lockedByTree = costs.oneType && i > 0;
+        const paused = lockedByTree || slot.paused === true;
+        const disabled = readOnly || lockedByTree;
         const id = 'Thread ' + (i + 1);
         return <Fragment key={i}>
           <Select aria-label={id} size="xs" searchable disabled={disabled} value={slot.name}
             leftSection={slot.name && <PoeItemIcon name={slot.name} category="thread" size={14} />} leftSectionWidth={22} rightSectionWidth={16}
             data={options(manifest.threads, slot.name, / Thread$/)} allowDeselect={false}
-            onChange={name => changeSlot(i, { name: name || '', count: 1, price: 0 })} />
-          <NumberInput aria-label={id + ' count'} size="xs" hideControls allowDecimal={false} min={1} max={rules.threadCap}
+            onChange={name => changeSlot(i, { name: name || '', count: 1, price: 0, paused: undefined, granted: undefined })} />
+          <NumberInput aria-label={id + ' count'} size="xs" hideControls allowDecimal={false} min={0} max={rules.threadCap}
             value={slot.name ? slot.count : ''} placeholder="—" disabled={disabled || !slot.name}
-            onChange={v => changeSlot(i, { count: Math.max(1, Math.min(rules.threadCap, Number(v) || 1)) })} />
+            onChange={v => changeSlot(i, { count: Math.max(0, Math.min(rules.threadCap, Number(v) || 0)) })} />
           {unitPrice(id, slot.price, disabled || !slot.name, price => changeSlot(i, { price }))}
           {total(!paused && slot.name ? slot.count * slot.price : undefined)}
+          {slot.name && <Fragment>
+            {label(paused ? 'Granted · paused' : 'Granted')}
+            <NumberInput aria-label={id + ' granted count'} size="xs" hideControls allowDecimal={false} min={0}
+              max={rules.threadCap} value={slot.granted ?? ''} placeholder="—" disabled={disabled}
+              onChange={v => changeSlot(i, { granted: v === '' ? undefined : Math.min(rules.threadCap, Math.max(0, Number(v))) })} />
+            <div className="device-grant-spacer" />
+          </Fragment>}
           {market && slot.name && !paused && <MarketPrice key={league + slot.name} name={slot.name} league={league}
             type="Thread" apply={price => changeSlot(i, { price })} />}
         </Fragment>;
       })}
-      <div className="device-divider" />
+      </div>
+    <SectionLabel>Map enchantment</SectionLabel>
+    <div className="device-grid">
       <div className="device-ember">{label('Allflame Ember')}</div>{label('Price')}{label('Total')}
       <div className="device-ember"><Select aria-label="Allflame Ember" size="xs" searchable disabled={readOnly} value={ember.name}
         leftSection={ember.name && <PoeItemIcon name={ember.name} category="ember" size={14} />} leftSectionWidth={22} rightSectionWidth={16}

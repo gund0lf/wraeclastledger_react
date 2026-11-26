@@ -494,6 +494,19 @@ it.each(['expired', 'offline'])('dismisses a %s request and prepares a fresh cor
   expect(created[1]).not.toBe(created[0])
 })
 
+it('reads evidence for an exact frozen entry through the public bridge', async () => {
+  const f = await setup(async () => ({}))
+  const path = '/web/v2/retrospectives/' + randomUUID() + '/strategies/' + randomUUID() + '/evidence'
+  expect((await f.service.handle({ action: 'read', path })).ok).toBe(true)
+  expect((await f.service.handle({ action: 'read', path: path + '/extra' })).ok).toBe(false)
+  expect(f.requests).toHaveLength(1)
+})
+
+it('explains when a private confirmation was already used', async () => {
+  const response = async () => new Response(JSON.stringify({ error: 'confirmation_replayed' }), { status: 400 })
+  await expect(authorJsonFetch(origin, {}, response as typeof fetch)).rejects.toThrow(/already used/)
+})
+
 it('marks actual HTTP expiry as terminal while leaving transient failures retryable', async () => {
   for (const [status, code, terminal] of [[410, 'handoff_expired', true], [404, 'handoff_unavailable', true], [503, 'author_service_unavailable', false]] as const) {
     const response = async () => new Response(JSON.stringify({ error: code }), { status })

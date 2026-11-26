@@ -6,7 +6,7 @@ import { buildAuthorSubmission, canonicalAuthorJson } from '../shared/authorSubm
 import { ShareIntentError } from '../shared/shareIntent'
 import { emptyAuthorPreferences, previewAuthorRecovery, type AuthorPreferences } from '../shared/authorRecognition'
 import {
-  AUTHOR_UUID, closedAuthorObject as exact, parseAuthorOutcome, validAuthorContext,
+  COVENS_SHARE_UNAVAILABLE, AUTHOR_UUID, closedAuthorObject as exact, parseAuthorOutcome, validAuthorContext,
   validateAuthorManagement, type AuthorContext, type AuthorConfirmation, type AuthorStatus,
   type PreparedAuthorRequest, type AuthorServiceState, type PublicationOperation, type AuthorResults, type ShareStorageCode,
 } from '../shared/authorHandoff'
@@ -32,6 +32,7 @@ const messages: Record<string, string> = {
   author_restore_locked: 'Author controls are awaiting recovery after a server restore.',
   online_strategies_temporarily_unavailable: 'Online strategies are temporarily unavailable. Retry later. Local tracking and saved sessions are still available.',
   protected_changes_temporarily_unavailable: 'This change is temporarily unavailable. Retry later.',
+  confirmation_replayed: 'This private confirmation was already used. Check your saved names before preparing another request.',
   invalid_confirmation: 'Copy the private confirmation token from Discord and try again.',
 }
 const publicReadMessages: Record<number, string> = {
@@ -219,6 +220,12 @@ export class AuthorHandoffService {
   private async dispatch(input: unknown): Promise<unknown> {
     if (exact(input, ['action']) && input.action === 'available') return this.options.origin !== null
     if (!this.options.origin) throw new Error('Disabled')
+    if (exact(input, ['action']) && input.action === 'share-formats') {
+      const state = await this.call('/state?format=covens-v1')
+      return exact(state, ['schema_version', 'epoch', 'author_actions_available', 'share_formats'])
+        && state.schema_version === 1 && id(state.epoch) && state.author_actions_available === true
+        && Array.isArray(state.share_formats) && state.share_formats.includes('covens-v1')
+    }
     // Closing/switching Share must still invalidate the confirmation context.
     if (this.recovering && !(exact(input, ['action', 'context']) && input.action === 'activate'))
       throw new AuthorExchangeError('Sharing recovery is in progress. Wait for it to finish.')
@@ -354,7 +361,7 @@ export class AuthorHandoffService {
       if (typeof input.path !== 'string' || input.path.length > 4096 || /[\\#\r\n]/.test(input.path)) throw new Error('Invalid public read')
       const url = new URL(input.path, this.options.origin)
       const uuidPart = '[0-9a-f-]{36}'
-      if (url.origin !== this.options.origin || !new RegExp(`^/web/v2/(?:strategies(?:/${uuidPart}(?:/evidence)?)?|retrospectives(?:/${uuidPart}/strategies(?:/${uuidPart})?)?)$`).test(url.pathname))
+      if (url.origin !== this.options.origin || !new RegExp(`^/web/v2/(?:strategies(?:/${uuidPart}(?:/evidence)?)?|retrospectives(?:/${uuidPart}/strategies(?:/${uuidPart}(?:/evidence)?)?)?)$`).test(url.pathname))
         throw new Error('Invalid public read')
       try { return await (this.options.exchange ?? ((u, init) => authorJsonFetch(u, init, fetch, 2 * 1024 * 1024)))(url.href, { method: 'GET' }) }
       catch (error) {
@@ -428,6 +435,8 @@ export class AuthorHandoffService {
         !await this.options.vault.durableForSession(sessionIdentity, null))
         throw new ShareRecoveryConfirmationError()
       this.options.vault.requireEncryptionAvailable()
+      if (JSON.parse(core)[0] === 8 && !await this.dispatch({ action: 'share-formats' }))
+        throw new AuthorExchangeError(COVENS_SHARE_UNAVAILABLE)
       const state = await this.dispatch({ action: 'state' }) as AuthorServiceState
       await this.selectedSession(c, sessionIdentity)
       this.requireContext(c)

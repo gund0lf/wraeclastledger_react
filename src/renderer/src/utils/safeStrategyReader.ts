@@ -25,7 +25,7 @@ export class SafeStrategyReader {
     return page
   }
   async detail(identity: SafeIdentity, fresh = false): Promise<SafeDetail> {
-    const d = parseSafeDetail(await this.read(safeDetailPath(identity)))
+    const d = parseSafeDetail(await this.read(safeDetailPath(identity) + '?format=covens-v1'))
     if (d.id !== identity.id || d.scope !== identity.scope || d.snapshot_key !== identity.snapshot_key ||
       (!fresh && !sameSafeIdentity(d, identity))) throw new Error('The strategy changed. Refresh its card to continue.')
     if (d.lifecycle.state !== d.scope || (d.scope === 'frozen' && (d.continuation_setup.status !== 'unavailable' || d.continuation_setup.reason !== 'frozen')))

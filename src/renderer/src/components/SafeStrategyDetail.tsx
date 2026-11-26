@@ -7,6 +7,7 @@ import { useSessionStore } from '../store/useSessionStore'
 import { RegexLine } from './ui/RegexLine'
 import { PoeItemIcon, type PoeItemCategory } from './ui/PoeItemIcon'
 import { checkStrategyCompat } from '../utils/strategyCompat'
+import { getManifest } from '../utils/gameData'
 import { safeNumber, safeDate, recordedQuantityPrice, safePooledCostComponents, safeCostEvidenceMessage, safeSetupUnavailableMessage, safeContinuationMessage } from '../utils/safeStrategyPresentation'
 import { PublicAuthorName } from './PublicAuthorName'
 import { COLOR, FONT } from '../utils/uiTokens'
@@ -18,7 +19,7 @@ import { publicLootPresentation } from '../utils/strategyLootPresentation'
 import { detailMoney, recordedCostBreakdown, recordedCount, publishedChiselName, safePooledPresentation } from '../utils/safeStrategyCardPresentation'
 import { formatDivineValue } from '../utils/currencyDisplay'
 import { formatRelativeAge } from '../utils/relativeTime'
-import { TAG_COLORS } from '../utils/strategyConstants'
+import { TAG_COLORS, fullTagBadge } from '../utils/strategyConstants'
 import { deliOrbItemName } from '../utils/itemIcons'
 import { formatActiveTime } from '../utils/timeEstimate'
 import './StrategyCard.css'
@@ -78,6 +79,7 @@ export function SafeStrategyDetail({ detail: d, onLoad, onContinue, onName }: {
   const breakdown = !pooled ? recordedCostBreakdown(costs,
     { ...d.setup, scarabs: d.setup.scarabs.map(s => s.name) },
     authored?.setup_display?.authored_map_count ?? null, d.economics.all_in_cost_per_map_chaos) : null
+  const usesThreads = !!getManifest().leagueRules?.[d.league ?? '']?.threadSlots
   const scarabs = costs?.scarabs ?? d.setup.scarabs
   const chisel = costs?.chisel?.name ?? d.setup.chisel
   const deli = costs?.delirium ?? d.setup.delirium
@@ -92,7 +94,7 @@ export function SafeStrategyDetail({ detail: d, onLoad, onContinue, onName }: {
       <div className="strategy-card-hero">
         <Stack className="strategy-card-hero-identity" gap={6}>
           <Text size="xl" fw={800} style={{ overflowWrap: 'anywhere' }}>{d.title || 'Untitled strategy'}</Text>
-          <Group className="strategy-card-hero-tags" gap={4} wrap="wrap">{d.tags.map(t => <Badge key={t} size="sm" color={Object.hasOwn(TAG_COLORS, t) ? TAG_COLORS[t] : 'gray'} variant="light">{t}</Badge>)}</Group>
+          <Group className="strategy-card-hero-tags" gap={4} wrap="wrap">{d.tags.map(t => <Badge key={t} size="sm" color={Object.hasOwn(TAG_COLORS, t) ? TAG_COLORS[t] : 'gray'} variant="light">{fullTagBadge(t)}</Badge>)}</Group>
           <Badge color="gray" size="xs" variant="outline">{d.scope === 'current' ? 'Live' : 'Frozen'} · Revision {d.revision}</Badge>
         </Stack>
         <Stack className="strategy-card-hero-meta" gap={2}>
@@ -134,10 +136,10 @@ export function SafeStrategyDetail({ detail: d, onLoad, onContinue, onName }: {
     <div className="strategy-card-lower-grid">
       <div className="strategy-card-lower-panel" style={panelStyle} />
       <Stack gap={3} className="strategy-card-setup-scarabs">
-        <SectionLabel>Scarabs · {pooledView ? 'map-weighted costs' : 'published setup prices'}</SectionLabel>
+        <SectionLabel>{usesThreads ? 'Map investment' : 'Scarabs'} · {pooledView ? 'map-weighted costs' : 'published setup prices'}</SectionLabel>
         <div className="strategy-card-scarab-list">{pooledView?.scarabItems.length ? pooledView.scarabItems.map((s, i) => <SetupItem key={i} name={s.name} value={safeNumber(s.perMap, 'c/map')} />)
           : scarabs.map((s, i) => <SetupItem key={i} name={s.name} value={safeNumber(s.price_each_chaos, 'c')} />)}</div>
-        {!scarabs.length && <Text size="xs" c="dimmed">No recorded scarabs</Text>}
+        {!scarabs.length && !pooledView?.scarabItems.length && <Text size="xs" c="dimmed">{usesThreads ? 'Thread and Ember details may be recorded in the strategy notes.' : 'No recorded scarabs'}</Text>}
       </Stack>
       <Stack gap={3} className="strategy-card-setup-chisel"><SectionLabel>Chisel</SectionLabel>
         {pooledView?.chiselItems.length ? pooledView.chiselItems.map(s => <SetupItem key={s.name} category="chisel" name={publishedChiselName(s.name)!} color="yellow" value={safeNumber(s.perMap, 'c/map')} />)
@@ -196,7 +198,7 @@ export function SafeStrategyDetail({ detail: d, onLoad, onContinue, onName }: {
     </Group>
     <Stack gap={3} mt="xs" align="center">
       {!continuing && <Text size="xs" c="dimmed">{d.scope === 'frozen' ? 'Frozen strategies cannot be continued.' : d.continuation_setup.status === 'unavailable'
-        ? safeContinuationMessage(d.continuation_setup.reason) : 'Confirm the assigned public name to continue. Discord verifies ownership.'}</Text>}
+        ? safeContinuationMessage(d.continuation_setup.reason, d.attribution === null) : 'Confirm the assigned public name to continue. Discord verifies ownership.'}</Text>}
       {!reusable && <Text size="xs" c="dimmed">{d.reusable_setup.status === 'unavailable' && safeSetupUnavailableMessage(d.reusable_setup.reason)}</Text>}
     </Stack>
   </div>

@@ -1,5 +1,8 @@
 import { deviceInvestment } from './profit';
 import { currentChoiceEffects } from './atlasChoices';
+import { getManifest } from './gameData';
+import { confirmedMapEncounters } from './mapParser';
+import { PUBLIC_STRATEGY_TAG_LIMIT } from './strategyConstants';
 import type { MapData, SessionSettings } from '../types';
 
 type ShareTagSettings = Pick<
@@ -9,7 +12,7 @@ type ShareTagSettings = Pick<
 
 type ShareTagMap = Pick<
   MapData,
-  'isOriginator' | 'isEmpoweredMirage' | 'isNightmare' | 'rawText' | 'deliriousPct'
+  'isOriginator' | 'isEmpoweredMirage' | 'isNightmare' | 'rawText' | 'deliriousPct' | 'confirmedEncounters'
 >;
 
 const SCARAB_TAG_KEYWORDS: ReadonlyArray<readonly [string, readonly string[]]> = [
@@ -27,7 +30,29 @@ const SCARAB_TAG_KEYWORDS: ReadonlyArray<readonly [string, readonly string[]]> =
   ['trarth', ['trarthus']],
 ];
 
-function mapSubtypeTag(maps: readonly ShareTagMap[]): string | null {
+const choiceTagsByEffect: Readonly<Record<string, string | undefined>> = {
+  'contain ore deposits': 'kalguur', 'contain a strongbox': 'ambush',
+  'be inhabited by a mercenary': 'trarthus', 'contain a rogue exile': 'anarchy',
+  'contain a buried sentinel': 'sentinel', 'contain the viridian wildwood': 'wildwood',
+  'contain a demonic evocator': 'beyond', 'contain a mirror of delirium': 'delirium',
+  'contain sacred flora': 'harvest', 'be haunted by a tormented spirit': 'torment',
+  'contain an imprisoned monster': 'essence', 'contain a shrine': 'shrine',
+};
+
+function modernMapPool(league: string | undefined) {
+  return getManifest().leagueRules?.[league ?? '']?.atlasDrops === true;
+}
+
+export function shareTagIssue(tags: readonly string[], league: string, observed: readonly string[]): string | null {
+  if (tags.length > PUBLIC_STRATEGY_TAG_LIMIT) return `The public browser shows up to ${PUBLIC_STRATEGY_TAG_LIMIT} tags. Remove ${tags.length - PUBLIC_STRATEGY_TAG_LIMIT} to share this selection.`;
+  if (tags.includes('mirage') && !observed.includes('mirage')) return 'The Mirage tag requires a captured map with the explicit “Area contains a Mirage” modifier. Remove Mirage to share without it.';
+  if (modernMapPool(league) && tags.some(tag => tag === 'empowered' || tag === 'empowered-originator')) {
+    return 'Empowered Mirage is a historical map type. Remove its tag before sharing this strategy.';
+  }
+  return null;
+}
+
+function mapSubtypeTag(maps: readonly ShareTagMap[], modern: boolean): string | null {
   if (maps.length === 0) return null;
   const isOriginator = (map: ShareTagMap) => map.isOriginator
     || (map.rawText?.includes("Originator's Memories") ?? false);
@@ -38,8 +63,8 @@ function mapSubtypeTag(maps: readonly ShareTagMap[]): string | null {
 
   const hasOriginator = maps.some(isOriginator);
   const allOriginator = maps.every(isOriginator);
-  const hasEmpowered = maps.some(isEmpowered);
-  const allEmpowered = maps.every(isEmpowered);
+  const hasEmpowered = !modern && maps.some(isEmpowered);
+  const allEmpowered = !modern && maps.every(isEmpowered);
   const hasNightmare = maps.some(isNightmare);
 
   if (hasNightmare && maps.every(isNightmare)) return 'nightmare';
@@ -60,6 +85,8 @@ function astrolabeTag(name: string): string | null {
     ['runic', 'astrolabe-runic'], ['fruiting', 'astrolabe-fruiting'],
     ['fungal', 'astrolabe-fungal'], ['chaotic', 'astrolabe-chaotic'],
     ['lightless', 'astrolabe-lightless'],
+    ['immortal', 'astrolabe-immortal'], ['feral', 'astrolabe-feral'],
+    ['royal', 'astrolabe-royal'], ['cryptic', 'astrolabe-cryptic'],
   ];
   return variants.find(([keyword]) => normalized.includes(keyword))?.[1] ?? 'astrolabe';
 }
@@ -70,7 +97,7 @@ export function deriveShareTags(
   settings: ShareTagSettings,
   maps: readonly ShareTagMap[],
 ): string[] {
-  const scarabNames = [...settings.scarabs, ...deviceInvestment(settings).activeSlots.filter(slot => slot?.count > 0)]
+  const scarabNames = [...settings.scarabs, ...deviceInvestment(settings).activeSlots.filter(slot => slot && (slot.count > 0 || (slot.granted ?? 0) > 0))]
     .filter((scarab) => scarab.name)
     .map((scarab) => scarab.name.toLowerCase())
     .join(' ');
@@ -78,15 +105,21 @@ export function deriveShareTags(
     .filter(([keyword]) => scarabNames.includes(keyword))
     .flatMap(([, tags]) => tags);
   const choiceTags = currentChoiceEffects(settings).flatMap(text => {
-    if (/chance to contain Ore Deposits$/i.test(text)) return ['kalguur'];
-    if (/chance to contain a Strongbox$/i.test(text)) return ['ambush'];
-    if (/chance to be inhabited by a Mercenary$/i.test(text)) return ['trarthus'];
-    if (/chance to contain a Rogue Exile$/i.test(text)) return ['anarchy'];
-    return [];
+    const effect = text.match(/\d+% (?:increased |surpassing )?chance to (.+)$/i)?.[1].toLowerCase();
+    const tag = effect && choiceTagsByEffect[effect];
+    return tag ? [tag] : [];
   });
-  const tags = Array.from(new Set([...choiceTags, ...scarabTags, ...(settings.atlasDetectedTags ?? [])]));
+  const tags = Array.from(new Set([...choiceTags, ...scarabTags, ...(settings.atlasDetectedTags ?? []).filter(tag => tag !== 'mirage')]));
 
-  const subtype = mapSubtypeTag(maps);
+  const modern = modernMapPool(settings.leagueName);
+  if (modern) {
+    for (const map of maps) {
+      for (const family of confirmedMapEncounters(map) ?? []) {
+        if (!tags.includes(family)) tags.push(family);
+      }
+    }
+  }
+  const subtype = mapSubtypeTag(maps, modern);
   if (subtype && !tags.includes(subtype)) tags.unshift(subtype);
 
   if (maps.some((map) => Number.isInteger(map.deliriousPct)) && !tags.includes('delirium')) {

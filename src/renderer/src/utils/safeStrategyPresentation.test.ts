@@ -54,6 +54,10 @@ describe('safe strategy presentation', () => {
       expect(safeContinuationMessage(reason)).not.toBe('Continuation is unavailable.')
     }
     expect(safeContinuationMessage('inactive_registration')).toContain('not active')
+    expect(safeContinuationMessage('inactive_registration', true)).toBe('Name this strategy to continue it.')
+    expect(safeContinuationMessage('missing_membership', true)).toBe('Name this strategy to continue it.')
+    expect(safeContinuationMessage('incomplete_seed', true)).toContain('lacks the setup')
+    expect(safeContinuationMessage('frozen', true)).toContain('Frozen')
   })
   it('unknown reasons cannot inject service text into the interface', () => {
     for (const reason of ['__proto__', 'constructor', 'private server text']) {

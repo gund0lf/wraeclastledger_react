@@ -32,31 +32,17 @@ export const defaultLayout: IJsonModel = {
     type: 'row',
     weight: 100,
     children: [
-      // Main workspace: map tools on the left, Dashboard on the right.
       {
-        type: 'col', weight: 52,
+        type: 'tabset', weight: 70,
         children: [
-          { type: 'tabset', weight: 50, children: [
-            { type: 'tab', name: 'Map Log',          component: 'session-log' },
-            { type: 'tab', name: 'Strategy Browser', component: 'strategy-browser' },
-            { type: 'tab', name: 'Notes',            component: 'notes' },
-          ]},
-          {
-            type: 'tabset', weight: 50,
-            children: [
-              { type: 'tab', name: 'Atlas Tree',          component: 'atlas-tree' },
-              { type: 'tab', name: 'Regex',               component: 'regex' },
-            ],
-          },
+          { type: 'tab', name: 'Map Log', component: 'session-log' },
+          { type: 'tab', name: 'Atlas Tree', component: 'atlas-tree' },
+          { type: 'tab', name: 'Strategy Browser', component: 'strategy-browser' },
+          { type: 'tab', name: 'Regex', component: 'regex' },
+          { type: 'tab', name: 'Notes', component: 'notes' },
         ],
       },
-      // Right column — dashboard (stats + loot merged)
-      {
-        type: 'col', weight: 48,
-        children: [
-          { type: 'tabset', weight: 100, children: [{ type: 'tab', name: 'Dashboard', component: 'dashboard' }] },
-        ],
-      },
+      { type: 'tabset', weight: 30, children: [{ type: 'tab', name: 'Dashboard', component: 'dashboard' }] },
     ],
   },
 };

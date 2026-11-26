@@ -68,7 +68,7 @@ describe('MOD_TOKENS integrity', () => {
 
   it('all tokens are reasonably short for stash regex use', () => {
     for (const [id, token] of entries) {
-      const max = id.startsWith('brick_') ? 24 : 10;
+      const max = id.startsWith('brick_') || id === 'extra_chaos_damage_withered' ? 24 : 10;
       expect(token.length, `${id} token '${token}' is too long (>${max} chars)`).toBeLessThanOrEqual(max);
     }
   });
@@ -240,6 +240,7 @@ const BRICK_REGEX_SNAPSHOT: Record<string, string> = {
 
 describe('BRICK_MOD_DEFS <-> MOD_TOKENS alignment (WP12)', () => {
   const replacedLabels = new Set([
+    'Extra Chaos Damage + Withered',
     'Thorns Reflection (all tiers)',
     'Reduced Max Resistances',
     'High Crit Chance + Multiplier',
@@ -518,7 +519,7 @@ describe('exact Trade-stat resolution', () => {
   it('pins the complete exact-pattern registry', () => {
     const snapshot = BRICK_MOD_DEFS.map(({ id, tradePatterns }) => ({ id, tradePatterns }));
     expect(createHash('sha256').update(JSON.stringify(snapshot)).digest('hex')).toBe(
-      'feb81a7fa45f1270aab402acdc0496c5c7bc595e7d5f512427e87c112d6bd758',
+      '57cdf89d8c4d5e07153e138bee946c341772942a089946448acd32716beff054',
     );
   });
 
@@ -785,25 +786,48 @@ describe('exact Trade-stat resolution', () => {
   });
 });
 
-it('distinguishes regular and Nightmare Profane stash text and Trade bounds', () => {
-  const defs = BRICK_MOD_DEFS.filter(row => row.id === 'extra_chaos_damage_withered' || row.id === 'brick_profane_nightmare');
-  const [regular, nightmare] = defs.map(def => new RegExp(brickRegexTerm(def), 'i'));
+describe('Profane map filters', () => {
+  const regularId = 'extra_chaos_damage_withered';
+  const strongId = 'brick_profane_nightmare';
   const line = (n: number) => `Monsters gain ${n}% of their Physical Damage as Extra Chaos Damage`;
-  for (const n of [31, 33, 35]) {
-    expect(regular.test(line(n) + '\nMonsters Inflict Withered for 2 seconds on Hit')).toBe(true);
-    expect(nightmare.test(line(n))).toBe(false);
-  }
-  for (let n = 80; n <= 100; n++) {
-    expect(nightmare.test(line(n))).toBe(true);
-    expect(regular.test(line(n))).toBe(false);
-  }
-  expect(nightmare.test(line(180))).toBe(false);
-  expect(nightmare.test(line(90).replace('Chaos Damage', 'Damage of a random Element'))).toBe(false);
-  const id = 'explicit.stat_1840747977';
-  const { resolved } = resolveBrickTradeStats([{ id, text: defs[0].tradePatterns[0].text }], defs);
-  for (const selection of [[0], [1], [0, 1]]) {
-    const expected = [{ id, value: { min: 31, max: 35 } }, { id, value: { min: 80, max: 100 } }];
-    expect(buildBrickTradeStatGroups(selection.map(i => defs[i].id), resolved))
-      .toEqual([{ type: 'not', filters: selection.map(i => expected[i]) }]);
-  }
+  const damage = { id: 'explicit.stat_1840747977', text: 'Monsters gain #% of their Physical Damage as Extra Chaos Damage' };
+  const withered = { id: 'explicit.stat_3044826007', text: 'Monsters have #% chance to inflict Withered for 2 seconds on Hit' };
+
+  it('identifies regular Profane by the Withered on-hit line even on boosted maps', () => {
+    const term = new RegExp(compileBrickExclusionPattern(['brick:' + regularId]), 'i');
+    expect(term.test('Monsters Inflict Withered for 2 seconds on Hit')).toBe(true);
+    for (const unrelated of ['Players cannot be Withered', 'Players inflict Withered on Hit', 'Monsters inflict Exposure on Hit', line(40), line(108)]) {
+      expect(term.test(unrelated), unrelated).toBe(false);
+    }
+  });
+
+  it('matches ordinary and boosted strong Profane without a word-boundary escape', () => {
+    const body = compileBrickExclusionPattern(['brick:' + strongId]);
+    const term = new RegExp(body, 'i');
+    for (const roll of [80, 81, 89, 90, 99, 100, 101, 108, 113, 120, 180, 200]) {
+      expect(term.test(line(roll)), String(roll)).toBe(true);
+    }
+    for (const roll of [31, 33, 35, 36, 40, 42, 79]) expect(term.test(line(roll))).toBe(false);
+    expect(term.test(line(90).replace('Chaos Damage', 'Damage of a random Element'))).toBe(false);
+    expect(term.test('Monsters have 90% chance to avoid Chaos Damage')).toBe(false);
+    expect(body).not.toContain('\\b');
+  });
+
+  it('emits independent Trade exclusions for Withered on hit and extra chaos at 80% or more', () => {
+    const defs = BRICK_MOD_DEFS.filter(row => row.id === regularId || row.id === strongId);
+    const { resolved } = resolveBrickTradeStats([damage, withered], defs);
+    const regular = { id: withered.id };
+    const strong = { id: damage.id, value: { min: 80 } };
+    for (const [ids, filters] of [
+      [[regularId], [regular]], [[strongId], [strong]], [[regularId, strongId], [regular, strong]],
+    ] as const) {
+      expect(buildBrickTradeStatGroups([...ids], resolved)).toEqual([{ type: 'not', filters }]);
+    }
+  });
+
+  it('upgrades both saved raw catalogue terms to the same exclusions as their semantic markers', () => {
+    const oldTerms = ['withe', '\\b([89]\\d|100)%.*a chaos'];
+    const markers = ['brick:' + regularId, 'brick:' + strongId];
+    expect(compileBrickExclusionPattern(oldTerms)).toBe(compileBrickExclusionPattern(markers));
+  });
 });

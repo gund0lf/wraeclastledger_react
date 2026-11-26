@@ -277,7 +277,11 @@ export const SessionCompareModal = ({ opened, onClose, initialSelectedIds }: Pro
                       )}
 
                       <SectionRow label="Avg map mods" span={span} />
-                      <MetricRow cols={cols} label="Quantity" winners={bestIndices(cols, (c) => c.avgQuant)} render={(c) => pct(c.avgQuant)} />
+                      {([['Quantity', 'avgQuant'], ['Atlas Drops', 'avgAtlasDrops'], ['More Threads', 'avgMoreThreads']] as const)
+                        .filter(([, key]) => cols.some(col => col[key] !== null))
+                        .map(([label, key]) => <MetricRow key={key} cols={cols} label={label}
+                          winners={bestIndices(cols, c => c[key])}
+                          render={c => c[key] === null ? EMDASH : pct(c[key])} />)}
                       <MetricRow cols={cols} label="Rarity" winners={bestIndices(cols, (c) => c.avgRarity)} render={(c) => pct(c.avgRarity)} />
                       <MetricRow cols={cols} label="Pack Size" winners={bestIndices(cols, (c) => c.avgPack)} render={(c) => pct(c.avgPack)} />
                       <MetricRow cols={cols} label="Currency" winners={bestIndices(cols, (c) => c.avgCurr)} render={(c) => pct(c.avgCurr)} />

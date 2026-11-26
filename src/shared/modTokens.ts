@@ -34,8 +34,8 @@ export const MOD_TOKENS = {
   reflect_physical_damage: 's ref',
   reflect_elemental_damage: 'f ele',
   high_crit_chance_multiplier: 'ike m',  // [V:py] High Crit Chance + Multiplier
-  brick_profane_nightmare: '\\b([89]\\d|100)%.*a chaos',
-  extra_chaos_damage_withered: 'withe',  // [V:py] Extra Chaos Damage + Withered
+  brick_profane_nightmare: 'n ([89]\\d|\\d{3})%.*a cha',
+  extra_chaos_damage_withered: 'ters inflict withered',
   extra_fire_damage: 'fire',  // [V:py] Extra Fire Damage
   extra_cold_damage: 'as col',  // [V:py] Extra Cold Damage
   extra_lightning_damage: 'ghtnin',  // [V:py] Extra Lightning Damage

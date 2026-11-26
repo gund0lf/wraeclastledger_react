@@ -1,12 +1,15 @@
 import type { ScarabSlot, SessionSettings } from '../types';
+import { paidDeliriumOrbLimit } from '../../../shared/deliriumOrbs';
 
 type MapType = SessionSettings['mapType'];
 
 export interface ImportedSetupSource {
+  league?: string;
   mapType?: unknown;
   chisel?: string | null;
   scarabs?: readonly string[];
   deliriumType?: string | null;
+  deliriumOrbTypes?: readonly string[];
   deliriumCountPerMap?: number | null;
   astrolabeType?: string | null;
 }
@@ -16,6 +19,7 @@ export interface ImportedSetupPlan {
   chiselType: string;
   scarabNames: string[];
   deliriumType: string;
+  deliriumOrbTypes?: string[];
   deliriumCountPerMap: number;
   astrolabeType: string;
 }
@@ -42,8 +46,9 @@ export function buildImportedSetupPlan(source: ImportedSetupSource): ImportedSet
     chiselType: normalizeImportedChiselType(source.chisel),
     scarabNames: (source.scarabs ?? []).map((name) => name.trim()).filter(Boolean),
     deliriumType: source.deliriumType?.trim() ?? '',
+    ...(source.deliriumOrbTypes ? { deliriumOrbTypes: [...source.deliriumOrbTypes] } : {}),
     deliriumCountPerMap: Number.isFinite(deliriumCount)
-      ? Math.min(5, Math.max(0, Math.trunc(deliriumCount)))
+      ? Math.min(paidDeliriumOrbLimit(source.league), Math.max(0, Math.trunc(deliriumCount)))
       : 0,
     astrolabeType: source.astrolabeType?.trim() ?? '',
   };

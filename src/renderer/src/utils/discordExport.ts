@@ -16,6 +16,8 @@ import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
  * moving every parser in lockstep.
  */
 import { SessionSettings, LootItem, ManualLootItem } from '../types';
+import { compactCovensCard, covensExportLines } from '../../../shared/covensCard.mjs';
+import { observedDropAverage } from './mapParser';
 import { generateRunRegex, mapDropAverages, trimmedMean } from './priceUtils';
 import { deviceInvestment, computeProfit, computeMultiplier, resolveFragmentCount } from './profit';
 import { EXPORT_EMOJI as E } from './discordEmoji';
@@ -26,6 +28,8 @@ import {
   formatObservedDeliriumLine,
   groupedDeliriumNote,
   isGroupedDeliriumNote,
+  isPairedDeliriumNote,
+  pairedDeliriumNote,
   summarizeObservedDelirium,
 } from './deliriumMetadata';
 
@@ -164,13 +168,18 @@ export function buildDiscordExport(input: DiscordExportInput): string {
   if (deviceNotes.length) filteredNotes.push('Map device per map: ' + deviceNotes.join(', '));
   if (drops.atlasCount || drops.threadCount) {
     const dropNotes: string[] = [];
-    if (drops.atlasCount) dropNotes.push('Atlas Drops ' + Math.round(drops.atlas) + '% (' + drops.atlasCount + '/' + n + ' maps)');
-    if (drops.threadCount) dropNotes.push('More Threads ' + Math.round(drops.threads) + '% (' + drops.threadCount + '/' + n + ' maps)');
+    if (drops.atlasCount) dropNotes.push('Atlas Drops ' + Math.round(observedDropAverage(maps, 'atlasDrops') ?? 0) + '% (' + drops.atlasCount + '/' + n + ' maps)');
+    if (drops.threadCount) dropNotes.push('More Threads ' + Math.round(observedDropAverage(maps, 'moreThreads') ?? 0) + '% (' + drops.threadCount + '/' + n + ' maps)');
     const prior = /^Map observations: (?:Atlas Drops|More Threads) \d+% \(\d+\/\d+ maps\)(?:, More Threads \d+% \(\d+\/\d+ maps\))?$/;
     for (let i = filteredNotes.length - 1; i >= 0; i--) if (prior.test(filteredNotes[i])) filteredNotes.splice(i, 1);
     filteredNotes.push('Map observations: ' + dropNotes.join(', '));
   }
   const distribution = grouped || (!summary ? notes.find(isGroupedDeliriumNote) : '');
+  if (BUNDLED_MANIFEST.leagueRules?.[league]?.deliriumOrbs === 'reforge' && summary) {
+    for (let i = filteredNotes.length - 1; i >= 0; i--) if (isPairedDeliriumNote(filteredNotes[i])) filteredNotes.splice(i, 1);
+    const paired = pairedDeliriumNote(maps);
+    if (paired) filteredNotes.push(paired);
+  }
   if (distribution) filteredNotes.push(distribution);
   return formatDiscordExport({
     mapCount: n, mapType: settings.mapType, multiplier,
@@ -180,7 +189,7 @@ export function buildDiscordExport(input: DiscordExportInput): string {
     chisel: settings.chiselType || 'None', chiselPrice: settings.chiselPrice, chiselConfigured: !!settings.chiselType,
     scarabs: settings.scarabs.filter(s => s.name).map(s => s.name),
     scarabCosts: settings.scarabs.filter(s => s.name).map(s => s.cost),
-    deliOrbType: settings.advDeliOrbType, deliOrbQty: settings.advDeliOrbQtyPerMap,
+    deliOrbType: settings.deliriumOrbSpend ? '' : settings.advDeliOrbType, deliOrbQty: settings.deliriumOrbSpend ? 0 : settings.advDeliOrbQtyPerMap,
     deliOrbPrice: settings.advDeliOrbPriceEach, observedDelirium,
     astroType: settings.advAstrolabeType, astroCount: settings.advAstrolabeCount,
     astroPrice: settings.advAstrolabePrice,
@@ -213,9 +222,33 @@ export function buildDiscordExport(input: DiscordExportInput): string {
 type DiscordExportPresentation = Omit<DiscordImport, 'slamRegex' | 'operation' | 'operationError'
   | 'observedModSampleSize' | 'lootSummaryInvalid'> & { chiselConfigured?: boolean };
 
+const cardLabels = {
+  items: Object.fromEntries([...(BUNDLED_MANIFEST.threads ?? []), ...(BUNDLED_MANIFEST.embers ?? []),
+    ...BUNDLED_MANIFEST.deliriumOrbs].map(item => [item.id, item.name])),
+  choices: BUNDLED_MANIFEST.atlasTrees?.['3.30.0-atlas']?.choices ?? {},
+};
+
+/** Use the same structured rows and display limits as the Discord bot. */
+export function postedCardExport(raw: string, parsed: DiscordImport | null): string {
+  const fields = parsed?.covens;
+  if (!fields || !parsed) return raw;
+  let cost: number | null = fields.orbs === null ? null : 0;
+  for (const row of fields.orbs ?? []) {
+    if (!row.used) continue;
+    const quote = row.price_each;
+    if (!quote || (quote.unit === 'divine' && !(parsed.divPrice > 0))) {
+      cost = null;
+      break;
+    }
+    cost = (cost ?? 0) + row.used * quote.amount * (quote.unit === 'divine' ? parsed.divPrice : 1);
+  }
+  const rows = covensExportLines(fields, parsed.mapCount, cost, cardLabels);
+  return compactCovensCard(formatDiscordExport({ ...parsed, updateStrategyId: null, observedDelirium: null }, rows));
+}
+
 /** Render recorded values directly. No session, catalogue or profit calculation
  * belongs here: the same formatter also displays the exact accepted payload. */
-export function formatDiscordExport(p: DiscordExportPresentation): string {
+export function formatDiscordExport(p: DiscordExportPresentation, covensRows?: string[]): string {
   const n = p.mapCount;
   const chiselLine = p.chiselConfigured ?? (!!p.chisel && p.chisel !== 'None')
     ? E.chisel.uni + ' **Chisel:** ' + p.chisel + ' (' + p.chiselPrice + 'c)'
@@ -235,13 +268,13 @@ export function formatDiscordExport(p: DiscordExportPresentation): string {
   const atlasUrl = isSafeStrategyAtlasUrl(p.atlasTreeUrl) ? p.atlasTreeUrl : null;
 
   let regexBlock = '';
-  if (n > 0) {
+  if (n > 0 && (!covensRows || p.runRegex)) {
     // Shared regexes are emitted WITHOUT the author's brick exclusions
     // (2026-07-20): exclusions are build-specific noise for everyone else,
     // which also retires the disclaimer line. In-app importers regenerate
     // with their own exclusions anyway; Discord-only readers get the neutral
     // form. Card-budget bonus: shorter regex strings.
-    regexBlock = ['', `${E.search.uni} **Regex**`,
+    regexBlock = [...(covensRows ? [] : ['']), `${E.search.uni} **Regex**`,
       `${E.run.uni} Run: \`${p.runRegex}\``,
     ].join('\n');
   }
@@ -283,7 +316,8 @@ export function formatDiscordExport(p: DiscordExportPresentation): string {
       ? [`**Observed Mods:** ${p.observedModAverage.toFixed(1)} avg`]
       : []),
     chiselLine,
-    `${E.stats.uni} **Avg Quant:** ${p.avgQuant.toFixed(0)}% | **Avg Rarity:** ${p.avgRarity.toFixed(0)}% | **Avg Pack:** ${p.avgPack.toFixed(0)}% | **Avg Currency:** ${p.avgCurr.toFixed(0)}%`,
+    `${E.stats.uni} ${covensRows ? '' : `**Avg Quant:** ${p.avgQuant.toFixed(0)}% | `}**Avg Rarity:** ${p.avgRarity.toFixed(0)}% | **Avg Pack:** ${p.avgPack.toFixed(0)}% | **Avg Currency:** ${p.avgCurr.toFixed(0)}%`,
+    ...(covensRows ?? []),
     `${E.cost.uni} **Per Map Cost:** ${p.perMapCost.toFixed(1)}c | **Total Invest:** ${p.totalInvest.toFixed(1)}c`,
     `${E.returns.uni} **Total Return:** ${p.totalReturn.toFixed(1)}c | **Net Profit:** ${p.netProfit >= 0 ? '+' : ''}${p.netProfit.toFixed(1)}c`,
     `${E.div.uni} **Div / Map:** ${p.divPerMap.toFixed(3)}d | **Divine Price:** ${p.divPrice}c`,

@@ -31,7 +31,7 @@ export interface LootItem {
 }
 
 export type LootCategory =
-  | 'Currency' | 'Fragments' | 'Scarabs' | 'Divination Cards'
+  | 'Currency' | 'Fragments' | 'Threads' | 'Scarabs' | 'Divination Cards'
   | 'Essences' | 'Deliriums' | 'Oils' | 'Incubators'
   | 'Unique Weapons' | 'Unique Armours' | 'Unique Accessories'
   | 'Unique Flasks' | 'Unique Jewels' | 'Maps' | 'Gems'
@@ -84,6 +84,8 @@ export interface RunStatisticsSetupContext {
   /** Exact safe Atlas view associated with the successful Show stats read.
    * Null means no authoritative Atlas evidence was available at capture time. */
   atlasTreeUrl: string | null;
+  /** Confirmed node-to-option IDs for the captured tree version. Missing answers are unknown. */
+  atlasChoiceIds?: Record<string, string>;
   atlasDetectedTags: string[];
   scarabNames: string[];
   bestiaryAtlasSetup?: BestiaryAtlasSetup;
@@ -132,6 +134,8 @@ export interface ManualRunTimer {
   finishedAt: number | null;
 }
 
+export type EncounterFamily = 'mirage' | 'beyond' | 'sentinel' | 'wildwood' | 'delirium';
+
 export interface MapData {
   id: string; tier: number; name: string;
   quantity: number; rarity: number; packSize: number;
@@ -145,6 +149,8 @@ export interface MapData {
    * legacy copies, and old maps; never infer it from text-line count. */
   itemRarity?: string;
   explicitModCount?: number;
+  /** Explicit encounter modifiers on this map. Empty means checked; absent means unknown. */
+  confirmedEncounters?: EncounterFamily[];
   corruptionModifiers?: {
     explicitMagnitude?: number; atlasPassiveEffect?: number; rarity?: number; packSize?: number; randomNotables?: number;
   };
@@ -180,6 +186,8 @@ export interface ThreadSlot {
   name: string;
   count: number;
   price: number;
+  granted?: number;
+  paused?: boolean;
 }
 
 export interface SessionSettings {
@@ -213,6 +221,7 @@ export interface SessionSettings {
   advScour: number; advScourPrice: number;
   advAlch: number; advAlchPrice: number;
   advDeliOrbType: string; advDeliOrbQtyPerMap: number; advDeliOrbPriceEach: number;
+  deliriumOrbSpend?: { type: string; count: number; priceEach: number | null }[];
   // Split: price per split op (beast/fossil). If > 0, split session is active.
   advSplitPrice: number;
   // Astrolabe

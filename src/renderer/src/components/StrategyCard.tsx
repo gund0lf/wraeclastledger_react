@@ -9,7 +9,7 @@ import {
   IconSnowflake,
 } from '@tabler/icons-react';
 import {
-  Strategy, TAG_COLORS,
+  Strategy, TAG_COLORS, fullTagBadge,
   BROWSER_COLS, BROWSER_GRID_TEMPLATE, BROWSER_MAXIMIZED_COLS,
   BROWSER_MAXIMIZED_GRID_TEMPLATE, BROWSER_SETUP_COLLAPSED_GRID_TEMPLATE,
   BROWSER_MAXIMIZED_SETUP_COLLAPSED_GRID_TEMPLATE, BROWSER_ACTIVITY_WIDTH,
@@ -483,7 +483,7 @@ export const StrategyCard = ({
               {strategy.type_tag && (
                 <Group className="strategy-card-hero-tags" gap={4} wrap="wrap">
                   {strategy.type_tag.split(',').map((t) => t.trim()).filter(Boolean).map((t) => (
-                    <Badge key={t} size="sm" color={TAG_COLORS[t] ?? 'gray'} variant="light">{t}</Badge>
+                    <Badge key={t} size="sm" color={TAG_COLORS[t] ?? 'gray'} variant="light">{fullTagBadge(t)}</Badge>
                   ))}
                 </Group>
               )}
