@@ -113,6 +113,14 @@ const SAD_LOOT: LootItem[] = [
 /* ------------------------------------------------------------------ */
 
 describe('computeRollingSessionTotal', () => {
+  it('charges Originator orb spend once across maps alongside ordinary Exalted spend', () => {
+    const legacy = baseSettings({ advExalt: 3, advExaltPrice: 9 });
+    const crafted = { ...legacy, advOriginatorExalt: 4, advOriginatorExaltPrice: 60 };
+    expect(computeRollingSessionTotal(legacy, 8)).toBe(9);
+    expect(computeCosts(crafted, 1).totalInvest).toBe(69);
+    expect(computeCosts(crafted, 8).totalInvest).toBe(69);
+  });
+
   it('scales delirium orb cost with map count (regression: stored rollingCostPerMap froze)', () => {
     const s = SAD_PRESERVATION();
     // At mapCount 1 this reproduces the exact stale value the app displayed: 2120c

@@ -49,7 +49,7 @@ export interface CostBreakdown {
   oneTimeScarabs: number;
   /** Full per-map cost: base map (+ split halving) + chisel + per-map scarabs. */
   perMapBase: number;
-  /** LIVE session total of Advanced Costs: chaos + exalt + scour + alch + deli(qty x price x maps) + astrolabe. */
+  /** LIVE session total of Advanced Costs: rolling currency + deli(qty x price x maps) + astrolabe. */
   rollingSessionTotal: number;
   /** perMapBase x mapCount + rollingSessionTotal + oneTimeScarabs. */
   totalInvest: number;
@@ -79,6 +79,7 @@ export function computeRollingSessionTotal(settings: SessionSettings, mapCount: 
   // Gems are intentionally excluded — gem leveling is side income, not map investment.
   return settings.advChaos
     + settings.advExaltPrice
+    + (settings.advOriginatorExaltPrice ?? 0)
     + settings.advScourPrice
     + settings.advAlchPrice
     + deliTotal

@@ -218,6 +218,7 @@ export interface SessionSettings {
   atlasBonus: boolean;
   advChaos: number;
   advExalt: number; advExaltPrice: number;
+  advOriginatorExalt?: number; advOriginatorExaltPrice?: number;
   advScour: number; advScourPrice: number;
   advAlch: number; advAlchPrice: number;
   advDeliOrbType: string; advDeliOrbQtyPerMap: number; advDeliOrbPriceEach: number;

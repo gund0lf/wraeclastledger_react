@@ -44,6 +44,7 @@ export function investmentCompleteness(settings: SessionSettings): InvestmentCom
 
   const rollingPairs = [
     [settings.advExalt, settings.advExaltPrice],
+    [settings.advOriginatorExalt ?? 0, settings.advOriginatorExaltPrice ?? 0],
     [settings.advScour, settings.advScourPrice],
     [settings.advAlch, settings.advAlchPrice],
   ] as const;

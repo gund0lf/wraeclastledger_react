@@ -394,6 +394,11 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
               </SimpleGrid>
             )}
             <SimpleGrid cols={3} style={{ alignItems: 'center' }}>
+              <Group gap={4} wrap="nowrap"><PoeItemIcon name="Originator's Exalted Orb" size={16} category="orb" /><Text size="xs">Originator&apos;s Exalted Orb</Text></Group>
+              <NumberInput aria-label="Originator's Exalted Orbs bought" size="xs" value={settings.advOriginatorExalt ?? 0} onChange={(v) => updateAdvSetting('advOriginatorExalt', Number(v))} min={0} allowDecimal={false} />
+              <PriceInput selectValue={(state) => state.settings.advOriginatorExaltPrice ?? 0} onChange={(v) => updateAdvSetting('advOriginatorExaltPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
+            </SimpleGrid>
+            <SimpleGrid cols={3} style={{ alignItems: 'center' }}>
               <Group gap={4} wrap="nowrap"><PoeItemIcon name="Orb of Scouring" size={16} category="orb" /><Text size="xs">Scour</Text></Group>
               <NumberInput size="xs" value={settings.advScour} onChange={(v) => updateAdvSetting('advScour', Number(v))} min={0} />
               <PriceInput selectValue={(state) => state.settings.advScourPrice} onChange={(v) => updateAdvSetting('advScourPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
@@ -727,6 +732,8 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
                     updateAdvSetting('advChaos', 0);
                     updateAdvSetting('advExalt', 0);
                     updateAdvSetting('advExaltPrice', 0);
+                    updateAdvSetting('advOriginatorExalt', 0);
+                    updateAdvSetting('advOriginatorExaltPrice', 0);
                     updateAdvSetting('advScour', 0);
                     updateAdvSetting('advScourPrice', 0);
                     updateAdvSetting('advAlch', 0);
