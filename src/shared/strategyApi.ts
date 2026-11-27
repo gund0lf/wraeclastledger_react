@@ -1,5 +1,5 @@
 /** Released desktop clients keep this origin until a coordinated migration. */
-export const PRODUCTION_STRATEGY_API_ORIGIN = 'https://wledger.richardpruett.com'
+export const PRODUCTION_STRATEGY_API_ORIGIN = 'https://api.wraeclastledger.com'
 
 /** Packaged clients cannot redirect author capabilities through an environment
  * override. Unpackaged development may opt in only to a loopback fixture. */

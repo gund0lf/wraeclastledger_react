@@ -190,7 +190,7 @@ it('matches the shared exact server method/path contract for all five author rou
 it('enables only explicit loopback fixtures in unpackaged development', () => {
   const resolve = (reviewOrigin?: string, development = true) => authorServiceOrigin({ packaged: false, development, reviewOrigin })
   expect(resolve(origin)).toBe(origin)
-  for (const raw of [undefined, '', 'invalid', PRODUCTION_STRATEGY_API_ORIGIN, 'https://api.wraeclastledger.com',
+  for (const raw of [undefined, '', 'invalid', PRODUCTION_STRATEGY_API_ORIGIN, 'https://wledger.richardpruett.com',
     'http://localhost:43181', 'http://127.0.0.1', 'https://127.0.0.1:43181',
     'http://127.0.0.1:43181/path', 'http://x@127.0.0.1:43181', origin + '?x=1', origin + '#x'])
     expect(resolve(raw)).toBeNull()

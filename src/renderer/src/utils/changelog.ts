@@ -15,6 +15,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: 'Unreleased',
     changes: [
       'New sessions open your league tree in Ledger Atlas. Sync it to bring your allocated passives and chosen effects into Ledger. Your saved Path of Pathing links still open where you saved them.',
+      'Community strategies and sharing now use api.wraeclastledger.com.',
       'When you sync a tree or import a setup, Ledger recognizes all five effect choices across Celestial Presence and Runic Distortion.',
       'In Atlas Calc, expand Surpassing Chance to see what your tree guarantees and your chance of getting one more. You can also see the map modifier multiplier separately from your tree bonuses.',
       'Item icons you have already loaded stay visible when you reopen Ledger or while fresh artwork is loading.',
