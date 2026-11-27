@@ -13,17 +13,16 @@ import {
   Switch,
   Text,
   Tooltip,
-  UnstyledButton,
 } from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';
-import { IconChevronDown, IconChevronRight, IconRefresh, IconTree, IconX } from '@tabler/icons-react';
+import { IconRefresh, IconTree, IconX } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import { useSessionKeys, useSessionStore } from '../store/useSessionStore';
 import { useUIStore } from '../store/useUIStore';
 import { computeMultiplier } from '../utils/profit';
 import { inferMapType } from '../utils/mapTypeDetection';
 import { confirmedLeagueSync, mapDisplayLeague } from '../utils/league';
-import { COLOR, FONT } from '../utils/uiTokens';
+import { FONT } from '../utils/uiTokens';
 import { isPathofpathingTreeUrl } from '../utils/atlasUrl';
 import {
   atlasSyncPresentation,
@@ -34,32 +33,9 @@ import {
 } from '../utils/atlasCalcPresentation';
 import { applyAtlasStatsSyncPatch, buildAtlasStatsSyncPatch, readAtlasStatsForLeague } from '../utils/atlasStatsSync';
 import { MULTIPLYING_EFFECT_PER_FRAGMENT } from '../../../shared/mapDevice';
+import { AtlasCalcSectionBar } from '../components/AtlasCalcSectionBar';
 import './AtlasCalcModule.css';
 import { SurpassingChanceSection } from '../components/SurpassingChanceSection';
-
-const SectionBar = ({ title, meta, open, onClick }: {
-  title: string;
-  meta: string;
-  open: boolean;
-  onClick: () => void;
-}) => (
-  <UnstyledButton
-    className="atlas-calc-section-bar"
-    data-open={open}
-    onClick={onClick}
-    aria-expanded={open}
-  >
-    {open
-      ? <IconChevronDown size={12} color={COLOR.textMuted} />
-      : <IconChevronRight size={12} color={COLOR.textMuted} />}
-    <Text size="xs" fw={600} className="atlas-calc-section-title">{title}</Text>
-    <div className="atlas-calc-section-meta">
-      <Text component="span" size="xs" c="dimmed" className="atlas-calc-section-meta-text">
-        {meta}
-      </Text>
-    </div>
-  </UnstyledButton>
-);
 
 const SourceRow = ({ name, value, source, detail, active = false }: {
   name: string;
@@ -105,6 +81,7 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
   );
   const requestPanel = useUIStore((state) => state.requestPanel);
   const [inputsOpen, setInputsOpen] = useState(false);
+  const [surpassingOpen, setSurpassingOpen] = useState(false);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -114,6 +91,7 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
   useEffect(() => {
     setInputsOpen(false);
     setBreakdownOpen(false);
+    setSurpassingOpen(false);
     setRefreshing(false);
     setSyncError(null);
     setLegacyNoticeDismissed(false);
@@ -259,6 +237,16 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
   const bonusLabel = `+${completion.itemQuantity}% item quantity`;
   const typeLabel = threads?.types === 1 ? 'Thread type' : 'Thread types';
   const currentCalc = syncState === 'current' ? settings.atlasStatsRead?.calc : undefined;
+  const treeBonuses = currentCalc ? [
+    currentCalc.areaPackSize && `+${currentCalc.areaPackSize}% area pack size`,
+    currentCalc.areaRarity && `+${currentCalc.areaRarity}% area item rarity`,
+    currentCalc.increasedThreadsFound && `${currentCalc.increasedThreadsFound}% increased Threads found`,
+    currentCalc.increasedMapsFound && `${currentCalc.increasedMapsFound}% increased Maps found`,
+    currentCalc.mapsFoundPerExplicit && `${currentCalc.mapsFoundPerExplicit}% increased Maps found per explicit modifier`,
+    currentCalc.additionalRandomModifier && 'Shaping the Valleys adds a random modifier when the map opens. Mounting Modifiers counts the modifiers on the map item.',
+    currentCalc.randomNotables && `${currentCalc.randomNotables} additional random notables · area effects unknown`,
+    currentCalc.rerollsCorruptedRare && 'Twist of Fate · corrupted rare maps can change when opened',
+  ].filter((line): line is string => typeof line === 'string') : [];
   const inputsMeta = `${mapInputMeta} · ${threads ? threads.types + ' ' + typeLabel : fragmentCount + ' frags'}`;
   const breakdownMeta = `+${fmt1(mountBonus + (threads?.threadEffect ?? fragmentEffect) + nodeEffect)}% mods · ${settings.atlasBonus ? bonusLabel : 'Bonus off'}`;
   const heroContext = mapSource.observed
@@ -296,20 +284,16 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
             </Text>
             {(multiplierResult.prefixMultiplier !== multiplier || multiplierResult.suffixMultiplier !== multiplier) &&
               <Text size="xs">Prefixes {multiplierResult.prefixMultiplier.toFixed(3)}× · Suffixes {multiplierResult.suffixMultiplier.toFixed(3)}×</Text>}
-            {currentCalc?.areaPackSize && <Text size="xs">+{currentCalc.areaPackSize}% area pack size</Text>}
-            {currentCalc?.areaRarity && <Text size="xs">+{currentCalc.areaRarity}% area item rarity</Text>}
-            {currentCalc?.increasedThreadsFound && <Text size="xs">{currentCalc.increasedThreadsFound}% increased Threads found</Text>}
-            {currentCalc?.increasedMapsFound && <Text size="xs">{currentCalc.increasedMapsFound}% increased Maps found</Text>}
-            {currentCalc?.mapsFoundPerExplicit && <Text size="xs">{currentCalc.mapsFoundPerExplicit}% increased Maps found per explicit modifier</Text>}
-            {currentCalc?.additionalRandomModifier && <Text size="xs" c="dimmed">Shaping the Valleys adds a random modifier when the map opens. Mounting Modifiers counts the modifiers on the map item.</Text>}
-            {currentCalc?.randomNotables && <Text size="xs" c="dimmed">{currentCalc.randomNotables} additional random notables · area effects unknown</Text>}
-            {currentCalc?.rerollsCorruptedRare && <Text size="xs" c="dimmed">Twist of Fate · corrupted rare maps can change when opened</Text>}
-            <Text tt="uppercase" c="dimmed" className="atlas-calc-hero-label">Atlas Multiplier</Text>
+            <Text tt="uppercase" c="dimmed" className="atlas-calc-hero-label">Map modifier multiplier</Text>
+            <Text size="xs" c="dimmed">Scales the modifiers written on your map. 1.000× is their base strength.</Text>
             <Text c="dimmed" className="atlas-calc-hero-context" title={heroContext}>{heroContext}</Text>
           </div>
         </div>
 
-        <SurpassingChanceSection chances={currentCalc?.surpassingChances} />
+        {treeBonuses.length > 0 && <section aria-label="Atlas tree bonuses" className="atlas-calc-guidance">
+          <Text size="xs" fw={600}>Atlas tree bonuses</Text>
+          {treeBonuses.map(line => <Text key={line} size="xs">{line}</Text>)}
+        </section>}
         {syncState === 'current' && settings.atlasStatsRead?.choiceNodeIds === undefined &&
           getManifest().atlasTrees?.[atlasVersionOf(settings.atlasTreeUrl)]?.choices &&
           <Text size="xs" c="dimmed">Full allocation unavailable. Sync the tree again to check choices reached along a path.</Text>}
@@ -393,8 +377,10 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
           </div>
         )}
 
+        <SurpassingChanceSection chances={currentCalc?.surpassingChances} open={surpassingOpen}
+          onToggle={() => setSurpassingOpen(open => !open)} />
         <Stack gap={0}>
-          <SectionBar
+          <AtlasCalcSectionBar
             title="Inputs"
             meta={inputsMeta}
             open={inputsOpen}
@@ -479,7 +465,7 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
         </Stack>
 
         <Stack gap={0}>
-          <SectionBar
+          <AtlasCalcSectionBar
             title="Calculation"
             meta={breakdownMeta}
             open={breakdownOpen}

@@ -14,7 +14,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '1.0.101',
     date: 'Unreleased',
     changes: ['Item artwork catalogues are cached locally for a day in active leagues and a week in ended leagues and Standard. Older artwork stays visible while missing or expired categories refresh in small batches.',
-      'Atlas Calc shows Surpassing Chance from your synced tree, including guaranteed encounters and the chance of one more.',
+      'Atlas Calc separates the map modifier multiplier from tree bonuses and shows Surpassing Chance breakpoints in an expandable section.',
       'Atlas sync and setup imports recognize all five effects on Celestial Presence and Runic Distortion.',
       'New sessions open the bundled league tree on Ledger Atlas. Sync reads the settled allocation and its selected effects. Saved Path of Pathing links still open on their original host.'],
   },

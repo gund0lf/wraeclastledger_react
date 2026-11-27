@@ -14,7 +14,7 @@ const box = (n: number) => `Your Maps have +${n}% ${keyword} to contain a Strong
 const derive = (...stats: string[]) => deriveAtlasCalcSettingsSnapshot([{ title: 'Atlas', stats }]);
 function render(...stats: string[]) {
   return renderToStaticMarkup(createElement(MantineProvider, null,
-    createElement(SurpassingChanceSection, { chances: derive(...stats).surpassingChances })));
+    createElement(SurpassingChanceSection, { chances: derive(...stats).surpassingChances, open: true, onToggle: () => {} })));
 }
 
 it.each([
@@ -64,7 +64,10 @@ it('maps all ten outcomes to their units and leaves lane rarity in game wording'
   expect(derive(...perMap, ...others).surpassingChances).toEqual({ strongbox: 50, exile: 50, spirit: 50,
     essence: 50, shrine: 50, flora: 50, pit: 120, reward: 15, suffix: 35, magicLane: 130 });
   const html = render(...others);
-  for (const detail of ['1 guaranteed per Abyss · 20% chance of one more', '15% chance per Blight lane',
-    '35% chance per Remnant', 'at least Magic']) expect(html).toContain(detail);
+  expect(html.indexOf('Abyss pits')).toBeLessThan(html.indexOf('Blight lane rewards'));
+  expect(html.indexOf('Blight lane rewards')).toBeLessThan(html.indexOf('Blight lanes at least Magic'));
+  expect(html.indexOf('Blight lanes at least Magic')).toBeLessThan(html.indexOf('Remnant suffixes'));
+  for (const detail of ['1 extra guaranteed per Abyss · 20% chance of one more', '15% chance of one extra per Blight lane',
+    '35% chance of one extra per Remnant', 'at least Magic']) expect(html).toContain(detail);
   expect(render(others[3])).not.toContain('guaranteed');
 });

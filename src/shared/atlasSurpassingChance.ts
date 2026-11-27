@@ -9,10 +9,10 @@ export const surpassingOutcomes = [
   { key: 'essence', label: 'Imprisoned Monsters', unit: 'map', template: perMap('to contain an Imprisoned Monster') },
   { key: 'shrine', label: 'Shrines', unit: 'map', template: perMap('to contain a Shrine') },
   { key: 'flora', label: 'Sacred Flora', unit: 'map', template: perMap('to contain Sacred Flora') },
-  { key: 'pit', label: 'Additional pits', unit: 'Abyss', template: 'Abysses in your Maps have #% Surpassing Chance to contain an additional Pit' },
-  { key: 'reward', label: 'Additional rewards', unit: 'Blight lane', template: 'Blight Lanes in your Maps have #% Surpassing Chance to have an additional reward per Lane in Blight encounter' },
-  { key: 'suffix', label: 'Additional suffixes', unit: 'Remnant', template: '#% Surpassing Chance for Remnants in your Maps to have an additional Suffix Modifier' },
-  { key: 'magicLane', label: 'Surpassing Chance that a lane of Blight encounters in your Maps is at least Magic', unit: null, template: '#% Surpassing Chance that a lane of Blight encounters in your Maps is at least Magic' },
+  { key: 'pit', label: 'Abyss pits', unit: 'Abyss', template: 'Abysses in your Maps have #% Surpassing Chance to contain an additional Pit' },
+  { key: 'reward', label: 'Blight lane rewards', unit: 'Blight lane', template: 'Blight Lanes in your Maps have #% Surpassing Chance to have an additional reward per Lane in Blight encounter' },
+  { key: 'magicLane', label: 'Blight lanes at least Magic', unit: null, template: '#% Surpassing Chance that a lane of Blight encounters in your Maps is at least Magic' },
+  { key: 'suffix', label: 'Remnant suffixes', unit: 'Remnant', template: '#% Surpassing Chance for Remnants in your Maps to have an additional Suffix Modifier' },
 ] as const;
 
 type OutcomeKey = typeof surpassingOutcomes[number]['key'];
