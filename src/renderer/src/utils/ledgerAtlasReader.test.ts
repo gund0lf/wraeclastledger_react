@@ -1,11 +1,23 @@
 import { expect, it, vi } from 'vitest'
 import { readLedgerTree, validateLedgerSnapshot } from '../../../shared/ledgerAtlasReader'
+import { validCovensImport } from '../../../shared/covensImport'
 import { isAllowedExternalUrl, isAtlasPlannerUrl } from '../../../shared/atlasReaderSafety'
 
 const url = 'https://atlas.wraeclastledger.com/?v=3.30.0-atlas&choices=712-17864#AAAABgAAAwIAAshxdXF1AAA='
 const snapshot = { url, schemaVersion: 1, ready: true, treeVersion: '3.30.0-atlas', pointsSpent: 1, pointsMax: 150,
   allocatedNodeIds: [712], choices: [{ nodeId: 712, effectId: 17864 }] }
 const groups = [{ title: 'Maps', stats: ['2% increased Maps found in your Maps'] }]
+
+it.each([
+  [27261, 15113], [27261, 62580], [27261, 24486],
+  [53484, 33191], [53484, 39546],
+])('accepts the 3.30.0c effect on node %i in the snapshot and setup code', (nodeId, effectId) => {
+  const authored = url.replace('712-17864', nodeId + '-' + effectId)
+  const selected = { ...snapshot, url: authored, allocatedNodeIds: [nodeId], choices: [{ nodeId, effectId }] }
+  expect(validateLedgerSnapshot(selected, authored)?.choiceEffects).toEqual({ [nodeId]: String(effectId) })
+  expect(validCovensImport({ version: 1, threads: null, ember: null,
+    atlas: { version: snapshot.treeVersion, choices: [{ node: nodeId, option: effectId }] } }, 'Covens', authored)).toBe(true)
+})
 
 it('waits for one settled allocation and matches the effect to its node and the authored URL', async () => {
   const executeJavaScript = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce({ snapshot, groups })

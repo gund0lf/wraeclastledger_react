@@ -258,6 +258,15 @@ export const ALLFLAME_MANIFEST: GameDataManifest = {
 const activeItem = (name: string) => ({ id: name.toLowerCase().replaceAll(' ', '-'), name, status: 'active' as const });
 
 const atlasChoices330 = {
+  "27261": { name: "Celestial Presence", options: [
+    { id: "15113", text: "Map Bosses" },
+    { id: "62580", text: "Players" },
+    { id: "24486", text: "Influenced Monsters" },
+  ] },
+  "53484": { name: "Runic Distortion", options: [
+    { id: "33191", text: "Monsters" },
+    { id: "39546", text: "Chests" },
+  ] },
   "45404": { name: "Secrets Unveiled", options: [
     { id: "55878", text: "Immortal Syndicate Members in your Maps have 25% chance to\ndrop an additional Double-Veiled Item" },
     { id: "5301", text: "4% chance for Veiled Items found in your Maps to drop as Allflames instead" },
@@ -440,7 +449,7 @@ const atlasChoices330 = {
 export const BUNDLED_MANIFEST: GameDataManifest = {
   ...ALLFLAME_MANIFEST,
   atlasCompletion: { objectives: 100, itemQuantity: 25 },
-  revision: 6,
+  revision: 7,
   schemaVersion: 2,
   patchVersion: '3.30',
   atlasTreeVersion: '3.30.0-atlas',
