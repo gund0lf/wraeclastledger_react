@@ -13,11 +13,13 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '1.0.101',
     date: 'Unreleased',
-    changes: ['Item artwork catalogues are cached locally for a day in active leagues and a week in ended leagues and Standard. Older artwork stays visible while missing or expired categories refresh in small batches.',
-      "Advanced Costs now tracks Originator's Exalted Orbs under Rolling Costs. Enter the quantity bought and total paid to see the cost per orb.",
-      'Atlas Calc separates the map modifier multiplier from tree bonuses and shows Surpassing Chance breakpoints in an expandable section.',
-      'Atlas sync and setup imports recognize all five effects on Celestial Presence and Runic Distortion.',
-      'New sessions open the bundled league tree on Ledger Atlas. Sync reads the settled allocation and its selected effects. Saved Path of Pathing links still open on their original host.'],
+    changes: [
+      'New sessions open your league tree in Ledger Atlas. Sync it to bring your allocated passives and chosen effects into Ledger. Your saved Path of Pathing links still open where you saved them.',
+      'When you sync a tree or import a setup, Ledger recognizes all five effect choices across Celestial Presence and Runic Distortion.',
+      'In Atlas Calc, expand Surpassing Chance to see what your tree guarantees and your chance of getting one more. You can also see the map modifier multiplier separately from your tree bonuses.',
+      'Item icons you have already loaded stay visible when you reopen Ledger or while fresh artwork is loading.',
+      "In Advanced Costs, enter how many Originator's Exalted Orbs you bought and the total you paid. Rolling Costs shows the cost per orb.",
+    ],
   },
   {
     version: '1.0.100',
