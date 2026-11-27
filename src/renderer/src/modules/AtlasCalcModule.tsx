@@ -35,6 +35,7 @@ import {
 import { applyAtlasStatsSyncPatch, buildAtlasStatsSyncPatch, readAtlasStatsForLeague } from '../utils/atlasStatsSync';
 import { MULTIPLYING_EFFECT_PER_FRAGMENT } from '../../../shared/mapDevice';
 import './AtlasCalcModule.css';
+import { SurpassingChanceSection } from '../components/SurpassingChanceSection';
 
 const SectionBar = ({ title, meta, open, onClick }: {
   title: string;
@@ -308,6 +309,7 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
           </div>
         </div>
 
+        <SurpassingChanceSection chances={currentCalc?.surpassingChances} />
         {syncState === 'current' && settings.atlasStatsRead?.choiceNodeIds === undefined &&
           getManifest().atlasTrees?.[atlasVersionOf(settings.atlasTreeUrl)]?.choices &&
           <Text size="xs" c="dimmed">Full allocation unavailable. Sync the tree again to check choices reached along a path.</Text>}

@@ -1,3 +1,5 @@
+import { readSurpassingChances, type SurpassingChances } from './atlasSurpassingChance';
+
 // Both Electron readers evaluate this script inside the isolated planner document.
 export const READ_ATLAS_STAT_GROUPS = `(function() {
   function statText(el) {
@@ -80,6 +82,7 @@ export interface AtlasCalcSettingsPatch {
 }
 
 export interface AtlasCalcSettingsSnapshot {
+  surpassingChances?: SurpassingChances;
   areaPackSize?: number;
   areaRarity?: number;
   increasedMapsFound?: number;
@@ -163,7 +166,9 @@ export function deriveAtlasCalcSettingsSnapshot(
   const increasedThreadsFound = summedStatValue(stats, /^(\d+)% increased Threads found in your Maps$/i);
   const randomNotables = summedStatValue(stats, /^Your Maps are opened with (\d+) additional random Unallocated Notable Atlas Passives$/i);
   const rerollsCorruptedRare = stats.some(stat => /^Your Corrupted Rare Maps are modified unpredictably when opened$/i.test(stat));
+  const surpassingChances = readSurpassingChances(stats);
   return {
+    ...(surpassingChances && { surpassingChances }),
     ...(areaPackSize && { areaPackSize }), ...(areaRarity && { areaRarity }),
     ...(increasedMapsFound && { increasedMapsFound }), ...(mapsFoundPerExplicit && { mapsFoundPerExplicit }),
     ...(increasedThreadsFound && { increasedThreadsFound }),
