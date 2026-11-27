@@ -127,8 +127,8 @@ describe('Investment input wiring (native interaction remains a smoke check)', (
     expect(gemInput).toContain('onChange={(e) => change(e.currentTarget.value)}');
     expect(gemInput).not.toContain('const name = useSessionStore');
     const iconSource = readFileSync(new URL('../components/ui/PoeItemIcon.tsx', import.meta.url), 'utf8');
-    // Cache acquisition depends on league context, not the changing name.
-    expect(iconSource).toContain('}, [leagueOverride, sessionLeague]);');
+    // Reacquire after an artwork refresh or league switch, never per keystroke.
+    expect(iconSource).toContain('}, [leagueOverride, sessionLeague, iconVersion]);');
   });
   it.each(['chiselOptions', 'astrolabeOptions', 'deliriumOrbOptions'])(
     '%s uses searchable Select without persisting search text', (options) => {

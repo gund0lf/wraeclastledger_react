@@ -56,7 +56,7 @@ declare global {
       searchMapsOnTrade:   (params: TradeParams) => Promise<{ url: string | null; error: string | null }>
       getBrickMods:        () => Promise<BrickModResult>
       fetchCurrencyOverview: (league: string) => Promise<{ lines: { id: string; primaryValue?: number }[] | null; error: string | null }>
-      fetchEconomyIcons: (family: 'exchange' | 'stash', league: string, type: string) => Promise<{ icons: { name: string; icon: string }[] | null; slugs: string[]; names: string[]; prices?: { name: string; chaos: number }[]; error: string | null }>
+      fetchEconomyIcons: (family: 'exchange' | 'stash', league: string, type: string) => Promise<{ icons: { name: string; icon: string }[] | null; slugs: string[]; names: string[]; prices?: { name: string; chaos: number }[]; status?: number; retryAfter?: string | null; error: string | null }>
       fetchTradeItemCatalog: () => Promise<{ catalog: TradeItemCatalog; error: string | null }>
       fetchLeagueIndex: () => Promise<{ leagues: string[] | null; error: string | null }>
       readGameDataCache: () => Promise<{ manifest: unknown | null; error: string | null }>

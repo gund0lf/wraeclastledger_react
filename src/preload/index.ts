@@ -95,7 +95,7 @@ const api = {
   getBrickMods: (): Promise<BrickModResult> => ipcRenderer.invoke('trade:get-brick-mods'),
   fetchCurrencyOverview: (league: string): Promise<{ lines: { id: string; primaryValue?: number }[] | null; error: string | null }> =>
     ipcRenderer.invoke('poeninja:currency-overview', league),
-  fetchEconomyIcons: (family: 'exchange' | 'stash', league: string, type: string): Promise<{ icons: { name: string; icon: string }[] | null; slugs: string[]; names: string[]; prices?: { name: string; chaos: number }[]; error: string | null }> =>
+  fetchEconomyIcons: (family: 'exchange' | 'stash', league: string, type: string): Promise<{ icons: { name: string; icon: string }[] | null; slugs: string[]; names: string[]; prices?: { name: string; chaos: number }[]; status?: number; retryAfter?: string | null; error: string | null }> =>
     ipcRenderer.invoke('poeninja:economy-icons', family, league, type),
   fetchTradeItemCatalog: (): Promise<{ catalog: TradeItemCatalog; error: string | null }> =>
     ipcRenderer.invoke('poe:trade-item-catalog'),

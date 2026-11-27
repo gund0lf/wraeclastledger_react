@@ -14,7 +14,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Image } from '@mantine/core';
 import { IconFlame, IconNeedleThread, IconBug, IconCircleDashed, IconDiamond, IconTool, IconWorld } from '@tabler/icons-react';
-import { getItemIcons } from '../../utils/itemIcons';
+import { useIconCatalogueVersion, getItemIcons } from '../../utils/itemIcons';
 import { useSessionStore } from '../../store/useSessionStore';
 import { COLOR } from '../../utils/uiTokens';
 import type { LootCategory } from '../../types';
@@ -49,6 +49,7 @@ export const PoeItemIcon = ({
 }) => {
   const leagueOverride = useSessionStore((s) => s.leagueOverride);
   const sessionLeague = useSessionStore((s) => s.settings.leagueName);
+  const iconVersion = useIconCatalogueVersion();
   const [resolvers, setResolvers] = useState<Resolvers | null>(() => cachedResolvers);
   const [imageFailed, setImageFailed] = useState(false);
 
@@ -65,7 +66,7 @@ export const PoeItemIcon = ({
       })
       .catch(() => {}); // offline / poe.ninja down -> stay on fallback
     return () => { alive = false; };
-  }, [leagueOverride, sessionLeague]);
+  }, [leagueOverride, sessionLeague, iconVersion]);
 
   const url = representativeCategory
     ? resolvers?.resolveCategoryIcon(representativeCategory)

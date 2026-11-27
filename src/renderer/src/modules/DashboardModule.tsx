@@ -18,7 +18,7 @@ import {
   IconSearch, IconTrash,
 } from '@tabler/icons-react';
 import { legacyDropMaps, observedDropAverage } from '../utils/mapParser';
-import { getItemIcons, chiselItemName } from '../utils/itemIcons';
+import { useIconCatalogueVersion, getItemIcons, chiselItemName } from '../utils/itemIcons';
 import type { ItemIdentity } from '../utils/itemIcons';
 import {
   EQUIPMENT_GROUP_LABEL,
@@ -228,6 +228,7 @@ export const DashboardModule = () => {
   const [lootView,  setLootView]  = useState<'list' | 'diff' | 'breakdown'>('list');
   const [search,    setSearch]    = useState('');
   const [diffTab,   setDiffTab]   = useState<'gains' | 'losses'>('gains');
+  const iconVersion = useIconCatalogueVersion();
   const [resolver,  setResolver]  = useState<IconResolver | null>(null);
   const [identityResolver, setIdentityResolver] = useState<IdentityResolver | null>(null);
   const [nameSuggester, setNameSuggester] = useState<NameSuggestionResolver | null>(null);
@@ -293,7 +294,7 @@ export const DashboardModule = () => {
       setIdentityResolver(() => catalog.resolveIdentity);
       setNameSuggester(() => catalog.suggestName);
     }).catch(() => {}).finally(() => setIconsLoading(false));
-  }, [hasCurrent, hasBaseline, settings.leagueName, leagueOverride]);
+  }, [hasCurrent, hasBaseline, settings.leagueName, leagueOverride, iconVersion]);
 
   useEffect(() => {
     if (!manualOpen || !window.api?.fetchTradeItemCatalog) return;

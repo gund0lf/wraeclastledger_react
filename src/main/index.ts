@@ -1110,7 +1110,7 @@ ipcMain.handle('poeninja:economy-icons', async (_event, family: 'exchange' | 'st
       `${base}?league=${encodeURIComponent(league)}&type=${encodeURIComponent(type)}`,
       { signal: controller.signal }
     );
-    if (!res.ok) return { icons: null, slugs: [], names: [], error: `poe.ninja ${res.status}` };
+    if (!res.ok) return { icons: null, slugs: [], names: [], status: res.status, retryAfter: res.headers.get('retry-after'), error: `poe.ninja ${res.status}` };
     const data = await res.json() as {
       core?: { primary?: string };
       items?: { id?: string; name?: string; image?: string | null }[];

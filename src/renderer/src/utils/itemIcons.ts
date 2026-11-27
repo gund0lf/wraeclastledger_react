@@ -38,6 +38,9 @@ import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
  * We fetch the current challenge league + Standard (Standard has older items).
  */
 
+import { useSyncExternalStore } from 'react';
+import { useSessionStore } from '../store/useSessionStore';
+import { IconCatalogueLoader, iconProviderWait, observeIconCooldown, type IconCatalogue } from './iconCatalogueLoader';
 import { getCurrentLeague, KNOWN_LEAGUES } from './league';
 import type { LootCategory } from '../types';
 import { BUNDLED_CHART_NAMES } from '../../../shared/manualLoot';
@@ -346,18 +349,23 @@ async function fetchCategory(family: 'exchange' | 'stash', type: string, league:
 
 // ─── Cache ────────────────────────────────────────────────────────────────────
 const deviceMarketPrices = new Map<string, Map<string, number>>();
-export async function getDeviceMarketPrice(league: string, name: string, retryType?: 'Thread' | 'AllflameEmber'): Promise<number | undefined> {
-  if (retryType) {
-    const response = await fetchCategory('exchange', retryType, league);
-    const price = response?.prices?.find(row => row.name === name)?.chaos;
-    if (price !== undefined) {
+const priceReads = new Map<string, Promise<void>>();
+export async function getDeviceMarketPrice(league: string, name: string, type: 'Thread' | 'AllflameEmber', retry = false): Promise<number | undefined> {
+  await getItemIcons();
+  const key = JSON.stringify([league, type]);
+  const price = deviceMarketPrices.get(league)?.get(name);
+  if (!retry && price !== undefined) return price;
+  if (iconProviderWait()) return undefined;
+  if (!priceReads.has(key) || retry) {
+    priceReads.set(key, fetchCategory('exchange', type, league).then(response => {
+      observeIconCooldown(response);
+      if (!response?.prices) return;
       let cache = deviceMarketPrices.get(league);
       if (!cache) deviceMarketPrices.set(league, cache = new Map());
-      cache.set(name, price);
-    }
-    return price;
+      for (const row of response.prices) cache.set(row.name, row.chaos);
+    }));
   }
-  await getItemIcons();
+  await priceReads.get(key);
   return deviceMarketPrices.get(league)?.get(name);
 }
 
@@ -367,7 +375,40 @@ let identityMap: Map<string, ItemIdentity> | null = null;
 let categoryIconMap = new Map<LootCategory, string>();
 let gemPreviewIcons = new Map<string, string>();
 let fetchProm: Promise<void>       | null = null;
-let cacheLeague: string | null = null;
+let cacheContext: string | null = null;
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
+let catalogueVersion = 0;
+const iconListeners = new Set<() => void>();
+const subscribeIcons = (listener: () => void) => {
+  iconListeners.add(listener);
+  return () => { iconListeners.delete(listener); };
+};
+const readVersion = () => catalogueVersion;
+export function useIconCatalogueVersion(): number {
+  return useSyncExternalStore(subscribeIcons, readVersion, readVersion);
+}
+
+function iconLeagues(challenge: string): string[] {
+  const viewed = useSessionStore.getState().settings.leagueName;
+  const leagues = new Set([challenge]);
+  if (KNOWN_LEAGUES.includes(viewed)) leagues.add(viewed);
+  if (leagues.has('Ancestors')) leagues.add('Mirage');
+  leagues.add('Standard');
+  return [...leagues];
+}
+
+function catalogueJobs(leagues: string[]): IconCatalogue[] {
+  const jobs: IconCatalogue[] = [];
+  for (const league of leagues) {
+    for (const type of EXCHANGE_TYPES) {
+      if (type !== 'Thread' || BUNDLED_MANIFEST.leagueRules?.[league]?.threadSlots) {
+        jobs.push({ league, family: 'exchange', type });
+      }
+    }
+    for (const type of STASH_TYPES) jobs.push({ league, family: 'stash', type });
+  }
+  return jobs;
+}
 // Tier -> signed, fully rendered MapNumbersN art whose descriptor has no
 // variant flags. Raw descriptor `f` files contain only the tier numeral, not
 // the map frame, so they must never be substituted for a generated image.
@@ -408,7 +449,8 @@ function withinOneEdit(left: string, right: string): boolean {
 
 const MANUAL_TYPE_SUFFIX = /\s+(?:gloves?|mitts?|gauntlets?|boots?|helmet|helm|body armour|armour|weapon|ring|amulet|belt|jewel|flask|map|card)$/;
 
-async function buildCache(challenge: string): Promise<void> {
+async function buildCache(leagues: string[], jobs: IconCatalogue[]): Promise<void> {
+  const challenge = leagues[0];
   const exact      = new Map<string, string>();
   const normalized = new Map<string, string>();
   const identities = new Map<string, ItemIdentity>();
@@ -447,59 +489,37 @@ async function buildCache(challenge: string): Promise<void> {
   // results are already available. A microtask would still block input/paint.
   let processed = 0;
   const yieldBatch = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
-  const indexCategory = async (family: 'exchange' | 'stash', types: string[], league: string) => {
-    const results = await Promise.all(types.map((type) => fetchCategory(family, type, league)));
-    for (const [index, result] of results.entries()) {
-      const type = types[index];
-      const category = ECONOMY_TYPE_CATEGORY[type];
-      if (league === challenge && result?.prices) {
-        let market = deviceMarketPrices.get(league);
-        if (!market) deviceMarketPrices.set(league, market = new Map());
-        for (const { name, chaos } of result.prices) market.set(name, chaos);
+  for (const { league, type, response: result } of jobs) {
+    leagueIdx = leagues.indexOf(league);
+    const category = ECONOMY_TYPE_CATEGORY[type];
+    if (league === challenge && result?.prices) {
+      let market = deviceMarketPrices.get(league);
+      if (!market) deviceMarketPrices.set(league, market = new Map());
+      for (const { name, chaos } of result.prices) market.set(name, chaos);
+    }
+    for (const { name, icon } of result?.icons ?? []) {
+      add(name, icon);
+      addIdentity(name, category);
+      const key = norm(name);
+      if (category && category !== 'League' && category !== 'Other') {
+        let entries = categoryEntries.get(category);
+        if (!entries) categoryEntries.set(category, entries = new Map());
+        if (!entries.has(key)) entries.set(key, icon);
       }
-      for (const { name, icon } of result?.icons ?? []) {
-        add(name, icon);
-        addIdentity(name, category);
-        const key = norm(name);
-        if (category && category !== 'League' && category !== 'Other') {
-          let entries = categoryEntries.get(category);
-          if (!entries) categoryEntries.set(category, entries = new Map());
-          if (!entries.has(key)) entries.set(key, icon);
-        }
-        if (category === 'Gems' && !gemIcons.has(key)) gemIcons.set(key, icon);
+      if (category === 'Gems' && !gemIcons.has(key)) gemIcons.set(key, icon);
+      if (++processed % 256 === 0) await yieldBatch();
+    }
+    for (const name of result?.names ?? []) {
+      addIdentity(name, category);
+      if (type === 'DivinationCard') divCardSet.add(norm(name));
+      if (++processed % 256 === 0) await yieldBatch();
+    }
+    if (type === 'DivinationCard') {
+      for (const slug of result?.slugs ?? []) {
+        divCardSet.add(slug.replace(/-/g, ' '));
         if (++processed % 256 === 0) await yieldBatch();
-      }
-      for (const name of result?.names ?? []) {
-        addIdentity(name, category);
-        if (type === 'DivinationCard') divCardSet.add(norm(name));
-        if (++processed % 256 === 0) await yieldBatch();
-      }
-      if (type === 'DivinationCard') {
-        for (const slug of result?.slugs ?? []) {
-          divCardSet.add(slug.replace(/-/g, ' '));
-          if (++processed % 256 === 0) await yieldBatch();
-        }
       }
     }
-  };
-
-  // Detect current challenge league, then also pull every KNOWN_LEAGUES entry
-  // BELOW it (during events the parent league — e.g. Mirage under Ancestors —
-  // has far better economy coverage than the thin event economy), plus
-  // Standard for legacy items. KNOWN_LEAGUES-driven, deduped. `add` is
-  // FIRST-write-wins, so this fetch order IS the art-priority order.
-  const knownIdx = KNOWN_LEAGUES.indexOf(challenge);
-  const parents = knownIdx >= 0 ? KNOWN_LEAGUES.slice(knownIdx + 1) : [];
-  const leagues = challenge === 'Standard'
-    ? ['Standard']
-    : Array.from(new Set([challenge, ...parents, 'Standard']));
-
-  for (let li = 0; li < leagues.length; li++) {
-    const league = leagues[li];
-    leagueIdx = li;
-    const exchangeTypes = BUNDLED_MANIFEST.leagueRules?.[league]?.threadSlots ? EXCHANGE_TYPES : EXCHANGE_TYPES.filter(type => type !== 'Thread');
-    await indexCategory('exchange', exchangeTypes, league);
-    await indexCategory('stash', STASH_TYPES, league);
   }
 
   for (const chart of BUNDLED_CHART_NAMES) {
@@ -540,6 +560,7 @@ async function buildCache(challenge: string): Promise<void> {
     }
   }
 
+  for (const key in GENERIC) delete GENERIC[key];
   const seedBy = (key: string, match: (n: string) => boolean) => {
     if (GENERIC[key]) return;
     for (const [keyName, url] of normalized) {
@@ -629,17 +650,36 @@ export async function getItemIcons(): Promise<{
   resolveCategoryIcon: (category: LootCategory) => string | undefined;
   suggestName: (name: string) => ItemIdentity | undefined;
 }> {
-  const league = await getCurrentLeague();
-  if (!exactMap || cacheLeague !== league) {
+  const leagues = iconLeagues(await getCurrentLeague());
+  const context = JSON.stringify(leagues);
+  if (!exactMap || context !== cacheContext) {
     if (!fetchProm) {
-      fetchProm = buildCache(league)
-        .then(() => { cacheLeague = league; })
-        .finally(() => { fetchProm = null; });
+      clearTimeout(retryTimer);
+      const loader = new IconCatalogueLoader(catalogueJobs(leagues));
+      const load = async (retry: boolean): Promise<void> => {
+        // Show available disk art immediately. Refresh expired categories in
+        // the background and notify mounted consumers once they are indexed.
+        const restored = !retry && await loader.restore();
+        const delay = restored ? (loader.needsRefresh ? 0 : null) : await loader.load();
+        await buildCache(leagues, loader.catalogues);
+        cacheContext = context;
+        // Larger delays exceed the native timer range. Leave fallback art in
+        // place instead of allowing an overflowing timer to retry immediately.
+        if (delay !== null && delay <= 2_147_483_647) {
+          retryTimer = setTimeout(() => {
+            fetchProm = load(true).catch(error => console.warn('[Icons] Retry failed', error))
+              .finally(() => { fetchProm = null; });
+          }, delay);
+        }
+        if (retry) {
+          catalogueVersion++;
+          for (const notify of iconListeners) notify();
+        }
+      };
+      fetchProm = load(false).finally(() => { fetchProm = null; });
     }
     await fetchProm;
-    // If the override changed again while a build was in flight, immediately
-    // rebuild for the latest context rather than exposing the intermediate one.
-    if (cacheLeague !== league) return getItemIcons();
+    if (cacheContext !== context) return getItemIcons();
   }
 
   const resolveIdentity = (name: string): ItemIdentity | undefined => {
@@ -802,6 +842,7 @@ export async function getItemIcons(): Promise<{
 }
 
 export function clearIconCache(): void {
+  priceReads.clear();
   deviceMarketPrices.clear();
   exactMap  = null;
   normMap   = null;
@@ -809,7 +850,8 @@ export function clearIconCache(): void {
   categoryIconMap.clear();
   gemPreviewIcons.clear();
   fetchProm = null;
-  cacheLeague = null;
+  clearTimeout(retryTimer);
+  cacheContext = null;
   mapTierIcons = new Map();
   divCardSet.clear();
   for (const k in GENERIC) delete GENERIC[k];

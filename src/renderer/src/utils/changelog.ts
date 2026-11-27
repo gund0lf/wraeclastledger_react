@@ -13,7 +13,8 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '1.0.101',
     date: 'Unreleased',
-    changes: ['New sessions open the bundled league tree on Ledger Atlas. Sync reads the settled allocation and its selected effects. Saved Path of Pathing links still open on their original host.'],
+    changes: ['Item artwork catalogues are cached locally for a day in active leagues and a week in ended leagues and Standard. Older artwork stays visible while missing or expired categories refresh in small batches.',
+      'New sessions open the bundled league tree on Ledger Atlas. Sync reads the settled allocation and its selected effects. Saved Path of Pathing links still open on their original host.'],
   },
   {
     version: '1.0.100',

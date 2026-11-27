@@ -17,7 +17,7 @@ function MarketPrice({ league, name, type, apply }: {
   const [quote, setQuote] = useState<number | null>();
   useEffect(() => {
     let current = true;
-    void getDeviceMarketPrice(league, name, attempt ? type : undefined)
+    void getDeviceMarketPrice(league, name, type, attempt > 0)
       .then(price => { if (current) setQuote(price ?? null); })
       .catch(() => { if (current) setQuote(null); });
     return () => { current = false; };
