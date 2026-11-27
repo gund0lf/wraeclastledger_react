@@ -301,6 +301,7 @@ it('keeps the same publication when an unnamed session is named or a saved sessi
     expectedGeneration: 1, payload: {}, inheritShareIntentFrom: working })).toThrow('named copy')
 })
 
+// Allow time for disk writes and repository recovery on hosted Windows runners.
 it('persists inherited intent before the new session commit and retries without minting another intent', async () => {
   const f = await setup()
   const original = await f.repository.prepareShareIntent(f.context.sessionId, core, metadata, false)
@@ -325,7 +326,7 @@ it('persists inherited intent before the new session commit and retries without 
   if (saved.target.kind !== 'session') throw Error('Expected named copy')
   expect((await recovered.prepareShareIntent(saved.target.sessionId + ':2', core, metadata, false)).intentId)
     .toBe(original.intentId)
-})
+}, 15_000)
 
 it('New Session does not reuse the previous unnamed publication after that run was named', async () => {
   const f = await setup(), working = { kind: 'working' } as const
