@@ -12,7 +12,7 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '1.0.101',
-    date: 'Unreleased',
+    date: '2026-11-28',
     changes: [
       'New sessions open your league tree in Ledger Atlas. Sync it to bring your allocated passives and chosen effects into Ledger. Your saved Path of Pathing links still open where you saved them.',
       'Community strategies and sharing now use api.wraeclastledger.com.',
