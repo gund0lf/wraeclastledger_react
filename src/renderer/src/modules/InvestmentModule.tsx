@@ -52,6 +52,16 @@ const AdvSection = ({ title, status, children }: {
   </CollapsibleSection>
 );
 
+function OrbUnitCostHint({ quantity = 0, totalPaid = 0 }: { quantity?: number; totalPaid?: number }) {
+  if (quantity <= 0 || totalPaid <= 0) return null;
+  return (
+    <SimpleGrid cols={3}>
+      <div /><div />
+      <Text size="xs" c="dimmed">→ {(totalPaid / quantity).toFixed(2)}c each</Text>
+    </SimpleGrid>
+  );
+}
+
 const withNoneOption = (
   options: { value: string; label: string }[],
 ): { value: string; label: string }[] => (
@@ -384,20 +394,13 @@ export const InvestmentModule = ({ embedded = false }: { embedded?: boolean } = 
               <NumberInput size="xs" value={settings.advExalt} onChange={(v) => updateAdvSetting('advExalt', Number(v))} min={0} />
               <PriceInput selectValue={(state) => state.settings.advExaltPrice} onChange={(v) => updateAdvSetting('advExaltPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
             </SimpleGrid>
-            {settings.advExalt > 0 && settings.advExaltPrice > 0 && (
-              // Per-orb caption lives in the grid too, under the Total paid
-              // column — a full-width line here knocked the row icons out of
-              // alignment (Sad observation 2026-07-10).
-              <SimpleGrid cols={3}>
-                <div /><div />
-                <Text size="xs" c="dimmed">→ {(settings.advExaltPrice / settings.advExalt).toFixed(2)}c each</Text>
-              </SimpleGrid>
-            )}
+            <OrbUnitCostHint quantity={settings.advExalt} totalPaid={settings.advExaltPrice} />
             <SimpleGrid cols={3} style={{ alignItems: 'center' }}>
               <Group gap={4} wrap="nowrap"><PoeItemIcon name="Originator's Exalted Orb" size={16} category="orb" /><Text size="xs">Originator&apos;s Exalted Orb</Text></Group>
               <NumberInput aria-label="Originator's Exalted Orbs bought" size="xs" value={settings.advOriginatorExalt ?? 0} onChange={(v) => updateAdvSetting('advOriginatorExalt', Number(v))} min={0} allowDecimal={false} />
               <PriceInput selectValue={(state) => state.settings.advOriginatorExaltPrice ?? 0} onChange={(v) => updateAdvSetting('advOriginatorExaltPrice', v)} divinePrice={divinePrice} placeholder="total paid" />
             </SimpleGrid>
+            <OrbUnitCostHint quantity={settings.advOriginatorExalt} totalPaid={settings.advOriginatorExaltPrice} />
             <SimpleGrid cols={3} style={{ alignItems: 'center' }}>
               <Group gap={4} wrap="nowrap"><PoeItemIcon name="Orb of Scouring" size={16} category="orb" /><Text size="xs">Scour</Text></Group>
               <NumberInput size="xs" value={settings.advScour} onChange={(v) => updateAdvSetting('advScour', Number(v))} min={0} />
