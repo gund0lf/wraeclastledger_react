@@ -171,7 +171,7 @@ const StrategyBrowserContent = ({ safe }: { safe: boolean }) => {
       const patch = buildAtlasStatsSyncPatch(
         result.groups,
         url,
-        current.settings.leagueName, undefined, result.allocatedNodeIds,
+        current.settings.leagueName, undefined, result.allocatedNodeIds, undefined, result.choiceEffects, current.settings.atlasChoiceAnswers,
       );
       applyAtlasStatsSyncPatch(updateSetting, patch);
       // The compact authored fragment count remains stored as a compatibility

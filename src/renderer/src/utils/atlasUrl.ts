@@ -1,12 +1,20 @@
 import { getManifest } from './gameData';
-import { isAllowedPathOfPathingUrl, isSafeStrategyAtlasUrl } from '../../../shared/atlasReaderSafety';
+import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
+import { LEDGER_ATLAS_ORIGIN, isAtlasPlannerUrl, isSafeStrategyAtlasUrl } from '../../../shared/atlasReaderSafety';
 
 export { isSafeStrategyAtlasUrl };
+
+/** Use a tree this desktop can read even when the planner adds a newer league. */
+export function newSessionAtlasUrl(league?: string | null): string {
+  const version = BUNDLED_MANIFEST.leagueRules?.[league ?? '']?.atlasTreeVersion
+    ?? BUNDLED_MANIFEST.atlasTreeVersion;
+  return `${LEDGER_ATLAS_ORIGIN}/?v=${encodeURIComponent(version)}`;
+}
 
 /** Navigation allow-list. Requiring HTTPS is important: URL accepts strings
  * such as `ttps://pathofpathing.com` as a custom protocol with this hostname. */
 export function isPathofpathingUrl(value: string): boolean {
-  return isAllowedPathOfPathingUrl(value);
+  return isAtlasPlannerUrl(value);
 }
 
 /** An import needs an Atlas version and an allocation hash in addition to a

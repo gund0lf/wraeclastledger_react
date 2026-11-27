@@ -3,6 +3,7 @@ import { emptyAuthorPreferences, parseAuthorPreferences, type AuthorPreferences 
 import { useShallow } from 'zustand/react/shallow';
 import { MapData, SessionSettings, LootItem, ManualLootItem, ManualSessionStatistics, ManualRunTimer, SavedSession, ScarabSlot, ScarabPreset, RegexSet, ExclusionPreset, LeagueCloseouts } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import { newSessionAtlasUrl } from '../utils/atlasUrl';
 import { DIVINE_PRICE_COOLDOWN_MS, requestDivinePrice, sanitizeExclusionTerms } from '../utils/priceUtils';
 import { confirmedLeagueSync, currentLeagueSync, getCurrentLeague, leagueFallbackSince, normalizeLeagueOverride, setLeagueOverrideValue } from '../utils/league';
 import { ModGroupState, cloneDefaultGroups } from '../utils/regexBuilderPresets';
@@ -101,7 +102,7 @@ export const DEFAULT_SETTINGS: SessionSettings = {
   advGemCount: 0, advGemBuyPrice: 0, advGemSellPrice: 0, advGemName: '',
   regexExclusions: [],
   regexInclusions: [],
-  atlasTreeUrl: 'https://pathofpathing.com',
+  atlasTreeUrl: newSessionAtlasUrl(),
   atlasPoints: null, atlasPointsMax: null, // captured by AtlasTreeModule; null = no tree read yet
   // Versioning client half: null = normal session; uuid = update run (see types/index.ts)
   updateTargetStrategyId: null, updateTargetStrategyName: null,
@@ -1015,6 +1016,7 @@ export const useSessionStore = create<SessionStoreState>()(
           settings: {
             ...DEFAULT_SETTINGS,
             leagueName: known ?? '',
+            atlasTreeUrl: newSessionAtlasUrl(known),
             atlasBonus: seededBonus,
             regexExclusions: [...s.defaultExclusionPreset],
             regexInclusions: [...s.defaultInclusionPreset],

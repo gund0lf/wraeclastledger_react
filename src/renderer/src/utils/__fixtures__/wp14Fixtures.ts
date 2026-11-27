@@ -46,6 +46,8 @@ const utf8Bytes = (value: string): number => new TextEncoder().encode(value).len
 
 const stateDefaults = (): Record<string, unknown> => {
   const state = JSON.parse(JSON.stringify(useSessionStore.getState())) as Record<string, unknown>;
+  // These envelopes reproduce the original persistence versions with their historic planner default.
+  (state.settings as Record<string, unknown>).atlasTreeUrl = 'https://pathofpathing.com';
   for (const key of [
     'repositoryStatus', 'repositoryError', 'repositorySessions', 'repositorySizeBytes',
     'currentGeneration', 'currentSessionIdentity', 'preferencesGeneration', 'layoutGeneration', 'saveStatus',

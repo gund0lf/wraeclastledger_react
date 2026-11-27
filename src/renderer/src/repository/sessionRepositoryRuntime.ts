@@ -1,5 +1,6 @@
 import { BUNDLED_MANIFEST } from '../../../shared/gameData/manifest';
 import { v4 as uuidv4 } from 'uuid';
+import { newSessionAtlasUrl } from '../utils/atlasUrl';
 import { parseAuthorPreferences } from '../../../shared/authorRecognition';
 import {
   LEGACY_CHANGELOG_STORAGE_KEY,
@@ -810,7 +811,7 @@ export function forkPayloadIntoLeague(
     delete forkSettings.ember;
     // A new league needs its own Atlas sync. Keeping the old URL here would
     // let a subsequent sync attribute the old allocation to the new league.
-    forkSettings.atlasTreeUrl = DEFAULT_SETTINGS.atlasTreeUrl;
+    forkSettings.atlasTreeUrl = newSessionAtlasUrl(league);
     forkSettings.atlasPoints = null;
     forkSettings.atlasPointsMax = null;
     forkSettings.smallNodesAllocated = 0;
@@ -903,6 +904,7 @@ export function freshWorkingPayload(known = confirmedLeagueSync()): JsonObject {
     settings: {
       ...DEFAULT_SETTINGS,
       leagueName: known ?? '',
+      atlasTreeUrl: newSessionAtlasUrl(known),
       atlasBonus: known ? (state.atlasBonusByLeague[known] ?? false) : false,
       regexExclusions: [...state.defaultExclusionPreset],
       regexInclusions: [...state.defaultInclusionPreset],

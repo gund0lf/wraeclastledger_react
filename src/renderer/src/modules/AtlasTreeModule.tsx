@@ -18,10 +18,12 @@ import {
   shouldAutoApplyExternalAtlasView,
 } from '../utils/atlasUrl';
 
-const BASE_URL = 'https://pathofpathing.com';
+import { isLedgerAtlasUrl, LEDGER_ATLAS_ORIGIN as BASE_URL } from '../../../shared/atlasReaderSafety';
+import { readLedgerTree, readLedgerCounter } from '../../../shared/ledgerAtlasReader';
 
 function atlasViewUrl(authoredUrl: string): string {
   if (!isPathofpathingUrl(authoredUrl)) return BASE_URL;
+  if (isLedgerAtlasUrl(authoredUrl) && !new URL(authoredUrl).hash) return authoredUrl;
   return retargetAtlasUrl(authoredUrl, getManifest().atlasTreeVersion);
 }
 
@@ -193,7 +195,7 @@ export const AtlasTreeModule = () => {
   useEffect(() => {
     const stored = atlasTreeUrl;
     if (showOriginal) return;
-    // New Session deliberately resets to the empty Path of Pathing landing page.
+    // A fresh session opens its versioned landing page through the reset effect.
     // It is navigation state, not an imported tree to scrape and auto-apply.
     if (!stored || stored === BASE_URL) return;
     if (!isPathofpathingUrl(stored)) return;
@@ -264,7 +266,7 @@ export const AtlasTreeModule = () => {
     const readPoints = (origin: 'user' | 'automatic') => {
       const request = ++pointRequest;
       const isCurrent = () => isListenerSessionCurrent() && request === pointRequest;
-      void readInitializedAtlasPoints(() => wv.executeJavaScript(`
+      void readInitializedAtlasPoints(() => isLedgerAtlasUrl(wv.getURL()) ? readLedgerCounter(wv) : wv.executeJavaScript(`
         (() => {
           const a = document.getElementById('skillTreeNormalNodeCount')?.textContent?.trim();
           const m = document.getElementById('skillTreeNormalNodeCountMaximum')?.textContent?.trim();
@@ -418,7 +420,9 @@ export const AtlasTreeModule = () => {
       return;
     }
     try {
-      const result = await wv.executeJavaScript(`
+      const requestedUrl = wv.getURL();
+      const ledger = isLedgerAtlasUrl(requestedUrl);
+      const result = ledger ? { ...await readLedgerTree(wv, requestedUrl), url: requestedUrl } : await wv.executeJavaScript(`
         (async function() {
           try {
             var btn = document.getElementById('skillTreeStats_ShowHide');
@@ -440,7 +444,8 @@ export const AtlasTreeModule = () => {
 
       if (!isCurrentSession()) return;
 
-      await closeUpstreamStatsPanel(wv);
+      if (ledger && wv.getURL() !== requestedUrl) throw new Error('Atlas tree changed during sync');
+      if (!ledger) await closeUpstreamStatsPanel(wv);
       if (!isCurrentSession()) return;
 
       if (!result?.groups || (result as any).error) {
@@ -460,12 +465,12 @@ export const AtlasTreeModule = () => {
 
       // Inspection is deliberately read-only. Only the clearly named setup
       // sync refreshes Atlas Calc, Run Statistics inputs, and source identity.
-      if (mode === 'apply' && !applyGroupsToCalc(groups, result.url, readAllocatedNodeIds(result.allocation))) {
+      if (mode === 'apply' && !applyGroupsToCalc(groups, result.url, result.allocatedNodeIds ?? readAllocatedNodeIds(result.allocation), result.choiceEffects)) {
         setStatsOpen(true);
       }
-    } catch {
+    } catch (error) {
       if (!isCurrentSession()) return;
-      setStatsError('Could not read stats — try navigating the tree first. If this keeps happening, pathofpathing may have changed its layout; please report it.');
+      setStatsError(error instanceof Error ? error.message : 'Could not read stats — try navigating the tree first. If this keeps happening, pathofpathing may have changed its layout; please report it.');
       setStatsOpen(true);
     }
   };
@@ -515,7 +520,7 @@ export const AtlasTreeModule = () => {
   };
 
   const hasTree = capturedUrl !== BASE_URL && capturedUrl.includes('#');
-  const urlShort = capturedUrl.replace('https://pathofpathing.com', '') || '/';
+  const urlShort = capturedUrl.replace(/^https:\/\/(?:pathofpathing\.com|atlas\.wraeclastledger\.com)/, '') || '/';
 
   // Atlas-tree version flag (rollover §5.4 Tier 1). Compare the AUTHORED URL,
   // not the optionally retargeted guest URL, so provenance remains truthful.
@@ -548,13 +553,13 @@ export const AtlasTreeModule = () => {
   // ── Apply stats to Atlas Calc ─────────────────────────────────────────────
   // applyGroupsToCalc takes groups directly (avoids stale-state issues when
   // called right after readStats resolves)
-  const applyGroupsToCalc = (groups: AtlasStatGroup[], sourceUrl: string, allocatedNodeIds?: number[]): boolean => {
+  const applyGroupsToCalc = (groups: AtlasStatGroup[], sourceUrl: string, allocatedNodeIds?: number[], choiceEffects?: Record<string, string>): boolean => {
     try {
       const current = useSessionStore.getState();
       const patch = buildAtlasStatsSyncPatch(
         groups,
         sourceUrl,
-        current.settings.leagueName, undefined, allocatedNodeIds, current.settings.atlasTreeUrl,
+        current.settings.leagueName, undefined, allocatedNodeIds, current.settings.atlasTreeUrl, choiceEffects, current.settings.atlasChoiceAnswers,
       );
       applyAtlasStatsSyncPatch(updateSetting, patch);
       const appliedParts = [
@@ -648,12 +653,12 @@ export const AtlasTreeModule = () => {
         <Group px={8} py={4} gap={4} style={{ flexShrink: 0, borderBottom: `1px solid ${COLOR.bgHover}`, background: 'rgba(255,147,43,0.05)' }}>
           <TextInput
             size="xs" style={{ flex: 1 }}
-            placeholder="Paste pathofpathing.com URL..."
+            placeholder="Paste Ledger Atlas or Path of Pathing URL..."
             value={importUrl}
             onChange={(e) => setImportUrl(e.currentTarget.value)}
             onKeyDown={(e) => e.key === 'Enter' && loadImportUrl()}
             error={importUrl.trim() && !isPathofpathingTreeUrl(importUrl.trim())
-              ? 'Use a complete https://pathofpathing.com Atlas tree URL.'
+              ? 'Use a complete HTTPS Ledger Atlas or Path of Pathing tree URL.'
               : undefined}
           />
           <Button size="xs" variant="light" color="orange"

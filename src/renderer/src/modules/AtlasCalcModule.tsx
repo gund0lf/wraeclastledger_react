@@ -236,7 +236,7 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
       const patch = buildAtlasStatsSyncPatch(
         result.groups,
         sourceUrl,
-        current.settings.leagueName, undefined, result.allocatedNodeIds,
+        current.settings.leagueName, undefined, result.allocatedNodeIds, undefined, result.choiceEffects, current.settings.atlasChoiceAnswers,
       );
       applyAtlasStatsSyncPatch(current.updateSetting, patch, 'automatic');
     } catch (error) {

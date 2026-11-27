@@ -21,6 +21,7 @@ export type AtlasStatsSyncPatch = Pick<
   | 'atlasDetectedTags'
   | 'bestiaryAtlasSetup'
   | 'mercenaryAtlasSetup'
+  | 'atlasChoiceAnswers'
   | 'atlasStatsRead'
 >;
 
@@ -39,7 +40,7 @@ export function incompatibleAtlasVersion(sourceUrl: string, league: string): str
 
 function assertSyncSource(sourceUrl: string, leagueName: string): void {
   if (!isPathofpathingTreeUrl(sourceUrl)) {
-    throw new Error('A complete Path of Pathing tree URL is required for setup sync');
+    throw new Error('A complete Atlas planner tree URL is required for setup sync');
   }
   const required = incompatibleAtlasVersion(sourceUrl, leagueName);
   if (required) throw new Error(`Open a ${required} tree to sync Atlas bonuses for ${leagueName}.`);
@@ -76,12 +77,19 @@ export function buildAtlasStatsSyncPatch(
   readAt = new Date().toISOString(),
   allocatedNodeIds?: number[],
   authoredUrl = sourceUrl,
+  choiceEffects?: Record<string, string>,
+  savedAnswers?: SessionSettings['atlasChoiceAnswers'],
 ): AtlasStatsSyncPatch {
   assertSyncSource(sourceUrl, leagueName);
   if (authoredUrl !== sourceUrl && isPathofpathingTreeUrl(authoredUrl)) assertSyncSource(authoredUrl, leagueName);
+  if (choiceEffects && savedAnswers?.sourceUrl === sourceUrl && savedAnswers.leagueName === leagueName
+    && Object.entries(savedAnswers.effects).some(([node, effect]) => effect && choiceEffects[node] !== effect)) {
+    throw new Error('The saved Atlas choices differ from the planner link. Review the choices in Atlas Calc before syncing.');
+  }
   const calc = deriveAtlasCalcSettingsSnapshot(groups);
   return {
     ...calc,
+    ...(choiceEffects && { atlasChoiceAnswers: { sourceUrl, leagueName, effects: choiceEffects } }),
     atlasDetectedTags: deriveAtlasDetectedTags(groups),
     bestiaryAtlasSetup: deriveBestiaryAtlasSetup(groups),
     mercenaryAtlasSetup: deriveMercenaryAtlasSetup(groups),
@@ -107,5 +115,6 @@ export function applyAtlasStatsSyncPatch(
   updateSetting('atlasDetectedTags', patch.atlasDetectedTags, origin);
   updateSetting('bestiaryAtlasSetup', patch.bestiaryAtlasSetup, origin);
   updateSetting('mercenaryAtlasSetup', patch.mercenaryAtlasSetup, origin);
+  if (patch.atlasChoiceAnswers) updateSetting('atlasChoiceAnswers', patch.atlasChoiceAnswers, origin);
   updateSetting('atlasStatsRead', patch.atlasStatsRead, origin);
 }

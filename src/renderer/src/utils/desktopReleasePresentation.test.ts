@@ -17,8 +17,9 @@ describe('desktop release presentation', () => {
     expect(dashboard.weight).toBeLessThan(centre.weight!);
   });
   it('groups the three releases under one comparable version', () => {
-    expect(CHANGELOG[0]).toMatchObject({ version: '1.0.100', rangeLabel: '1.0.98–1.0.100' });
-    expect(CHANGELOG[1].version).toBe('1.0.97');
+    const grouped = CHANGELOG.findIndex(entry => entry.version === '1.0.100');
+    expect(CHANGELOG[grouped]?.rangeLabel).toBe('1.0.98–1.0.100');
+    expect(CHANGELOG[grouped + 1]?.version).toBe('1.0.97');
   });
   it('labels measured Atlas Drops and More Threads in the generated summary', () => {
     const averages = {avgQuant: 64, avgRarity: 33, avgPack: 19, avgCurr: 0, avgScarabs: 77, atlasDrops: true, avgThreads: 60};

@@ -66,6 +66,6 @@ describe('Atlas setup sync', () => {
 
   it('rejects a stock or incomplete source URL', () => {
     expect(() => buildAtlasStatsSyncPatch([], 'https://pathofpathing.com', 'Allflame'))
-      .toThrow('complete Path of Pathing tree URL');
+      .toThrow('complete Atlas planner tree URL');
   });
 });

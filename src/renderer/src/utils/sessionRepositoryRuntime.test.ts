@@ -9,6 +9,7 @@ import {
   coalescePendingSessionSnapshot,
   defaultExpandedCheckpointIds,
   forkPayloadIntoLeague,
+  freshWorkingPayload,
   selectRetrySnapshot,
   shouldSuspendForConfirmedLeague,
   workingReplacementRequiresProtection,
@@ -27,6 +28,14 @@ const workflow = (lifecycle: 'live' | 'historical' = 'live'): RepositoryWorkflow
 });
 
 describe('WP14 repository lifecycle provenance', () => {
+  it('pins the empty Atlas to the desktop release before the planner can choose its latest tree', () => {
+    const landing = 'https://atlas.wraeclastledger.com/?v=3.30.0-atlas';
+    for (const league of ['Covens', null]) {
+      expect(freshWorkingPayload(league)).toMatchObject({ settings: { atlasTreeUrl: landing } });
+    }
+    expect(DEFAULT_SETTINGS.atlasTreeUrl).toBe(landing);
+  });
+
   it('coalesces to the newest body while retaining authored activation and destructive intent', () => {
     expect(coalescePendingSessionSnapshot(
       {

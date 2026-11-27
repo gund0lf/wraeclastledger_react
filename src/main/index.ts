@@ -27,8 +27,10 @@ import { READ_ATLAS_ALLOCATION, READ_ATLAS_STAT_GROUPS, readAllocatedNodeIds, ty
 import {
   createKeyedSerialTask,
   isAllowedExternalUrl,
-  isAllowedPathOfPathingUrl,
+  isAtlasPlannerUrl,
+  isLedgerAtlasUrl,
 } from '../shared/atlasReaderSafety'
+import { readLedgerTree } from '../shared/ledgerAtlasReader'
 import { resolveUserDataPath } from '../shared/appProfile'
 import { resolveAutoUpdatePolicy } from '../shared/updatePolicy'
 import { INITIAL_UPDATER_STATUS } from '../shared/updaterStatus'
@@ -639,8 +641,8 @@ async function readAtlasTreeStats(rawUrl: string): Promise<AtlasStatsReadResult>
   let url: URL;
   try {
     url = new URL(rawUrl);
-    if (!isAllowedPathOfPathingUrl(rawUrl)) {
-      throw new Error('Only https://pathofpathing.com URLs are allowed');
+    if (!isAtlasPlannerUrl(rawUrl)) {
+      throw new Error('Use an HTTPS Ledger Atlas or Path of Pathing link');
     }
   } catch (error) {
     return { groups: null, error: error instanceof Error ? error.message : 'Invalid Atlas Tree URL' };
@@ -658,18 +660,19 @@ async function readAtlasTreeStats(rawUrl: string): Promise<AtlasStatsReadResult>
     },
   });
   reader.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  reader.webContents.on('will-navigate', (event, target) => {
-    try {
-      const next = new URL(target);
-      if (next.protocol !== 'https:' || next.hostname !== 'pathofpathing.com') event.preventDefault();
-    } catch { event.preventDefault(); }
-  });
+  const samePlanner = (target: string) => isAtlasPlannerUrl(target) && new URL(target).origin === url.origin;
+  const guardNavigation = (event: Electron.Event, target: string) => {
+    if (!samePlanner(target)) event.preventDefault();
+  };
+  reader.webContents.on('will-navigate', guardNavigation);
+  reader.webContents.on('will-redirect', guardNavigation);
 
   try {
     await reader.loadURL(url.toString());
-    if (!isAllowedPathOfPathingUrl(reader.webContents.getURL())) {
-      return { groups: null, error: 'Path of Pathing redirected to an untrusted URL' };
+    if (!samePlanner(reader.webContents.getURL())) {
+      return { groups: null, error: 'Atlas planner redirected away from the requested host' };
     }
+    if (isLedgerAtlasUrl(rawUrl)) return await readLedgerTree(reader.webContents, rawUrl);
     const deadline = Date.now() + 8_000;
     let ready = false;
     while (Date.now() < deadline) {
@@ -1229,7 +1232,15 @@ function createWindow(): void {
   // A <webview> is separate guest webContents: the host handler above does not
   // govern its window.open calls. Path of Pathing never needs popups, so deny
   // every guest-created window at the main-process boundary as well.
+  mainWindow.webContents.on('will-attach-webview', (event, _preferences, params) => {
+    if (!isAtlasPlannerUrl(params.src)) event.preventDefault();
+  });
   mainWindow.webContents.on('did-attach-webview', (_event, guestWebContents) => {
+    const guardAtlasNavigation = (event: Electron.Event, target: string) => {
+      if (!isAtlasPlannerUrl(target)) event.preventDefault();
+    };
+    guestWebContents.on('will-navigate', guardAtlasNavigation);
+    guestWebContents.on('will-redirect', guardAtlasNavigation);
     guestWebContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   });
 

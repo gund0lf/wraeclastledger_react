@@ -87,3 +87,17 @@ it.each([{ groups: null, error: 'Planner unavailable' }, { groups: [], error: nu
     expect((await reviewAtlasForShare(stale, [], 'recorded', new AbortController().signal))?.atlas).toBeNull();
   },
 );
+
+it('uses a hosted effect only for the share and reports conflicting recorded answers', async () => {
+  const url = 'https://atlas.wraeclastledger.com/?v=3.30.0-atlas&choices=712-17864#AAAABgAAAwIAAshxdXF1AAA=';
+  const settings = { ...stale, atlasTreeUrl: url };
+  const before = JSON.stringify(settings);
+  vi.stubGlobal('window', { api: { readAtlasTreeStats: vi.fn().mockResolvedValue({
+    groups: [], error: null, allocatedNodeIds: [712], choiceEffects: { '712': '17864' },
+  }) } });
+  const review = await reviewAtlasForShare(settings, [], 'sync', new AbortController().signal);
+  expect(review?.atlas?.choices).toEqual([{ node: 712, option: 17864 }]);
+  expect(JSON.stringify(settings)).toBe(before);
+  const conflict = { ...settings, atlasChoiceAnswers: { sourceUrl: url, leagueName: 'Covens', effects: { '712': '50999' } } };
+  await expect(reviewAtlasForShare(conflict, [], 'sync', new AbortController().signal)).rejects.toThrow('saved Atlas choices differ');
+});

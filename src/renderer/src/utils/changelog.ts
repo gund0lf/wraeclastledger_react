@@ -11,6 +11,11 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.101',
+    date: 'Unreleased',
+    changes: ['New sessions open the bundled league tree on Ledger Atlas. Sync reads the settled allocation and its selected effects. Saved Path of Pathing links still open on their original host.'],
+  },
+  {
     version: '1.0.100',
     rangeLabel: '1.0.98–1.0.100',
     date: '2026-11-26',

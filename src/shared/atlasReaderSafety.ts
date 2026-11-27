@@ -25,6 +25,16 @@ export function isAllowedPathOfPathingUrl(rawUrl: string): boolean {
   return parseAtlasUrl(rawUrl)?.hostname === PATH_OF_PATHING_HOST
 }
 
+export const LEDGER_ATLAS_ORIGIN = 'https://atlas.wraeclastledger.com'
+
+export function isLedgerAtlasUrl(value: string): boolean {
+  return parseAtlasUrl(value)?.origin === LEDGER_ATLAS_ORIGIN
+}
+
+export function isAtlasPlannerUrl(value: string): boolean {
+  return isAllowedPathOfPathingUrl(value) || isLedgerAtlasUrl(value)
+}
+
 /** Community strategies may contain older Path of Pathing links that predate
  * the current version query. They remain safe to open when the origin is exact
  * and an allocation fragment is present, even if they are too old to import. */
@@ -43,7 +53,7 @@ export function isAllowedExternalUrl(rawUrl: string): boolean {
     if (!hasSafeAuthority) return false
 
     if (url.protocol === 'https:') {
-      if (url.hostname === PATH_OF_PATHING_HOST) return isSafeStrategyAtlasUrl(rawUrl)
+      if (isAtlasPlannerUrl(rawUrl)) return isSafeStrategyAtlasUrl(rawUrl)
       if (url.hostname === 'wealthyexile.com' || url.hostname === 'www.wealthyexile.com') return true
       return url.hostname === 'www.pathofexile.com'
         && url.pathname.startsWith('/trade/search/')

@@ -95,6 +95,7 @@ export interface AtlasCalcSettingsSnapshot {
 }
 
 export interface AtlasStatsReadResult {
+  choiceEffects?: Record<string, string>;
   allocatedNodeIds?: number[];
   groups: AtlasStatGroup[] | null;
   error: string | null;
