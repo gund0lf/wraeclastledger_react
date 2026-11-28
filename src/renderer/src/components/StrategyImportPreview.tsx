@@ -2,6 +2,7 @@ import { Alert, Badge, Button, Divider, Group, Stack, Text } from '@mantine/core
 import type { ImportPreview } from '../utils/importPreview';
 import { fixedDeliriumPercentage } from '../../../shared/deliriumOrbs';
 import { chiselItemName, deliOrbItemName } from '../utils/itemIcons';
+import { getManifest } from '../utils/gameData';
 import { COLOR } from '../utils/uiTokens';
 import { SetupHistoryPreview } from './SetupHistoryPreview';
 import { PoeItemIcon } from './ui/PoeItemIcon';
@@ -13,6 +14,7 @@ export function StrategyImportPreview({ data: p, divinePrice, panelDivinePrice, 
   onDivinePrice: (value: number) => void; onLoad: () => void;
 }) {
   const h = p.history;
+  const threads = getManifest().leagueRules?.[p.league ?? '']?.threadSlots;
   const fixedPercent = fixedDeliriumPercentage(p.league, p.delirium?.countPerMap ?? null);
   return <Stack gap="xs">
     {p.operationError && <Alert color="red" variant="light" p="xs" title="Invalid strategy operation marker">
@@ -40,8 +42,8 @@ export function StrategyImportPreview({ data: p, divinePrice, panelDivinePrice, 
     {p.delirium && fixedPercent === null && !p.observedDelirium &&
       <Text size="xs" c="dimmed">Map Delirium percentage unrecorded.</Text>}
     <Group gap="xs" wrap="wrap">{([
-      ['Q', h?.quantity, 'teal'], ['R', h?.rarity, 'violet'], ['P', h?.packSize, 'cyan'], ['Curr', h?.currency, 'yellow'],
-    ] as const).map(([label, value, color]) => <Badge key={label} variant="dot" color={color}>{label}: {value == null ? 'Unrecorded' : `${value}%`}</Badge>)}</Group>
+      [threads ? 'Atlas Drops' : 'Q', threads ? p.atlasDrops : h?.quantity, 'teal'], ['R', h?.rarity, 'violet'], ['P', h?.packSize, 'cyan'], ['Curr', h?.currency, 'yellow'],
+    ] as const).map(([label, value, color]) => <Badge key={label} variant="dot" color={color}>{label}: {value == null ? '–' : `${value.toLocaleString('en', { maximumFractionDigits: 1 })}%`}</Badge>)}</Group>
     {p.scarabs.length > 0 && <div><SectionLabel mb={4}>Scarabs</SectionLabel><Group gap={4} wrap="wrap">
       {p.scarabs.map((name, i) => <Badge key={`${i}:${name}`} variant="light" color="orange"
         leftSection={<PoeItemIcon name={name} size={14} category="scarab" />}>{name}{h?.scarabPrices[i] != null ? ` (${h.scarabPrices[i]}c)` : ''}</Badge>)}

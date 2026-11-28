@@ -1,3 +1,4 @@
+import { validCovens, type CovensWire } from './covensWireValidator.mjs'
 import { AUTHOR_UUID } from './authorHandoff'
 import { normalizePublicAuthorName } from './authorNames'
 import { isStrategySetupCode, type StrategySetupCode } from './strategySetupCode'
@@ -98,8 +99,17 @@ const reusable = (v: unknown): { status: 'available'; value: StrategySetupCode }
   return shape({ status: literal('available'), value: (value: unknown): StrategySetupCode =>
     isStrategySetupCode(value) && !Object.hasOwn(value, 'history') ? value : bad() })(v)
 }
-export const parseSafeRun = shape({ schema_version: literal(2), ordinal: integer(100, 1), contributed_on: date, setup: shape(setupFields),
+const runFields = shape({ schema_version: literal(2), ordinal: integer(100, 1), contributed_on: date, setup: shape(setupFields),
   observed: runObserved, economics: runEconomics, timing, cost_breakdown: costs, display_cost_breakdown: costs, observed_delirium: delirium, loot })
+export function parseSafeRun(value: unknown): ReturnType<typeof runFields> & { covens?: CovensWire | null } {
+  const data = object(value)
+  if (!Object.hasOwn(data, 'covens')) return runFields(data)
+  const { covens, ...fields } = data
+  const run = runFields(fields)
+  if (covens === null) return { ...run, covens: null }
+  if (run.observed.map_count === null || !validCovens(covens, run.observed.map_count)) return bad()
+  return { ...run, covens }
+}
 export const parseSafeDetail = scoped(shape({ ...common, notes: nullable(string(16000)), setup, observed,
   economics: shape({ all_in_cost_per_map_chaos: metric, recurring_cost_per_map_chaos: metric, net_per_map_divines: metric,
     historical_net_divines: metric, historical_invest_divines: metric, total_invest_chaos: metric, net_profit_chaos: metric }),

@@ -24,6 +24,10 @@ export const DISCORD_SHARE_WIRE_VERSION = 3 as const;
 export const DISCORD_SHARE_BROTLI_PREFIX = 'wl3.';
 export const DISCORD_SHARE_BROTLI_VERSION = 4 as const;
 export const DISCORD_SHARE_COMMAND_MAX = 6000;
+export function discordPasteTarget(token: string): 'channel' | 'command' | 'too-long' {
+  if (token.length > DISCORD_SHARE_COMMAND_MAX) return 'too-long';
+  return token.length > DISCORD_SHARE_WIRE_MAX ? 'command' : 'channel';
+}
 const LEGACY_DISCORD_SHARE_WIRE_VERSION = 2 as const;
 export const DISCORD_SHARE_WIRE_MAX = 2000;
 const DISCORD_SHARE_OUTPUT_MAX = 128 * 1024;

@@ -7,6 +7,8 @@ import type { AuthorContext, AuthorResult, AuthorResults } from '../../../shared
 import { shareCopyPresentation, shareStatusText, type DurableShareView } from '../../../shared/durableShare'
 import { invalidateAuthorEpoch } from '../../../shared/authorRecognition'
 import { normalizePublicAuthorName, PUBLIC_NAME_RETENTION_NOTICE, SHARE_STATUS_RETENTION_NOTICE } from '../../../shared/authorNames'
+import { DISCORD_MSG_LIMIT } from '../utils/exportBudget'
+import { discordPasteTarget } from '../utils/discordShareWire'
 import { COLOR, FONT } from '../utils/uiTokens'
 import { useSessionStore } from '../store/useSessionStore'
 import { AuthorConfirmationPanel } from './AuthorConfirmationPanel'
@@ -146,28 +148,28 @@ export function AuthorShareControls({ core, raw, blocked, restorationError, onMa
     setBusy(true); setError(null)
     try {
       if (!sessionIdentity) throw new Error('The selected session is still loading. Try again when it is ready.')
-      let author = selected?.confirmed ? { name: selected.name, registration_id: selected.registrationId }
-        : { name: normalizePublicAuthorName(name).name, registration_id: null }
-      if (JSON.parse(core)[0] === 8) {
-        const capability = await window.api.authorHandoff({ action: 'share-formats' })
-        if (!capability.ok || !capability.value) throw new Error(COVENS_SHARE_UNAVAILABLE)
-        if (active.current !== context) return
-      }
-      let preparedCore = core, revision: number | null = null
-      if (target) {
-        if (target.state !== 'ready') throw new Error('Choose Continue from the Strategy Browser for your next update.')
-        await refreshSafeAuthorState()
-        if (active.current !== context) return
-        const detail = await safeStrategyReader.detail({ scope: 'current', snapshot_key: null, id: target.id,
-          revision: target.revision, read_version: target.generation }, true)
-        if (active.current !== context) return
-        const proof = await prepareSafeContinuation(target, detail, useSessionStore.getState().authorPreferences, raw, maps.map(m => m.parsedAt), JSON.parse(core)[12])
-        if (active.current !== context) return
-        const tuple = JSON.parse(core); tuple[1] = proof.operation
-        preparedCore = JSON.stringify(tuple); author = proof.author; revision = proof.revision
-      }
       let value = wire?.context === context ? wire : null
       if (!value) {
+        let author = selected?.confirmed ? { name: selected.name, registration_id: selected.registrationId }
+          : { name: normalizePublicAuthorName(name).name, registration_id: null }
+        if (JSON.parse(core)[0] === 8) {
+          const capability = await window.api.authorHandoff({ action: 'share-formats' })
+          if (!capability.ok || !capability.value) throw new Error(COVENS_SHARE_UNAVAILABLE)
+          if (active.current !== context) return
+        }
+        let preparedCore = core, revision: number | null = null
+        if (target) {
+          if (target.state !== 'ready') throw new Error('Choose Continue from the Strategy Browser for your next update.')
+          await refreshSafeAuthorState()
+          if (active.current !== context) return
+          const detail = await safeStrategyReader.detail({ scope: 'current', snapshot_key: null, id: target.id,
+            revision: target.revision, read_version: target.generation }, true)
+          if (active.current !== context) return
+          const proof = await prepareSafeContinuation(target, detail, useSessionStore.getState().authorPreferences, raw, maps.map(m => m.parsedAt), JSON.parse(core)[12])
+          if (active.current !== context) return
+          const tuple = JSON.parse(core); tuple[1] = proof.operation
+          preparedCore = JSON.stringify(tuple); author = proof.author; revision = proof.revision
+        }
         const r = await window.api.authorHandoff({ action: 'publication', context, core: preparedCore,
           metadata: { author, expected_revision: revision, confirmation_request_id: null },
           confirmation, newIntent: false, sessionIdentity, targetGeneration,
@@ -185,9 +187,15 @@ export function AuthorShareControls({ core, raw, blocked, restorationError, onMa
         if (value.share) setShare(value.share)
       }
       if (value.share?.accepted) return
-      if (value.token.length > 6000) throw new Error('The share is too long for Discord. Shorten the notes.')
+      if (discordPasteTarget(value.token) === 'too-long') throw new Error('The share is too long for Discord. Shorten the notes.')
       // Clipboard writes happen only for this deliberate Copy action.
-      await navigator.clipboard.writeText(value.token)
+      try {
+        await navigator.clipboard.writeText(value.token)
+      } catch {
+        if (active.current !== context) return
+        setError('Nothing was copied. Return to Ledger and choose Copy again.')
+        return
+      }
       if (active.current !== context) return
       if (value.share) {
         const marked = await window.api.authorHandoff({ action: 'share-copied', context, sessionIdentity,
@@ -205,6 +213,7 @@ export function AuthorShareControls({ core, raw, blocked, restorationError, onMa
   const displayedName = accepted ? presentation.snapshot?.author.name ?? '' : selected?.name ?? (newName ? name : '')
   const displayedVerified = selected?.confirmed && (!accepted || displayedName === selected.name)
   const currentWire = wire?.context === context ? wire : null
+  const pasteTarget = currentWire ? discordPasteTarget(currentWire.token) : null
   const canChoose = !target || target.state === 'ready'
   const copy = shareCopyPresentation(share, core, selected?.confirmed ? selected.name : name, target)
   const changed = copy.label === 'Copy updated share'
@@ -287,7 +296,7 @@ export function AuthorShareControls({ core, raw, blocked, restorationError, onMa
       <Stack gap="xs">
         <Text size="xs">This session is from before the recovery. If you already shared it, use Continue in the Strategy Browser. Share as new anyway?</Text>
         <Group gap="xs" justify="center">
-          <Button size="xs" loading={busy} disabled={copyBlocked} onClick={() => void prepareAndCopy(true)}>Share as new anyway</Button>
+          <Button size="xs" loading={busy} disabled={copyBlocked || pasteTarget === 'too-long'} onClick={() => void prepareAndCopy(true)}>Share as new anyway</Button>
           <Button size="xs" variant="subtle" c={COLOR.textDim} disabled={busy}
             onClick={() => { setRecoveryWarning(null); setError(null) }}>Back</Button>
         </Group>
@@ -309,16 +318,20 @@ export function AuthorShareControls({ core, raw, blocked, restorationError, onMa
     </Stack> : changed ? <Stack gap={5} p="sm" role="status" align="center" style={{ background: COLOR.tintGoldBg, borderRadius: 6, textAlign: 'center' }}>
         <ShareStatusHeading icon={<IconAlertTriangle size={19} color={COLOR.orange} />} color={COLOR.orange}>Changed after copying</ShareStatusHeading>
         <Text size="xs" c="dimmed" maw={300}>Copy and post this version.<br />Already posted the old one? Use Continue to change it.</Text>
-      </Stack> : copy.pasteHint ? <Stack gap={5} p="sm" role="status" align="center" style={{ background: COLOR.bgHover, borderRadius: 6, textAlign: 'center' }}>
+      </Stack> : copy.pasteHint && !error ? <Stack gap={5} p="sm" role="status" align="center" style={{ background: COLOR.bgHover, borderRadius: 6, textAlign: 'center' }}>
         <ShareStatusHeading icon={<IconCopy size={19} />}>Copied</ShareStatusHeading>
-        <Text size="xs" c="dimmed" maw={300}>Paste it in the sharing channel.<br />You can close this window; the app keeps checking.</Text>
+        <Text size="xs" c="dimmed" maw={300}>{currentWire ? pasteTarget === 'command' ? 'Paste the code into the payload field of /wledger-share.' : 'Paste it in the sharing channel.' : 'Copy again to check where to paste this share.'}<br />You can close this window; the app keeps checking.</Text>
       </Stack> : null}
+    {showCopy && currentWire && <Text size="xs" c="dimmed" ta="center">
+      {currentWire.token.length}/{DISCORD_MSG_LIMIT} characters · {pasteTarget === 'too-long' ? 'Shorten your notes to share.' :
+        pasteTarget === 'command' ? 'Use /wledger-share.' : 'Fits in the sharing channel.'}
+    </Text>}
     {showCopy && <Button size="sm" variant={changed ? 'filled' : copy.pasteHint ? 'default' : 'filled'}
       styles={copy.pasteHint && !changed ? { root: { background: COLOR.bgInset } } : undefined}
       leftSection={copy.pasteHint ? undefined : <IconCopy size={17} />}
-      disabled={copyBlocked}
+      disabled={copyBlocked || pasteTarget === 'too-long'}
       loading={busy} onClick={() => void prepareAndCopy()}>
-      {copy.label === 'Copy to Discord' && currentWire && currentWire.token.length > 2000 ? 'Copy for /wledger-share' : copy.label}
+      {pasteTarget === 'too-long' ? 'Shorten notes to copy' : error && currentWire ? 'Copy again' : copy.label === 'Copy to Discord' && currentWire && pasteTarget === 'command' ? 'Copy for /wledger-share' : copy.label}
     </Button>}
     {verifyName && nameRequest &&
       <AuthorConfirmationPanel key={nameRequest.request_id} context={context} firstNameVerification

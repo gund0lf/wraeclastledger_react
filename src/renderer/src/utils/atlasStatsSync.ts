@@ -84,7 +84,7 @@ export function buildAtlasStatsSyncPatch(
   if (authoredUrl !== sourceUrl && isPathofpathingTreeUrl(authoredUrl)) assertSyncSource(authoredUrl, leagueName);
   if (choiceEffects && savedAnswers?.sourceUrl === sourceUrl && savedAnswers.leagueName === leagueName
     && Object.entries(savedAnswers.effects).some(([node, effect]) => effect && choiceEffects[node] !== effect)) {
-    throw new Error('The saved Atlas choices differ from the planner link. Review the choices in Atlas Calc before syncing.');
+    throw new Error('The saved Atlas choices differ from the planner link. Choose Sync setup on the Atlas tree to use its choices.');
   }
   const calc = deriveAtlasCalcSettingsSnapshot(groups);
   return {

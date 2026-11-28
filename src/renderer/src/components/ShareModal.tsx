@@ -91,7 +91,7 @@ function ShareTagsField({ value, onChange, disabled, choices }: {
 
 import { COVENS_SHARE_UNAVAILABLE } from '../../../shared/authorHandoff';
 import { buildCovensShare } from '../utils/covensShare';
-import { needsAtlasShareReview, reviewAtlasForShare, type AtlasShareReview } from '../utils/atlasShareReview';
+import { atlasChoiceRows, needsAtlasShareReview, reviewAtlasForShare, type AtlasShareReview } from '../utils/atlasShareReview';
 
 interface Props {
   opened: boolean;
@@ -112,6 +112,7 @@ function ShareAtlasGate({ opened, onClose, initialTags }: Props) {
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const pending = useRef<AbortController | null>(null);
+  const differences = opened ? atlasChoiceRows(settings).filter(row => row.differs) : [];
   const prompt = opened && !review && needsAtlasShareReview(settings);
 
   useLayoutEffect(() => {
@@ -123,7 +124,7 @@ function ShareAtlasGate({ opened, onClose, initialTags }: Props) {
     pending.current?.abort();
     onClose();
   };
-  const choose = async (choice: 'sync' | 'recorded') => {
+  const choose = async (choice: 'sync' | 'recorded' | 'adopt') => {
     if (pending.current) return;
     const attempt = new AbortController();
     pending.current = attempt;
@@ -131,7 +132,10 @@ function ShareAtlasGate({ opened, onClose, initialTags }: Props) {
     setError(undefined);
     try {
       const result = await reviewAtlasForShare(settings, maps, choice, attempt.signal);
-      if (!attempt.signal.aborted && result) setReview(result);
+      if (!attempt.signal.aborted && result) {
+        if (result.repairedAnswers) useSessionStore.getState().updateSetting('atlasChoiceAnswers', result.repairedAnswers);
+        setReview(result);
+      }
     } catch (err) {
       if (!attempt.signal.aborted) setError(err instanceof Error ? err.message : 'Could not sync the Atlas tree.');
     } finally {
@@ -141,13 +145,15 @@ function ShareAtlasGate({ opened, onClose, initialTags }: Props) {
   return <>
     {prompt && <Modal opened onClose={close} title="Review Atlas tree before sharing" size="sm">
       <Stack gap="sm">
-        <Text size="sm">This tree has no matching, complete Atlas read for this league. Sync now to include its allocated choice nodes and any answers recorded for this tree.</Text>
-        <Text size="sm">Share as recorded keeps the current tree link and omits Atlas choices. Your saved run keeps its recorded values.</Text>
+        {differences.length ? differences.map(row => <Text key={row.id} size="sm">
+          {row.name} is saved as <strong>{row.saved}</strong>. Your tree selects <strong>{row.value}</strong>.
+        </Text>) : <><Text size="sm">This tree has no matching, complete Atlas read for this league. Sync now to include its allocated choice nodes and any answers recorded for this tree.</Text>
+        <Text size="sm">Share as recorded keeps the current tree link and omits Atlas choices. Your saved run keeps its recorded values.</Text></>}
         {error && <Alert color="red" role="alert">{error}</Alert>}
         <Group justify="flex-end">
           <Button size="xs" variant="subtle" onClick={close}>Cancel</Button>
-          <Button size="xs" variant="default" disabled={busy} onClick={() => void choose('recorded')}>Share as recorded</Button>
-          <Button size="xs" loading={busy} onClick={() => void choose('sync')}>Sync now</Button>
+          {!differences.length && <Button size="xs" variant="default" disabled={busy} onClick={() => void choose('recorded')}>Share as recorded</Button>}
+          <Button size="xs" loading={busy} onClick={() => void choose(differences.length ? 'adopt' : 'sync')}>{differences.length ? 'Use tree choices' : 'Sync now'}</Button>
         </Group>
       </Stack>
     </Modal>}
@@ -902,8 +908,8 @@ const SharePreview = ({ opened, onClose, initialTags, reviewedAtlas }: Props & {
             // (e.g. more scarabs added), the red counter + disabled copy handle it.
             maxLength={Math.max(budget.notesMax, stratNotes.length)}
             autosize minRows={2} maxRows={4} />
-          {!sharePosted && <Text size="xs" c={budget.notesRemaining < 0 || !budget.fitsWire ? 'red' : 'dimmed'} style={{ fontSize: FONT.small }}>
-            {!budget.fitsWire
+          {!sharePosted && <Text size="xs" c={budget.notesRemaining < 0 || (!authorReview && !budget.fitsWire) ? 'red' : 'dimmed'} style={{ fontSize: FONT.small }}>
+            {!authorReview && !budget.fitsWire
               ? `Compact Discord submission exceeds the limit by ${budget.wireLength - DISCORD_MSG_LIMIT} characters — shorten the notes.`
               : budget.notesRemaining < 0
               ? `Notes exceed the Discord card budget by ${-budget.notesRemaining} characters — trim them to share.`
@@ -941,7 +947,7 @@ const SharePreview = ({ opened, onClose, initialTags, reviewedAtlas }: Props & {
           <Text size="xs" fw={500} component="label" htmlFor="share-session-time">{postedDetails || capturedTime?.activeMs ? 'Session time' : 'Session time optional'}</Text>
           <Group gap="xs" align="flex-end">
             <TextInput size="xs" id="share-session-time" w={90} style={{ flexShrink: 0 }}
-              placeholder={sharePosted ? undefined : 'e.g. 245 or 4h'}
+              placeholder={sharePosted ? undefined : 'e.g. 45'}
               disabled={shareTracking || sharePosted}
               rightSection={/[a-z]/i.test(postedDetails?.time ?? timeText) ? undefined : <Text size="xs" c={COLOR.textDim}>min</Text>}
               rightSectionPointerEvents="none"
@@ -967,7 +973,8 @@ const SharePreview = ({ opened, onClose, initialTags, reviewedAtlas }: Props & {
         </Stack>
         </div>
         <Divider label="Posted card preview" labelPosition="left" />
-        {!sharePosted && (discordWireResult.pending || showBudgetDetails || discordWireError || !budget.fitsWire || !budget.fitsPlain) && <Text size="xs" c={discordWireError || !budget.fitsWire || !budget.fitsPlain ? 'red' : showBudgetDetails ? 'orange' : 'dimmed'} style={{ fontSize: FONT.small }}>
+        {authorReview && !sharePosted && showBudgetDetails && <Text size="xs" c="dimmed">Posted Discord card · {budget.postedCardLength}/{DISCORD_MSG_LIMIT} characters</Text>}
+        {!authorReview && !sharePosted && (discordWireResult.pending || showBudgetDetails || discordWireError || !budget.fitsWire || !budget.fitsPlain) && <Text size="xs" c={discordWireError || !budget.fitsWire || !budget.fitsPlain ? 'red' : showBudgetDetails ? 'orange' : 'dimmed'} style={{ fontSize: FONT.small }}>
           {discordWireResult.pending
             ? 'Preparing compact submission...'
             : showBudgetDetails

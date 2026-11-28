@@ -31,7 +31,7 @@ describe('safe strategy presentation', () => {
     expect(safeDate('invalid')).toBe('unrecorded')
   })
   it('describes missing quantity and unit prices without implying zero', () => {
-    expect(recordedQuantityPrice(null, null)).toBe('Quantity and unit price unrecorded')
+    expect(recordedQuantityPrice(null, null)).toBe('–')
     expect(recordedQuantityPrice(0, null)).toBe('0× · Unit price unrecorded')
     expect(recordedQuantityPrice(null, 0)).toBe('Quantity unrecorded · 0c each')
     expect(recordedQuantityPrice(1, 1.3, true)).toBe('1×/map · 1.3c each')
@@ -57,7 +57,7 @@ describe('safe strategy presentation', () => {
     expect(safeContinuationMessage('inactive_registration', true)).toBe('Name this strategy to continue it.')
     expect(safeContinuationMessage('missing_membership', true)).toBe('Name this strategy to continue it.')
     expect(safeContinuationMessage('incomplete_seed', true)).toContain('lacks the setup')
-    expect(safeContinuationMessage('frozen', true)).toContain('Frozen')
+    expect(safeContinuationMessage('frozen', true)).toContain('league is closed')
   })
   it('unknown reasons cannot inject service text into the interface', () => {
     for (const reason of ['__proto__', 'constructor', 'private server text']) {

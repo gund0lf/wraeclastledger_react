@@ -1,4 +1,4 @@
-import { allocatedChoiceNodes } from '../utils/atlasChoices';
+import { atlasChoiceRows } from '../utils/atlasShareReview';
 import { deviceInvestment } from '../utils/profit';
 import { atlasVersionOf } from '../utils/strategyCompat';
 import { getAtlasCompletionBonus, getManifest } from '../utils/gameData';
@@ -9,7 +9,6 @@ import {
   Card,
   Group,
   Stack,
-  Select,
   Switch,
   Text,
   Tooltip,
@@ -130,11 +129,10 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
 
   const mapSource = describeMapModifierSource(maps, settings.mapType);
   const syncState = atlasSyncState(settings, sessionLifecycle);
-  const choiceNodes = syncState === 'current' ? allocatedChoiceNodes(settings.atlasTreeUrl, settings.atlasStatsRead?.choiceNodeIds) : [];
-  const answers = settings.atlasChoiceAnswers;
-  const choices = answers?.sourceUrl === settings.atlasTreeUrl && answers.leagueName === settings.leagueName
-    ? answers.effects : {};
-  const syncStatus = atlasSyncPresentation(syncState);
+  const choiceNodes = syncState === 'current' ? atlasChoiceRows(settings) : [];
+  const syncStatus = choiceNodes.some(row => row.differs)
+    ? { color: 'orange', label: 'Choices differ', detail: 'Sync the Atlas tree to adopt its choices.' }
+    : atlasSyncPresentation(syncState);
   const hasTree = isPathofpathingTreeUrl(settings.atlasTreeUrl);
   const riskScarabs = scarabOfRiskMods / 2;
   const atlasSource = syncState === 'current'
@@ -215,7 +213,7 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
       const patch = buildAtlasStatsSyncPatch(
         result.groups,
         sourceUrl,
-        current.settings.leagueName, undefined, result.allocatedNodeIds, undefined, result.choiceEffects, current.settings.atlasChoiceAnswers,
+        current.settings.leagueName, undefined, result.allocatedNodeIds, undefined, result.choiceEffects,
       );
       applyAtlasStatsSyncPatch(current.updateSetting, patch, 'automatic');
     } catch (error) {
@@ -297,12 +295,6 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
         {syncState === 'current' && settings.atlasStatsRead?.choiceNodeIds === undefined &&
           getManifest().atlasTrees?.[atlasVersionOf(settings.atlasTreeUrl)]?.choices &&
           <Text size="xs" c="dimmed">Full allocation unavailable. Sync the tree again to check choices reached along a path.</Text>}
-        {choiceNodes.map(node => <Select key={node.id} size="xs" label={node.name}
-          description="Select the effect you allocated in game." placeholder="Unknown" clearable
-          data={node.options.map(option => ({ value: option.id, label: option.text }))}
-          value={choices[node.id] || null}
-          onChange={value => updateSetting('atlasChoiceAnswers', { sourceUrl: settings.atlasTreeUrl,
-            leagueName: settings.leagueName, effects: { ...choices, [node.id]: value || '' } })} />)}
         {showGuidance && (
           <div
             className={`atlas-calc-guidance${syncError ? ' is-error' : syncState === 'current' ? '' : ' is-attention'}`}
@@ -377,8 +369,18 @@ export const AtlasCalcModule = ({ embedded = false }: { embedded?: boolean } = {
           </div>
         )}
 
-        <SurpassingChanceSection chances={currentCalc?.surpassingChances} open={surpassingOpen}
-          onToggle={() => setSurpassingOpen(open => !open)} />
+        {(choiceNodes.length > 0 || currentCalc?.surpassingChances) && <section aria-label="Atlas choices">
+          <AtlasCalcSectionBar title="Atlas choices" meta="Atlas Tree" open={surpassingOpen}
+            onClick={() => setSurpassingOpen(open => !open)} />
+          {surpassingOpen && <Stack gap="xs" className="atlas-calc-section-content">
+            {choiceNodes.map(node => <Group key={node.id} justify="space-between">
+              <Text size="xs">{node.name}</Text><Text size="xs" fw={600}>
+                {node.value}
+              </Text>
+            </Group>)}
+            <SurpassingChanceSection chances={currentCalc?.surpassingChances} />
+          </Stack>}
+        </section>}
         <Stack gap={0}>
           <AtlasCalcSectionBar
             title="Inputs"

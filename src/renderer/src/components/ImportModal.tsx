@@ -60,7 +60,7 @@ export const ImportModal = ({ opened, onClose, onLoadBuild, onLoadSetup }: Props
         multiplyingModifiers: {allocated: parsed.multiplyingModifiersAllocated, fragmentCount: parsed.multiplyingModifiersFragmentCount},
       };
       if (!isStrategySetupCode(setup)) { setResult(null); setParseError(true); return; }
-      setResult({kind: 'setup', value: setup});
+      setResult({kind: 'setup', value: setup, atlasDrops: parsed.covens.atlas_drops});
     } else setResult(parsed ? { kind: 'discord', value: parsed } : null);
     setParseError(!parsed && text.trim().length > 100);
   };

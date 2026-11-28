@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '../store/useSessionStore';
-import { computeCosts } from './profit';
+import { computeCosts, deviceInvestment } from './profit';
 import { buildDiscordExport } from './discordExport';
 import { parseDiscordExport } from './parseDiscordExport';
 import { deviceInvestmentLosses } from './deviceInvestmentLosses';
@@ -14,6 +14,19 @@ import { useSessionStore } from '../store/useSessionStore';
 import { encodeSessionPayload, decodeSessionPayload } from '../repository/sessionPayloadCodec';
 import { parseMapClipboard } from './mapParser';
 import { deriveAtlasCalcSettingsSnapshot } from '../../../shared/atlasStats';
+
+it('charges only the supplied quantity and exports the Unwavering Vision bonus on its active type', () => {
+  const sourceUrl = 'https://atlas.wraeclastledger.com/?v=3.30.0-atlas#AAAABgAAAwIAYfNxdXF1AAA=';
+  const calc = deriveAtlasCalcSettingsSnapshot([{ title: 'Atlas', stats: [
+    'You can only apply one type of Thread to your Maps',
+    'Your Maps with Threads applied gain 2 additional Threads, which can bypass the 8 Thread maximum',
+  ] }]);
+  const setup = { ...settings, atlasTreeUrl: sourceUrl, threadSlots: [{ name: 'Abyss Thread', count: 8, granted: 0, price: 3 }],
+    atlasStatsRead: { schemaVersion: 1 as const, readAt: '', sourceUrl, leagueName: 'Covens', calc } };
+  expect(deviceInvestment(setup)).toMatchObject({ paid: 8, effective: 10, threadCost: 24 });
+  expect(buildCovensShare(setup, [])?.threads?.[0]).toMatchObject({ paid: 8, granted: 2 });
+  expect(deviceInvestment({ ...setup, threadSlots: [] }).effective).toBe(0);
+});
 
 it('requires a player to identify Atlas-granted Threads before assigning a type on a public share', () => {
   const calc = deriveAtlasCalcSettingsSnapshot([{ title: 'Map modifiers', stats: [
@@ -95,14 +108,15 @@ it('matches each paid type once and caps it at units spent, including before the
   }
 });
 
-it('keeps final reward and level paired in a mixed share', () => {
+it('keeps observations outside author notes in a mixed share', () => {
   const base = { quantity: 0, rarity: 10, packSize: 10, moreCurrency: 0, moreScarabs: 0 };
   const maps = [{ ...base, deliriousPct: 10, deliriumRewardTypes: ['Threads'] },
     { ...base, deliriousPct: 20, deliriumRewardTypes: ['Divination Cards'] },
     { ...base, deliriousPct: 28, deliriumRewardTypes: ['Armour'] }, base];
   const result = buildDiscordExport({ settings, maps, baselineTotal: 0, lootItems: [], investmentNeutralization: 0 });
   const parsed = parseDiscordExport(result)!;
-  expect(parsed.strategyNotes).toContain('10% Threads x1, 20% Divination Cards x1, 28% Armour x1');
+  expect(parsed.strategyNotes).toBe('');
+  expect(parsed.observedDelirium?.rewardCounts).toHaveLength(3);
   expect(parsed.observedDelirium?.sampleSize).toBe(3);
 });
 

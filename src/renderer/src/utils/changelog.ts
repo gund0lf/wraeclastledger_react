@@ -11,6 +11,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '1.0.102',
+    date: 'Unreleased',
+    changes: [
+      'Atlas Calc groups your tree choices and Surpassing Chance in a read-only summary. Sync can repair a saved choice that differs from the planner.',
+      'Discord sharing shows the length of the copied code, tells you where to paste it, and lets you retry a failed clipboard write.',
+      'Covens strategy details and imports show Atlas Drops when available. Untimed runs display a dash. The session time example fits in the field. A live session can receive its Divine price when delayed league detection finishes.',
+      'Thread investment shows Qty, keeps each total and its currency on one line, and applies the Unwavering Vision bonus to the selected type. Shares keep your own notes. Live strategies from closed leagues explain why updates are unavailable.',
+    ],
+  },
+  {
     version: '1.0.101',
     date: '2026-11-28',
     changes: [

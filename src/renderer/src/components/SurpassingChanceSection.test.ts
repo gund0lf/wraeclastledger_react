@@ -14,7 +14,7 @@ const box = (n: number) => `Your Maps have +${n}% ${keyword} to contain a Strong
 const derive = (...stats: string[]) => deriveAtlasCalcSettingsSnapshot([{ title: 'Atlas', stats }]);
 function render(...stats: string[]) {
   return renderToStaticMarkup(createElement(MantineProvider, null,
-    createElement(SurpassingChanceSection, { chances: derive(...stats).surpassingChances, open: true, onToggle: () => {} })));
+    createElement(SurpassingChanceSection, { chances: derive(...stats).surpassingChances })));
 }
 
 it.each([

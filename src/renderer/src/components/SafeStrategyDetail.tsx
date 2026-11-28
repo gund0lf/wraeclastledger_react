@@ -8,7 +8,7 @@ import { RegexLine } from './ui/RegexLine'
 import { PoeItemIcon, type PoeItemCategory } from './ui/PoeItemIcon'
 import { checkStrategyCompat } from '../utils/strategyCompat'
 import { getManifest } from '../utils/gameData'
-import { safeNumber, safeDate, recordedQuantityPrice, safePooledCostComponents, safeCostEvidenceMessage, safeSetupUnavailableMessage, safeContinuationMessage } from '../utils/safeStrategyPresentation'
+import { pooledAtlasDrops, safeNumber, safeDate, recordedQuantityPrice, safePooledCostComponents, safeCostEvidenceMessage, safeSetupUnavailableMessage, safeContinuationMessage } from '../utils/safeStrategyPresentation'
 import { PublicAuthorName } from './PublicAuthorName'
 import { COLOR, FONT } from '../utils/uiTokens'
 import { EconomicTile } from './StrategyCardPresentation'
@@ -105,10 +105,10 @@ export function SafeStrategyDetail({ detail: d, onLoad, onContinue, onName }: {
           </Stack>
           <Stack className="strategy-card-hero-facts" gap={2}>
             <Text size="xs" c="dimmed" tt="uppercase">{recordedCount(d.observed.map_count, 'map')} · {safeNumber(d.observed.mod_average)} mod</Text>
-            <Text size="xs" c="dimmed">Latest activity <Text span c="gray.3">{formatRelativeAge(d.updated_at ?? d.published_at)}</Text> · Time {d.coverage.timed_minutes === null ? 'Unrecorded' : formatActiveTime(d.coverage.timed_minutes * 60_000)}</Text>
+            <Text size="xs" c="dimmed">Latest activity <Text span c="gray.3">{formatRelativeAge(d.updated_at ?? d.published_at)}</Text> · Time {d.coverage.timed_map_count === 0 || d.coverage.timed_minutes === null ? '–' : formatActiveTime(d.coverage.timed_minutes * 60_000)}</Text>
             <Text size="xs" c="dimmed">Divine {pooled ? 'per-run snapshots' : safeNumber(money.quote, 'c')} · Div/hr {safeNumber(d.coverage.net_divines_per_hour)}</Text>
             <Text size="xs" c="dimmed">Game data r{d.setup.game_data.revision ?? '—'} · {d.setup.game_data.patch_version ?? 'unrecorded'} · Atlas {safeNumber(d.setup.atlas.points)}/{safeNumber(d.setup.atlas.points_max)}</Text>
-            <Text size="xs" c="dimmed">Author mult. <Text span c="blue">{multiplier == null ? 'Unrecorded' : `${multiplier.toFixed(3)}×`}</Text></Text>
+            <Text size="xs" c="dimmed">Author mult. <Text span c="blue">{multiplier == null ? '–' : `${multiplier.toFixed(3)}×`}</Text></Text>
           </Stack>
         </Stack>
       </div>
@@ -143,15 +143,15 @@ export function SafeStrategyDetail({ detail: d, onLoad, onContinue, onName }: {
       </Stack>
       <Stack gap={3} className="strategy-card-setup-chisel"><SectionLabel>Chisel</SectionLabel>
         {pooledView?.chiselItems.length ? pooledView.chiselItems.map(s => <SetupItem key={s.name} category="chisel" name={publishedChiselName(s.name)!} color="yellow" value={safeNumber(s.perMap, 'c/map')} />)
-          : chisel && chisel.toLowerCase() !== 'none' ? <SetupItem category="chisel" name={publishedChiselName(chisel)!} color="yellow" value={safeNumber(costs?.chisel?.price_each_chaos, 'c/map')} /> : <Text size="xs" c="dimmed">{chisel ? 'None' : 'Unrecorded'}</Text>}
+          : chisel && chisel.toLowerCase() !== 'none' ? <SetupItem category="chisel" name={publishedChiselName(chisel)!} color="yellow" value={safeNumber(costs?.chisel?.price_each_chaos, 'c/map')} /> : <Text size="xs" c="dimmed">{chisel ? 'None' : '–'}</Text>}
       </Stack>
       <Stack gap={3} className="strategy-card-setup-deli"><SectionLabel>Delirium orbs</SectionLabel>
         {pooledView?.deliriumItems.length ? pooledView.deliriumItems.map(s => <SetupItem key={s.name} category="orb" name={deliOrbItemName(s.name) ?? s.name} color="grape" value={safeNumber(s.perMap, 'c/map')} />)
-          : deli?.type ? <SetupItem category="orb" name={deliOrbItemName(deli.type) ?? deli.type} color="grape" value={recordedQuantityPrice(deli.count_per_map, costs?.delirium?.price_each_chaos, true)} /> : <Text size="xs" c="dimmed">{deli ? 'None' : 'Unrecorded'}</Text>}
+          : deli?.type ? <SetupItem category="orb" name={deliOrbItemName(deli.type) ?? deli.type} color="grape" value={recordedQuantityPrice(deli.count_per_map, costs?.delirium?.price_each_chaos, true)} /> : <Text size="xs" c="dimmed">{deli ? 'None' : '–'}</Text>}
       </Stack>
       <Stack gap={3} className="strategy-card-setup-astro"><SectionLabel>Astrolabe</SectionLabel>
         {pooledView?.astrolabeItems.length ? pooledView.astrolabeItems.map(s => <SetupItem key={s.name} category="astrolabe" name={s.name} color="teal" value={safeNumber(s.perMap, 'c/map')} />)
-          : astro?.type || d.setup.astrolabe ? <SetupItem category="astrolabe" name={astro?.type ?? d.setup.astrolabe!} color="teal" value={recordedQuantityPrice(astro?.count, astro?.price_each_chaos)} /> : <Text size="xs" c="dimmed">Unrecorded</Text>}
+          : astro?.type || d.setup.astrolabe ? <SetupItem category="astrolabe" name={astro?.type ?? d.setup.astrolabe!} color="teal" value={recordedQuantityPrice(astro?.count, astro?.price_each_chaos)} /> : <Text size="xs" c="dimmed">–</Text>}
         {authored?.setup_display?.source === 'legacy_display' && <Text size="xs" c="dimmed">Legacy display prices; not exact setup proof.</Text>}
       </Stack>
       <div className="strategy-card-cost-panel" style={panelStyle}>
@@ -170,13 +170,13 @@ export function SafeStrategyDetail({ detail: d, onLoad, onContinue, onName }: {
         <Group justify="space-between" mb={6}><SectionLabel>Map requirements</SectionLabel>
           {observedDeli && <Badge size="xs" color="grape" variant="outline">Observed Delirium · {observedDeli.sample_size} maps</Badge>}</Group>
         <div className="strategy-card-map-stats">
-          <StatTile boxed centered label="Quantity" value={safeNumber(d.observed.quantity_average, '%')} color={COLOR.accent} />
+          <StatTile boxed centered label={usesThreads ? "Atlas Drops" : "Quantity"} value={safeNumber(usesThreads ? pooledAtlasDrops(runs) : d.observed.quantity_average, '%')} color={COLOR.accent} />
           <StatTile boxed centered label="Rarity" value={safeNumber(d.observed.rarity_average, '%')} color={COLOR.accent} />
           <StatTile boxed centered label="Pack size" value={safeNumber(d.observed.pack_size_average, '%')} color={COLOR.accent} />
           <StatTile boxed centered label="Currency" value={safeNumber(d.observed.currency_average, '%')} color={COLOR.accent} />
         </div>
         <Stack gap={4} mt="xs"><Text size="xs" c="dimmed">{d.setup.map_type ?? 'Map setup unrecorded'} · Party {d.setup.party_size ?? 'unrecorded'}</Text>
-          <Text size="xs" c="dimmed">Multiplying Modifiers: {d.setup.multiplying_modifiers?.allocated == null ? 'Unrecorded' : d.setup.multiplying_modifiers.allocated ? `allocated · ${safeNumber(d.setup.multiplying_modifiers.fragment_count)} fragments` : 'not allocated'}</Text>
+          <Text size="xs" c="dimmed">Multiplying Modifiers: {d.setup.multiplying_modifiers?.allocated == null ? '–' : d.setup.multiplying_modifiers.allocated ? `allocated · ${safeNumber(d.setup.multiplying_modifiers.fragment_count)} fragments` : 'not allocated'}</Text>
           {observedDeli && <Text size="xs" c="dimmed">{observedDeli.levels.map(l => `${l.percentage}% on ${l.count} maps`).join(', ')}{observedDeli.rewards.length > 0 && ` · ${observedDeli.rewards.map(r => `${r.name}: ${r.count}`).join(', ')}`}</Text>}
         </Stack>
       </div>

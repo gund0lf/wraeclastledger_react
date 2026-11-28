@@ -48,7 +48,7 @@ export function detailMoney(d: SafeDetail) {
     netSecondary: netDivines === null ? null : formatDivineValue(netDivines, true),
     invest: formatChaosValue(e.total_invest_chaos, false, 1),
     investSecondary: investDivines === null ? null : formatDivineValue(investDivines),
-    perMap: e.net_per_map_divines === null ? 'Unrecorded' : formatDivineValue(e.net_per_map_divines, true),
+    perMap: e.net_per_map_divines === null ? '–' : formatDivineValue(e.net_per_map_divines, true),
     perMapChaos: formatChaosValue(recordedProfitPerMap(e.net_profit_chaos, d.coverage.map_count), true, 1),
     cost: formatChaosValue(e.all_in_cost_per_map_chaos, false, 1),
     costSecondary: divineEquivalent(e.all_in_cost_per_map_chaos, quote),

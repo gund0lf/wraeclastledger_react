@@ -94,7 +94,10 @@ export function deviceInvestment(settings: DeviceSettings) {
     ? read.calc?.threadRules : undefined;
   const oneType = rules?.oneType === true;
   const configuredSlots = settings.threadSlots ?? [];
-  const activeSlots = (oneType ? configuredSlots.slice(0, 1) : configuredSlots).filter(slot => !slot?.paused);
+  const first = configuredSlots[0];
+  const atlasGrant = oneType && first?.name && !first.paused && first.count > 0 ? rules.freeThreads : 0;
+  const includedSlots = oneType && first ? [{ ...first, granted: atlasGrant }] : configuredSlots;
+  const activeSlots = includedSlots.filter(slot => !slot?.paused);
   const slots = activeSlots.filter(slot => slot?.name && Number.isInteger(slot.count) &&
     (slot.count > 0 || (slot.count === 0 && (slot.granted ?? 0) > 0)));
   const types = new Set(slots.map(slot => slot.name)).size;
@@ -103,7 +106,7 @@ export function deviceInvestment(settings: DeviceSettings) {
   const granted = slots.some(slot => slot.granted !== undefined)
     ? slots.reduce((sum, slot) => sum + (slot.granted ?? 0), 0) : (paid ? rules?.freeThreads || 0 : 0);
   return {
-    paid, effective: paid + granted, types, oneType, activeSlots,
+    paid, effective: paid + granted, types, oneType, atlasGrant, activeSlots,
     saveChance: rules?.saveChance || 0,
     threadCost: gross * (1 - Math.min(100, Math.max(0, rules?.saveChance || 0)) / 100),
     emberCost: settings.ember?.name ? Math.max(0, settings.ember.price || 0) : 0,

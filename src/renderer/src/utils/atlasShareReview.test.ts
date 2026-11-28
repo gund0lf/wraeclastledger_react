@@ -58,12 +58,12 @@ it('uses the normal reader for the current tree and keeps historical settings, e
   expect(buildCovensShare(saved.settings, saved.maps)).toEqual(historical);
 });
 
-it('includes a recorded option only when both its tree and allocated node match', async () => {
+it('preserves legacy choices locally and omits unverified selections from shares', async () => {
   vi.stubGlobal('window', { api: { readAtlasTreeStats: vi.fn().mockResolvedValue({ ...allocation, allocatedNodeIds: [712] }) } });
   const currentAnswer = { sourceUrl: tree, leagueName: 'Covens', effects: { '712': '50999' } };
   const review = await reviewAtlasForShare({ ...stale, atlasChoiceAnswers: currentAnswer }, [], 'sync', new AbortController().signal);
-  expect(review?.atlas?.choices).toEqual([{ node: 712, option: 50999 }]);
-  expect(review?.tags).toContain('sentinel');
+  expect(review?.atlas?.choices).toEqual([{ node: 712, option: null }]);
+  expect(review?.tags).not.toContain('sentinel');
 });
 
 it('cancels an in-flight sync without a preview or a change to the session', async () => {
@@ -100,4 +100,7 @@ it('uses a hosted effect only for the share and reports conflicting recorded ans
   expect(JSON.stringify(settings)).toBe(before);
   const conflict = { ...settings, atlasChoiceAnswers: { sourceUrl: url, leagueName: 'Covens', effects: { '712': '50999' } } };
   await expect(reviewAtlasForShare(conflict, [], 'sync', new AbortController().signal)).rejects.toThrow('saved Atlas choices differ');
+  const repair = await reviewAtlasForShare(conflict, [], 'adopt', new AbortController().signal);
+  expect(repair?.repairedAnswers?.effects).toEqual({ '712': '17864' });
+  expect(repair?.atlas?.choices).toEqual([{ node: 712, option: 17864 }]);
 });

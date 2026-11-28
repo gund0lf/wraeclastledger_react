@@ -367,7 +367,7 @@ export const AtlasTreeModule = () => {
       );
       if (!isListenerSessionCurrent()) return;
       if (useSessionStore.getState().sessionNonce !== requestedSessionNonce) return;
-      await readStats('apply', requestedSessionNonce, listenerActiveSessionId);
+      await readStats('auto', requestedSessionNonce, listenerActiveSessionId);
     };
     wv.addEventListener('will-navigate', handleWillNavigate);
     wv.addEventListener('did-navigate', handleNav);
@@ -400,7 +400,7 @@ export const AtlasTreeModule = () => {
 
   // ── Read atlas tree stats via JS injection ─────────────────────────────────
   const readStats = async (
-    mode: 'inspect' | 'apply' = 'inspect',
+    mode: 'inspect' | 'apply' | 'auto' = 'inspect',
     readSessionNonce = useSessionStore.getState().sessionNonce,
     readActiveSessionId = useSessionStore.getState().activeSessionId,
   ) => {
@@ -437,7 +437,7 @@ export const AtlasTreeModule = () => {
               await new Promise(function(r) { setTimeout(r, 150); });
               container.scrollTop = orig;
             }
-            return { groups: ${READ_ATLAS_STAT_GROUPS}, allocation: ${mode === 'apply' ? READ_ATLAS_ALLOCATION : 'null'}, url: location.href };
+            return { groups: ${READ_ATLAS_STAT_GROUPS}, allocation: ${mode !== 'inspect' ? READ_ATLAS_ALLOCATION : 'null'}, url: location.href };
           } catch(e) { return { error: e.message }; }
         })()
       `);
@@ -465,7 +465,7 @@ export const AtlasTreeModule = () => {
 
       // Inspection is deliberately read-only. Only the clearly named setup
       // sync refreshes Atlas Calc, Run Statistics inputs, and source identity.
-      if (mode === 'apply' && !applyGroupsToCalc(groups, result.url, result.allocatedNodeIds ?? readAllocatedNodeIds(result.allocation), result.choiceEffects)) {
+      if (mode !== 'inspect' && !applyGroupsToCalc(groups, result.url, result.allocatedNodeIds ?? readAllocatedNodeIds(result.allocation), result.choiceEffects, mode === 'auto')) {
         setStatsOpen(true);
       }
     } catch (error) {
@@ -553,13 +553,13 @@ export const AtlasTreeModule = () => {
   // ── Apply stats to Atlas Calc ─────────────────────────────────────────────
   // applyGroupsToCalc takes groups directly (avoids stale-state issues when
   // called right after readStats resolves)
-  const applyGroupsToCalc = (groups: AtlasStatGroup[], sourceUrl: string, allocatedNodeIds?: number[], choiceEffects?: Record<string, string>): boolean => {
+  const applyGroupsToCalc = (groups: AtlasStatGroup[], sourceUrl: string, allocatedNodeIds?: number[], choiceEffects?: Record<string, string>, automatic = false): boolean => {
     try {
       const current = useSessionStore.getState();
       const patch = buildAtlasStatsSyncPatch(
         groups,
         sourceUrl,
-        current.settings.leagueName, undefined, allocatedNodeIds, current.settings.atlasTreeUrl, choiceEffects, current.settings.atlasChoiceAnswers,
+        current.settings.leagueName, undefined, allocatedNodeIds, current.settings.atlasTreeUrl, choiceEffects, automatic ? current.settings.atlasChoiceAnswers : undefined,
       );
       applyAtlasStatsSyncPatch(updateSetting, patch);
       const appliedParts = [

@@ -18,6 +18,11 @@ it('keeps historical economics and the inspection-only Divine comparison visible
   expect(markup).not.toContain('approximate');
 });
 
+it('shows a dash for no timed maps and keeps a measured sub-minute sample', () => {
+  expect(render({ ...emptyHistory(), minutes: 0, timedMaps: 0 })).not.toContain('&lt;1m');
+  expect(render({ ...emptyHistory(), minutes: 0.5, timedMaps: 1 })).toContain('&lt;1m');
+});
+
 it('labels rounded totals and their derived comparisons without marking exact prices', () => {
   const markup = render({ ...emptyHistory(), maps: 20, costPerMap: 100, totalInvest: 15372.5,
     netProfit: 18791, divinePrice: 215 }, { totalInvest: true, netProfit: true });
@@ -33,7 +38,7 @@ it('labels rounded totals and their derived comparisons without marking exact pr
 });
 it('labels absent values unrecorded while preserving explicit zero and signed loss', () => {
   const missing = render(emptyHistory());
-  expect(missing).toContain('Unrecorded');
+  expect(missing).toContain('–');
   expect(missing).toContain('Unavailable');
   expect(missing).not.toContain('+0.00d');
   const recorded = render({ ...emptyHistory(), maps: 10, runs: 1, totalInvest: 0, netProfit: -100 });

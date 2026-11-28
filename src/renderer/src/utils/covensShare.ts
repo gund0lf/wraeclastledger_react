@@ -33,7 +33,7 @@ export function buildCovensShare(settings: SessionSettings, maps: readonly MapDa
   const data: CovensWire = {
     version: 1, atlas_drops: observed(maps, 'atlasDrops'), more_threads: observed(maps, 'moreThreads'),
     threads: settings.threadSlots?.flatMap((slot, i) => slot?.name ? [{
-      slot: i+1, id: findId(manifest.threads, slot.name), paid: slot.count, granted: slot.granted ?? 0,
+      slot: i+1, id: findId(manifest.threads, slot.name), paid: slot.count, granted: device.oneType && i === 0 ? device.atlasGrant : slot.granted ?? 0,
       paused: Boolean(slot.paused || (device.oneType && i > 0)), price_each: price(slot.price || null),
     }] : []) ?? null,
     ember: settings.ember?.name ? {id: findId(manifest.embers,settings.ember.name), price_each: price(settings.ember.price || null)} : null,

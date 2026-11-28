@@ -13,7 +13,7 @@ import { DEFAULT_SETTINGS } from '../store/useSessionStore'
 import { buildDiscordSharePayload, decodeDiscordSharePayload } from './discordShareWire'
 import { parseDiscordExport } from './parseDiscordExport'
 import { buildAuthorSubmission } from '../../../shared/authorSubmission'
-import { safeNumber, safePooledCostComponents, safeCostEvidenceMessage } from './safeStrategyPresentation'
+import { pooledAtlasDrops, safeNumber, safePooledCostComponents, safeCostEvidenceMessage } from './safeStrategyPresentation'
 const prefs = { ...emptyAuthorPreferences(), registrations: [{ registrationId: fixture.row.id, name: 'Fixture Author', confirmed: true, epoch: fixture.snapshot }] }
 const page = () => ({ schema_version: 2, scope: 'current', snapshot_key: null, read_version: fixture.row.read_version,
   total: 1, limit: 20, sort: 'activity', order: 'desc', strategies: [structuredClone(fixture.row)], next_cursor: null })
@@ -94,12 +94,19 @@ describe('shared safe strategy reader contract', () => {
       for (const read of attributionReaders({ ...attribution, ...extra })) expect(read).toThrow()
     }
   })
+  it('weights observed Atlas Drops by the reporting maps and preserves zero', () => {
+    const metric = (sum: number, count: number) => ({ covens: { atlas_drops: { sum, count } } });
+    const sample = (rows: unknown[]) => pooledAtlasDrops(rows as Parameters<typeof pooledAtlasDrops>[0]);
+    expect(sample([metric(10, 1), {}, metric(90, 3)])).toBe(25);
+    expect(sample([metric(0, 2)])).toBe(0);
+    expect(sample([{}])).toBeNull();
+  });
   it('retains actual nullable server ancillary projections separately from explicit zero', () => {
     const d = parseSafeDetail(fixture.partialDetail), empty = parseSafeDetail(fixture.allNullDetail)
     expect(d.ancillary.excluded_drops).toEqual({ declared_count: null, total_chaos: null, entries: [{ name: 'Unpriced exclusion', chaos: null }], complete: false })
     expect(d.ancillary.gem_leveling).toEqual({ count: null, buy_chaos: null, sell_chaos: 0, net_chaos: -5 })
     expect(empty.ancillary.gem_leveling).toEqual({ count: null, buy_chaos: null, sell_chaos: null, net_chaos: null })
-    expect(safeNumber(d.ancillary.gem_leveling!.count)).toBe('Unrecorded')
+    expect(safeNumber(d.ancillary.gem_leveling!.count)).toBe('–')
     expect(safeNumber(d.ancillary.gem_leveling!.sell_chaos, 'c')).toBe('0c')
     for (const bad of [{ count: 1.5 }, { count: 1000001 }, { buy_chaos: -1 }, { sell_chaos: '0' }, { net_chaos: Infinity }, { net_chaos: 1e16 }, { private: true }]) {
       expect(() => parseSafeDetail({ ...d, ancillary: { ...d.ancillary, gem_leveling: { ...d.ancillary.gem_leveling, ...bad } } })).toThrow()

@@ -68,6 +68,30 @@ describe('Divine quote ownership through the real store and cache', () => {
     return scheduleLiveDivineRetry();
   }
 
+  it('opens the 1.0.100 saved tree, then seeds a fresh Ledger session after delayed league confirmation', async () => {
+    const { encodeSessionPayload, decodeSessionPayload } = await import('../repository/sessionPayloadCodec');
+    const { newSessionAtlasUrl } = await import('../utils/atlasUrl');
+    const { scheduleLiveDivineRetry } = await import('./useSessionStore');
+    const oldUrl = 'https://pathofpathing.com/?v=3.30.0-atlas#AAAABgAAAwIAYfNxdXF1AAA=';
+    const state = store.getState();
+    const saved = encodeSessionPayload({ ...state, settings: { ...state.settings, atlasTreeUrl: oldUrl } });
+    const restored = decodeSessionPayload(saved, store.getInitialState().settings);
+    expect(restored.settings.atlasTreeUrl).toBe(oldUrl);
+    league.setLeagueOverrideValue(null);
+    store.setState({ settings: restored.settings, leagueOverride: null, sessionLifecycle: 'historical' });
+    expect(scheduleLiveDivineRetry()).toBeUndefined();
+    const probe = deferred<ReturnType<typeof quote>>();
+    fetch.mockReturnValueOnce(probe.promise).mockResolvedValue(quote(197));
+    store.getState().newSession();
+    expect(store.getState().settings.atlasTreeUrl).toBe(newSessionAtlasUrl());
+    expect(store.getState().settings.divinePrice).toBe(0);
+    const cancel = scheduleLiveDivineRetry();
+    probe.resolve({ lines: Array.from({length: 7}, (_, i) => ({ id: String(i), primaryValue: 1 })) });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getState().settings).toMatchObject({ leagueName: 'Covens', divinePrice: 197 });
+    cancel?.();
+  });
+
   it('automatically recovers a fresh live session after the cooldown without opening Investment', async () => {
     const cancel = await startUnconfirmedSession();
     fetch.mockClear();

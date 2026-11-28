@@ -1,12 +1,12 @@
 import type { SafeDetail, SafeRow, SafeRun } from '../../../shared/safeStrategy'
 import { computePublishedSetupCostBreakdown } from './strategySetupCosts'
-export const safeNumber = (v: number | null | undefined, unit = '') => v == null ? 'Unrecorded' : v.toLocaleString('en-US', { maximumFractionDigits: unit === 'd' ? 3 : 1 }) + unit
+export const safeNumber = (v: number | null | undefined, unit = '') => v == null ? '–' : v.toLocaleString('en-US', { maximumFractionDigits: unit === 'd' ? 3 : 1 }) + unit
 export function safeDate(value: string | null): string {
   if (!value || !Number.isFinite(Date.parse(value))) return 'unrecorded'
   return new Date(value).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 export function recordedQuantityPrice(quantity: number | null | undefined, price: number | null | undefined, perMap = false): string {
-  if (quantity == null && price == null) return 'Quantity and unit price unrecorded'
+  if (quantity == null && price == null) return '–'
   const count = quantity == null ? 'Quantity unrecorded' : `${safeNumber(quantity)}×${perMap ? '/map' : ''}`
   return `${count} · ${price == null ? 'Unit price unrecorded' : `${safeNumber(price, 'c')} each`}`
 }
@@ -43,10 +43,19 @@ export function safeSetupUnavailableMessage(reason: string): string {
   return Object.hasOwn(messages, reason) ? messages[reason] : 'The reusable setup is unavailable.'
 }
 
+export function pooledAtlasDrops(runs: readonly SafeRun[] | null) {
+  let sum = 0, count = 0
+  for (const run of runs ?? []) {
+    const sample = run.covens?.atlas_drops
+    if (sample) { sum += sample.sum; count += sample.count }
+  }
+  return count ? sum / count : null
+}
+
 export function safeContinuationMessage(reason: string, unnamed = false): string {
   if (unnamed && (reason === 'inactive_registration' || reason === 'missing_membership')) return 'Name this strategy to continue it.'
   const messages: Record<string, string> = {
-    frozen: 'Frozen strategies cannot be continued.',
+    frozen: 'This league is closed to strategy updates.',
     missing_membership: 'Continuation needs a confirmed public name for this strategy.',
     incomplete_seed: 'This strategy lacks the setup information needed for another run.',
     conflicting_seed: 'Conflicting setup details prevent continuing this strategy.',

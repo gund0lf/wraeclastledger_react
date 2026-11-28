@@ -1,11 +1,8 @@
 import { Group, Stack, Text } from '@mantine/core';
 import { surpassingOutcomes, type SurpassingChances } from '../../../shared/atlasSurpassingChance';
-import { AtlasCalcSectionBar } from './AtlasCalcSectionBar';
 
-export function SurpassingChanceSection({ chances, open, onToggle }: {
+export function SurpassingChanceSection({ chances }: {
   chances?: SurpassingChances;
-  open: boolean;
-  onToggle: () => void;
 }) {
   if (!chances) return null;
   const rows = surpassingOutcomes.flatMap(({ key, label, unit, template }) => {
@@ -32,13 +29,10 @@ export function SurpassingChanceSection({ chances, open, onToggle }: {
   });
   if (!rows.length) return null;
   return <section aria-label="Surpassing Chance">
-    <AtlasCalcSectionBar title="Surpassing Chance" meta={`${rows.length} ${rows.length === 1 ? 'effect' : 'effects'}`}
-      open={open} onClick={onToggle} />
-    {open && <div className="atlas-calc-section-content">
+    <Text size="xs" fw={600}>Surpassing Chance</Text>
       <Stack gap="xs">
         <Text size="xs" c="dimmed">From your synced Atlas tree. Other sources can add more.</Text>
         {rows}
       </Stack>
-    </div>}
   </section>;
 }

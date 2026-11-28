@@ -1,3 +1,4 @@
+import { getManifest } from './gameData'
 import { parseSafeCatalogue, parseSafeDetail, parseSafeEvidence, parseSafeList, sameSafeIdentity, safeIdentityKey, safeSortOrder,
   type SafeDetail, type SafeIdentity, type SafeList, type SafeRun, type SafeSnapshot } from '../../../shared/safeStrategy'
 
@@ -47,6 +48,7 @@ export class SafeStrategyReader {
     let cursor: string | null = null
     do {
       const params = new URLSearchParams({ revision: String(d.revision), read_version: d.read_version, limit: '20' })
+      if (getManifest().leagueRules?.[d.league ?? '']?.threadSlots) params.set('format', 'covens-v1')
       if (cursor) params.set('cursor', cursor)
       const page = parseSafeEvidence(await this.read(`${safeDetailPath(d)}/evidence?${params}`))
       if (page.strategy_id !== d.id || page.revision !== d.revision || page.read_version !== d.read_version ||

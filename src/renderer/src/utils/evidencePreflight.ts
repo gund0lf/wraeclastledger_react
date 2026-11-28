@@ -1,3 +1,4 @@
+import { getManifest } from './gameData';
 import { isGroupedDeliriumNote } from './deliriumMetadata';
 import { parseDiscordExport } from './parseDiscordExport';
 import {
@@ -74,7 +75,7 @@ export async function prepareEvidenceSubmission(input: {
 
   // Legacy evidence fingerprints have no Thread or Ember fields. A pooled
   // contribution must wait until both ends can authenticate the device setup.
-  if ([target, local].some(run => run.strategyNotes.split(' | ').some(part => part.startsWith('Map device per map: ')))) {
+  if ([target, local].some(run => getManifest().leagueRules?.[run.league]?.threadSlots || run.strategyNotes.split(' | ').some(part => part.startsWith('Map device per map: ')))) {
     throw new EvidencePreflightError('setup_mismatch', 'Pooling Thread or Ember setups requires a newer sharing format. You can share this run separately.');
   }
   if ([target, local].some(run => run.strategyNotes.split(' | ').some(isGroupedDeliriumNote))) {

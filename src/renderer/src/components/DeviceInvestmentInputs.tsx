@@ -57,9 +57,9 @@ export function DeviceInvestmentInputs({ settings, league, historical, readOnly,
       disabled={disabled} value={value || ''} placeholder="—" onChange={v => apply(Math.max(0, Number(v) || 0))} />;
   return <Stack gap={5} className="device-investment">
     <SectionLabel>Map device · Threads</SectionLabel>
-    {costs.oneType && <Text size="xs" c="dimmed">Unwavering Vision · one Thread type only</Text>}
+    {costs.oneType && <Text size="xs" c="dimmed">Unwavering Vision · one Thread type{costs.atlasGrant > 0 && ` · +${costs.atlasGrant} ${slots[0].name.replace(/ Thread$/, '')} Threads from Atlas`}</Text>}
     <div className="device-grid">
-      {label('Thread')}{label('Paid')}{label('Price')}{label('Total')}
+      {label('Thread')}{label('Qty')}{label('Price')}{label('Total')}
       {slots.map((slot, i) => {
         const lockedByTree = costs.oneType && i > 0;
         const paused = lockedByTree || slot.paused === true;
@@ -75,13 +75,6 @@ export function DeviceInvestmentInputs({ settings, league, historical, readOnly,
             onChange={v => changeSlot(i, { count: Math.max(0, Math.min(rules.threadCap, Number(v) || 0)) })} />
           {unitPrice(id, slot.price, disabled || !slot.name, price => changeSlot(i, { price }))}
           {total(!paused && slot.name ? slot.count * slot.price : undefined)}
-          {slot.name && <Fragment>
-            {label(paused ? 'Granted · paused' : 'Granted')}
-            <NumberInput aria-label={id + ' granted count'} size="xs" hideControls allowDecimal={false} min={0}
-              max={rules.threadCap} value={slot.granted ?? ''} placeholder="—" disabled={disabled}
-              onChange={v => changeSlot(i, { granted: v === '' ? undefined : Math.min(rules.threadCap, Math.max(0, Number(v))) })} />
-            <div className="device-grant-spacer" />
-          </Fragment>}
           {market && slot.name && !paused && <MarketPrice key={league + slot.name} name={slot.name} league={league}
             type="Thread" apply={price => changeSlot(i, { price })} />}
         </Fragment>;

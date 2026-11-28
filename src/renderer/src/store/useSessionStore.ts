@@ -1340,7 +1340,7 @@ setLeagueOverrideValue(hydratedLeagueOverride);
 /** The dashboard owns one automatic fallback retry per live session, across panel mounts. */
 export function scheduleLiveDivineRetry(): (() => void) | undefined {
   const { sessionNonce, leagueOverride, sessionLifecycle, settings } = useSessionStore.getState();
-  if (sessionLifecycle !== 'live' || leagueOverride || settings.divinePrice || confirmedLeagueSync()) {
+  if (sessionLifecycle !== 'live' || leagueOverride || settings.divinePrice) {
     return;
   }
   let cancelled = false;
@@ -1355,7 +1355,11 @@ export function scheduleLiveDivineRetry(): (() => void) | undefined {
     // A manual Refresh may still be running when the cooldown expires.
     await getCurrentLeague();
     const failedAt = leagueFallbackSince();
-    if (!eligible() || failedAt === null) return;
+    if (!eligible()) return;
+    if (failedAt === null) {
+      if (confirmedLeagueSync()) await useSessionStore.getState().initDivinePrice();
+      return;
+    }
     const delay = failedAt + DIVINE_PRICE_COOLDOWN_MS - Date.now();
     if (delay > 0) {
       timer = setTimeout(retryWhenDue, delay);

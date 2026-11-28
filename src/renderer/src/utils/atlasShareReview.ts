@@ -7,6 +7,21 @@ import { isPathofpathingTreeUrl } from './atlasUrl';
 import { getManifest } from './gameData';
 import { deriveShareTags } from './shareTags';
 
+export function atlasChoiceRows(settings: SessionSettings) {
+  const read = settings.atlasStatsRead;
+  if (!read || !hasCurrentAtlasStatsRead(settings) || !Array.isArray(read.choiceNodeIds)) return [];
+  const ledger = isLedgerAtlasUrl(read.sourceUrl);
+  const encoded = new URL(read.sourceUrl).searchParams.get('choices') ?? '';
+  const tree = new Map(encoded.split('.').map(pair => pair.split('-') as [string, string]));
+  const saved = new Map(currentChoiceSelections(settings).map(row => [row.nodeId, row.option]));
+  return allocatedChoiceNodes(read.sourceUrl, read.choiceNodeIds).map(node => {
+    const selected = saved.get(node.id);
+    const option = ledger ? node.options.find(item => item.id === tree.get(node.id)) : selected;
+    return { id: node.id, name: node.name, value: option?.text ?? '–', saved: selected?.text ?? '–',
+      differs: ledger && selected?.id !== option?.id };
+  });
+}
+
 export function recordedAtlasChoices(settings: SessionSettings): CovensWire['atlas'] {
   const version = getManifest().leagueRules?.[settings.leagueName]?.atlasTreeVersion;
   const read = settings.atlasStatsRead;
@@ -20,7 +35,7 @@ export function recordedAtlasChoices(settings: SessionSettings): CovensWire['atl
   return {
     version,
     choices: allocatedChoiceNodes(read.sourceUrl, read.choiceNodeIds).map(node => ({
-      node: Number(node.id), option: answers.get(node.id) ?? null,
+      node: Number(node.id), option: isLedgerAtlasUrl(read.sourceUrl) ? answers.get(node.id) ?? null : null,
     })),
   };
 }
@@ -33,10 +48,11 @@ export function needsAtlasShareReview(settings: SessionSettings): boolean {
 export interface AtlasShareReview {
   atlas: CovensWire['atlas'];
   tags: string[];
+  repairedAnswers?: SessionSettings['atlasChoiceAnswers'];
 }
 
 export async function reviewAtlasForShare(settings: SessionSettings, maps: readonly MapData[],
-  choice: 'sync' | 'recorded', signal: AbortSignal): Promise<AtlasShareReview | undefined> {
+  choice: 'sync' | 'recorded' | 'adopt', signal: AbortSignal): Promise<AtlasShareReview | undefined> {
   if (signal.aborted) return;
   if (choice === 'recorded') {
     return { atlas: null, tags: deriveShareTags({ ...settings, atlasDetectedTags: [], atlasStatsRead: undefined }, maps) };
@@ -48,7 +64,12 @@ export async function reviewAtlasForShare(settings: SessionSettings, maps: reado
   if (!Array.isArray(result.allocatedNodeIds)) throw new Error('Full allocation unavailable. Try syncing again or share as recorded.');
   // Project the read onto the share only. Recomputing the recorded run with
   // new Atlas cost modifiers would change its reported investment and profit.
-  const patch = buildAtlasStatsSyncPatch(result.groups, url, settings.leagueName, undefined, result.allocatedNodeIds, undefined, result.choiceEffects, settings.atlasChoiceAnswers);
+  const patch = buildAtlasStatsSyncPatch(result.groups, url, settings.leagueName, undefined, result.allocatedNodeIds, undefined, result.choiceEffects, choice === 'adopt' ? undefined : settings.atlasChoiceAnswers);
   const snapshot = { ...settings, ...patch };
-  return { atlas: recordedAtlasChoices(snapshot), tags: deriveShareTags(snapshot, maps) };
+  const atlas = recordedAtlasChoices(snapshot);
+  if (choice === 'adopt' && (!atlas || !patch.atlasChoiceAnswers)) throw new Error('The tree choices could not be verified. Try syncing the tree again.');
+  const tagSource = isLedgerAtlasUrl(url) ? snapshot : { ...snapshot, atlasChoiceAnswers: undefined };
+  return { atlas, tags: deriveShareTags(tagSource, maps),
+    ...(choice === 'adopt' && { repairedAnswers: patch.atlasChoiceAnswers }) };
+
 }

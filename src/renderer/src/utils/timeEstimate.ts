@@ -127,7 +127,7 @@ export function computeTimeEstimate(
 /** 5025000ms -> "1h 24m"; sub-hour -> "42m"; sub-minute -> "<1m". */
 export function formatActiveTime(ms: number): string {
   const totalMin = Math.round(ms / 60_000);
-  if (totalMin < 1) return '<1m';
+  if (ms < 60_000) return '<1m';
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
