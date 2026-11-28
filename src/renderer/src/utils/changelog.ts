@@ -12,7 +12,7 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '1.0.102',
-    date: 'Unreleased',
+    date: '2026-11-28',
     changes: [
       'Atlas Calc groups your tree choices and Surpassing Chance in a read-only summary. Sync can repair a saved choice that differs from the planner.',
       'Discord sharing shows the length of the copied code, tells you where to paste it, and lets you retry a failed clipboard write.',
